@@ -1,0 +1,74 @@
+/* tablet-wall client — full-bleed surface, no scrollbars, no margins. */
+
+:root {
+    /* Overwritten by `set_color` frames from the server. */
+    --surface-color: #0f172a;
+}
+
+html {
+    height: 100%;
+    background-color: var(--surface-color);
+}
+
+body {
+    margin: 0;
+    height: 100%;
+    overflow: hidden;
+    background-color: var(--surface-color);
+    color: #e2e8f0;
+    font-family: system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue",
+        Arial, sans-serif;
+    -webkit-user-select: none;
+    user-select: none;
+    -webkit-tap-highlight-color: transparent;
+    overscroll-behavior: none;
+}
+
+/*
+ * Connection status pill. Visible ONLY while the socket is down so a healthy
+ * wall is a clean surface. Translucent dark background keeps it readable on
+ * whatever colour the server has assigned.
+ */
+#status {
+    position: fixed;
+    left: 50%;
+    bottom: 16px; /* fallback for browsers without max() */
+    bottom: max(16px, env(safe-area-inset-bottom));
+    transform: translateX(-50%);
+    display: flex;
+    align-items: center;
+    gap: 0.5em;
+    padding: 0.45em 1em;
+    border-radius: 999px;
+    background: rgba(15, 23, 42, 0.78);
+    border: 1px solid rgba(226, 232, 240, 0.28);
+    color: #e2e8f0;
+    font-size: 18px; /* fallback for browsers without clamp() */
+    font-size: clamp(15px, 2.4vh, 22px);
+    font-weight: 600;
+    letter-spacing: 0.04em;
+    line-height: 1.4;
+    white-space: nowrap;
+    pointer-events: none;
+    z-index: 10;
+}
+
+#status .status-dot {
+    width: 0.7em;
+    height: 0.7em;
+    border-radius: 50%;
+    background: #f59e0b;
+    flex: none;
+}
+
+#status[data-state="reconnecting"] .status-dot {
+    background: #fb923c;
+}
+
+#status[data-state="offline"] .status-dot {
+    background: #ef4444;
+}
+
+#status[data-state="connected"] {
+    display: none;
+}

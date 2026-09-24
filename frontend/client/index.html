@@ -2,12 +2,17 @@
 <html lang="en">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+    <meta name="mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <title>Tablet Wall</title>
     <link rel="stylesheet" href="client.css">
-    <title>Client</title>
 </head>
 <body>
+    <div id="status" data-state="connecting" role="status" aria-live="polite">
+        <span class="status-dot" aria-hidden="true"></span>
+        <span class="status-text">Connecting&hellip;</span>
+    </div>
     <script src="client.js"></script>
-    <p>This is Client Side</p>
 </body>
 </html>

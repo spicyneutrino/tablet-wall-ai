@@ -3,11 +3,124 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="color-scheme" content="dark">
+    <title>Wall control · tablet-wall-ai</title>
     <link rel="stylesheet" href="controller.css">
-    <title>Document</title>
 </head>
 <body>
-    <script src="controller.js"></script>
-    <p>This is controller side.</p>
+<a class="skip" href="#grid">Skip to devices</a>
+
+<header class="topbar">
+    <div class="brand">
+        <span class="brand-name">TABLET WALL</span>
+        <span class="brand-sub">/ controller</span>
+    </div>
+
+    <div class="topbar-right">
+        <p class="conn" id="conn" data-state="connecting" title="Roster socket">
+            <span class="conn-glyph" aria-hidden="true"></span>
+            <span class="conn-label" id="conn-label">connecting</span>
+        </p>
+        <button type="button" class="btn btn-ghost btn-sm" id="btn-reconnect" hidden>Reconnect now</button>
+        <p class="tally">
+            <span class="tally-on mono" id="tally-online">0</span> online
+            <span class="tally-sep" aria-hidden="true">/</span>
+            <span class="tally-total mono" id="tally-total">0</span> total
+        </p>
+    </div>
+</header>
+
+<section class="global" aria-labelledby="global-title">
+    <div class="global-head">
+        <h2 class="kicker" id="global-title">All devices</h2>
+        <p class="global-hint">Pick a colour, then apply it to every tablet on the wall.</p>
+    </div>
+
+    <div class="global-row">
+        <div class="palette palette-lg" id="global-palette" role="group" aria-label="Preset colours for all devices"></div>
+
+        <input type="color" id="global-color" class="colour-input" aria-label="Custom colour for all devices">
+
+        <span class="global-sel mono" id="global-sel">—</span>
+
+        <button type="button" class="btn btn-primary" id="btn-apply-all" disabled>Apply to all</button>
+    </div>
+</section>
+
+<main class="stage">
+    <div class="grid" id="grid" aria-label="Registered devices"></div>
+
+    <section class="empty" id="empty" hidden>
+        <p class="empty-conn kicker" id="empty-conn"></p>
+        <p class="empty-title">No tablets registered yet</p>
+        <p class="empty-lead">
+            Open the client page on each tablet. It registers itself and appears
+            here within a second or two.
+        </p>
+
+        <div class="empty-url">
+            <code class="mono" id="client-url">/client/</code>
+            <button type="button" class="btn btn-ghost btn-sm" id="btn-copy-url">Copy</button>
+        </div>
+
+        <ol class="empty-steps">
+            <li>Find this machine's LAN address: <code class="mono">hostname -I | awk '{print $1}'</code></li>
+            <li>On the tablet, browse to that address on the same network, path <code class="mono">/client/</code>.</li>
+            <li>Leave the page open. Reloading is safe — each tablet keeps its id in local storage.</li>
+        </ol>
+    </section>
+</main>
+
+<footer class="statusbar">
+    <span class="status-stamp mono" id="status-stamp"></span>
+    <span class="status-text" id="status-text" role="status" aria-live="polite">Starting…</span>
+</footer>
+
+<noscript>
+    <p class="noscript">The controller needs JavaScript — it talks to the roster over a WebSocket.</p>
+</noscript>
+
+<template id="tile-tpl">
+    <article class="tile" data-state="offline" data-busy="false">
+        <header class="tile-top">
+            <span class="dev-id mono"></span>
+            <span class="badge">
+                <span class="badge-dot" aria-hidden="true"></span>
+                <span class="badge-label">OFFLINE</span>
+            </span>
+        </header>
+
+        <div class="screen" aria-hidden="true">
+            <span class="screen-fill"></span>
+            <span class="screen-note">no colour assigned</span>
+        </div>
+
+        <div class="tile-meta">
+            <span class="meta-res mono"></span>
+            <span class="meta-sep" aria-hidden="true">·</span>
+            <span class="meta-type"></span>
+        </div>
+
+        <dl class="tile-facts">
+            <dt class="k">Last seen</dt>
+            <dd class="fact-seen mono"></dd>
+            <dt class="k">Colour</dt>
+            <dd class="fact-colour">
+                <span class="cur-swatch" aria-hidden="true"></span>
+                <span class="cur-hex mono"></span>
+            </dd>
+        </dl>
+
+        <div class="tile-controls">
+            <div class="palette palette-sm" role="group" aria-label="Colour presets"></div>
+        </div>
+
+        <footer class="tile-foot">
+            <input type="color" class="colour-input tile-colour-input" aria-label="Custom colour for this device">
+        </footer>
+    </article>
+</template>
+
+<script src="controller.js"></script>
 </body>
 </html>
