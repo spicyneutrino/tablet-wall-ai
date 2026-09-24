@@ -1,4 +1,4 @@
-"""Shared pytest fixtures for the tablet-wall API tests."""
+"""Shared pytest fixtures for the tablet-wall-ai API tests."""
 
 from collections.abc import Iterator
 

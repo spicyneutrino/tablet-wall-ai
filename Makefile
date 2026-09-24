@@ -1,4 +1,4 @@
-# tablet-wall developer tasks. Run `make` with no target to list them.
+# tablet-wall-ai developer tasks. Run `make` with no target to list them.
 #
 # Every recipe cds to the repository root first, because main.py mounts its
 # static directories by relative path and therefore only imports from there.
@@ -11,7 +11,7 @@ PORT ?= 8000
 .PHONY: help sync dev run test clean
 
 help: ## Show this help
-	@echo "tablet-wall:"
+	@echo "tablet-wall-ai:"
 	@grep -hE '^[a-zA-Z_-]+:.*?## ' $(MAKEFILE_LIST) \
 		| awk 'BEGIN {FS = ":.*?## "}; {printf "  \033[36m%-6s\033[0m %s\n", $$1, $$2}'
 

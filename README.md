@@ -1,10 +1,12 @@
-# tablet-wall
+# tablet-wall-ai
 
 Turn a set of tablets into one coordinated display wall.
 
 Each tablet opens the **client** page and registers itself with the server. A
 **controller** page watches the roster of connected devices and, eventually,
 drives what they show.
+
+This project began as a copy of `tablet-wall`. New development happens here.
 
 > **Status: early skeleton.** Device registration works end to end. The
 > controller has no UI yet and no content can be pushed to a tablet. See

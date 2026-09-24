@@ -1,4 +1,4 @@
-"""Contract tests for the tablet-wall HTTP API.
+"""Contract tests for the tablet-wall-ai HTTP API.
 
 These cover the behaviour the client and controller pages actually depend on.
 The two placeholder endpoints (``POST /devices/{device_id}/color`` and
