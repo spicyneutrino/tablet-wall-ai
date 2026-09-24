@@ -8,8 +8,10 @@ drives what they show.
 
 This project began as a copy of `tablet-wall`. New development happens here.
 
-> **Status: early skeleton.** Device registration works end to end. The
-> controller has no UI yet and no content can be pushed to a tablet. See
+> **Status: Phase 1 complete.** Tablets self-register, hold a live WebSocket,
+> heartbeat, and reconnect on their own; the controller is an operator
+> dashboard that shows the wall live and repaints any or all tablets. There is
+> no persistence and no authentication yet — see
 > [Known limitations](#known-limitations) and [Roadmap](#roadmap).
 
 ## Requirements
@@ -45,42 +47,57 @@ currently fails on a plain-HTTP LAN origin.
 ## Project layout
 
 ```
-main.py                     FastAPI app: API routes + static mounts
+main.py                     FastAPI app: HTTP routes, WebSocket hub, presence
+PROTOCOL.md                 the realtime contract between server and pages
 frontend/
-  client/                   runs on each tablet; self-registers
+  client/                   runs on each tablet; registers, listens, shows colour
     index.html  client.js  client.css
-  controller/               operator page; currently console-only
+  controller/               operator dashboard; live roster + colour control
     index.html  controller.js  controller.css
-tests/                      pytest contract tests for the HTTP API
+tests/                      pytest contract tests (HTTP + WebSocket)
 pyproject.toml              deps, dev deps, pytest config
 ```
 
 ## How it works
 
-1. On load, `frontend/client/client.js` reads a device UUID from
-   `localStorage`, generating and storing one on first visit. The UUID is the
-   tablet's stable identity across reloads.
-2. The client `POST`s that UUID plus `window.screen.width/height` and a
-   hardcoded `device_type` to `/devices/register`.
-3. The server stores the device in an in-memory dict, stamped with a UTC
-   `last_seen`.
-4. `frontend/controller/controller.js` polls `GET /devices` once a second and
-   logs the roster to the browser console.
+1. On load, `frontend/client/client.js` resolves a device UUID and stores it in
+   `localStorage`, so a tablet keeps its identity across reloads. It falls back
+   to `crypto.getRandomValues` when `crypto.randomUUID` is unavailable — which
+   is the normal case over a plain-HTTP LAN origin.
+2. The client `POST`s that UUID and its screen size to `/devices/register`. It
+   re-registers before *every* connection attempt, because the roster is held in
+   memory and does not survive a server restart.
+3. It then opens `/ws/device`, sends a heartbeat every 5 s, and applies whatever
+   colour the controller assigns.
+4. `frontend/controller/controller.js` opens `/ws/controller`, receives the
+   roster as a `snapshot`, and is pushed `device_online`, `device_offline`,
+   `device_updated`, and `device_removed` events as things change. It polls
+   nothing.
+5. Colours travel *out* over HTTP (`POST /devices/{device_id}/color`) and are
+   pushed *to* the tablet over its socket.
 
-The server keeps all state in the `devices` dict in `main.py`, so the roster is
-lost on restart and is per-process.
+Server state lives in dicts in `main.py`, so the roster and every assigned
+colour are lost on restart. Tablets notice, re-register, and reconnect on their
+own.
+
+The full realtime contract — message shapes, close codes, timing constants — is
+in [PROTOCOL.md](PROTOCOL.md).
 
 ## HTTP API
 
-| Method | Path                        | Purpose                                     |
-| ------ | --------------------------- | ------------------------------------------- |
-| `GET`  | `/`                         | Liveness greeting                           |
-| `GET`  | `/devices`                  | Full device roster                          |
-| `GET`  | `/devices/register`         | Hint that registration is a `POST`          |
-| `POST` | `/devices/register`         | Register/refresh a device                   |
-| `GET`  | `/device/{device_id}`       | **Stub** — echoes the id, does not look up  |
-| `POST` | `/devices/{device_id}/color`| **Stub** — no-op, returns `null`            |
-| `GET`  | `/docs`                     | Interactive OpenAPI docs                    |
+| Method   | Path                          | Purpose                               |
+| -------- | ----------------------------- | ------------------------------------- |
+| `GET`    | `/`                           | Liveness greeting                     |
+| `GET`    | `/devices`                    | Full roster, keyed by device id       |
+| `GET`    | `/device/{device_id}`         | One device record; `404` if unknown   |
+| `GET`    | `/devices/register`           | Hint that registration is a `POST`    |
+| `POST`   | `/devices/register`           | Register or refresh a device          |
+| `POST`   | `/devices/{device_id}/color`  | Set one device's colour               |
+| `POST`   | `/devices/color`              | Set every device's colour             |
+| `DELETE` | `/devices/{device_id}`        | Remove a device from the roster       |
+| `GET`    | `/ws/device?device_id=…`      | Device socket: liveness + commands    |
+| `GET`    | `/ws/controller`              | Controller socket: roster events      |
+| `GET`    | `/docs`                       | Interactive OpenAPI docs              |
 
 Registration body:
 
@@ -103,44 +120,43 @@ make test        # or: uv run pytest
 ```
 
 The suite drives the app in-process via Starlette's `TestClient` (backed by
-`httpx2`, which is what Starlette now expects) and covers the root route, both
-static mounts, and the registration contract including validation failures.
-
-The two placeholder endpoints are deliberately left untested — pinning their
-current output would enshrine placeholder behaviour.
+`httpx2`, which is what Starlette now expects). `tests/test_api.py` covers the
+HTTP surface; `tests/test_websocket.py` drives real sockets through
+`TestClient.websocket_connect`, including presence transitions, colour replay,
+and every documented close code.
 
 ## Known limitations
 
-**The client cannot register from a tablet on a plain-HTTP LAN origin.**
-`client.js` calls `crypto.randomUUID()`, which browsers expose only in a
-[secure context](https://developer.mozilla.org/en-US/docs/Web/API/Crypto/randomUUID)
-— HTTPS or localhost. On `http://192.168.1.50:8000/client/` the call throws
-`crypto.randomUUID is not a function` inside an async IIFE, so it surfaces only
-as an unhandled rejection in the console and the tablet silently never
-registers. Fixing this (a `getRandomValues` fallback, or serving HTTPS) is the
-first thing to do before real hardware.
-
-Other gaps:
-
-- **`last_seen` is written once and never updated.** There is no heartbeat,
-  expiry, or deregistration, so a dead tablet stays in the roster forever and
-  the field really means "first seen". The controller cannot distinguish a live
-  wall from a stale one.
-- **The app must run from the repository root.** The static mounts use
-  relative paths (`StaticFiles(directory="frontend/client")`), so importing
-  `main` from any other directory raises `RuntimeError: Directory
-  'frontend/client' does not exist`. The `make` targets handle this for you.
-- **The controller has no UI.** It logs to the console; both stylesheets are
-  empty.
-- **No authentication.** Anyone who can reach the server can register or read
-  the roster.
-- **No persistence.** Restarting the server forgets every device.
-- **No realtime channel.** The controller polls at 1 Hz, so pushing a command
-  to a tablet is not possible yet.
-- **No reconnect handling.** If the server is briefly unavailable the client
-  throws and never retries.
-- `device_type` is hardcoded to `"ipad"`, and `window.screen.width/height`
-  reports screen CSS pixels rather than the viewport.
+- **No persistence.** The roster and every assigned colour live in dicts in
+  `main.py` and are lost on restart. Tablets recover on their own — they
+  re-register and reconnect — but they return with no colour assigned, so the
+  controller and the wall can briefly disagree about what a tablet is showing.
+  Phase 3 fixes this.
+- **No authentication.** Anyone who can reach the server can register a device,
+  read the roster, or repaint the wall.
+- **A device must register before it can open a socket.** A socket for an
+  unregistered id is closed with `4404` rather than registering on the fly, so
+  registration stays the single source of device metadata.
+- **`last_seen` is not pushed while a device is healthy.** It only reaches
+  controllers when something changes, so a controller must render an online
+  device as live rather than counting up a stale timestamp. See
+  [PROTOCOL.md](PROTOCOL.md).
+- **Frontend changes may need a hard refresh.** The static mounts send no
+  `Cache-Control`, so browsers heuristically cache `client.js` and
+  `controller.js`. `fastapi dev` reloads the server, not the browser.
+- **The app must run from the repository root.** The static mounts use relative
+  paths (`StaticFiles(directory="frontend/client")`), so importing `main` from
+  any other directory raises `RuntimeError: Directory 'frontend/client' does not
+  exist`. The `make` targets handle this for you.
+- **One socket per device, none for controllers.** A second socket for the same
+  device id silently replaces the first, so two browser tabs on one origin share
+  a single identity. Controller sockets have no heartbeat, so one that vanishes
+  without a clean close is only reaped when a later broadcast to it fails.
+- **`device_type` is hardcoded to `"ipad"`, and `window.screen.width/height`
+  reports screen CSS pixels rather than the viewport.** Wall geometry is
+  Phase 2 work.
+- **The server has no wake-lock story.** A tablet's screen will still sleep;
+  that needs either kiosk software or HTTPS plus the Screen Wake Lock API.
 
 ## Roadmap
 
@@ -151,14 +167,14 @@ Other gaps:
 - [x] Add a dev script (`Makefile`)
 - [x] Add pytest scaffolding and contract tests
 
-**Phase 1 — close the core loop**
+**Phase 1 — close the core loop** ✅ *done*
 
-- [ ] Fix the secure-context `crypto.randomUUID()` failure (or serve HTTPS)
-- [ ] Replace polling with a WebSocket channel for clients and controller
-- [ ] Build the controller UI: device tiles with status and last-seen
-- [ ] Implement `POST /devices/{device_id}/color` end to end
-- [ ] Add heartbeats, expiry, and deregistration so `last_seen` is honest
-- [ ] Add reconnect with backoff to `client.js`
+- [x] Fix the secure-context `crypto.randomUUID()` failure (`getRandomValues` fallback)
+- [x] Replace polling with a WebSocket channel for clients and controller
+- [x] Build the controller UI: device tiles with status and last-seen
+- [x] Implement `POST /devices/{device_id}/color` end to end
+- [x] Add heartbeats, expiry, and deregistration so `last_seen` is honest
+- [x] Add reconnect with backoff to `client.js`
 
 **Phase 2 — make it a wall**
 

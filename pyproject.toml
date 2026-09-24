@@ -10,8 +10,13 @@ dependencies = [
 dev = [
     "httpx2>=2.13.1",
     "pytest>=9.1.1",
+    "pytest-timeout>=2.4.0",
 ]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 pythonpath = ["."]
+# Several WebSocket tests block on receive_json() waiting for a close frame. If
+# a regression ever stops the server closing a socket, a bound here turns a hang
+# into a failure.
+timeout = 30
