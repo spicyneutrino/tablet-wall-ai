@@ -8,16 +8,24 @@ from fastapi.testclient import TestClient
 import main
 
 
+def _clear_state() -> None:
+    main.devices.clear()
+    main.device_sockets.clear()
+    main.controller_sockets.clear()
+
+
 @pytest.fixture(autouse=True)
 def isolated_registry() -> Iterator[None]:
     """Keep the in-memory device registry from leaking between tests.
 
     ``main.devices`` is module-level mutable state, so without this every test
-    would see the devices registered by the tests that ran before it.
+    would see the devices registered by the tests that ran before it. The
+    WebSocket registries are cleared too: a socket left over from an earlier
+    test would make its device look online.
     """
-    main.devices.clear()
+    _clear_state()
     yield
-    main.devices.clear()
+    _clear_state()
 
 
 @pytest.fixture

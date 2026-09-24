@@ -1,9 +1,10 @@
 """Contract tests for the tablet-wall-ai HTTP API.
 
 These cover the behaviour the client and controller pages actually depend on.
-The two placeholder endpoints (``POST /devices/{device_id}/color`` and
-``GET /device/{device_id}``) are intentionally not tested here: they are stubs,
-and pinning their current output would enshrine placeholder behaviour.
+The realtime endpoints (``POST /devices/{device_id}/color``, ``DELETE
+/devices/{device_id}``, ``GET /device/{device_id}`` and the WebSockets) are
+covered in ``tests/test_websocket.py``, which exercises them next to a live
+socket.
 """
 
 from datetime import datetime, timedelta
@@ -19,17 +20,25 @@ class TestRootAndStaticMounts:
         assert response.json() == {"message": "Hello Tablet Wall"}
 
     @pytest.mark.parametrize(
-        ("route", "expected_text"),
+        ("route", "assets"),
         [
-            ("/client/", "This is Client Side"),
-            ("/controller/", "This is controller side."),
+            ("/client/", ["client.css", "client.js"]),
+            ("/controller/", ["controller.css", "controller.js"]),
         ],
     )
-    def test_app_pages_are_served(self, client, route, expected_text):
+    def test_app_pages_are_served(self, client, route, assets):
+        """Each mount serves its page, wired to the assets in that mount.
+
+        This asserts the wiring rather than the page copy: the markup is
+        expected to change freely as the UI evolves, but a page that stops
+        referencing its own script or stylesheet is broken.
+        """
         response = client.get(route)
 
         assert response.status_code == 200
-        assert expected_text in response.text
+        assert response.headers["content-type"].startswith("text/html")
+        for asset in assets:
+            assert asset in response.text
 
     @pytest.mark.parametrize(
         "asset",
