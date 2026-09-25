@@ -10,6 +10,10 @@ purpose and assert the three consequences the contract needs — the live state
 does not move, the database does not move, nothing is broadcast — plus the
 fourth: the request fails loudly instead of swallowing the error.
 
+Recall routes are wall-mutating too (saving and deleting a snapshot are not —
+they never reach this boundary at all, which is why ``tests/test_snapshots.py``
+covers those), so both of them are broken here the same way.
+
 The "nothing was broadcast" assertion uses the same trick as
 ``test_v1_controller_never_gets_wall_updated``: a roster event fired *after*
 the failed request must be the next frame out of the socket, so a wall frame
@@ -187,3 +191,78 @@ class TestAFailedSaveChangesNothing:
             assert response.status_code == 500
             assert wall_state(client) == before
             assert_database_did_not_move(before)
+
+
+class TestAFailedRecallChangesNothing:
+    """A recall is a wall change, so a failed write has to freeze it too.
+
+    The snapshot rows were written — and committed — by their own transactions
+    *before* the recall started, so they survive untouched; what must not move
+    on the way out is the live wall, the ``wall_state`` row, and the sockets.
+    """
+
+    def test_a_failed_layout_recall_leaves_the_wall_frozen(
+        self, client, device_payload, monkeypatch
+    ):
+        register(client, device_payload, DEVICE_ID)
+        place(client)
+        assert client.put("/layouts/one").status_code == 200
+        assert client.put("/wall", json={"width": 3000}).status_code == 200
+        before = wall_state(client)
+        snapshot_before = persist.load_layout("one")
+
+        with client.websocket_connect(controller_url()) as controller:
+            controller.receive_json()  # snapshot
+            monkeypatch.setattr(main, "save_state", broken_save)
+
+            with pytest.raises(RuntimeError, match="disk full"):
+                client.post("/layouts/one/recall")
+
+            # Memory: the recalled arrangement was never applied …
+            assert wall_state(client) == before
+            # … disk: the wall row never advanced either …
+            assert_database_did_not_move(before)
+            # … and the snapshot about to be recalled is exactly what it was,
+            # written by its own transaction before the recall began.
+            assert persist.load_layout("one") == snapshot_before
+
+            # Broadcast: a wall frame would have been queued *during* the
+            # failed request, so the next frame out must be the roster event
+            # raised afterwards.
+            register(client, device_payload, DEVICE_ID)
+            event = controller.receive_json()
+
+        assert event["type"] == "device_updated"
+        assert event["device"]["device_id"] == DEVICE_ID
+
+    def test_a_failed_scene_recall_leaves_the_wall_frozen(
+        self, client, device_payload, monkeypatch
+    ):
+        register(client, device_payload, DEVICE_ID)
+        place(client)
+        assert (
+            client.put("/scene", json={"content": {"type": "calibration"}}).status_code
+            == 200
+        )
+        assert client.put("/scenes/calib").status_code == 200
+        # The live content has moved on since the save: colour, revision 2.
+        assert client.put("/scene", json={"content": {"type": "color"}}).status_code == 200
+        before = wall_state(client)
+        snapshot_before = persist.load_scene("calib")
+
+        with client.websocket_connect(controller_url()) as controller:
+            controller.receive_json()  # snapshot
+            monkeypatch.setattr(main, "save_state", broken_save)
+
+            with pytest.raises(RuntimeError, match="disk full"):
+                client.post("/scenes/calib/recall")
+
+            assert wall_state(client) == before, "the live content is still colour"
+            assert_database_did_not_move(before)
+            assert persist.load_scene("calib") == snapshot_before
+
+            register(client, device_payload, DEVICE_ID)
+            event = controller.receive_json()
+
+        assert event["type"] == "device_updated"
+        assert event["device"]["device_id"] == DEVICE_ID

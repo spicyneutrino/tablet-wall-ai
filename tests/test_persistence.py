@@ -10,7 +10,14 @@ opens a real ``tablet-wall.db`` in the repository.
 The roster, sockets, presence, and heartbeats are deliberately *not*
 persisted, so every test that needs a device after a restart re-registers it,
 exactly as a real client does before every connection attempt.
+
+The last class covers the *other* way state reaches a running server: a
+database file written before the snapshot tables existed, which must gain
+them without losing the row it already holds.
 """
+
+import json
+import sqlite3
 
 from fastapi.testclient import TestClient
 
@@ -239,3 +246,189 @@ class TestDatabaseLocation:
         # No app is started in this test on purpose: loading would *create*
         # that file, and the suite must never touch the repository's default.
         assert persist.db_path() == "tablet-wall.db"
+
+
+class TestSnapshotsSurviveARestart:
+    def test_saved_layouts_and_scenes_are_listed_and_recallable_after_a_restart(
+        self, device_payload
+    ):
+        with TestClient(main.app) as first:
+            register(first, device_payload)
+            assert first.put(
+                "/wall", json={"width": 3456, "height": 1789}
+            ).status_code == 200
+            assert first.put(
+                f"/devices/{DEVICE_ID}/placement",
+                json={"x": 10, "y": 20, "w": 300, "h": 200, "bezel": {"top": 5}},
+            ).status_code == 200
+            assert first.put(
+                "/scene", json={"content": {"type": "calibration"}}
+            ).status_code == 200
+            assert first.put("/layouts/lobby").status_code == 200
+            assert first.put("/scenes/calib").status_code == 200
+            layouts_before = first.get("/layouts").json()
+            scenes_before = first.get("/scenes").json()
+
+        with TestClient(main.app) as second:
+            # Both listings come back byte for byte …
+            assert second.get("/layouts").json() == layouts_before
+            assert second.get("/scenes").json() == scenes_before
+
+            # … the arrangement recalls, placement and bezel included — the
+            # tablet has not re-registered, so that placement is a
+            # reservation, and recalling must bring it back anyway …
+            recalled = second.post("/layouts/lobby/recall")
+            assert recalled.status_code == 200
+            assert recalled.json()["width"] == 3456
+            assert recalled.json()["height"] == 1789
+            assert recalled.json()["placements"] == {
+                DEVICE_ID: {
+                    "device_id": DEVICE_ID,
+                    "x": 10,
+                    "y": 20,
+                    "w": 300,
+                    "h": 200,
+                    "bezel": {**ZERO_BEZEL, "top": 5},
+                }
+            }
+            # … and so does the content, onto whatever is active by then.
+            scene = second.post("/scenes/calib/recall")
+            assert scene.status_code == 200
+            assert scene.json()["scene"] == {
+                "content": {"type": "calibration"},
+                "layout": "active",
+            }
+
+
+# ---------------------------------------------------------------------------
+# upgrading a database written before the snapshot tables existed
+# ---------------------------------------------------------------------------
+
+
+def write_pre_snapshot_database(path) -> dict[str, object]:
+    """A database exactly as Phase 2b wrote it: one table, no snapshot tables.
+
+    Written without going anywhere near ``tabletwall.persist`` on purpose —
+    the schema under test has to be the historical one, not the current one.
+    Returns the state that row holds.
+    """
+    layout = {"width": 4321, "height": 1000, "placements": {}}
+    scene = {"content": {"type": "calibration"}, "layout": "active"}
+    connection = sqlite3.connect(path)
+    try:
+        connection.execute(
+            """
+            CREATE TABLE wall_state (
+                id         INTEGER PRIMARY KEY CHECK (id = 1),
+                layout     TEXT NOT NULL,
+                scene      TEXT NOT NULL,
+                revision   INTEGER NOT NULL,
+                generation TEXT NOT NULL
+            )
+            """
+        )
+        connection.execute(
+            """
+            INSERT INTO wall_state (id, layout, scene, revision, generation)
+            VALUES (1, ?, ?, ?, ?)
+            """,
+            (
+                json.dumps(layout, sort_keys=True),
+                json.dumps(scene, sort_keys=True),
+                5,
+                "abcd1234",
+            ),
+        )
+        connection.commit()
+    finally:
+        connection.close()
+    return {
+        "layout": layout,
+        "scene": scene,
+        "revision": 5,
+        "generation": "abcd1234",
+    }
+
+
+def table_names(path) -> set[str]:
+    connection = sqlite3.connect(path)
+    try:
+        rows = connection.execute(
+            "SELECT name FROM sqlite_master WHERE type = 'table'"
+        ).fetchall()
+    finally:
+        connection.close()
+    return {row[0] for row in rows}
+
+
+def wall_row(path) -> tuple:
+    connection = sqlite3.connect(path)
+    try:
+        row = connection.execute(
+            "SELECT id, layout, scene, revision, generation FROM wall_state WHERE id = 1"
+        ).fetchone()
+    finally:
+        connection.close()
+    return row
+
+
+class TestSchemaUpgrade:
+    def test_an_old_database_gains_the_snapshot_tables_and_keeps_its_row(
+        self, tmp_path, monkeypatch
+    ):
+        """The migration is additive: three ``CREATE TABLE IF NOT EXISTS``
+        statements, none of which reads or writes ``wall_state``."""
+        db = tmp_path / "phase-2b.db"
+        expected = write_pre_snapshot_database(db)
+        monkeypatch.setenv("TABLET_WALL_DB", str(db))
+        row_before = wall_row(db)
+        assert table_names(db) == {"wall_state"}, "the fixture really is pre-snapshot"
+
+        # The first connection applies the migration and still reads the row …
+        assert persist.load_state() == expected
+
+        # … the old row is byte for byte what it was …
+        assert table_names(db) == {"wall_state", "saved_layouts", "saved_scenes"}
+        assert wall_row(db) == row_before
+
+        # … and the new tables work straight away.
+        assert persist.save_layout("lobby", expected["layout"]) is True
+        assert persist.save_scene("calib", expected["scene"]) is True
+        assert persist.load_layout("lobby") == expected["layout"]
+        assert persist.load_scene("calib") == expected["scene"]
+        assert [name for name, _ in persist.load_layouts()] == ["lobby"]
+        assert [name for name, _ in persist.load_scenes()] == ["calib"]
+        assert wall_row(db) == row_before, (
+            "writing a snapshot must not touch the wall row either"
+        )
+
+    def test_the_app_starts_on_an_old_database_and_saves_snapshots_into_it(
+        self, tmp_path, monkeypatch
+    ):
+        """End to end: the upgraded file serves its old state *and* new ones."""
+        db = tmp_path / "phase-2b.db"
+        expected = write_pre_snapshot_database(db)
+        monkeypatch.setenv("TABLET_WALL_DB", str(db))
+
+        with TestClient(main.app) as first:
+            wall = first.get("/wall").json()
+            assert wall["width"] == expected["layout"]["width"]
+            assert wall["revision"] == expected["revision"], (
+                "the revision continues from the old row"
+            )
+            assert wall["generation"] != expected["generation"], (
+                "but every start mints a new lineage"
+            )
+            assert first.put("/layouts/lobby").status_code == 200
+
+        with TestClient(main.app) as second:
+            assert second.get("/layouts").json() == {
+                "layouts": [{"name": "lobby", "layout": expected["layout"]}]
+            }
+            recalled = second.post("/layouts/lobby/recall")
+            assert recalled.status_code == 200
+            assert recalled.json()["width"] == expected["layout"]["width"]
+            assert second.delete("/layouts/lobby").status_code == 200
+
+        assert persist.load_state()["layout"] == expected["layout"]
+        assert persist.load_state()["scene"] == expected["scene"]

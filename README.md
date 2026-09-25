@@ -8,12 +8,13 @@ they show.
 
 This project began as a copy of `tablet-wall`. New development happens here.
 
-> **Status: Phase 2 in progress.** Tablets self-register, hold a live
-> WebSocket, heartbeat, and reconnect on their own. The controller is an
-> operator dashboard that shows the wall live, places tablets on a shared wall
-> canvas, drives a calibration pattern to check the geometry, and shows a
-> curated image as one whole-wall scene. The active layout and scene persist
-> across restarts. Named save/recall and authentication are not implemented — see
+> **Status: Phase 2 software complete; physical tablet validation pending.**
+> Tablets self-register, hold a live WebSocket, heartbeat, and reconnect on
+> their own. The controller is an operator dashboard that shows the wall live,
+> places tablets on a shared wall canvas, drives a calibration pattern to check
+> the geometry, and shows a curated image as one whole-wall scene. The active
+> layout and scene persist across restarts. Named layout and scene save/recall
+> is available; authentication is not implemented — see
 > [Known limitations](#known-limitations) and [Roadmap](#roadmap).
 
 ## Requirements
@@ -88,6 +89,13 @@ restart, re-register, and reconnect on their own.
 The full realtime contract — message shapes, close codes, timing constants — is
 in [PROTOCOL.md](PROTOCOL.md).
 
+The controller can save and recall **named layouts** (wall dimensions and all
+placements, including reservations) separately from **named scenes** (content
+only). Recalling a scene keeps the arrangement currently on the wall. Layout
+recall asks for confirmation; saving to a name that already exists requires a
+separate explicit replacement confirmation. Saved snapshots live in the same
+SQLite database as the active wall, so include it in backups.
+
 ### Curating still images
 
 Create an `assets/` directory at the repository root (or set
@@ -128,6 +136,10 @@ assets require a separate tablet/asset access boundary too.
 | `PUT`    | `/scene`                      | Select colour, calibration or image   |
 | `GET`    | `/assets`                     | Refresh curated image inventory       |
 | `GET`    | `/assets/{id}`                | Read validated same-origin image      |
+| `GET`    | `/layouts`, `/scenes`         | List named arrangement/content snapshots |
+| `PUT`    | `/layouts/{name}`, `/scenes/{name}` | Save current layout/content (409 if name exists; `?replace=true` overwrites) |
+| `POST`   | `/layouts/{name}/recall`, `/scenes/{name}/recall` | Restore arrangement/content separately |
+| `DELETE` | `/layouts/{name}`, `/scenes/{name}` | Remove a saved snapshot |
 | `GET`    | `/ws/device?device_id=…`      | Device socket: liveness + commands    |
 | `GET`    | `/ws/controller`              | Controller socket: roster events      |
 | `GET`    | `/docs`                       | Interactive OpenAPI docs              |
@@ -163,22 +175,26 @@ node tests/client_image.test.js
 
 ## Known limitations
 
-- **The roster is not persisted.** The active layout, scene, and revision
-  survive a restart in SQLite; the generation is deliberately regenerated so
-  tablets accept the restored state even if its revision went backwards. But devices,
-  presence, and heartbeat timestamps live in memory: after a restart the roster
-  is empty until tablets re-register, which they do on their own. A placement
-  whose device has not come back yet is shown as a **vacant reservation** and
-  can be released by hand; it is deliberately *not* discarded, because a tablet
-  that returns should reclaim the slot it had. Authentication and unattended
-  operations are not in yet.
+- **Run one server worker per wall/database.** Active wall state and sockets are
+  process-local; two workers would diverge and could overwrite each other's
+  revision or recall. The supplied `make run` command uses one process. Do not
+  deploy multiple replicas against the same SQLite file.
+- **The roster is not persisted.** The active layout, scene, revision and named
+  snapshots survive a restart in SQLite; the generation is deliberately
+  regenerated so tablets accept restored state even if its revision went
+  backwards. But devices, presence, and heartbeat timestamps live in memory:
+  after a restart the roster is empty until tablets re-register, which they do
+  on their own. A placement whose device has not come back yet is shown as a
+  **vacant reservation** and can be released by hand; it is deliberately *not*
+  discarded, because a tablet that returns should reclaim the slot it had.
+  Authentication and unattended operations are not in yet.
 - **Bezels are abstract units, not millimetres.** Wall units are a layout
   convenience, deliberately not physical measurement: panel sizes, browser
   chrome, and zoom all make millimetres unreliable from a browser. A
   well-aligned wall needs a calibration pass, not a spec sheet.
 - **Images are curated stills only.** JPEG and PNG are supported, with
   centered `cover` across the whole logical wall. There is no video, upload,
-  clock synchronisation, or named layout/scene save and recall yet. The image
+  or clock synchronisation. The image
   seam and failure/reconnect behaviour have been checked in desktop Chromium;
   physical iPad/Safari and Android/Chrome validation is still pending.
 - **The aspect ratio compares against what the tablet reports.** The client
@@ -231,7 +247,7 @@ node tests/client_image.test.js
 - [x] Add heartbeats, expiry, and deregistration so `last_seen` is honest
 - [x] Add reconnect with backoff to `client.js`
 
-**Phase 2 — a coherent wall of still images**
+**Phase 2 — a coherent wall of still images** ✅ *software done*
 
 *Definition of done: a curated still image displays as one coherent wall, and
 the operator can save and recover its arrangement and presentation.*
@@ -245,7 +261,8 @@ the operator can save and recover its arrangement and presentation.*
 - [x] **2a** Integrity: removable vacant reservations, persist-before-apply, honest controller content states
 - [x] **2b** Curated assets and the still-image wall (desktop Chromium verified;
   physical tablet validation remains)
-- [ ] **2c** Named save/recall — closes Phase 2
+- [x] **2c** Named layout/scene save and recall — closes the Phase 2 software
+  milestone (physical iPad/Android verification remains)
 
 Clock sync and video are **not** Phase 2. A still image needs no shared playback
 clock, and clock sync without a timed medium is cost with no visible capability.

@@ -1778,9 +1778,6 @@ body {
  * ---------------------------------------------------------------- */
 
 .statusbar {
-    position: sticky;
-    bottom: 0;
-    z-index: 15;
     display: flex;
     align-items: baseline;
     gap: 12px;
@@ -1806,6 +1803,176 @@ body {
 
 .status-text[data-kind="err"] {
     color: var(--bad-fg);
+}
+
+/* ---------------------------------------------------------------- *
+ * Named snapshots — saved layouts and scenes (Phase 2c)
+ * ---------------------------------------------------------------- */
+
+.snapshots {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+    gap: 14px 22px;
+    margin-top: 14px;
+    padding-top: 12px;
+    border-top: 1px solid var(--line);
+}
+
+.snap-panel {
+    min-width: 0;
+}
+
+.snap-head {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: baseline;
+    justify-content: space-between;
+    gap: 6px 12px;
+    margin-bottom: 4px;
+}
+
+.snap-hint {
+    margin: 0 0 8px;
+    font-size: 11px;
+    line-height: 1.45;
+    color: var(--fg-dim);
+}
+
+.snap-save {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: flex-end;
+    gap: 8px;
+    margin-bottom: 8px;
+}
+
+.snap-save .field {
+    flex: 1 1 16ch;
+}
+
+.snap-inp {
+    width: 100%;
+}
+
+/* Per-panel status: validation, in-flight work, and why a read is stale. */
+.snap-msg {
+    margin: 0 0 8px;
+    font-size: 11px;
+    line-height: 1.5;
+    color: var(--fg-mid);
+    overflow-wrap: anywhere;
+}
+
+.snap-msg[hidden] {
+    display: none;
+}
+
+.snap-msg[data-kind="err"] {
+    color: var(--bad-fg);
+}
+
+.snap-msg[data-kind="warn"] {
+    color: var(--amber);
+}
+
+.snap-msg[data-kind="ok"] {
+    color: var(--ok-fg);
+}
+
+/* A 409 is never retried silently: this block carries the only control
+   that may send ?replace=true. */
+.snap-overwrite {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 8px 10px;
+    margin-bottom: 8px;
+    padding: 8px 10px;
+    border: 1px solid rgba(229, 83, 75, 0.55);
+    border-left: 3px solid var(--bad);
+    background: rgba(229, 83, 75, 0.1);
+}
+
+.snap-overwrite[hidden] {
+    display: none;
+}
+
+.snap-overwrite-text {
+    flex: 1 1 20ch;
+    min-width: 0;
+    margin: 0;
+    font-size: 12px;
+    line-height: 1.45;
+    color: var(--bad-fg);
+    overflow-wrap: anywhere;
+}
+
+.snap-overwrite-actions {
+    display: flex;
+    gap: 8px;
+}
+
+.snap-list {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+    margin: 0;
+    padding: 0;
+    list-style: none;
+}
+
+.snap-list[hidden] {
+    display: none;
+}
+
+.snap-row {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 8px;
+    padding: 6px 9px;
+    border: 1px solid var(--line);
+    background: var(--bg-tile);
+}
+
+.snap-info {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: baseline;
+    gap: 4px 10px;
+    min-width: 0;
+    margin-right: auto;
+}
+
+.snap-name {
+    font-size: 12px;
+    font-weight: 650;
+    overflow-wrap: anywhere;
+}
+
+.snap-meta {
+    font-size: 11px;
+    color: var(--fg-dim);
+}
+
+.snap-q {
+    margin-right: auto;
+    font-size: 11px;
+    line-height: 1.45;
+    color: var(--fg-mid);
+}
+
+.snap-empty {
+    margin: 0;
+    padding: 12px 10px;
+    border: 1px dashed var(--line-strong);
+    font-size: 12px;
+    line-height: 1.5;
+    color: var(--fg-dim);
+}
+
+.snap-empty[hidden] {
+    display: none;
 }
 
 /* ---------------------------------------------------------------- *

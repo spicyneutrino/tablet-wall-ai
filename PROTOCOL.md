@@ -320,14 +320,34 @@ about which arrangement it meant.
 | Field     | Type           | Meaning                                          |
 | --------- | -------------- | ------------------------------------------------ |
 | `content` | content object | What tablets are asked to render.                |
-| `layout`  | `"active"`     | Reference to the layout in use. Named saved layouts are future work; today there is exactly one, the active layout. |
+| `layout`  | `"active"`     | Reference to the layout in use. Named saved layouts are snapshots, not alternate active-layout references. |
 
-**Recall semantics (recorded now, implemented with named scenes).** A saved
+**Recall semantics.** A saved
 scene recalls its *content* onto whatever layout is currently **active**. It
 never silently replaces the arrangement — recalling a scene must not throw away
 placement work the operator did afterwards. Restoring content *and* arrangement
 together is a different, separately named action (a preset), not an overload of
 "recall scene".
+
+### Named snapshots (Phase 2c)
+
+Layouts and scenes have **separate name spaces**. A saved layout contains
+`{ "width", "height", "placements" }` (including reservations whose tablets
+are absent from the roster), never content. A saved scene contains `content`
+only, never placements or a stored URL; its image asset ID, fit and derived
+dimensions remain durable even when the curated file is removed. Snapshot
+names are trimmed, case-sensitive ASCII strings of 1–64 characters: they must
+start with a letter or digit and the rest may contain letters, digits, spaces,
+`.`, `_`, or `-`.
+
+Saving and deleting a snapshot do **not** change the active wall, its revision,
+or its subscribers. Recall atomically changes one part of the active wall:
+layout recall replaces dimensions and all placements but preserves scene;
+scene recall replaces only content on the current active layout. Both bump
+revision once, persist before the live mutation/broadcast, and retain the
+current generation. A missing image asset does **not** block scene recall:
+the image scene stays explicit and capable tablets show an error until its
+original bytes return or the operator selects other content.
 
 `content` is discriminated by `type`:
 
@@ -427,6 +447,39 @@ fit and derived dimensions, but not a URL. `200` returns the new wall state;
 `422` for an unknown type, invalid/missing asset, unsupported fit, or unknown
 fields (including caller-supplied `url` or dimensions).
 
+### Saved layouts and scenes
+
+The server snapshots its **own current active wall**; save requests do not
+accept arbitrary layout/content bodies. URL path names must be encoded as a
+single path component. All routes use trimmed, case-sensitive names as above;
+invalid names return `422`, absent names on recall/delete return `404`.
+If a stored snapshot is malformed (for example, a damaged/hand-edited SQLite
+row), recall returns `409` **before** changing the active wall. This is
+different from an otherwise valid image scene whose asset bytes are missing:
+that recall succeeds and the tablet reports the missing image.
+
+| Route | Result |
+| ----- | ------ |
+| `GET /layouts` | `{ "layouts": [{ "name": "Lobby", "layout": { "width": 2000, "height": 1000, "placements": {} } }] }` |
+| `PUT /layouts/{name}` | Save the active layout. `200 { "saved": true, "name": "Lobby" }`; an existing name returns `409` unless `?replace=true` is explicit. |
+| `POST /layouts/{name}/recall` | Apply its layout to the active wall; `200` returns full `GET /wall` shape. |
+| `DELETE /layouts/{name}` | Remove only this named snapshot; `200 { "deleted": true, "name": "Lobby" }`. |
+| `GET /scenes` | `{ "scenes": [{ "name": "Opening", "content": { "type": "color" } }] }` |
+| `PUT /scenes/{name}` | Save active scene content. `200 { "saved": true, "name": "Opening" }`; `409` unless `?replace=true` for an existing name. |
+| `POST /scenes/{name}/recall` | Apply its content to the active wall without changing placements; `200` returns full `GET /wall` shape. |
+| `DELETE /scenes/{name}` | Remove only this named snapshot; `200 { "deleted": true, "name": "Opening" }`. |
+
+Only an **explicit, confirmed** replacement in the controller sends
+`?replace=true`. The two snapshot collections are separate SQLite tables
+added alongside the existing active-wall row on first open, with no destructive
+migration; they survive restarts. A combined layout+scene preset is not part of
+this protocol.
+
+If a saved row is damaged, the corresponding list still returns the other
+snapshots and includes `{ "name": "…", "layout": null, "invalid": true }`
+(or `"content": null` for a scene) for that row. It remains visible so the
+operator can delete or explicitly replace it; recalling it returns `409`.
+
 ### `PUT /devices/{device_id}/placement`
 
 ```json
@@ -462,6 +515,11 @@ rather than silently reserving wall space forever.
 silently destroy a slot a tablet is expected to return to; releasing a vacant
 slot is an explicit, separate action.
 
+An auto-arrange request that would make an online tablet overlap an offline or
+roster-absent reservation must fail with `409` and leave the entire active wall
+unchanged. The operator can release or move the conflicting reservations, then
+retry. A rejected request never silently overlays saved space.
+
 ### Unknown keys
 
 `PUT /wall` and `PUT /scene` reject unknown keys with `422`, including inside
@@ -491,9 +549,15 @@ Body: `{ "columns": 2 }` (optional). When `columns` is omitted the server uses
 
 Assigns every **online** device a placement in a regular grid, replacing any
 existing placements. Devices that are offline keep whatever they had. Returns
-the new wall state.
+the new wall state. If any proposed cell has a positive-area intersection
+with a retained offline or vacant reservation, returns `409` with the
+conflicting IDs and **does not** change the wall, revision or broadcasts.
+Touching at an edge is not a collision; footprints, not bezel-shrunken visible
+rects, are compared.
 
 `columns` must be a positive int; anything else is `422`.
+An excessively fine grid that rounds any proposed width or height to zero
+also returns `422` without changing the wall.
 
 ## Client rendering contract
 
@@ -579,6 +643,10 @@ The active layout, the active scene, the revision, and the generation are
 persisted; sockets, presence, and heartbeat timestamps stay in memory. A commit
 happens before notification, so a controller is never told about state that
 would not survive a restart.
+
+Run **one server worker per wall/SQLite database**. The active wall and socket
+registries are process-local; this version does not coordinate revisions or
+broadcasts across multiple workers or replicas.
 
 The generation exists because of this: a restored or replaced database can come
 back at a lower revision than a connected tablet holds, and the client must

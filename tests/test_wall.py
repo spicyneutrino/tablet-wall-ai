@@ -17,6 +17,7 @@ from fastapi.testclient import TestClient
 from starlette.websockets import WebSocketDisconnect
 
 import main
+from tabletwall import persist
 
 DEVICE_ID = "0f8fad5b-d9cb-469f-a165-70867728950e"
 SECOND_ID = str(uuid.uuid4())
@@ -771,6 +772,41 @@ class TestPlacement:
 
 
 class TestWallAuto:
+    def test_a_zero_width_cell_is_rejected_before_reservation_checks(
+        self, client, device_payload
+    ):
+        register(client, device_payload, DEVICE_ID)   # offline reservation
+        client.put(
+            f"/devices/{DEVICE_ID}/placement",
+            json={"x": 0, "y": 0, "w": 50, "h": 50},
+        )
+        register(client, device_payload, SECOND_ID)   # online below
+        before = wall_state(client)
+        persisted_before = persist.load_state()
+
+        with client.websocket_connect(device_url(SECOND_ID)):
+            response = client.post("/wall/auto", json={"columns": 5000})
+
+        assert response.status_code == 422
+        assert "too fine" in response.json()["detail"]
+        assert wall_state(client) == before
+        assert persist.load_state() == persisted_before
+
+    def test_a_zero_height_cell_is_rejected(self, client, device_payload):
+        assert client.put("/wall", json={"height": 1}).status_code == 200
+        register(client, device_payload, DEVICE_ID)
+        register(client, device_payload, SECOND_ID)
+        before = wall_state(client)
+
+        with (
+            client.websocket_connect(device_url(DEVICE_ID)),
+            client.websocket_connect(device_url(SECOND_ID)),
+        ):
+            response = client.post("/wall/auto", json={"columns": 1})
+
+        assert response.status_code == 422
+        assert wall_state(client) == before
+
     def test_default_columns_grid_for_three_online_devices(
         self, client, device_payload
     ):
@@ -850,7 +886,10 @@ class TestWallAuto:
         register(client, device_payload, SECOND_ID)   # offline, manual placement
         register(client, device_payload, THIRD_ID)    # offline, never placed
 
-        manual = {"x": 5, "y": 6, "w": 7, "h": 8}
+        # Parked in the half of the wall the two-column grid leaves free, so it
+        # reads as a *preserved* reservation rather than the conflict asserted
+        # by the 409 tests below: the online device's cell stops at x=1000.
+        manual = {"x": 1500, "y": 6, "w": 7, "h": 8}
         client.put(f"/devices/{SECOND_ID}/placement", json=manual)
         # An existing (wrong) placement for the online device must be replaced.
         client.put(
@@ -859,15 +898,16 @@ class TestWallAuto:
         )
 
         with client.websocket_connect(device_url(DEVICE_ID)):
-            response = client.post("/wall/auto")
+            response = client.post("/wall/auto", json={"columns": 2})
 
         assert response.status_code == 200
         placements = response.json()["placements"]
-        # n=1 online ⇒ columns = round(sqrt(1)) = 1 ⇒ the online device fills
-        # the whole wall, replacing what it had.
+        # n=1 online, columns=2 ⇒ rows = 1, so the online device takes the
+        # left cell — over the top of what it had — and the right half of the
+        # wall stays free.
         assert placements[DEVICE_ID]["x"] == 0
         assert placements[DEVICE_ID]["y"] == 0
-        assert placements[DEVICE_ID]["w"] == 2000
+        assert placements[DEVICE_ID]["w"] == 1000
         assert placements[DEVICE_ID]["h"] == 1000
         # The offline device keeps exactly what it had; the unplaced one stays
         # unplaced.
@@ -878,12 +918,15 @@ class TestWallAuto:
         }
         assert THIRD_ID not in placements
 
-    def test_auto_keeps_a_vacant_reservation(self, client, device_payload):
-        """Auto-arranging must not silently destroy a slot a tablet is
-        expected to return to (PROTOCOL.md ``POST /wall/auto``)."""
+    def test_auto_rejects_a_grid_that_would_cover_a_vacant_reservation(
+        self, client, device_payload
+    ):
+        """Auto-arranging must not silently destroy — or overlay — a slot a
+        tablet is expected to return to (PROTOCOL.md ``POST /wall/auto``)."""
         register(client, device_payload, DEVICE_ID)
         reserved = {"x": 7, "y": 8, "w": 900, "h": 400}
         client.put(f"/devices/{DEVICE_ID}/placement", json=reserved)
+        before = wall_state(client)
         # The roster is memory-only: the tablet never came back after a
         # restart, so its placement is a reservation with no known device.
         main.devices.clear()
@@ -892,17 +935,167 @@ class TestWallAuto:
         with client.websocket_connect(device_url(SECOND_ID)):
             response = client.post("/wall/auto", json={"columns": 1})
 
-        assert response.status_code == 200
-        placements = response.json()["placements"]
-        # The vacant reservation is untouched …
-        assert placements[DEVICE_ID] == {
+        assert response.status_code == 409
+        # The operator is told which slot is in the way …
+        assert DEVICE_ID in response.json()["detail"]
+        # … and nothing was released, moved, or published on their behalf.
+        assert wall_state(client) == before
+        assert wall_state(client)["placements"][DEVICE_ID] == {
             "device_id": DEVICE_ID,
             **reserved,
             "bezel": dict(ZERO_BEZEL),
         }
-        # … while the online device is arranged around it.
-        assert placements[SECOND_ID]["w"] == 2000
-        assert placements[SECOND_ID]["h"] == 1000
+
+    def test_auto_rejects_a_grid_that_would_cover_an_offline_reservation(
+        self, client, device_payload
+    ):
+        """An offline tablet's placement is a reservation too, and every
+        conflicting id is named in the detail."""
+        register(client, device_payload, DEVICE_ID)   # offline, reserved below
+        register(client, device_payload, THIRD_ID)    # offline, reserved below
+        register(client, device_payload, SECOND_ID)   # online below
+        first = {"x": 0, "y": 0, "w": 400, "h": 300}
+        second = {"x": 1500, "y": 700, "w": 400, "h": 200}
+        client.put(f"/devices/{DEVICE_ID}/placement", json=first)
+        client.put(f"/devices/{THIRD_ID}/placement", json=second)
+        before = wall_state(client)
+
+        with client.websocket_connect(device_url(SECOND_ID)):
+            response = client.post("/wall/auto")  # n=1 online ⇒ columns = 1
+
+        assert response.status_code == 409
+        detail = response.json()["detail"]
+        assert DEVICE_ID in detail and THIRD_ID in detail
+        # Both reservations are still exactly where they were.
+        assert wall_state(client) == before
+
+    def test_auto_accepts_a_grid_that_only_touches_a_reservation(
+        self, client, device_payload
+    ):
+        """Sharing an edge is tiling, not overlapping.
+
+        The proposed cell for the one online device spans x 0..667, so a
+        reservation starting at exactly 667 merely abuts it; a second one sits
+        well clear. Both are preserved and the arrange succeeds.
+        """
+        register(client, device_payload, DEVICE_ID)   # offline, abuts the cell
+        register(client, device_payload, THIRD_ID)    # offline, clear of it
+        register(client, device_payload, SECOND_ID)   # online below
+        touching = {"x": 667, "y": 0, "w": 200, "h": 1000}
+        clear = {"x": 1400, "y": 100, "w": 100, "h": 100}
+        client.put(f"/devices/{DEVICE_ID}/placement", json=touching)
+        client.put(f"/devices/{THIRD_ID}/placement", json=clear)
+
+        with client.websocket_connect(device_url(SECOND_ID)):
+            response = client.post("/wall/auto", json={"columns": 3})
+
+        assert response.status_code == 200
+        placements = response.json()["placements"]
+        assert placements[SECOND_ID] == {
+            "device_id": SECOND_ID,
+            "x": 0,
+            "y": 0,
+            "w": 667,
+            "h": 1000,
+            "bezel": dict(ZERO_BEZEL),
+        }
+        assert placements[DEVICE_ID] == {
+            "device_id": DEVICE_ID,
+            **touching,
+            "bezel": dict(ZERO_BEZEL),
+        }
+        assert placements[THIRD_ID] == {
+            "device_id": THIRD_ID,
+            **clear,
+            "bezel": dict(ZERO_BEZEL),
+        }
+
+    def test_auto_judges_overlap_by_footprint_not_by_visible_area(
+        self, client, device_payload
+    ):
+        """Bezel only shrinks what is shown *inside* a rect, so it cannot make
+        a reservation stop conflicting: the grid covers footprints."""
+        register(client, device_payload, DEVICE_ID)   # offline, reserved below
+        register(client, device_payload, SECOND_ID)   # online below
+        # Visible from x=750 (left bezel 150), which is clear of the cell that
+        # ends at x=667 — but the rect itself, x 600..800, still intrudes.
+        reservation = {
+            "x": 600,
+            "y": 0,
+            "w": 200,
+            "h": 100,
+            "bezel": {"top": 0, "right": 0, "bottom": 0, "left": 150},
+        }
+        client.put(f"/devices/{DEVICE_ID}/placement", json=reservation)
+        before = wall_state(client)
+
+        with client.websocket_connect(device_url(SECOND_ID)):
+            response = client.post("/wall/auto", json={"columns": 3})
+
+        assert response.status_code == 409
+        assert DEVICE_ID in response.json()["detail"]
+        assert wall_state(client) == before
+
+    def test_an_existing_online_placement_is_not_a_reservation(
+        self, client, device_payload
+    ):
+        """What the grid replaces can never block it — only offline and
+        roster-absent placements are reservations."""
+        register(client, device_payload, DEVICE_ID)
+        # Deliberately straddling where the new cell is about to land.
+        client.put(
+            f"/devices/{DEVICE_ID}/placement",
+            json={"x": 10, "y": 20, "w": 900, "h": 700},
+        )
+
+        with client.websocket_connect(device_url(DEVICE_ID)):
+            response = client.post("/wall/auto", json={"columns": 3})
+
+        assert response.status_code == 200
+        assert response.json()["placements"][DEVICE_ID] == {
+            "device_id": DEVICE_ID,
+            "x": 0,
+            "y": 0,
+            "w": 667,
+            "h": 1000,
+            "bezel": dict(ZERO_BEZEL),
+        }
+
+    def test_a_rejected_auto_changes_nothing_anywhere(
+        self, client, device_payload
+    ):
+        """The 409 arrives before the commit boundary: all three stay put."""
+        register(client, device_payload, DEVICE_ID)   # offline reservation
+        client.put(
+            f"/devices/{DEVICE_ID}/placement",
+            json={"x": 0, "y": 0, "w": 800, "h": 600},
+        )
+        register(client, device_payload, SECOND_ID)   # online below
+        before = wall_state(client)
+        persisted_before = persist.load_state()
+
+        # The device socket opens before the controller does, so its
+        # ``device_online`` is not queued for the controller either: every
+        # frame the controller sees below was raised on purpose.
+        with (
+            client.websocket_connect(device_url(SECOND_ID)),
+            client.websocket_connect(controller_url(protocol=2)) as controller,
+        ):
+            controller.receive_json()  # snapshot
+            response = client.post("/wall/auto", json={"columns": 1})
+
+            assert response.status_code == 409
+            # Memory did not move …
+            assert wall_state(client) == before
+            # … and neither did the database row.
+            assert persist.load_state() == persisted_before
+            # A rejected request queues no wall frame, so the next one out is
+            # the roster event fired after it.
+            register(client, device_payload, THIRD_ID)
+            event = controller.receive_json()
+
+        assert event["type"] == "device_updated"
+        assert event["device"]["device_id"] == THIRD_ID
 
     def test_auto_with_an_empty_roster(self, client):
         response = client.post("/wall/auto")

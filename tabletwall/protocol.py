@@ -45,6 +45,14 @@ _ASSET_ID_PATTERN = re.compile(r"sha256:[0-9a-f]{64}")
 SUPPORTED_FITS = ("cover",)
 DEFAULT_FIT = "cover"
 
+# Named save/recall: one pattern decides whether a path segment is a name at
+# all. The first character must be an ASCII letter or digit, the rest may be
+# letters, digits, space, and ``.`` ``_`` ``-``; the leading character plus at
+# most 63 more is the 64-character cap. Anything outside it is a malformed
+# request (422), while a well-formed name that was simply never saved is an
+# absence (404).
+_SNAPSHOT_NAME_PATTERN = re.compile(r"[A-Za-z0-9][A-Za-z0-9 ._-]{0,63}")
+
 _COLOR_PATTERN = re.compile(r"#?[0-9a-fA-F]{6}")
 
 
@@ -100,6 +108,25 @@ def _parse_caps(raw: str | None) -> list[str]:
     if not raw:
         return []
     return [cap.strip() for cap in raw.split(",") if cap.strip()]
+
+
+def _parse_snapshot_name(raw: str) -> str | None:
+    """The canonical name of a saved layout or scene, or None if malformed.
+
+    Outer whitespace is trimmed first, so ``"  Lobby  "`` and ``"Lobby"`` are
+    the *same* saved item: the returned string is what gets stored and what a
+    caller has to use to read it back or recall it. Trimming happens before
+    the pattern is applied, so a canonical name never begins or ends with
+    whitespace, and case is significant — ``"Lobby"`` and ``"lobby"`` are two
+    different names, neither a synonym for the other. Returns None for
+    anything that cannot be a name (empty after trimming, wrong first
+    character, forbidden characters, or over 64 characters), which callers
+    turn into a 422 rather than storing something they would refuse to read.
+    """
+    name = raw.strip()
+    if not _SNAPSHOT_NAME_PATTERN.fullmatch(name):
+        return None
+    return name
 
 
 def _is_asset_id(value: str) -> bool:

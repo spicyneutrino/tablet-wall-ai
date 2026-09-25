@@ -58,13 +58,27 @@ from tabletwall.protocol import (
     _parse_caps,
     _parse_device_id,
     _parse_protocol,
+    _parse_snapshot_name,
 )
 # Curated still-image assets (PROTOCOL.md "Still images"): the directory scan,
 # content IDs, and byte-verified serving behind ``GET /assets``.
 from tabletwall import assets
 # Persistence of the wall state (PROTOCOL.md "Persistence"): the roster,
-# sockets, presence, and heartbeat timestamps stay in memory.
-from tabletwall.persist import load_state, save_state
+# sockets, presence, and heartbeat timestamps stay in memory. The snapshot
+# calls save and read the named layouts/scenes beside that one row and never
+# write to it themselves.
+from tabletwall.persist import (
+    delete_layout,
+    delete_scene,
+    load_layout,
+    load_layouts,
+    load_scene,
+    load_scenes,
+    load_state,
+    save_layout,
+    save_scene,
+    save_state,
+)
 # Re-exports of the state objects (never copies): tests clear and reset them
 # through ``main`` (``main.devices.clear()``, ``main.wall.update(...)``, …)
 # and must keep mutating what the running app uses.
@@ -314,6 +328,81 @@ def _commit_wall(change: Callable[[dict[str, Any]], None]) -> None:
     # Reached only when the write committed.
     change(wall)
     wall["revision"] += 1
+
+
+def _snapshot_name(raw: str) -> str:
+    """Canonical saved-name for a layout or scene, or a 422 if there isn't one.
+
+    Every save/recall/delete route runs its path segment through here first,
+    so all six of them agree on what a name is (PROTOCOL.md "Scene": trimmed,
+    1-64 characters, ASCII letter or digit first, then letters, digits, space,
+    and ``.`` ``_`` ``-``). Malformed is the caller's mistake and answers 422
+    *before* any database access; a well-formed name that was simply never
+    saved is an absence and is left to the route, which answers 404.
+    """
+    name = _parse_snapshot_name(raw)
+    if name is None:
+        raise HTTPException(status_code=422, detail="Invalid name")
+    return name
+
+
+def _valid_saved_layout(saved: Any) -> bool:
+    """Check a stored snapshot before it can replace the active wall.
+
+    SQLite is server-owned, but a damaged/older row must not commit a wall
+    that fails later in ``_wall_state`` or the device frame projector.
+    Accept the same placement shape we persist, including vacant reservations;
+    the roster is deliberately irrelevant here.
+    """
+    if not isinstance(saved, dict) or set(saved) != {"width", "height", "placements"}:
+        return False
+    if any(type(saved[k]) is not int or saved[k] <= 0 for k in ("width", "height")):
+        return False
+    placements = saved["placements"]
+    if not isinstance(placements, dict):
+        return False
+    for device_id, placement in placements.items():
+        if _parse_device_id(device_id) != device_id or not isinstance(placement, dict):
+            return False
+        if set(placement) != {"device_id", "x", "y", "w", "h", "bezel"}:
+            return False
+        if placement["device_id"] != device_id:
+            return False
+        if any(type(placement[k]) is not int for k in ("x", "y", "w", "h")):
+            return False
+        if placement["w"] <= 0 or placement["h"] <= 0:
+            return False
+        bezel = placement["bezel"]
+        if not isinstance(bezel, dict) or set(bezel) != {"top", "right", "bottom", "left"}:
+            return False
+        if any(type(value) is not int for value in bezel.values()):
+            return False
+        if (placement["w"] - bezel["left"] - bezel["right"] <= 0 or
+                placement["h"] - bezel["top"] - bezel["bottom"] <= 0):
+            return False
+    return True
+
+
+def _valid_saved_content(saved: Any) -> bool:
+    """Reject malformed stored content without checking image availability."""
+    if not isinstance(saved, dict):
+        return False
+    kind = saved.get("type")
+    if kind in ("color", "calibration"):
+        return set(saved) == {"type"}
+    if kind != "image" or set(saved) != {
+        "type", "asset", "fit", "intrinsicWidth", "intrinsicHeight"
+    }:
+        return False
+    return (
+        isinstance(saved["asset"], str)
+        and _is_asset_id(saved["asset"])
+        and saved["fit"] in SUPPORTED_FITS
+        and type(saved["intrinsicWidth"]) is int
+        and saved["intrinsicWidth"] > 0
+        and type(saved["intrinsicHeight"]) is int
+        and saved["intrinsicHeight"] > 0
+    )
 
 
 # ---------------------------------------------------------------------------
@@ -587,6 +676,23 @@ async def delete_placement(device_id: str):
     return _wall_state()
 
 
+def _rects_overlap(first: dict[str, Any], second: dict[str, Any]) -> bool:
+    """True when two placement-shaped rects share a **positive** area.
+
+    Axis-aligned intersection with strict inequalities, so two rects that only
+    meet along an edge (or at a corner) do not count as overlapping: the auto
+    grid tiles its cells exactly and neighbouring cells are *meant* to share
+    one. Footprint is all that matters here, so ``bezel`` — which only shrinks
+    the visible area *inside* the rect — plays no part.
+    """
+    return (
+        first["x"] < second["x"] + second["w"]
+        and second["x"] < first["x"] + first["w"]
+        and first["y"] < second["y"] + second["h"]
+        and second["y"] < first["y"] + first["h"]
+    )
+
+
 @app.post("/wall/auto")
 async def wall_auto(command: WallAutoCommand | None = None):
     """Place every online device in a regular grid covering the wall.
@@ -597,6 +703,14 @@ async def wall_auto(command: WallAutoCommand | None = None):
     ``POST /wall/auto``). With no ``columns`` the default is
     ``max(1, round(sqrt(n)))`` where n is the number of online devices; cell
     edges are rounded so the grid tiles the wall in whole units.
+
+    Keeping those reservations is not the same as ignoring them: a grid that
+    would cover one is refused with ``409`` instead of silently overlaying
+    saved space. The check runs synchronously on the freshly built assignment,
+    before the commit boundary, so a rejected request changes neither memory,
+    nor the database, nor the revision, nor anything a socket is told — and
+    nothing is released or moved on the operator's behalf. They can then
+    release or move the conflicting reservations explicitly and retry.
     """
     online = [device_id for device_id in list(devices) if _is_online(device_id)]
     count = len(online)
@@ -628,6 +742,41 @@ async def wall_auto(command: WallAutoCommand | None = None):
             "bezel": {"top": 0, "right": 0, "bottom": 0, "left": 0},
         }
 
+    # Too many columns/rows for the logical wall can round a cell down to
+    # zero. Such a placement is invalid (and has no positive area to test
+    # against reservations), so reject the whole assignment before conflict
+    # checks or persistence rather than saving a wall that cannot be recalled.
+    if any(cell["w"] <= 0 or cell["h"] <= 0 for cell in assigned.values()):
+        raise HTTPException(
+            status_code=422,
+            detail="Auto-arrange grid is too fine for the wall dimensions",
+        )
+
+    # Reservations are every placement this run does *not* own: an offline
+    # tablet, or one the roster has forgotten entirely. They are saved space a
+    # tablet is expected to come back to, so the proposed cells may not cover
+    # them. Online placements are in ``assigned`` and therefore never counted
+    # here — they are what the grid replaces.
+    conflicts = sorted(
+        device_id
+        for device_id, placement in wall["layout"]["placements"].items()
+        if device_id not in assigned
+        and any(_rects_overlap(cell, placement) for cell in assigned.values())
+    )
+    if conflicts:
+        # Raised before ``_commit_wall`` with no await in between, so the wall,
+        # the row, the revision and the subscribers are all untouched.
+        raise HTTPException(
+            status_code=409,
+            detail=(
+                "Auto-arrange would overlap the reserved placement(s) of "
+                + ", ".join(conflicts)
+                + ". Nothing was changed: release them with "
+                "DELETE /devices/{device_id}/placement or move them clear of "
+                "the grid, then arrange again."
+            ),
+        )
+
     def apply(target: dict[str, Any]) -> None:
         # Only the online devices are assigned; everything else in the
         # placements map — offline devices and vacant reservations alike —
@@ -637,6 +786,176 @@ async def wall_auto(command: WallAutoCommand | None = None):
     _commit_wall(apply)
     await _broadcast_wall()
     return _wall_state()
+
+
+# ---------------------------------------------------------------------------
+# Named save/recall (saved layouts and scenes)
+# ---------------------------------------------------------------------------
+
+
+@app.get("/layouts")
+async def get_saved_layouts():
+    """Every saved layout: ``{"layouts": [{"name", "layout"}, …]}``, name-sorted.
+
+    The payload is exactly the active layout object — width, height, and the
+    placements map with their ``device_id`` — because that is what a recall
+    puts back. Wrapped in an object rather than a bare array so the payload
+    can grow metadata later without breaking readers.
+    """
+    entries = []
+    for name, layout in load_layouts():
+        valid = _valid_saved_layout(layout)
+        entry = {"name": name, "layout": layout if valid else None}
+        if not valid:
+            entry["invalid"] = True
+        entries.append(entry)
+    return {"layouts": entries}
+
+
+@app.put("/layouts/{name}")
+async def put_saved_layout(name: str, replace: bool = Query(default=False)):
+    """Save the active layout under ``name`` — there is deliberately no body.
+
+    The snapshot is written straight to its own table: the live wall is not
+    touched, so saving never bumps the revision and never broadcasts. ``422``
+    for a malformed name, ``409`` when the name is already taken unless
+    ``?replace=true`` asks for the overwrite explicitly.
+    """
+    canonical = _snapshot_name(name)
+    if not save_layout(canonical, deepcopy(wall["layout"]), replace=replace):
+        raise HTTPException(status_code=409, detail="Layout name already exists")
+    return {"saved": True, "name": canonical}
+
+
+@app.post("/layouts/{name}/recall")
+async def recall_saved_layout(name: str):
+    """Put a saved arrangement back on the wall; the scene is untouched.
+
+    ``200`` with the full wall state, ``404`` when the name was never saved.
+    This is a wall change like any other, so it runs through the commit
+    boundary — persisted first, applied second, broadcast last — and bumps
+    the revision (PROTOCOL.md "Revision and generation").
+    """
+    canonical = _snapshot_name(name)
+    try:
+        saved = load_layout(canonical)
+    except (json.JSONDecodeError, ValueError):
+        raise HTTPException(status_code=409, detail="Saved layout is invalid; active wall unchanged") from None
+    if saved is None:
+        raise HTTPException(status_code=404, detail="Unknown layout")
+    if not _valid_saved_layout(saved):
+        raise HTTPException(status_code=409, detail="Saved layout is invalid; active wall unchanged")
+
+    def apply(target: dict[str, Any]) -> None:
+        layout = target["layout"]
+        # Dimensions and *every* placement come back exactly as they were
+        # saved (PROTOCOL.md "Named snapshots"), while the scene is left
+        # alone — content is the other recall's business. Reservations are
+        # part of the saved map like anything else and are never filtered out
+        # for belonging to a tablet the roster has forgotten: after a restart
+        # every tablet is absent until it re-registers, and those slots are
+        # the whole point of persisting placements (PROTOCOL.md "DELETE
+        # /devices/{device_id}/placement").
+        layout["width"] = saved["width"]
+        layout["height"] = saved["height"]
+        layout["placements"] = deepcopy(saved["placements"])
+
+    _commit_wall(apply)
+    await _broadcast_wall()
+    return _wall_state()
+
+
+@app.delete("/layouts/{name}")
+async def delete_saved_layout(name: str):
+    """Drop a saved layout: ``200`` ``{"deleted": true, "name"}``, else ``404``.
+
+    The wall is not involved, so deleting a snapshot changes no revision and
+    broadcasts nothing.
+    """
+    canonical = _snapshot_name(name)
+    if not delete_layout(canonical):
+        raise HTTPException(status_code=404, detail="Unknown layout")
+    return {"deleted": True, "name": canonical}
+
+
+@app.get("/scenes")
+async def get_saved_scenes():
+    """Every saved scene: ``{"scenes": [{"name", "content"}, …]}``, name-sorted.
+
+    Stored content only, never the projected descriptor: the asset URL is
+    composed on the way out of ``GET /wall`` and the frames, so it can never
+    be listed (or stored) here.
+    """
+    entries = []
+    for name, content in load_scenes():
+        valid = _valid_saved_content(content)
+        entry = {"name": name, "content": content if valid else None}
+        if not valid:
+            entry["invalid"] = True
+        entries.append(entry)
+    return {"scenes": entries}
+
+
+@app.put("/scenes/{name}")
+async def put_saved_scene(name: str, replace: bool = Query(default=False)):
+    """Save the active scene's *content* under ``name`` — no request body.
+
+    Layouts and scenes are saved independently, so recalling one can never
+    smuggle the other in. The live content never carries a projected URL, and
+    the copy stored here drops one anyway so a URL cannot reach the database
+    even by accident (PROTOCOL.md "Still images": "The server composes the
+    URL; it is not persisted"). Status codes mirror the layout save: ``422``
+    for a malformed name, ``409`` when taken unless ``?replace=true``.
+    """
+    canonical = _snapshot_name(name)
+    content = deepcopy(wall["scene"]["content"])
+    content.pop("url", None)
+    if not save_scene(canonical, content, replace=replace):
+        raise HTTPException(status_code=409, detail="Scene name already exists")
+    return {"saved": True, "name": canonical}
+
+
+@app.post("/scenes/{name}/recall")
+async def recall_saved_scene(name: str):
+    """Apply a saved scene's content to the layout that is active right now.
+
+    PROTOCOL.md "Recall semantics": content only — the arrangement is never
+    replaced, so placement work done after the save survives a content
+    recall. There is deliberately no inventory check either: the stored
+    reference goes in verbatim, so a scene whose image file has since
+    disappeared stays the explicit broken scene it already is rather than
+    failing the recall (``PUT /scene`` is where an unknown asset is a 422).
+    """
+    canonical = _snapshot_name(name)
+    try:
+        saved = load_scene(canonical)
+    except (json.JSONDecodeError, ValueError):
+        raise HTTPException(status_code=409, detail="Saved scene is invalid; active wall unchanged") from None
+    if saved is None:
+        raise HTTPException(status_code=404, detail="Unknown scene")
+    if not _valid_saved_content(saved):
+        raise HTTPException(status_code=409, detail="Saved scene is invalid; active wall unchanged")
+
+    def apply(target: dict[str, Any]) -> None:
+        target["scene"]["content"] = deepcopy(saved)
+
+    _commit_wall(apply)
+    await _broadcast_wall()
+    return _wall_state()
+
+
+@app.delete("/scenes/{name}")
+async def delete_saved_scene(name: str):
+    """Drop a saved scene: ``200`` ``{"deleted": true, "name"}``, else ``404``.
+
+    Deleting a snapshot never touches the active scene — the wall keeps
+    showing whatever it was showing — so no revision moves and nothing is
+    broadcast.
+    """
+    canonical = _snapshot_name(name)
+    if not delete_scene(canonical):
+        raise HTTPException(status_code=404, detail="Unknown scene")
+    return {"deleted": True, "name": canonical}
 
 
 @app.get("/")
