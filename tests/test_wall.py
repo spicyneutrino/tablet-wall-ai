@@ -95,7 +95,7 @@ class TestDeviceNegotiation:
         assert welcome["device_id"] == DEVICE_ID
         assert welcome["heartbeat_interval_ms"] == 5000
         assert welcome["protocol"] == 2
-        assert welcome["server_caps"] == ["calibration"]
+        assert welcome["server_caps"] == ["calibration", "image"]
 
     @pytest.mark.parametrize("bad", ["3", "0", "-1", "2.5", "garbage", ""])
     def test_unsupported_device_protocol_closes_with_4426(
@@ -549,7 +549,11 @@ class TestPutScene:
             # Unknown content types.
             {"content": {"type": "rainbow"}},
             {"content": {"type": ""}},
-            # ``image`` is reserved in the spec and not implemented yet.
+            # ``image`` is implemented, but these two still lack what an
+            # image scene requires: an asset is mandatory (422 when absent),
+            # and it must be a ``sha256:<64 hex>`` content ID, not a
+            # filename. Rejection with a real, known asset is covered by
+            # ``tests/test_assets.py``.
             {"content": {"type": "image"}},
             {"content": {"type": "image", "asset": "poster-1"}},
             # Malformed bodies.
@@ -562,6 +566,8 @@ class TestPutScene:
             # (PROTOCOL.md "Unknown keys"): ``mode`` was removed from the
             # contract, so a client still sending it must be told no.
             {"content": {"type": "color", "mode": "rainbow"}},
+            # ``asset`` is known only on the image variant, so it is an
+            # unexpected field on a calibration scene.
             {"content": {"type": "calibration", "asset": "poster-1"}},
         ],
     )

@@ -29,8 +29,21 @@ WS_CLOSE_UNSUPPORTED_PROTOCOL = 4426
 # means version 1; only these majors are accepted.
 SUPPORTED_PROTOCOLS = (1, 2)
 
-# What this server can render/serve for version-2 clients.
-SERVER_CAPS = ["calibration"]
+# What this server can render/serve for version-2 clients. ``image`` joined
+# with the curated-asset endpoints (PROTOCOL.md "Still images"); a client only
+# sees image content after it advertises the matching cap.
+SERVER_CAPS = ["calibration", "image"]
+
+# Still images (PROTOCOL.md "Still images"): a content ID is ``sha256:`` plus
+# the lowercase SHA-256 of the file bytes, and the URL a descriptor carries is
+# composed by the server from that ID alone — never persisted, never accepted
+# from a caller.
+ASSET_ID_PREFIX = "sha256:"
+_ASSET_ID_PATTERN = re.compile(r"sha256:[0-9a-f]{64}")
+
+# Only ``cover`` is currently supported, and it is matched exactly.
+SUPPORTED_FITS = ("cover",)
+DEFAULT_FIT = "cover"
 
 _COLOR_PATTERN = re.compile(r"#?[0-9a-fA-F]{6}")
 
@@ -87,3 +100,13 @@ def _parse_caps(raw: str | None) -> list[str]:
     if not raw:
         return []
     return [cap.strip() for cap in raw.split(",") if cap.strip()]
+
+
+def _is_asset_id(value: str) -> bool:
+    """True for ``sha256:<64 lowercase hex digits>`` — the only ID shape."""
+    return _ASSET_ID_PATTERN.fullmatch(value) is not None
+
+
+def _asset_url(asset_id: str) -> str:
+    """The same-origin URL an asset is served from, composed from its ID."""
+    return f"/assets/{asset_id}"

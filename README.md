@@ -3,17 +3,17 @@
 Turn a set of tablets into one coordinated display wall.
 
 Each tablet opens the **client** page and registers itself with the server. A
-**controller** page watches the roster of connected devices and, eventually,
-drives what they show.
+**controller** page watches the roster of connected devices and drives what
+they show.
 
 This project began as a copy of `tablet-wall`. New development happens here.
 
 > **Status: Phase 2 in progress.** Tablets self-register, hold a live
 > WebSocket, heartbeat, and reconnect on their own. The controller is an
 > operator dashboard that shows the wall live, places tablets on a shared wall
-> canvas, and drives a calibration pattern to check the geometry. The active
-> layout and scene persist across restarts. Still images are not implemented
-> yet, and there is no authentication — see
+> canvas, drives a calibration pattern to check the geometry, and shows a
+> curated image as one whole-wall scene. The active layout and scene persist
+> across restarts. Named save/recall and authentication are not implemented — see
 > [Known limitations](#known-limitations) and [Roadmap](#roadmap).
 
 ## Requirements
@@ -43,18 +43,21 @@ localhost, e.g. `http://192.168.1.50:8000/client/`. Find it with:
 hostname -I | awk '{print $1}'
 ```
 
-Read [Known limitations](#known-limitations) before trying this — the client
-currently fails on a plain-HTTP LAN origin.
+Read [Known limitations](#known-limitations) before trying this. The client
+uses `crypto.getRandomValues` when `randomUUID` is unavailable on a plain-HTTP
+LAN origin.
 
 ## Project layout
 
 ```
-main.py                     FastAPI app: HTTP routes, WebSocket hub, presence
+main.py                     FastAPI app: HTTP and WebSocket routes
+tabletwall/                 wall state, SQLite persistence, hub, asset inventory
+assets/                     optional server-local curated images (create it)
 PROTOCOL.md                 the realtime contract between server and pages
 frontend/
-  client/                   runs on each tablet; registers, listens, shows colour
+  client/                   runs on each tablet; paints its wall slice
     index.html  client.js  client.css
-  controller/               operator dashboard; live roster + colour control
+  controller/               operator dashboard; roster, wall and content control
     index.html  controller.js  controller.css
 tests/                      pytest contract tests (HTTP + WebSocket)
 pyproject.toml              deps, dev deps, pytest config
@@ -78,12 +81,35 @@ pyproject.toml              deps, dev deps, pytest config
 5. Colours travel *out* over HTTP (`POST /devices/{device_id}/color`) and are
    pushed *to* the tablet over its socket.
 
-Server state lives in dicts in `main.py`, so the roster and every assigned
-colour are lost on restart. Tablets notice, re-register, and reconnect on their
-own.
+The roster and per-device assigned colours live in memory and are lost on
+restart; the active layout and scene persist in SQLite. Tablets notice a
+restart, re-register, and reconnect on their own.
 
 The full realtime contract — message shapes, close codes, timing constants — is
 in [PROTOCOL.md](PROTOCOL.md).
+
+### Curating still images
+
+Create an `assets/` directory at the repository root (or set
+`TABLET_WALL_ASSET_DIR` to another server-local directory) and copy JPEG or PNG
+files into it. There is **no upload endpoint**. Use the controller's asset
+refresh control to discover newly copied files without restarting the server.
+Only top-level, non-symlink, non-animated files are inventoried; the initial
+limits are 10 MiB and 12 megapixels per image. Normalize EXIF rotation before
+copying an image. The controller selects an opaque SHA-256 asset ID rather than
+a path, so a rename preserves a scene but changing the bytes gives the image a
+new identity and requires re-selection. Back up **both** the SQLite database
+and the curated files: the database contains references, not image bytes.
+Keep this directory modest: inventory, scene selection and asset serving
+re-scan and decode its candidates, so a large collection or repeated LAN
+requests can consume substantial CPU and I/O.
+
+**Do not put sensitive images here yet.** Any client that can reach the server
+on the LAN can fetch curated image bytes, and controller authentication is not
+implemented yet. An authenticated reverse proxy over TLS or a VPN is planned
+for the operator surface in Phase 3; it has not been deployed by this repo.
+That operator gate will **not** make device-facing asset reads private: sensitive
+assets require a separate tablet/asset access boundary too.
 
 ## HTTP API
 
@@ -97,6 +123,11 @@ in [PROTOCOL.md](PROTOCOL.md).
 | `POST`   | `/devices/{device_id}/color`  | Set one device's colour               |
 | `POST`   | `/devices/color`              | Set every device's colour             |
 | `DELETE` | `/devices/{device_id}`        | Remove a device from the roster       |
+| `GET`    | `/wall`                       | Active layout, scene, revision        |
+| `PUT`    | `/wall`                       | Change logical wall dimensions        |
+| `PUT`    | `/scene`                      | Select colour, calibration or image   |
+| `GET`    | `/assets`                     | Refresh curated image inventory       |
+| `GET`    | `/assets/{id}`                | Read validated same-origin image      |
 | `GET`    | `/ws/device?device_id=…`      | Device socket: liveness + commands    |
 | `GET`    | `/ws/controller`              | Controller socket: roster events      |
 | `GET`    | `/docs`                       | Interactive OpenAPI docs              |
@@ -121,30 +152,35 @@ negative or absurd dimensions are currently accepted.
 make test        # or: uv run pytest
 ```
 
-The suite drives the app in-process via Starlette's `TestClient` (backed by
-`httpx2`, which is what Starlette now expects). `tests/test_api.py` covers the
-HTTP surface; `tests/test_websocket.py` drives real sockets through
-`TestClient.websocket_connect`, including presence transitions, colour replay,
-and every documented close code.
+The Python suite drives the app in-process via Starlette's `TestClient` (backed
+by `httpx2`, which is what Starlette now expects). It covers HTTP, sockets,
+wall mutations, persistence, and asset validation/serving. For the tablet's
+image-loading races and whole-wall transform, also run:
+
+```bash
+node tests/client_image.test.js
+```
 
 ## Known limitations
 
-- **The roster is not persisted.** The active layout, scene, revision, and
-  generation survive a restart in SQLite, so a wall you arranged stays arranged
-  and a restart resynchronises tablets rather than blanking them. But devices,
+- **The roster is not persisted.** The active layout, scene, and revision
+  survive a restart in SQLite; the generation is deliberately regenerated so
+  tablets accept the restored state even if its revision went backwards. But devices,
   presence, and heartbeat timestamps live in memory: after a restart the roster
   is empty until tablets re-register, which they do on their own. A placement
   whose device has not come back yet is shown as a **vacant reservation** and
   can be released by hand; it is deliberately *not* discarded, because a tablet
-  that returns should reclaim the slot it had. Nothing else about Phase 3 —
-  authentication, roster persistence, ops — is in yet.
+  that returns should reclaim the slot it had. Authentication and unattended
+  operations are not in yet.
 - **Bezels are abstract units, not millimetres.** Wall units are a layout
   convenience, deliberately not physical measurement: panel sizes, browser
   chrome, and zoom all make millimetres unreliable from a browser. A
   well-aligned wall needs a calibration pass, not a spec sheet.
-- **Content is colour and calibration only.** There is no image or video
-  rendering yet, so the wall can prove its geometry but cannot yet show
-  anything you would want to look at.
+- **Images are curated stills only.** JPEG and PNG are supported, with
+  centered `cover` across the whole logical wall. There is no video, upload,
+  clock synchronisation, or named layout/scene save and recall yet. The image
+  seam and failure/reconnect behaviour have been checked in desktop Chromium;
+  physical iPad/Safari and Android/Chrome validation is still pending.
 - **The aspect ratio compares against what the tablet reports.** The client
   reports its viewport and re-registers when that changes, and the controller
   warns when a placement's visible rect disagrees. When they do disagree the
@@ -171,9 +207,9 @@ and every documented close code.
   device id silently replaces the first, so two browser tabs on one origin share
   a single identity. Controller sockets have no heartbeat, so one that vanishes
   without a clean close is only reaped when a later broadcast to it fails.
-- **`device_type` is hardcoded to `"ipad"`, and `window.screen.width/height`
-  reports screen CSS pixels rather than the viewport.** Wall geometry is
-  Phase 2 work.
+- **`device_type` is hardcoded to `"ipad"`.** The client reports the actual
+  viewport for aspect-mismatch warnings, but device-type identification is not
+  implemented.
 - **The server has no wake-lock story.** A tablet's screen will still sleep;
   that needs either kiosk software or HTTPS plus the Screen Wake Lock API.
 
@@ -206,8 +242,9 @@ the operator can save and recover its arrangement and presentation.*
 - [x] Client: calibration rendering with a verified seam
 - [x] Separate layout from scene; add the generation reset rule
 - [x] Persist the active layout and scene (SQLite)
-- [ ] **2a** Integrity: removable vacant reservations, persist-before-apply, honest controller content states
-- [ ] **2b** Curated assets and the still-image wall
+- [x] **2a** Integrity: removable vacant reservations, persist-before-apply, honest controller content states
+- [x] **2b** Curated assets and the still-image wall (desktop Chromium verified;
+  physical tablet validation remains)
 - [ ] **2c** Named save/recall — closes Phase 2
 
 Clock sync and video are **not** Phase 2. A still image needs no shared playback
@@ -215,7 +252,10 @@ clock, and clock sync without a timed medium is cost with no visible capability.
 
 **Phase 3 — safe, unattended operation**
 
-- [ ] **3a** Trust boundary: authenticate controller mutations and the controller socket; device identity and pairing
+- [ ] **3a** Trust boundary: first gate the controller, its socket and all
+  operator writes behind an authenticated reverse proxy over TLS or a VPN;
+  device identity, pairing and revocation need a separate decision. This proxy
+  is a deployment requirement, **not** a protection already present in the app.
 - [ ] **3b** HTTPS, deployment service, kiosk/fullscreen guidance, backups
 - [ ] **3c** Operational resilience: structured logs, health/readiness, asset-error states, soak tests
 - [ ] **3d** Engineering gate: ruff, targeted mypy, CI (basic CI starts in 2a)

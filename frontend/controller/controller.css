@@ -856,6 +856,387 @@ body {
 }
 
 /* ---------------------------------------------------------------- *
+ * Image coverage alerts
+ *
+ * Two blocks on purpose. The first is a wall that is happening now: a
+ * placed, online tablet that never advertised `image` shows colour while
+ * the rest show the picture — red while an image is active, amber as a
+ * heads-up before one is. The second is what nobody can confirm: offline
+ * tablets and reservations, kept quiet and separate so the live problem
+ * is never diluted by the uncertain one.
+ * ---------------------------------------------------------------- */
+
+.alerts {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    margin-bottom: 12px;
+}
+
+.alerts[hidden] {
+    display: none;
+}
+
+.alert {
+    display: flex;
+    align-items: flex-start;
+    gap: 10px;
+    padding: 9px 11px;
+    border: 1px solid var(--line-strong);
+    border-left-width: 3px;
+    background: var(--bg);
+}
+
+.alert[hidden] {
+    display: none;
+}
+
+.alert-mark {
+    flex: none;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 15px;
+    height: 15px;
+    margin-top: 2px;
+    border: 1px solid currentColor;
+    border-radius: 2px;
+    font: 700 10px/1 var(--mono);
+}
+
+.alert-title {
+    margin: 0;
+    font-size: 13px;
+    font-weight: 650;
+    letter-spacing: 0.01em;
+}
+
+.alert-text {
+    margin: 3px 0 0;
+    font-size: 12px;
+    line-height: 1.5;
+    color: var(--fg-mid);
+    overflow-wrap: anywhere;
+}
+
+.alert[data-kind="bad"] {
+    border-color: rgba(229, 83, 75, 0.55);
+    border-left-color: var(--bad);
+    background: rgba(229, 83, 75, 0.1);
+}
+
+.alert[data-kind="bad"] .alert-mark,
+.alert[data-kind="bad"] .alert-title {
+    color: var(--bad-fg);
+}
+
+.alert[data-kind="warn"] {
+    border-color: rgba(217, 161, 60, 0.5);
+    border-left-color: var(--amber);
+    background: rgba(217, 161, 60, 0.07);
+}
+
+.alert[data-kind="warn"] .alert-mark,
+.alert[data-kind="warn"] .alert-title {
+    color: var(--amber);
+}
+
+.alert[data-kind="dim"] {
+    border-style: dashed;
+    background: transparent;
+}
+
+.alert[data-kind="dim"] .alert-mark,
+.alert[data-kind="dim"] .alert-title {
+    color: var(--fg-dim);
+}
+
+/* ---------------------------------------------------------------- *
+ * Still image panel — inventory, selection, active scene
+ * ---------------------------------------------------------------- */
+
+.imagepanel {
+    margin-top: 14px;
+    padding-top: 12px;
+    border-top: 1px solid var(--line);
+}
+
+.image-head {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: baseline;
+    justify-content: space-between;
+    gap: 6px 16px;
+    margin-bottom: 8px;
+}
+
+.image-active {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: baseline;
+    gap: 8px;
+    margin: 0;
+    min-width: 0;
+    font-size: 12px;
+}
+
+.image-active-text {
+    overflow-wrap: anywhere;
+    color: var(--fg-mid);
+}
+
+.image-active[data-state="image"] .image-active-text {
+    color: var(--fg);
+}
+
+/* An id in the scene with no file behind it: the wall is showing an
+   error state, so this reads as one — never as an ordinary caption. */
+.image-active[data-state="missing"] .image-active-text {
+    color: var(--bad-fg);
+    font-weight: 600;
+}
+
+.image-active[data-state="other"] .image-active-text {
+    color: var(--amber);
+}
+
+.image-active[data-state="none"] .image-active-text {
+    color: var(--fg-dim);
+}
+
+.image-missing {
+    display: flex;
+    align-items: flex-start;
+    gap: 10px;
+    margin-bottom: 10px;
+    padding: 9px 11px;
+    border: 1px solid rgba(229, 83, 75, 0.55);
+    border-left: 3px solid var(--bad);
+    background: rgba(229, 83, 75, 0.1);
+    color: var(--bad-fg);
+}
+
+.image-missing[hidden] {
+    display: none;
+}
+
+.image-missing[data-kind="warn"] {
+    border-color: rgba(217, 161, 60, 0.5);
+    border-left-color: var(--amber);
+    background: rgba(217, 161, 60, 0.07);
+    color: var(--amber);
+}
+
+.image-missing-body {
+    min-width: 0;
+}
+
+.image-missing-title {
+    margin: 0;
+    font-size: 13px;
+    font-weight: 650;
+}
+
+.image-missing-text {
+    margin: 3px 0 0;
+    font-size: 12px;
+    line-height: 1.5;
+    color: var(--fg-mid);
+}
+
+.image-missing-actions {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+    margin-top: 8px;
+}
+
+.image-body {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) minmax(180px, 240px);
+    gap: 14px 18px;
+    align-items: start;
+}
+
+.image-list-col {
+    min-width: 0;
+}
+
+.image-bar {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 8px 12px;
+    margin-bottom: 8px;
+}
+
+.image-count {
+    font-size: 11px;
+    letter-spacing: 0.04em;
+    color: var(--fg-dim);
+}
+
+.image-sel {
+    flex: 1 1 16ch;
+    min-width: 0;
+    font-size: 11px;
+    color: var(--fg-mid);
+    overflow-wrap: anywhere;
+}
+
+/* Loading, stale, or failed: always spelled out, never an empty list
+   that could be read as "the directory is empty". */
+.image-note {
+    margin: 0 0 8px;
+    font-size: 11px;
+    line-height: 1.5;
+    color: var(--amber);
+}
+
+.image-note[hidden] {
+    display: none;
+}
+
+.image-note[data-kind="err"] {
+    color: var(--bad-fg);
+}
+
+.asset-list {
+    display: flex;
+    flex-direction: column;
+    list-style: none;
+    margin: 0;
+    padding: 0;
+    max-height: 268px;
+    overflow: auto;
+    border: 1px solid var(--line);
+    background: var(--bg);
+}
+
+.asset-list[hidden] {
+    display: none;
+}
+
+.asset-item {
+    display: block;
+    min-width: 0;
+}
+
+.asset-row {
+    display: flex;
+    align-items: center;
+    flex-wrap: wrap;
+    gap: 4px 12px;
+    width: 100%;
+    padding: 7px 9px;
+    font: inherit;
+    font-size: 12px;
+    text-align: left;
+    color: var(--fg);
+    background: var(--bg-tile);
+    border: 0;
+    border-bottom: 1px solid var(--line);
+    cursor: pointer;
+}
+
+.asset-item:last-child .asset-row {
+    border-bottom: 0;
+}
+
+.asset-row:hover {
+    background: #1e2228;
+}
+
+.asset-row[aria-pressed="true"] {
+    background: rgba(47, 111, 235, 0.16);
+    box-shadow: inset 0 0 0 1px var(--accent);
+}
+
+.asset-name {
+    flex: 1 1 12ch;
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.asset-dims,
+.asset-ar,
+.asset-bytes {
+    font-size: 11px;
+    color: var(--fg-mid);
+}
+
+.asset-ar {
+    color: var(--fg-dim);
+}
+
+.asset-id {
+    font-size: 10px;
+    color: var(--fg-dim);
+}
+
+.asset-flag {
+    padding: 1px 5px;
+    border: 1px solid rgba(53, 194, 93, 0.5);
+    border-radius: 2px;
+    font-size: 9px;
+    font-weight: 700;
+    letter-spacing: 0.12em;
+    text-transform: uppercase;
+    color: var(--ok-fg);
+}
+
+.image-empty {
+    margin: 0;
+    padding: 14px 12px;
+    border: 1px dashed var(--line-strong);
+    font-size: 12px;
+    line-height: 1.5;
+    color: var(--fg-dim);
+}
+
+.image-empty[hidden] {
+    display: none;
+}
+
+.image-preview-col {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+    min-width: 0;
+}
+
+.image-preview {
+    border: 1px solid var(--line);
+    background: var(--bg);
+    padding: 6px;
+}
+
+.image-preview[hidden] {
+    display: none;
+}
+
+.image-preview-img {
+    display: block;
+    width: 100%;
+    max-height: 170px;
+    object-fit: contain;
+    background: #000;
+}
+
+.image-preview-note {
+    margin: 0;
+    font-size: 11px;
+    line-height: 1.5;
+    color: var(--fg-dim);
+}
+
+.image-preview-note[hidden] {
+    display: none;
+}
+
+/* ---------------------------------------------------------------- *
  * Stage + grid
  * ---------------------------------------------------------------- */
 
@@ -1050,6 +1431,41 @@ body {
     letter-spacing: 0.1em;
     text-transform: uppercase;
     color: var(--fg-dim);
+}
+
+/* Render capability, shown while the scene is an image. The tablet that
+   never advertised `image` is the one that cannot cover the picture, so it
+   is the only one given a warning colour; offline and unrecorded caps stay
+   dashed and grey, because they are unknown rather than wrong. */
+.meta-cap {
+    padding: 1px 6px;
+    border: 1px solid var(--line-strong);
+    border-radius: 2px;
+    font-size: 10px;
+    font-weight: 600;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+}
+
+.meta-cap[hidden],
+.meta-cap-sep[hidden] {
+    display: none;
+}
+
+.meta-cap[data-kind="ok"] {
+    color: var(--ok-fg);
+    border-color: rgba(53, 194, 93, 0.45);
+}
+
+.meta-cap[data-kind="warn"] {
+    color: var(--amber);
+    border-color: rgba(217, 161, 60, 0.55);
+    background: rgba(217, 161, 60, 0.08);
+}
+
+.meta-cap[data-kind="dim"] {
+    color: var(--fg-dim);
+    border-style: dashed;
 }
 
 .tile-facts {
@@ -1398,6 +1814,10 @@ body {
 
 @media (max-width: 980px) {
     .wall-cols {
+        grid-template-columns: 1fr;
+    }
+
+    .image-body {
         grid-template-columns: 1fr;
     }
 }

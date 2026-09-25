@@ -58,6 +58,28 @@
             </p>
         </div>
 
+        <!-- Image coverage. Two blocks, kept apart on purpose: a tablet that
+             is present but cannot render the still image is a partial wall
+             right now; a placed tablet that is offline — or not in the
+             roster at all — is a slot whose capability nobody can confirm
+             until it connects again. -->
+        <div class="alerts" id="alerts" hidden>
+            <div class="alert" id="alert-nocap" data-kind="warn" hidden>
+                <span class="alert-mark" aria-hidden="true">!</span>
+                <div class="alert-body">
+                    <p class="alert-title" id="alert-nocap-title"></p>
+                    <p class="alert-text" id="alert-nocap-text"></p>
+                </div>
+            </div>
+            <div class="alert" id="alert-unverified" data-kind="dim" hidden>
+                <span class="alert-mark" aria-hidden="true">·</span>
+                <div class="alert-body">
+                <p class="alert-title">Placed but not confirmed</p>
+                    <p class="alert-text" id="alert-unverified-text"></p>
+                </div>
+            </div>
+        </div>
+
         <div class="wall-cols">
             <div class="wall-panel">
                 <form class="wall-form" id="wall-form" novalidate>
@@ -79,10 +101,12 @@
                             <button type="button" class="seg-opt" data-content="calibration"
                                     aria-pressed="false" disabled>calibration</button>
                         </div>
-                        <!-- Only color and calibration are offered: the server
-                             answers 422 to anything else. This line appears
-                             when the server reports content this page cannot
-                             set, so the control never pretends it is colour. -->
+                        <!-- Only color and calibration are offered here: the
+                             server answers 422 to anything else. This line
+                             appears when the server reports content this
+                             control does not offer (an image is set from the
+                             still-image panel below; anything else is called
+                             unsupported), so it never pretends it is colour. -->
                         <p class="content-state" id="wall-content-state" hidden></p>
                     </div>
                     <button type="submit" class="btn btn-primary" id="btn-wall-save" disabled>Save wall</button>
@@ -131,6 +155,60 @@
                 </div>
             </div>
         </div>
+
+        <!-- Still image: the curated inventory and the scene action that puts
+             one asset across the whole wall. Picking and applying are separate
+             on purpose — nothing is sent until an asset is selected and
+             "Show on wall" is pressed. -->
+        <section class="imagepanel" id="image-panel" aria-labelledby="image-title">
+            <div class="image-head">
+                <h3 class="kicker" id="image-title">Still image</h3>
+                <p class="image-active" id="image-active" data-state="none">
+                    <span class="k">Active</span>
+                    <span class="image-active-text" id="image-active-text">—</span>
+                </p>
+            </div>
+
+            <!-- The active asset is in the scene but not in the inventory: the
+                 wall is showing an error state, so the way out is spelled out
+                 here rather than left for the operator to guess. -->
+            <div class="image-missing" id="image-missing" data-kind="bad" hidden>
+                <span class="warn-badge" aria-hidden="true">!</span>
+                <div class="image-missing-body">
+                    <p class="image-missing-title" id="image-missing-title"></p>
+                    <p class="image-missing-text" id="image-missing-text"></p>
+                    <div class="image-missing-actions">
+                        <button type="button" class="btn btn-sm" id="btn-missing-pick">Pick a replacement</button>
+                        <button type="button" class="btn btn-ghost btn-sm" data-content-action="color">Show colour instead</button>
+                        <button type="button" class="btn btn-ghost btn-sm" data-content-action="calibration">Show calibration instead</button>
+                    </div>
+                </div>
+            </div>
+
+            <div class="image-body">
+                <div class="image-list-col">
+                    <div class="image-bar">
+                        <button type="button" class="btn btn-sm" id="btn-assets-refresh">Refresh inventory</button>
+                        <span class="image-count" id="image-count"></span>
+                        <span class="image-sel mono" id="image-sel">no asset selected</span>
+                        <button type="button" class="btn btn-primary btn-sm" id="btn-image-apply" disabled>Show on wall</button>
+                    </div>
+
+                    <p class="image-note" id="image-note" hidden></p>
+
+                    <ul class="asset-list" id="asset-list" aria-label="Curated assets" hidden></ul>
+                    <p class="image-empty" id="image-empty" hidden></p>
+                </div>
+
+                <div class="image-preview-col">
+                    <span class="k">Selected</span>
+                    <div class="image-preview" id="image-preview" hidden>
+                        <img class="image-preview-img" id="image-preview-img" alt="">
+                    </div>
+                    <p class="image-preview-note" id="image-preview-note">Nothing selected — pick an asset from the list.</p>
+                </div>
+            </div>
+        </section>
     </div>
 </section>
 
@@ -186,6 +264,10 @@
             <span class="meta-res mono"></span>
             <span class="meta-sep" aria-hidden="true">·</span>
             <span class="meta-type"></span>
+            <!-- Render capability, shown while the scene is an image: the
+                 tablet that never advertised `image` cannot cover it. -->
+            <span class="meta-sep meta-cap-sep" aria-hidden="true" hidden>·</span>
+            <span class="meta-cap" hidden></span>
         </div>
 
         <dl class="tile-facts">

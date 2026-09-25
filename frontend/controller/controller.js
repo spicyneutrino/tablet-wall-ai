@@ -12,6 +12,10 @@
      *     replaces it (see "Server → controller (v2 additions)").
      *   - Wall state is layout + scene + revision + generation: dimensions
      *     are written with PUT /wall, scene content with PUT /scene.
+     *   - Still images (PROTOCOL.md "Still images"): GET /assets reads the
+     *     curated inventory — on demand plus one read at boot, never
+     *     polled. An image only reaches PUT /scene after the operator has
+     *     selected an asset and pressed "Show on wall".
      *
      * There is NO polling. The only timer is a 1 Hz UI tick that redraws
      * relative timestamps and the reconnect countdown; it never touches
@@ -97,6 +101,29 @@
         mapEmpty: document.getElementById("map-empty"),
         reservations: document.getElementById("reservations"),
         resList: document.getElementById("res-list"),
+        alerts: document.getElementById("alerts"),
+        alertNoCap: document.getElementById("alert-nocap"),
+        alertNoCapTitle: document.getElementById("alert-nocap-title"),
+        alertNoCapText: document.getElementById("alert-nocap-text"),
+        alertUnverified: document.getElementById("alert-unverified"),
+        alertUnverifiedText: document.getElementById("alert-unverified-text"),
+        imagePanel: document.getElementById("image-panel"),
+        imageActive: document.getElementById("image-active"),
+        imageActiveText: document.getElementById("image-active-text"),
+        imageMissing: document.getElementById("image-missing"),
+        imageMissingTitle: document.getElementById("image-missing-title"),
+        imageMissingText: document.getElementById("image-missing-text"),
+        btnMissingPick: document.getElementById("btn-missing-pick"),
+        btnAssetsRefresh: document.getElementById("btn-assets-refresh"),
+        imageCount: document.getElementById("image-count"),
+        imageSel: document.getElementById("image-sel"),
+        imageNote: document.getElementById("image-note"),
+        assetList: document.getElementById("asset-list"),
+        imageEmpty: document.getElementById("image-empty"),
+        btnImageApply: document.getElementById("btn-image-apply"),
+        imagePreview: document.getElementById("image-preview"),
+        imagePreviewImg: document.getElementById("image-preview-img"),
+        imagePreviewNote: document.getElementById("image-preview-note"),
         grid: document.getElementById("grid"),
         empty: document.getElementById("empty"),
         emptyConn: document.getElementById("empty-conn"),
@@ -148,6 +175,21 @@
     /** Scene content chosen in the control but not yet confirmed by the
      *  server's PUT /scene response (or its `wall_updated` echo). */
     let pendingContent = null;
+
+    /* Curated asset inventory (GET /assets). Read once at boot and again only
+     * when the operator asks — never polled. A failed refresh keeps the last
+     * good list (`assetsError` says why it is stale); `assetsLoaded` gates
+     * every claim this page makes about what is in the inventory, so "missing"
+     * is never asserted from a read that never succeeded. */
+    let assets = [];
+    let assetsLoaded = false;
+    let assetsLoading = false;
+    let assetsError = null;
+    let assetsStamp = null; // clock stamp of the last successful read
+
+    /** Asset picked in the list but not yet sent. null means no selection,
+     *  and no image scene is ever sent without one. */
+    let selectedAsset = null;
 
     /* ------------------------------------------------------------------ *
      * Small helpers
@@ -294,8 +336,11 @@
         };
     }
 
-    /* The only content types this page can set: the server answers 422 to
-     * anything else, so nothing else is offered in the scene control. */
+    /* The content types offered in the segment control. The server answers
+     * 422 to anything else, so nothing else is offered there. An image is a
+     * different action — an explicit asset selection in the still-image panel
+     * below — and is deliberately not a third segment: it cannot be toggled
+     * without knowing which asset to send. */
     const SETTABLE_CONTENT = ["color", "calibration"];
 
     function isSettableContent(type) {
@@ -319,17 +364,45 @@
     }
 
     /**
+     * The whole `scene.content` object as the server reported it, or null
+     * when the payload carries none.
+     *
+     * It is kept beside `contentType` because an image scene is more than a
+     * type: the asset id, fit and derived intrinsic dimensions are what make
+     * a now-missing asset still identifiable (PROTOCOL.md "Still images").
+     * The copy is taken as-is — nothing here invents fields the server did
+     * not send.
+     */
+    function sceneContent(raw) {
+        const content = raw && raw.scene && raw.scene.content;
+        if (!content || typeof content !== "object" || Array.isArray(content)) return null;
+        return content;
+    }
+
+    /**
      * Honest, operator-facing name for a scene content type.
      *
-     * `"color"` and `"calibration"` read as themselves — the two the control
-     * offers. `"image"` is named as what it is (this page cannot set it).
-     * Anything else is flagged as unsupported rather than shown as colour.
+     * `"color"` and `"calibration"` read as themselves — the two the segment
+     * control offers. `"image"` is named as what it is: it is set from the
+     * still-image panel, not from the segment control. Anything else is
+     * flagged as unsupported rather than shown as colour.
      */
     function contentLabel(type) {
         if (type === null) return "no scene content reported";
         if (isSettableContent(type)) return type;
+        if (type === "image") return "image";
+        return "unsupported content type: " + type;
+    }
+
+    /**
+     * Amber caption under the segment control — why no segment is pressed.
+     * null when there is nothing to explain.
+     */
+    function contentHint(type) {
+        if (type === null || isSettableContent(type)) return null;
         if (type === "image") {
-            return "image content — this page cannot set it (only color and calibration)";
+            return "image content — this control offers only color and calibration. " +
+                "The still-image panel below owns the image.";
         }
         return "unsupported content type: " + type +
             " — this page cannot set it (only color and calibration)";
@@ -363,6 +436,7 @@
             width: Math.max(0, Math.round(numOr(raw.width, 0))),
             height: Math.max(0, Math.round(numOr(raw.height, 0))),
             contentType: sceneContentType(raw),
+            content: sceneContent(raw),
             generation: typeof raw.generation === "string" ? raw.generation : null,
             revision: Math.max(0, Math.round(numOr(raw.revision, 0))),
             placements: placements
@@ -657,6 +731,8 @@
         renderEmpty();
         // Presence flips recolour the diagram, so redraw it with the tiles.
         renderWallMap();
+        // …and change what the roster can confirm about a placed slot.
+        renderCoverage();
     }
 
     function createTile(id) {
@@ -671,6 +747,8 @@
             screenNote: node.querySelector(".screen-note"),
             res: node.querySelector(".meta-res"),
             type: node.querySelector(".meta-type"),
+            capChip: node.querySelector(".meta-cap"),
+            capSep: node.querySelector(".meta-cap-sep"),
             seen: node.querySelector(".fact-seen"),
             curSwatch: node.querySelector(".cur-swatch"),
             curHex: node.querySelector(".cur-hex"),
@@ -791,6 +869,7 @@
         tile.seen.title = absTime(device.last_seen);
 
         renderPlacement(tile, device);
+        renderCapChip(tile, device);
     }
 
     function removeTile(id) {
@@ -875,18 +954,24 @@
 
         setWallControlsEnabled(wallReady());
         renderWallMap();
+        renderImagePanel();
+        renderCoverage();
 
         for (const tile of tiles.values()) {
             const device = devices.get(tile.el.dataset.id);
-            if (device) renderPlacement(tile, device);
+            if (device) {
+                renderPlacement(tile, device);
+                renderCapChip(tile, device);
+            }
         }
     }
 
     /**
-     * Press the segment matching the server's content — and nothing when
-     * the content is something this page cannot set, so the control never
-     * claims a type it does not have. The state line below it says what the
-     * server actually reported in that case.
+     * Press the segment matching the server's content — and nothing when the
+     * content is outside what this control offers (an image is owned by the
+     * still-image panel, an unknown type by nobody here), so the control
+     * never claims a type it does not have. The state line below it says what
+     * the server actually reported in that case.
      */
     function renderWallContent(type) {
         if (el.wallContent) {
@@ -902,17 +987,18 @@
     }
 
     /** Amber caption under the scene control; silent when there is nothing
-     *  to warn about (settable content, or no scene reported at all). */
+     *  to explain (a type the control offers, or no scene reported at all). */
     function renderContentState(type) {
         const node = el.wallContentState;
         if (!node) return;
-        if (type === null || isSettableContent(type)) {
+        const hint = contentHint(type);
+        if (hint === null) {
             node.hidden = true;
             node.textContent = "";
             return;
         }
         node.hidden = false;
-        node.textContent = contentLabel(type);
+        node.textContent = hint;
     }
 
     function setWallControlsEnabled(on) {
@@ -925,6 +1011,754 @@
         for (const button of el.wallContent.querySelectorAll(".seg-opt")) {
             button.disabled = !on;
         }
+    }
+
+    /* ------------------------------------------------------------------ *
+     * Still image — curated inventory, the image scene, coverage
+     *
+     * GET /assets is read once at boot and again only when the operator
+     * asks; there is no polling, same as everywhere else in this file. An
+     * image reaches PUT /scene only through an explicit selection plus
+     * "Show on wall", so a page that has merely *seen* an inventory can
+     * never put a wall on an asset nobody picked.
+     *
+     * The coverage alerts read the roster and the stored placements as they
+     * stand: a placed, online tablet that never advertised `image` cannot
+     * cover the picture (PROTOCOL.md: it falls back to colour), and a placed
+     * tablet that is offline — or absent from the roster — is a slot whose
+     * capability nobody can confirm until it connects again.
+     * ------------------------------------------------------------------ */
+
+    /** The asset id in the active scene, or null when the scene is not an
+     *  image. An image reported *without* an id is null too: this page does
+     *  not invent one. */
+    function activeImageId() {
+        if (!wall || wall.contentType !== "image" || !wall.content) return null;
+        const asset = wall.content.asset;
+        return typeof asset === "string" && asset !== "" ? asset : null;
+    }
+
+    function assetById(id) {
+        if (typeof id !== "string" || id === "") return null;
+        for (const asset of assets) {
+            if (asset.id === id) return asset;
+        }
+        return null;
+    }
+
+    /**
+     * Whether the active image is provably absent from the inventory.
+     *
+     * This needs a successful read to mean anything: an inventory that was
+     * never loaded is "unknown", never "missing", so a server without the
+     * route cannot make this page claim the wall is broken.
+     */
+    function activeAssetMissing() {
+        const id = activeImageId();
+        // A failed refresh leaves a stale list for browsing, not evidence
+        // that a currently active asset is missing from the server now.
+        if (!id || !assetsLoaded || assetsError) return false;
+        return assetById(id) === null;
+    }
+
+    /** Asset ids are `sha256:<64 hex>` — the prefix is constant, so the
+     *  readable part is the digest's first 8 hex digits. */
+    function shortAsset(id) {
+        const value = String(id);
+        const body = value.indexOf("sha256:") === 0 ? value.slice(7) : value;
+        return body.slice(0, 8);
+    }
+
+    function fmtBytes(n) {
+        if (n === null || !Number.isFinite(n) || n < 0) return "—";
+        if (n >= 1024 * 1024) return (n / (1024 * 1024)).toFixed(1) + " MiB";
+        if (n >= 1024) return (n / 1024).toFixed(1) + " KiB";
+        return n + " B";
+    }
+
+    /* ------------------------------------------------------------------ *
+     * Inventory parsing
+     *
+     * PROTOCOL.md fixes which fields `GET /assets` lists (id, display name,
+     * MIME type, intrinsic dimensions, byte size, same-origin URL) but not
+     * the container or the casing, so the reader takes a bare array, an
+     * object holding one, or a map keyed by id, and looks each field up
+     * under its camelCase and snake_case spellings. An entry with no
+     * identifiable id is skipped rather than rendered as a blank row.
+     * ------------------------------------------------------------------ */
+
+    function pickString(raw, keys) {
+        for (const key of keys) {
+            const value = raw[key];
+            if (typeof value === "string" && value !== "") return value;
+        }
+        return null;
+    }
+
+    function pickNumber(raw, keys) {
+        for (const key of keys) {
+            const value = raw[key];
+            if (value === null || value === undefined || value === "") continue;
+            const n = Number(value);
+            if (Number.isFinite(n)) return n;
+        }
+        return null;
+    }
+
+    const ASSET_ID_KEYS = ["id", "asset", "asset_id", "assetId"];
+
+    function normalizeAsset(raw, fallbackId) {
+        if (!raw || typeof raw !== "object" || Array.isArray(raw)) return null;
+        let id = pickString(raw, ASSET_ID_KEYS);
+        if (!id && typeof fallbackId === "string" && fallbackId !== "") id = fallbackId;
+        if (!id) return null;
+        // A bare 64-hex digest is the same identity as its prefixed form.
+        if (/^[0-9a-fA-F]{64}$/.test(id)) id = "sha256:" + id.toLowerCase();
+
+        const width = pickNumber(raw, ["width", "intrinsicWidth", "intrinsic_width"]);
+        const height = pickNumber(raw, ["height", "intrinsicHeight", "intrinsic_height"]);
+        const bytes = pickNumber(raw, ["bytes", "byteSize", "byte_size", "size"]);
+
+        return {
+            id: id,
+            name: pickString(raw, ["name", "display_name", "displayName",
+                "filename", "file_name"]) || id,
+            mime: pickString(raw, ["mime", "mimeType", "mime_type",
+                "content_type", "contentType"]) || "",
+            width: width !== null && width > 0 ? Math.round(width) : null,
+            height: height !== null && height > 0 ? Math.round(height) : null,
+            bytes: bytes !== null && bytes >= 0 ? bytes : null,
+            url: pickString(raw, ["url", "href"])
+        };
+    }
+
+    /** The inventory as a sorted array, or null when the payload is not one
+     *  in any shape this page recognises (the caller reports that honestly
+     *  instead of showing an empty list that looks like "no files"). */
+    function normalizeAssets(payload) {
+        let entries = null; // [raw, fallbackId] pairs
+        if (Array.isArray(payload)) {
+            entries = payload.map(function (raw) { return [raw, null]; });
+        } else if (payload && typeof payload === "object") {
+            let container = null;
+            for (const key of ["assets", "items", "files"]) {
+                if (Array.isArray(payload[key])) {
+                    container = payload[key];
+                    break;
+                }
+            }
+            if (container) {
+                entries = container.map(function (raw) { return [raw, null]; });
+            } else {
+                const keys = Object.keys(payload);
+                const allObjects = keys.length > 0 && keys.every(function (key) {
+                    const value = payload[key];
+                    return value && typeof value === "object" && !Array.isArray(value);
+                });
+                if (allObjects) {
+                    entries = keys.map(function (key) { return [payload[key], key]; });
+                }
+            }
+        }
+        if (!entries) return null;
+
+        const seen = new Set();
+        const out = [];
+        for (const entry of entries) {
+            const asset = normalizeAsset(entry[0], entry[1]);
+            if (!asset || seen.has(asset.id)) continue;
+            seen.add(asset.id);
+            out.push(asset);
+        }
+        out.sort(function (a, b) {
+            const an = a.name.toLowerCase();
+            const bn = b.name.toLowerCase();
+            if (an !== bn) return an < bn ? -1 : 1;
+            return compareIds(a.id, b.id);
+        });
+        return out;
+    }
+
+    /**
+     * GET /assets — one read at boot (quietly) and on demand afterwards.
+     * A failed refresh keeps the last good list and says why it is stale;
+     * the selection is dropped only if the asset it named is really gone.
+     */
+    async function refreshAssets(quiet) {
+        if (assetsLoading) return;
+        assetsLoading = true;
+        assetsError = null;
+        if (el.btnAssetsRefresh) {
+            el.btnAssetsRefresh.disabled = true;
+            el.btnAssetsRefresh.textContent = "Reading…";
+        }
+        renderAssetList();
+
+        try {
+            const data = await requestJson("GET", "/assets");
+            const list = normalizeAssets(data);
+            if (list === null) {
+                throw new Error("the answer was not an asset inventory");
+            }
+            assets = list;
+            assetsLoaded = true;
+            assetsStamp = clockStamp();
+
+            // A refresh can retire the selection: say so once, alongside the
+            // inventory result, rather than burying it under the next line.
+            let cleared = false;
+            if (selectedAsset && !assetById(selectedAsset)) {
+                selectedAsset = null;
+                cleared = true;
+            }
+            if (!quiet) {
+                logStatus(
+                    "Asset inventory — " + assets.length + " file(s), read " +
+                        assetsStamp + (cleared
+                            ? " · the selected asset is no longer in it, selection cleared"
+                            : ""),
+                    "ok"
+                );
+            } else if (cleared) {
+                logStatus(
+                    "The selected asset is no longer in the inventory — selection cleared.",
+                    "info"
+                );
+            }
+        } catch (err) {
+            assetsError = err.message;
+            logStatus(
+                quiet
+                    ? "No asset inventory from this server (" + err.message +
+                        ") — press Refresh inventory if still images are enabled."
+                    : "Asset inventory unavailable: " + err.message,
+                quiet ? "info" : "err"
+            );
+        } finally {
+            assetsLoading = false;
+            if (el.btnAssetsRefresh) {
+                el.btnAssetsRefresh.disabled = false;
+                el.btnAssetsRefresh.textContent = "Refresh inventory";
+            }
+            renderImagePanel();
+        }
+    }
+
+    function renderImagePanel() {
+        if (!el.imagePanel) return;
+        renderActiveImage();
+        renderAssetList();
+        renderMissingAsset();
+        updateImageControls();
+    }
+
+    /** The active scene image, exactly as the server described it — the id,
+     *  its name when the inventory knows it, the persisted intrinsic size and
+     *  the fit. Nothing is inferred that the payload did not carry. */
+    function renderActiveImage() {
+        const node = el.imageActive;
+        const text = el.imageActiveText;
+        if (!node || !text) return;
+
+        if (!wall) {
+            node.dataset.state = "none";
+            node.title = "";
+            text.textContent = "no wall state from the server";
+            return;
+        }
+        if (wall.contentType !== "image") {
+            node.dataset.state = "other";
+            node.title = "";
+            text.textContent = contentLabel(wall.contentType);
+            return;
+        }
+
+        const content = wall.content || {};
+        const id = typeof content.asset === "string" ? content.asset : "";
+        if (!id) {
+            node.dataset.state = "missing";
+            node.title = "";
+            text.textContent = "image content reported with no asset id";
+            return;
+        }
+
+        const asset = assetById(id);
+        const bits = ["image", shortAsset(id)];
+        if (asset && asset.name) bits.push(asset.name);
+        if (asset && asset.mime) bits.push(asset.mime);
+
+        const rawW = content.intrinsicWidth !== undefined
+            ? content.intrinsicWidth : (asset ? asset.width : null);
+        const rawH = content.intrinsicHeight !== undefined
+            ? content.intrinsicHeight : (asset ? asset.height : null);
+        const width = Number(rawW);
+        const height = Number(rawH);
+        if (Number.isFinite(width) && Number.isFinite(height) && width > 0 && height > 0) {
+            bits.push(Math.round(width) + "×" + Math.round(height) +
+                " · ar " + fmtAspect(aspectOf(width, height)));
+        }
+        if (typeof content.fit === "string" && content.fit !== "") {
+            bits.push("fit " + content.fit);
+        }
+
+        const missing = activeAssetMissing();
+        if (missing) bits.push("NOT IN THE INVENTORY");
+        else if (assetsError) bits.push("inventory stale — availability unknown");
+        else if (!assetsLoaded) bits.push("inventory not read");
+
+        node.dataset.state = missing ? "missing" : "image";
+        node.title = id;
+        text.textContent = bits.join(" · ");
+    }
+
+    function renderAssetList() {
+        const list = el.assetList;
+        if (!list) return;
+
+        // The note carries loading / stale / error; the count carries the
+        // last successful read, so a failed refresh never looks like a
+        // fresh one and a stale list never looks current.
+        if (el.imageNote) {
+            let note = "";
+            let kind = "info";
+            if (assetsLoading) {
+                note = "Reading the asset inventory…";
+            } else if (assetsError) {
+                kind = "err";
+                note = "Inventory unavailable: " + assetsError +
+                    (assetsLoaded
+                        ? " — showing the list read at " + assetsStamp + "."
+                        : ".");
+            }
+            el.imageNote.hidden = note === "";
+            el.imageNote.dataset.kind = kind;
+            el.imageNote.textContent = note;
+        }
+
+        if (el.imageCount) {
+            el.imageCount.textContent = assetsLoaded
+                ? assets.length + (assets.length === 1 ? " asset" : " assets") +
+                    (assetsStamp ? " · read " + assetsStamp : "")
+                : "";
+        }
+
+        const activeId = activeImageId();
+        list.textContent = "";
+        for (const asset of assets) {
+            list.appendChild(buildAssetRow(asset, asset.id === activeId));
+        }
+        list.hidden = assets.length === 0;
+
+        if (el.imageEmpty) {
+            let empty = "";
+            if (assets.length === 0) {
+                if (assetsLoaded) {
+                    empty = "No curated assets found. Put JPEG or PNG files in the " +
+                        "server's asset directory, then press Refresh inventory.";
+                } else if (!assetsLoading && !assetsError) {
+                    empty = "Asset inventory not read yet — press Refresh inventory.";
+                }
+            }
+            el.imageEmpty.hidden = empty === "";
+            el.imageEmpty.textContent = empty;
+        }
+    }
+
+    function buildAssetRow(asset, isActive) {
+        const item = document.createElement("li");
+        item.className = "asset-item";
+
+        const row = document.createElement("button");
+        row.type = "button";
+        row.className = "asset-row";
+        row.dataset.asset = asset.id;
+        row.setAttribute("aria-pressed", String(selectedAsset === asset.id));
+        row.title = asset.id + (asset.mime ? " · " + asset.mime : "");
+
+        const name = document.createElement("span");
+        name.className = "asset-name";
+        name.textContent = asset.name;
+
+        const dims = document.createElement("span");
+        dims.className = "asset-dims mono";
+        dims.textContent =
+            asset.width !== null && asset.height !== null
+                ? asset.width + "×" + asset.height
+                : "—";
+
+        const ar = document.createElement("span");
+        ar.className = "asset-ar mono";
+        ar.textContent =
+            asset.width !== null && asset.height !== null
+                ? "ar " + fmtAspect(aspectOf(asset.width, asset.height))
+                : "ar —";
+
+        const size = document.createElement("span");
+        size.className = "asset-bytes mono";
+        size.textContent = fmtBytes(asset.bytes);
+
+        const id = document.createElement("span");
+        id.className = "asset-id mono";
+        id.textContent = shortAsset(asset.id);
+        id.title = asset.id;
+
+        const flag = document.createElement("span");
+        flag.className = "asset-flag";
+        flag.textContent = "active";
+        flag.hidden = !isActive;
+
+        row.append(name, dims, ar, size, id, flag);
+        item.appendChild(row);
+        return item;
+    }
+
+    function selectAsset(id) {
+        const asset = assetById(id);
+        if (!asset) return;
+        if (selectedAsset === asset.id) {
+            selectedAsset = null;
+            logStatus("Asset selection cleared.", "info");
+        } else {
+            selectedAsset = asset.id;
+            logStatus(
+                "Selected " + asset.name + " — press Show on wall to put it on the wall.",
+                "info"
+            );
+        }
+        renderAssetList();
+        updateImageControls();
+    }
+
+    /**
+     * The active asset is in the scene but not in the inventory: the wall is
+     * rendering an explicit error state (PROTOCOL.md keeps the id until an
+     * operator acts), so this block names it and offers the three ways out —
+     * a replacement asset, colour, or calibration.
+     */
+    function renderMissingAsset() {
+        const box = el.imageMissing;
+        if (!box) return;
+        const id = activeImageId();
+        if (!id || !activeAssetMissing()) {
+            box.hidden = true;
+            return;
+        }
+        box.hidden = false;
+        box.dataset.kind = wall && wall.contentType === "image" ? "bad" : "warn";
+
+        if (el.imageMissingTitle) {
+            el.imageMissingTitle.textContent =
+                "Active image " + shortAsset(id) + " is not in the inventory";
+        }
+        if (el.imageMissingText) {
+            el.imageMissingText.textContent =
+                "The file was removed, replaced, or it failed validation, so the wall " +
+                "renders an error instead of the picture. The id stays in the scene " +
+                "until you act: pick a replacement below, or put the wall back on " +
+                "colour or calibration.";
+            el.imageMissingText.title = id;
+        }
+        if (el.btnMissingPick) {
+            const hasAssets = assets.length > 0;
+            el.btnMissingPick.textContent =
+                hasAssets ? "Pick a replacement" : "Refresh the inventory";
+            el.btnMissingPick.dataset.mode = hasAssets ? "pick" : "refresh";
+        }
+        for (const button of box.querySelectorAll("button[data-content-action]")) {
+            button.disabled = pendingContent !== null;
+        }
+    }
+
+    function updateImageControls() {
+        const active = activeImageId();
+
+        if (el.imageSel) {
+            if (!selectedAsset) {
+                el.imageSel.textContent = "no asset selected";
+                el.imageSel.title = "";
+            } else {
+                const asset = assetById(selectedAsset);
+                const bits = ["selected: " + (asset ? asset.name : shortAsset(selectedAsset))];
+                if (asset && asset.width !== null && asset.height !== null) {
+                    bits.push(asset.width + "×" + asset.height);
+                }
+                if (active && selectedAsset === active) bits.push("already active");
+                el.imageSel.textContent = bits.join(" · ");
+                el.imageSel.title = selectedAsset;
+            }
+        }
+
+        if (el.btnImageApply) {
+            const applying = pendingContent === "image";
+            const same = !!selectedAsset && selectedAsset === active;
+            const canApply =
+                wallReady() && !!selectedAsset && !same && pendingContent === null;
+            el.btnImageApply.disabled = !canApply;
+            el.btnImageApply.textContent = applying
+                ? "Applying…"
+                : same ? "Already on the wall" : "Show on wall";
+            el.btnImageApply.title = !selectedAsset
+                ? "Select an asset first — no image is sent without a selection."
+                : same
+                    ? "This asset is already the active scene content."
+                    : "PUT /scene — show this asset across the whole wall";
+        }
+
+        // The preview follows the selection only: the wall's own copy of the
+        // image is the wall's business, and an asset with no URL in the
+        // inventory gets no guessed one.
+        if (el.imagePreview && el.imagePreviewImg && el.imagePreviewNote) {
+            const asset = selectedAsset ? assetById(selectedAsset) : null;
+            const url = asset ? asset.url : null;
+            if (asset && url) {
+                if (el.imagePreviewImg.getAttribute("src") !== url) {
+                    el.imagePreview.dataset.failed = "false";
+                    el.imagePreviewImg.src = url;
+                    el.imagePreviewImg.alt = "Preview of " + asset.name;
+                }
+                const failed = el.imagePreview.dataset.failed === "true";
+                el.imagePreview.hidden = failed;
+                el.imagePreviewNote.hidden = !failed;
+                el.imagePreviewNote.textContent = failed
+                    ? "Preview could not be loaded — refresh to try again; the wall " +
+                        "reports its own error state either way."
+                    : "";
+            } else {
+                if (el.imagePreviewImg.getAttribute("src")) {
+                    el.imagePreviewImg.removeAttribute("src");
+                    el.imagePreviewImg.alt = "";
+                }
+                el.imagePreview.hidden = true;
+                el.imagePreviewNote.hidden = false;
+                el.imagePreviewNote.textContent = asset
+                    ? "No preview URL in the inventory for this asset."
+                    : "Nothing selected — pick an asset from the list.";
+            }
+        }
+    }
+
+    /**
+     * `PUT /scene` with the selected asset — the only place an image scene
+     * is written, and it refuses to run without a selection.
+     */
+    async function applyImageScene() {
+        if (!wall) return;
+        const asset = selectedAsset;
+        if (!asset) {
+            logStatus("No asset selected — pick one before showing an image.", "err");
+            return;
+        }
+        if (asset === activeImageId()) return;
+        if (pendingContent !== null) return; // one scene save at a time
+
+        pendingContent = "image";
+        renderWallContent("image");
+        updateImageControls();
+
+        try {
+            const data = await requestJson("PUT", "/scene", {
+                content: { type: "image", asset: asset, fit: "cover" }
+            });
+            const next = normalizeWall(data);
+            if (!next || next.width <= 0 || next.height <= 0) {
+                logStatus(
+                    "Image request returned no usable wall state — waiting for a wall update to confirm it.",
+                    "err"
+                );
+                return;
+            }
+            wall = next;
+            logStatus(
+                "Scene → image " + shortAsset(asset) + " — revision " +
+                    wall.revision + ".",
+                "ok"
+            );
+        } catch (err) {
+            logStatus("Image not shown: " + err.message, "err");
+        } finally {
+            pendingContent = null;
+            renderWall();
+        }
+    }
+
+    /** Recovery from a missing asset: put the inventory under the cursor so
+     *  the replacement is one click away. */
+    function focusAssetPicker() {
+        if (assets.length === 0) {
+            refreshAssets(false).then(focusFirstAsset);
+            return;
+        }
+        focusFirstAsset();
+        logStatus("Pick a replacement, then press Show on wall.", "info");
+    }
+
+    function focusFirstAsset() {
+        const first =
+            el.assetList && el.assetList.querySelector("button[data-asset]");
+        if (!first) return;
+        if (typeof first.scrollIntoView === "function") {
+            first.scrollIntoView({ block: "nearest" });
+        }
+        first.focus();
+    }
+
+    /* ------------------------------------------------------------------ *
+     * Image coverage — who can and cannot show a still image
+     * ------------------------------------------------------------------ */
+
+    function renderCoverage() {
+        if (!el.alerts) return;
+
+        const placedIds = wall ? Object.keys(wall.placements).sort(compareIds) : [];
+        const noCap = [];
+        const unverified = []; // { id, note }
+
+        for (const id of placedIds) {
+            const device = devices.get(id);
+            if (!device) {
+                unverified.push({ id: id, note: "not in the roster · capability unknown" });
+                continue;
+            }
+            const capsKnown = Array.isArray(device.caps);
+            const caps = capsKnown ? device.caps : [];
+            const hasImage = device.protocol === 2 && caps.indexOf("image") !== -1;
+            const lacksImage = device.protocol === 1 ||
+                (device.protocol === 2 && capsKnown && !hasImage);
+            if (device.online === true) {
+                // A v1 socket receives no wall frame, regardless of caps.
+                // Missing protocol/caps is unknown, not proof of fallback.
+                if (lacksImage) noCap.push(id);
+                else if (!hasImage) {
+                    unverified.push({ id: id, note: "online · capability unknown" });
+                }
+            } else if (hasImage) {
+                unverified.push({ id: id, note: "offline · image cap" });
+            } else if (device.protocol === 1) {
+                unverified.push({ id: id, note: "offline · protocol 1" });
+            } else if (lacksImage) {
+                unverified.push({ id: id, note: "offline · no image cap" });
+            } else {
+                unverified.push({ id: id, note: "offline · capability unknown" });
+            }
+        }
+
+        renderNoCapAlert(noCap);
+        renderUnverifiedAlert(unverified);
+
+        // The wrapper only shows when at least one block has something to
+        // say; otherwise an empty bordered box would sit above the wall.
+        const anyShown =
+            (el.alertNoCap && !el.alertNoCap.hidden) ||
+            (el.alertUnverified && !el.alertUnverified.hidden);
+        el.alerts.hidden = !anyShown;
+    }
+
+    function renderNoCapAlert(ids) {
+        const box = el.alertNoCap;
+        if (!box) return;
+        if (ids.length === 0) {
+            box.hidden = true;
+            return;
+        }
+        const live = !!wall && wall.contentType === "image";
+        box.hidden = false;
+        box.dataset.kind = live ? "bad" : "warn";
+
+        if (el.alertNoCapTitle) {
+            el.alertNoCapTitle.textContent = live
+                ? "The active image will not cover the whole wall"
+                : "A still image would not cover the whole wall";
+        }
+        if (el.alertNoCapText) {
+            el.alertNoCapText.textContent =
+                ids.length + (ids.length === 1
+                    ? " placed online tablet does"
+                    : " placed online tablets do") +
+                " not support image wall content: " +
+                ids.map(function (id) { return "#" + shortId(id); }).join(", ") + ". " +
+                (live
+                    ? "They show their colour while the rest show the picture, so the image stops at their edges."
+                    : "Showing a still image would leave them on colour.");
+            el.alertNoCapText.title = ids.join(", ");
+        }
+    }
+
+    function renderUnverifiedAlert(entries) {
+        const box = el.alertUnverified;
+        if (!box) return;
+        if (entries.length === 0) {
+            box.hidden = true;
+            return;
+        }
+        box.hidden = false;
+        if (el.alertUnverifiedText) {
+            el.alertUnverifiedText.textContent =
+                entries.map(function (entry) {
+                    return "#" + shortId(entry.id) + " — " + entry.note;
+                }).join(" · ") +
+                ". Their current display cannot be confirmed; a " +
+                "returning tablet reclaims its own slot.";
+            el.alertUnverifiedText.title = entries.map(function (entry) {
+                return entry.id + " (" + entry.note + ")";
+            }).join("\n");
+        }
+    }
+
+    /**
+     * The capability chip in a tile's meta row — shown only while the scene
+     * is an image, which is when "this tablet cannot render it" means
+     * anything. It reports what the tablet advertised, not whether the wall
+     * succeeded, and an empty `caps` list is called unknown rather than
+     * treated as a refusal.
+     */
+    function renderCapChip(tile, device) {
+        if (!tile.capChip) return;
+        const show = !!wall && wall.contentType === "image";
+        tile.capChip.hidden = !show;
+        if (tile.capSep) tile.capSep.hidden = !show;
+        if (!show) return;
+
+        const capsKnown = Array.isArray(device.caps);
+        const caps = capsKnown ? device.caps : [];
+        const hasImage = device.protocol === 2 && caps.indexOf("image") !== -1;
+        const lacksImage = device.protocol === 1 ||
+            (device.protocol === 2 && capsKnown && !hasImage);
+        const online = device.online === true;
+
+        let kind;
+        let text;
+        if (online && hasImage) {
+            kind = "ok";
+            text = "image cap";
+        } else if (online && device.protocol === 1) {
+            kind = "warn";
+            text = "protocol 1";
+        } else if (online && lacksImage) {
+            kind = "warn";
+            text = "no image cap";
+        } else if (online) {
+            kind = "dim";
+            text = "cap unknown";
+        } else if (hasImage) {
+            kind = "dim";
+            text = "offline · image cap";
+        } else if (device.protocol === 1) {
+            kind = "dim";
+            text = "offline · protocol 1";
+        } else if (lacksImage) {
+            kind = "dim";
+            text = "offline · no image cap";
+        } else {
+            kind = "dim";
+            text = "offline · cap unknown";
+        }
+        tile.capChip.dataset.kind = kind;
+        tile.capChip.textContent = text;
+        tile.capChip.title = device.protocol === 1
+            ? "Protocol 1 receives no wall frame, regardless of advertised capabilities."
+            : capsKnown
+                ? "Render capabilities this tablet advertised: " + (caps.join(", ") || "none")
+                : "Render capabilities were not reported for this tablet.";
     }
 
     /* ------------------------------------------------------------------ *
@@ -1598,6 +2432,7 @@
         renderTally();
         renderEmpty();
         renderWallMap(); // its footprint now reads as a vacant reservation
+        renderCoverage(); // …and its capability is now unknown
     }
 
     /* ------------------------------------------------------------------ *
@@ -1631,6 +2466,7 @@
                     // No scene is known here (the response was not a wall
                     // state), so none is claimed.
                     contentType: wall ? wall.contentType : null,
+                    content: wall ? wall.content : null,
                     generation: wall ? wall.generation : null,
                     revision: wall ? wall.revision : 0,
                     placements: wall ? wall.placements : {}
@@ -1664,6 +2500,7 @@
         if (!wall) return;
         pendingContent = type;
         renderWallContent(type);
+        updateImageControls(); // the image action waits its turn too
 
         try {
             const data = await requestJson("PUT", "/scene", {
@@ -1981,6 +2818,58 @@
             });
         }
 
+        /* Still image: inventory refresh, asset selection, and the one
+         * explicit scene action. None of these send anything by themselves —
+         * the apply button is what reaches PUT /scene, and only with a
+         * selection in hand. */
+        if (el.btnAssetsRefresh) {
+            el.btnAssetsRefresh.addEventListener("click", function () {
+                refreshAssets(false);
+            });
+        }
+
+        if (el.assetList) {
+            el.assetList.addEventListener("click", function (event) {
+                const row = event.target.closest("button[data-asset]");
+                if (!row || row.disabled) return;
+                selectAsset(row.dataset.asset);
+            });
+        }
+
+        if (el.btnImageApply) {
+            el.btnImageApply.addEventListener("click", function () {
+                applyImageScene();
+            });
+        }
+
+        // Recovery from a missing asset: pick a replacement, or fall back to
+        // a content type the wall can always render.
+        if (el.btnMissingPick) {
+            el.btnMissingPick.addEventListener("click", function () {
+                if (el.btnMissingPick.dataset.mode === "refresh") refreshAssets(false);
+                else focusAssetPicker();
+            });
+        }
+
+        if (el.imageMissing) {
+            el.imageMissing.addEventListener("click", function (event) {
+                const button = event.target.closest("button[data-content-action]");
+                if (!button || button.disabled) return;
+                const type = button.dataset.contentAction;
+                if (!isSettableContent(type)) return;
+                if (pendingContent !== null) return;
+                if (wall && wall.contentType === type) return;
+                saveSceneContent(type);
+            });
+        }
+
+        if (el.imagePreviewImg) {
+            el.imagePreviewImg.addEventListener("error", function () {
+                if (el.imagePreview) el.imagePreview.dataset.failed = "true";
+                updateImageControls();
+            });
+        }
+
         // Vacant reservations: Release is a two-step confirm, like Forget.
         if (el.resList) {
             el.resList.addEventListener("click", function (event) {
@@ -2136,6 +3025,9 @@
         renderWall(); // wall is null here: disables the panel, notes the wait
         logStatus("Connecting to " + wsUrl() + " …", "info");
         fetchWallState();
+        // Quiet: a server without GET /assets (or with an empty directory) is
+        // a fact to note, not a failure to shout about at startup.
+        refreshAssets(true);
         connect();
         setInterval(tick, 1000);
     }

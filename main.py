@@ -4,7 +4,8 @@ Phase 1 adds the realtime layer described in ``PROTOCOL.md``: WebSocket
 endpoints for devices and the controller, heartbeat-driven presence, and
 colour commands. The implementation lives in the ``tabletwall`` package —
 ``protocol`` (constants and validation helpers), ``state`` (the in-memory
-registries), and ``hub`` (frame delivery and the heartbeat sweeper) — while
+registries), ``hub`` (frame delivery and the heartbeat sweeper), and
+``assets`` (the curated still-image inventory behind ``GET /assets``) — while
 this module keeps the FastAPI app, lifespan, and routes.
 """
 
@@ -17,7 +18,15 @@ from copy import deepcopy
 from math import sqrt
 from typing import Any
 
-from fastapi import FastAPI, HTTPException, Query, WebSocket, WebSocketDisconnect
+from fastapi import (
+    FastAPI,
+    HTTPException,
+    Query,
+    Response,
+    WebSocket,
+    WebSocketDisconnect,
+)
+from fastapi.responses import JSONResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, UUID4, ConfigDict, Field, field_validator, model_validator
 
@@ -34,19 +43,25 @@ from tabletwall.hub import (
     _sweep_loop,
 )
 from tabletwall.protocol import (
+    DEFAULT_FIT,
     HEARTBEAT_INTERVAL_MS,
     SERVER_CAPS,
+    SUPPORTED_FITS,
     WS_CLOSE_BAD_REQUEST,
     WS_CLOSE_NORMAL,
     WS_CLOSE_REPLACED,
     WS_CLOSE_UNKNOWN_DEVICE,
     WS_CLOSE_UNSUPPORTED_PROTOCOL,
+    _is_asset_id,
     _now_iso,
     _normalise_color,
     _parse_caps,
     _parse_device_id,
     _parse_protocol,
 )
+# Curated still-image assets (PROTOCOL.md "Still images"): the directory scan,
+# content IDs, and byte-verified serving behind ``GET /assets``.
+from tabletwall import assets
 # Persistence of the wall state (PROTOCOL.md "Persistence"): the roster,
 # sockets, presence, and heartbeat timestamps stay in memory.
 from tabletwall.persist import load_state, save_state
@@ -93,6 +108,12 @@ async def lifespan(_: FastAPI):
     # Before the first yield: no socket may be accepted against state that
     # has not been loaded from the database.
     _restore_wall_state()
+    # Startup scan (PROTOCOL.md "Still images"): inventory the curated image
+    # directory before the first request, so a directory that exists but
+    # cannot be read fails loudly at boot rather than on the first inventory
+    # read. Every later read path re-scans anyway — this pass only establishes
+    # the initial inventory (an absent directory is an empty one).
+    assets.refresh()
     _sweeper_task = asyncio.create_task(_sweep_loop())
     try:
         yield
@@ -154,11 +175,21 @@ class SceneContent(BaseModel):
     """The scene's ``content`` object, discriminated by ``type``.
 
     Unknown keys are forbidden here exactly as they are on the ``PUT``
-    bodies: a client still sending the removed ``mode`` field gets a 422
-    rather than having it quietly ignored (PROTOCOL.md "Unknown keys").
+    bodies: a client still sending the removed ``mode`` field — or echoing
+    the server's derived fields (``url``, ``intrinsicWidth``,
+    ``intrinsicHeight``) back at it — gets a 422 rather than having it
+    quietly ignored (PROTOCOL.md "Unknown keys").
+
+    An ``image`` variant carries an ``asset`` content ID and an optional
+    ``fit``; the URL and intrinsic dimensions are derived by the server, so
+    they are not accepted here. Whether the ID names a real file is decided
+    by ``PUT /scene`` itself, against a freshly scanned inventory, which is
+    also a 422.
     """
 
     type: str
+    asset: str | None = None
+    fit: str | None = None
 
     model_config = ConfigDict(extra="forbid")
 
@@ -166,13 +197,35 @@ class SceneContent(BaseModel):
     @classmethod
     def supported_type(cls, value: str) -> str:
         # Raises ValueError — FastAPI turns it into a 422 — for a type the
-        # server cannot render: the reserved-but-unimplemented ``image``, or
-        # anything unknown (PROTOCOL.md "HTTP (v2 additions)").
-        if value == "image":
-            raise ValueError("image content is reserved but not implemented")
-        if value not in ("color", "calibration"):
+        # server cannot render, or anything unknown (PROTOCOL.md
+        # "HTTP (v2 additions)").
+        if value not in ("color", "calibration", "image"):
             raise ValueError("unknown content type")
         return value
+
+    @field_validator("fit")
+    @classmethod
+    def supported_fit(cls, value: str | None) -> str | None:
+        # Raises ValueError for anything the renderer cannot honour; only
+        # ``cover`` exists today (PROTOCOL.md "Still images").
+        if value is not None and value not in SUPPORTED_FITS:
+            raise ValueError("only the cover fit is supported")
+        return value
+
+    @model_validator(mode="after")
+    def validate_variant(self) -> "SceneContent":
+        if self.type == "image":
+            if self.asset is None:
+                raise ValueError("image content requires an asset id")
+            if not _is_asset_id(self.asset):
+                raise ValueError("asset must be sha256:<64 lowercase hex digits>")
+            if self.fit is None:
+                # Resolved here so the scene is persisted with the fit it
+                # will actually be rendered with, never an implied one.
+                self.fit = DEFAULT_FIT
+        elif self.asset is not None or self.fit is not None:
+            raise ValueError(f"{self.type} content takes neither asset nor fit")
+        return self
 
 
 class SceneUpdate(BaseModel):
@@ -445,10 +498,33 @@ async def put_scene(update: SceneUpdate):
     # Content only: the layout is untouched, the revision bumps, the new
     # state is committed, and only then is it broadcast — same ordering as
     # ``PUT /wall`` above.
-    content = update.content.model_dump()
+    content = update.content
+    if content.type == "image":
+        # The directory is re-scanned here, so a file copied in after the
+        # last read is usable immediately, and the intrinsic dimensions come
+        # from the file this scan just validated — never from the caller. The
+        # scan reads and hashes every candidate, so it runs in a worker
+        # thread: heartbeats and broadcasts must not wait behind it.
+        asset = await asyncio.to_thread(assets.find, content.asset)
+        if asset is None:
+            # Well-formed ID, no such asset: an invalid *body*, so 422 and
+            # nothing is committed (PROTOCOL.md "PUT /scene").
+            raise HTTPException(status_code=422, detail="Unknown asset")
+        # Persisted: ID, fit, and the derived dimensions. Deliberately no URL
+        # — it is composed from the ID on the way out, so it can never go
+        # stale in the database (PROTOCOL.md "Still images").
+        scene_content: dict[str, Any] = {
+            "type": "image",
+            "asset": asset.id,
+            "fit": content.fit,
+            "intrinsicWidth": asset.width,
+            "intrinsicHeight": asset.height,
+        }
+    else:
+        scene_content = {"type": content.type}
 
     def apply(target: dict[str, Any]) -> None:
-        target["scene"]["content"] = content
+        target["scene"]["content"] = scene_content
 
     _commit_wall(apply)
     await _broadcast_wall()
@@ -568,6 +644,60 @@ async def root():
     return {
         "message": "Hello Tablet Wall"
     }
+
+
+# ---------------------------------------------------------------------------
+# Still images (PROTOCOL.md "Still images")
+# ---------------------------------------------------------------------------
+
+
+@app.get("/assets")
+def get_assets():
+    """The curated inventory: ``{"assets": [<entry>, …]}`` with each entry
+    carrying ID, display name, MIME type, intrinsic dimensions, byte size,
+    and the same-origin URL the asset is served from.
+
+    Wrapped in an object rather than a bare array so the payload can grow
+    metadata later without breaking readers. ``Cache-Control: no-store`` is
+    part of the contract: the inventory is a snapshot of a directory that
+    changes by files being copied in, so a browser must re-read it on every
+    refresh instead of answering from a cached copy.
+
+    Sync rather than async on purpose: this re-scans, re-hashes, and now
+    fully decodes every file in the directory, and Starlette runs a plain
+    ``def`` route in a worker thread, so the event loop — which is also
+    pushing heartbeats — never waits on the filesystem. The re-scan itself is
+    the contract: inventory refreshes on request.
+    """
+    return JSONResponse(
+        content={"assets": assets.list_assets()},
+        headers={"Cache-Control": "no-store"},
+    )
+
+
+@app.get("/assets/{asset_id}")
+def get_asset(asset_id: str):
+    """Serve one asset's bytes, and only when they still hash to that ID.
+
+    Unknown, malformed, removed, and replaced IDs are all ``404``: because
+    the ID *is* the hash of the validated bytes, re-hashing what was just
+    read proves this response is exactly the bytes that passed validation, so
+    no stale copy can be served under an old ID (PROTOCOL.md "Still images").
+    The bytes are content-addressed, hence cached as immutable; ``nosniff``
+    keeps a browser from second-guessing the declared image type.
+    """
+    served = assets.fetch(asset_id)
+    if served is None:
+        raise HTTPException(status_code=404, detail="Unknown asset")
+    asset, data = served
+    return Response(
+        content=data,
+        media_type=asset.mime,
+        headers={
+            "X-Content-Type-Options": "nosniff",
+            "Cache-Control": "public, max-age=31536000, immutable",
+        },
+    )
 
 
 # ---------------------------------------------------------------------------

@@ -31,12 +31,28 @@ def isolated_registry(tmp_path, monkeypatch) -> Iterator[None]:
 
     ``TABLET_WALL_DB`` points at a per-test file under ``tmp_path``, so the
     suite never opens a real ``tablet-wall.db`` in the repository and no test
-    can read another test's persisted wall.
+    can read another test's persisted wall. ``TABLET_WALL_ASSET_DIR`` points
+    at a per-test directory for the same reason: no test may read a real
+    ``./assets`` curated by the operator (and a directory that does not exist
+    yet is simply an empty inventory).
     """
     monkeypatch.setenv("TABLET_WALL_DB", str(tmp_path / "tablet-wall.db"))
+    monkeypatch.setenv("TABLET_WALL_ASSET_DIR", str(tmp_path / "assets"))
     _clear_state()
     yield
     _clear_state()
+
+
+@pytest.fixture
+def asset_dir(tmp_path):
+    """An existing, empty asset directory for ``TABLET_WALL_ASSET_DIR``.
+
+    Tests fill it with files of their own; ``tmp_path`` keeps every test's
+    files to itself.
+    """
+    path = tmp_path / "assets"
+    path.mkdir(exist_ok=True)
+    return path
 
 
 @pytest.fixture

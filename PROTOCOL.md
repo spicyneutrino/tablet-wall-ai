@@ -2,7 +2,7 @@
 
 The contract between the server, the tablet **client**, and the **controller**.
 This is the authoritative interface description; code in `main.py`,
-`frontend/client/`, and `frontend/controller/` must match it exactly.
+`tabletwall/`, `frontend/client/`, and `frontend/controller/` must match it.
 
 ## Transports
 
@@ -23,16 +23,16 @@ stranding a tablet that is already mounted on a wall.
 | ------------------ | ---------------------------------------------------------- |
 | Device → server    | `protocol` query param, plus `caps` (comma-separated).      |
 | Controller → server| `protocol` query param.                                     |
-| Server → both      | `protocol` and `server_caps` in the `welcome` frame.        |
+| Server → v2 device | `protocol` and `server_caps` in the `welcome` frame.        |
 
 - **Absent `protocol` means version 1.** A cached `client.js` that predates the
   version param keeps working exactly as it did.
 - Supported majors: **1** and **2**.
 - An unsupported major is closed with **4426** *after* the handshake, so the
   client can see the code. A version-1 device is never sent a version-2 frame.
-- `caps` advertises what a client can *render*
-  (`calibration`, and later `image`/`video`). The server must not send content
-  a client has not advertised.
+- `caps` advertises what a client can *render* (`calibration` and `image`;
+  timed media is future work). The server must not send content a client has
+  not advertised.
 
 Version 1 is the colour-only contract as originally specified. Everything in the
 "Wall, placements, and scenes" section below is version 2.
@@ -78,6 +78,8 @@ Every payload that carries a device uses this exact shape:
   "height": 768,
   "type": "ipad",
   "color": "#3b82f6",
+  "protocol": 2,
+  "caps": ["calibration", "image"],
   "online": false,
   "last_seen": "2026-09-24T21:38:59.231663+00:00"
 }
@@ -88,6 +90,10 @@ Every payload that carries a device uses this exact shape:
 - `online` is a boolean.
 - `last_seen` is ISO-8601 UTC with an explicit `+00:00` offset.
 - `device_id` is a lowercase UUID4 string.
+- `protocol` is the last negotiated major (or `null` before a socket connects);
+  `caps` is the list advertised by that socket (empty until then). A version-1
+  socket does not receive `wall` frames even if it supplies a `caps` query
+  parameter; image support requires **both** protocol 2 and the `image` cap.
 
 ## Messages
 
@@ -329,7 +335,7 @@ together is a different, separately named action (a preset), not an overload of
 | --------------- | ----------------------------------------------------------- | ------- |
 | `"color"`       | —                                                            | Version-1 behaviour: each tablet shows its assigned colour. |
 | `"calibration"` | —                                                            | Each placed tablet renders its slice of the calibration pattern, which is how the operator checks the geometry. |
-| `"image"`       | `asset`, `url`, `fit`, `intrinsicWidth`, `intrinsicHeight`   | **Reserved, not implemented.** Defined below so the shape does not have to change when it lands. |
+| `"image"`       | `asset`, `fit`, `intrinsicWidth`, `intrinsicHeight`          | Curated still image, fitted across the entire wall. The server adds `url` only to the wire descriptor; it is never stored. |
 
 ### Revision and generation
 
@@ -367,7 +373,7 @@ controller's wall map already reports how many are unplaced.
 
 ```json
 { "type": "welcome", "device_id": "<uuid>", "heartbeat_interval_ms": 5000,
-  "protocol": 2, "server_caps": ["calibration"] }
+  "protocol": 2, "server_caps": ["calibration", "image"] }
 
 { "type": "wall", "revision": 7, "generation": "5c1f9a2e",
   "wall": { "width": 2000, "height": 1000 },
@@ -413,9 +419,13 @@ state. `422` if a dimension is not a positive int.
 
 ### `PUT /scene`
 
-Content only. Body is `{ "content": { "type": … } }`. `200` returns the new
-wall state. `422` if `type` is unknown, or if an `image` is requested before it
-is implemented.
+Content only. Body is `{ "content": { "type": … } }`. For an image, send
+`{ "content": { "type": "image", "asset": "sha256:<64 lowercase hex digits>",
+"fit": "cover" } }`; `fit` may be omitted and defaults to `cover`. The server
+looks up the asset and derives its intrinsic dimensions. It persists the ID,
+fit and derived dimensions, but not a URL. `200` returns the new wall state;
+`422` for an unknown type, invalid/missing asset, unsupported fit, or unknown
+fields (including caller-supplied `url` or dimensions).
 
 ### `PUT /devices/{device_id}/placement`
 
@@ -487,7 +497,7 @@ the new wall state.
 
 ## Client rendering contract
 
-A version-2 client that advertises `calibration` must:
+A version-2 client that advertises `calibration` and/or `image` must:
 
 1. Record the wall state and its placement from the latest `wall` frame. The
    frame is the complete presentation for this device, so there is nothing to
@@ -498,30 +508,70 @@ A version-2 client that advertises `calibration` must:
 3. When `scene.content.type` is `"calibration"`, render the calibration pattern
    for its **visible rect**, mapped onto its viewport by covering.
 4. When `scene.content.type` is `"color"`, keep rendering the assigned colour.
-5. Re-render on viewport resize, since the mapping depends on it.
+5. When it advertises `image` and receives `scene.content.type` `"image"`,
+   load the server-supplied same-origin URL, decode it, draw one centered-cover
+   image over the **whole logical wall**
+   and map only this tablet's visible rect to its viewport. While loading or on
+   failure, show an unmistakable diagnostic rather than a blank or silently
+   stale surface; ignore a late decode for a superseded generation/revision.
+   An unplaced tablet reports `NO PLACEMENT` instead of showing an independent
+   image preview.
+6. Re-render on viewport resize, since the mapping depends on it.
 
 ---
 
-## Reserved: still images (not implemented)
-
-The shape is fixed now so it does not have to change when it lands. Nothing
-serves or renders an image yet; a `PUT /scene` asking for one is a `422`.
+## Still images
 
 - **Assets** are curated files in a server-owned directory, **outside** the
-  frontend static mounts, inventoried as opaque IDs with intrinsic dimensions
-  and MIME type. They are served same-origin and read-only. The controller
-  sends an asset **ID**, never a filesystem path or an arbitrary URL, and there
-  is no upload endpoint until there is authentication.
+  frontend static mounts (`TABLET_WALL_ASSET_DIR`, default `./assets`). Only
+  top-level, regular, non-symlink JPEG and PNG files are inventoried; animated,
+  corrupt, misleadingly named, oversized (over 10 MiB or 12 megapixels), and
+  rotated-by-EXIF files are rejected. The opaque ID is `sha256:` followed by
+  the lowercase SHA-256 of the file bytes: a rename preserves identity, while
+  replacing bytes creates a new asset; identical bytes have one identity.
+  `GET /assets` lists ID, display name, MIME type, intrinsic dimensions, byte
+  size and same-origin URL; `GET /assets/{id}` serves only validated bytes,
+  read-only, with no upload or arbitrary path/URL endpoint. Inventory refreshes
+  on request. Any client able to reach the LAN server may read these images;
+  do not curate sensitive assets until an access boundary exists.
+- **Inventory response** is `{ "assets": [{ "id": "sha256:…",
+  "name": "Poster.png", "mime": "image/png", "intrinsicWidth": 3840,
+  "intrinsicHeight": 2160, "bytes": 2481234,
+  "url": "/assets/sha256:…" }] }`. Unknown, removed, or changed IDs
+  return `404` from `GET /assets/{id}`. Asset bytes carry the validated
+  `Content-Type`, `nosniff`, and an immutable cache policy; inventory must not
+  be cached (`Cache-Control: no-store`) because it is a refreshable view. A
+  directory that does not yet exist has an empty inventory; an existing
+  directory that cannot be scanned fails rather than claiming to be empty.
+- **Descriptor** on `GET /wall`, controller frames and capable-device `wall`
+  frames is `{ "type": "image", "asset": "sha256:…",
+  "url": "/assets/sha256:…", "fit": "cover", "intrinsicWidth": 3840,
+  "intrinsicHeight": 2160 }`. The server composes the URL; it is not persisted.
+  Derived dimensions stay in the persisted scene so a now-missing asset can
+  still be identified and rendered as an explicit failure, not silently
+  converted to colour. Only `cover` is currently supported.
 - **Fit** is centered `cover` of the image onto the **entire logical wall**:
   with image `Iw × Ih` and wall `W × H`, scale by `max(W/Iw, H/Ih)` and centre
   the overflow. Every tablet then applies the *same* global transform and clips
   to its own visible rect. Covering the image independently into each tablet's
   visible rect would destroy the seams, because each tablet would choose a
-  different scale.
-- A device that has not advertised the `image` capability is never sent image
-  content; it falls back to colour and the controller marks it unsupported.
+  different scale. For transparent PNG pixels, every tablet first paints the
+  same opaque wall background (`#0b1120`), not its individually assigned
+  colour, so alpha cannot open a seam.
+- A device that has not advertised the `image` capability receives the **same**
+  generation, revision and placement but `scene.content` is rewritten to
+  `{ "type": "color" }` in its own `wall` frame, without an asset URL. The
+  controller still receives the actual image scene and marks online, placed
+  devices lacking the capability as a partial-wall warning; offline and
+  unknown-capability reservations are reported separately.
 - A missing or undecodable asset must not present as a blank wall: show a
-  visible error state and report it.
+  visible error state on the tablet. The controller can identify a missing
+  asset by refreshing its inventory; there is no per-device render-status
+  message yet, so it cannot assert that pixels were displayed. The asset ID
+  remains in the active scene until an operator explicitly switches or
+  replaces the content; inventory changes do not bump the wall revision. If
+  the original bytes reappear, retry the load on the device (or reconnect);
+  the file returning alone does not push a new wall revision.
 
 ## Persistence
 
@@ -533,5 +583,3 @@ would not survive a restart.
 The generation exists because of this: a restored or replaced database can come
 back at a lower revision than a connected tablet holds, and the client must
 resynchronise rather than reject the server's state as stale.
-
-

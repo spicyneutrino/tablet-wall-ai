@@ -45,6 +45,7 @@ Thumbs.db
 *.db
 *.sqlite
 *.sqlite3
+assets/
 
 # Temporary files
 tmp/

@@ -18,7 +18,7 @@ from typing import Any
 
 from fastapi import WebSocket
 
-from tabletwall.protocol import HEARTBEAT_TIMEOUT_S
+from tabletwall.protocol import HEARTBEAT_TIMEOUT_S, _asset_url
 
 # Wall defaults (PROTOCOL.md "Wall state"): a 2x1 wall of landscape panels.
 DEFAULT_WALL_WIDTH = 2000
@@ -122,12 +122,32 @@ def _placement_for_client(placement: dict[str, Any] | None) -> dict[str, Any] | 
     }
 
 
+def _project_scene(scene: dict[str, Any]) -> dict[str, Any]:
+    """A detached scene copy with its wire-only fields composed in.
+
+    Image content gains the server-composed same-origin URL, derived from the
+    persisted asset ID alone (PROTOCOL.md "Still images": "The server composes
+    the URL; it is not persisted"). A now-missing asset is projected exactly
+    like any other — same ID, same derived dimensions, same URL — so the
+    client can report an explicit failure instead of the wall silently
+    becoming colour, and composing adds no state, so an inventory change can
+    never bump the revision.
+    """
+    scene = deepcopy(scene)
+    content = scene["content"]
+    if content.get("type") == "image" and isinstance(content.get("asset"), str):
+        content["url"] = _asset_url(content["asset"])
+    return scene
+
+
 def _wall_state() -> dict[str, Any]:
     """The whole wall state in one read, in the ``GET /wall`` wire shape.
 
     A detached copy, safe to hand to a caller or a frame: the layout fields
     are flattened to the top level, with ``scene``, ``revision``, and
-    ``generation`` beside them (PROTOCOL.md "HTTP (v2 additions)").
+    ``generation`` beside them (PROTOCOL.md "HTTP (v2 additions)"). The scene
+    is projected through ``_project_scene``, so an image scene carries its
+    composed asset URL here while the live (and persisted) wall never does.
     """
     layout = wall["layout"]
     return {
@@ -139,7 +159,7 @@ def _wall_state() -> dict[str, Any]:
             device_id: {**placement, "bezel": dict(placement["bezel"])}
             for device_id, placement in layout["placements"].items()
         },
-        "scene": deepcopy(wall["scene"]),
+        "scene": _project_scene(wall["scene"]),
     }
 
 
@@ -149,14 +169,20 @@ def _wall_frame(device_id: str, record: dict[str, Any]) -> dict[str, Any]:
     The frame is the complete presentation for this device: the wall's
     dimensions, its own placement, the scene, and both ordering tokens.
 
-    Per-device content downgrade: a device that did not advertise the
-    ``calibration`` cap is never asked to render a calibration pattern, so it
-    is sent ``color`` content instead.
+    Per-device content downgrade: a device that did not advertise a cap is
+    never asked to render what that cap covers, so it is sent ``color``
+    content instead. That applies to ``image`` as well — a legacy version-2
+    client (no caps at all) or one without the ``image`` cap gets colour and
+    no asset URL, while a capable device gets the full descriptor with its
+    composed URL (PROTOCOL.md "Still images").
     """
-    scene = deepcopy(wall["scene"])
-    if scene["content"].get("type") == "calibration" and "calibration" not in record.get(
-        "caps", ()
-    ):
+    scene = _project_scene(wall["scene"])
+    caps = record.get("caps", ())
+    content = scene["content"]
+    if content.get("type") == "calibration" and "calibration" not in caps:
+        # Replacing the whole content object drops any asset URL with it.
+        scene["content"] = {"type": "color"}
+    elif content.get("type") == "image" and "image" not in caps:
         scene["content"] = {"type": "color"}
     layout = wall["layout"]
     return {

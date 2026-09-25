@@ -25,9 +25,11 @@ body {
 }
 
 /*
- * Calibration / placement surface. Hidden by default so colour mode is
- * exactly the plain painted background; client.js flips it to `display:
- * block` only while it has something to draw. Sits under the status pill.
+ * Calibration / image surface. Hidden by default so colour mode is exactly
+ * the plain painted background; client.js flips it to `display: block` only
+ * while it has something to draw — a calibration pattern, a wall-wide image
+ * (or its loading / failure panel). Sits under the status pill, and ignores
+ * the pointer: a tap-to-retry is handled on the document instead.
  */
 #surface {
     display: none;
