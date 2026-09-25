@@ -8,13 +8,13 @@ drives what they show.
 
 This project began as a copy of `tablet-wall`. New development happens here.
 
-> **Status: Phase 2 under way.** Tablets self-register, hold a live WebSocket,
-> heartbeat, and reconnect on their own. The controller is an operator
-> dashboard that shows the wall live, places tablets on a shared wall canvas,
-> and drives a calibration pattern to check the geometry. Content beyond colour
-> and calibration is not implemented, and there is still no persistence and no
-> authentication — see [Known limitations](#known-limitations) and
-> [Roadmap](#roadmap).
+> **Status: Phase 2 in progress.** Tablets self-register, hold a live
+> WebSocket, heartbeat, and reconnect on their own. The controller is an
+> operator dashboard that shows the wall live, places tablets on a shared wall
+> canvas, and drives a calibration pattern to check the geometry. The active
+> layout and scene persist across restarts. Still images are not implemented
+> yet, and there is no authentication — see
+> [Known limitations](#known-limitations) and [Roadmap](#roadmap).
 
 ## Requirements
 
@@ -134,8 +134,10 @@ and every documented close code.
   and a restart resynchronises tablets rather than blanking them. But devices,
   presence, and heartbeat timestamps live in memory: after a restart the roster
   is empty until tablets re-register, which they do on their own. A placement
-  can therefore be momentarily orphaned until its device comes back. Nothing
-  else about Phase 3 — authentication, roster persistence, ops — is in yet.
+  whose device has not come back yet is shown as a **vacant reservation** and
+  can be released by hand; it is deliberately *not* discarded, because a tablet
+  that returns should reclaim the slot it had. Nothing else about Phase 3 —
+  authentication, roster persistence, ops — is in yet.
 - **Bezels are abstract units, not millimetres.** Wall units are a layout
   convenience, deliberately not physical measurement: panel sizes, browser
   chrome, and zoom all make millimetres unreliable from a browser. A
@@ -193,7 +195,10 @@ and every documented close code.
 - [x] Add heartbeats, expiry, and deregistration so `last_seen` is honest
 - [x] Add reconnect with backoff to `client.js`
 
-**Phase 2 — make it a wall**
+**Phase 2 — a coherent wall of still images**
+
+*Definition of done: a curated still image displays as one coherent wall, and
+the operator can save and recover its arrangement and presentation.*
 
 - [x] Protocol v2: version negotiation and capability advertisement
 - [x] Wall coordinate space, placements, and bezel insets
@@ -201,15 +206,26 @@ and every documented close code.
 - [x] Client: calibration rendering with a verified seam
 - [x] Separate layout from scene; add the generation reset rule
 - [x] Persist the active layout and scene (SQLite)
-- [ ] Shared still image sliced across tablets
-- [ ] Server-time clock sync so playback lines up
-- [ ] Save and recall named layouts and scenes
-- [ ] Video, gated behind capability detection and real-tablet testing
+- [ ] **2a** Integrity: removable vacant reservations, persist-before-apply, honest controller content states
+- [ ] **2b** Curated assets and the still-image wall
+- [ ] **2c** Named save/recall — closes Phase 2
 
-**Phase 3 — ops**
+Clock sync and video are **not** Phase 2. A still image needs no shared playback
+clock, and clock sync without a timed medium is cost with no visible capability.
 
-- [ ] Persist the roster (SQLite)
-- [ ] Controller auth token
-- [ ] HTTPS, systemd unit, structured logging
-- [ ] Kiosk-mode setup docs (Guided Access / Fully Kiosk Browser)
-- [ ] ruff + mypy + CI
+**Phase 3 — safe, unattended operation**
+
+- [ ] **3a** Trust boundary: authenticate controller mutations and the controller socket; device identity and pairing
+- [ ] **3b** HTTPS, deployment service, kiosk/fullscreen guidance, backups
+- [ ] **3c** Operational resilience: structured logs, health/readiness, asset-error states, soak tests
+- [ ] **3d** Engineering gate: ruff, targeted mypy, CI (basic CI starts in 2a)
+
+**Phase 4 — timed media, only if validated**
+
+- [ ] Prototype real-tablet video decoding and synchronisation, then design clock estimation, scheduled starts, drift correction, and buffering fallback. Proceed only if that prototype shows acceptable seams.
+
+---
+
+**There is no AI capability, and none is planned.** The project name is
+`tablet-wall-ai` for historical reasons; nothing in it uses a model, and no
+schema or roadmap space is reserved on the assumption that something will.
