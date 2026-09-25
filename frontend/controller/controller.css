@@ -541,6 +541,21 @@ body {
     cursor: not-allowed;
 }
 
+/* Amber caption under the scene control: shown only when the server
+   reports content this control does not offer, so "color" never stands
+   in for something the controller does not recognise. */
+.content-state {
+    margin: 0;
+    max-width: 34ch;
+    font-size: 11px;
+    line-height: 1.45;
+    color: var(--amber);
+}
+
+.content-state[hidden] {
+    display: none;
+}
+
 .wall-arrange {
     display: flex;
     flex-wrap: wrap;
@@ -648,7 +663,9 @@ body {
     outline-style: dashed;
 }
 
-.map-pl[data-state="missing"] {
+/* A reservation: the tablet that owns this slot is not in the roster.
+   Amber and dotted — never green like online, never grey like offline. */
+.map-pl[data-state="vacant"] {
     outline-color: var(--amber);
     outline-style: dotted;
 }
@@ -677,6 +694,11 @@ body {
     box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.2);
 }
 
+.map-pl[data-state="vacant"] .map-vis {
+    background: #241d10;
+    box-shadow: inset 0 0 0 1px rgba(217, 161, 60, 0.55);
+}
+
 .map-label {
     font-family: var(--mono);
     font-size: var(--label-fs, 10px);
@@ -687,6 +709,18 @@ body {
 
 .map-pl[data-state="offline"] .map-label {
     color: var(--fg-mid);
+}
+
+/* "vacant · reserved" under the id: the text that keeps a reservation
+   from being read as a device that is merely offline. */
+.map-sub {
+    font-family: var(--mono);
+    font-size: 8px;
+    font-weight: 700;
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+    color: var(--amber);
+    white-space: nowrap;
 }
 
 .map-ar {
@@ -736,6 +770,11 @@ body {
     border: 1.5px dashed var(--fg-dim);
 }
 
+.lg-vacant {
+    border: 1.5px dotted var(--amber);
+    background: rgba(217, 161, 60, 0.14);
+}
+
 .lg-hatch {
     border: 1px solid var(--line-strong);
     background: repeating-linear-gradient(
@@ -750,6 +789,70 @@ body {
     height: 0;
     border-top: 11px solid var(--amber);
     border-left: 11px solid transparent;
+}
+
+/* ---------------------------------------------------------------- *
+ * Vacant reservations (placements without a roster device)
+ * ---------------------------------------------------------------- */
+
+.reservations {
+    margin-top: 10px;
+    padding: 8px 10px 9px;
+    border: 1px dashed rgba(217, 161, 60, 0.55);
+    background: rgba(217, 161, 60, 0.05);
+}
+
+.reservations[hidden] {
+    display: none;
+}
+
+.reservations .k {
+    color: var(--amber);
+}
+
+.res-hint {
+    margin: 3px 0 7px;
+    font-size: 11px;
+    line-height: 1.45;
+    color: var(--fg-dim);
+}
+
+.res-list {
+    list-style: none;
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+    margin: 0;
+    padding: 0;
+}
+
+.res-row {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 8px;
+}
+
+.res-row[data-busy="true"] {
+    opacity: 0.6;
+}
+
+.res-info {
+    display: flex;
+    align-items: baseline;
+    gap: 8px;
+    min-width: 0;
+    margin-right: auto;
+}
+
+.res-id {
+    font-size: 12px;
+    font-weight: 700;
+}
+
+.res-rect {
+    font-size: 11px;
+    color: var(--fg-dim);
 }
 
 /* ---------------------------------------------------------------- *

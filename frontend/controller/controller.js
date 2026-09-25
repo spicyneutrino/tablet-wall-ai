@@ -46,6 +46,7 @@
 
     const REQUEST_TIMEOUT_MS = 10000;
     const FORGET_CONFIRM_MS = 8000;
+    const RELEASE_CONFIRM_MS = 8000;
     const HEX_RE = /^#?[0-9a-fA-F]{6}$/;
 
     /* Wall units are abstract integers. A placement matches the device's
@@ -86,6 +87,7 @@
         wallWidth: document.getElementById("wall-width"),
         wallHeight: document.getElementById("wall-height"),
         wallContent: document.getElementById("wall-content"),
+        wallContentState: document.getElementById("wall-content-state"),
         btnWallSave: document.getElementById("btn-wall-save"),
         autoColumns: document.getElementById("auto-columns"),
         btnAuto: document.getElementById("btn-auto"),
@@ -93,6 +95,8 @@
         mapViewport: document.getElementById("map-viewport"),
         mapFrame: document.getElementById("map-frame"),
         mapEmpty: document.getElementById("map-empty"),
+        reservations: document.getElementById("reservations"),
+        resList: document.getElementById("res-list"),
         grid: document.getElementById("grid"),
         empty: document.getElementById("empty"),
         emptyConn: document.getElementById("empty-conn"),
@@ -127,6 +131,11 @@
     let globalColor = null;
     let confirmingId = null;
     let confirmTimer = null;
+
+    /* Vacant-reservation release: the same two-step confirm as Forget,
+     * but keyed to a placement id that has no tile to host the buttons. */
+    let confirmingReleaseId = null;
+    let confirmReleaseTimer = null;
 
     /** Full wall state (PROTOCOL.md "Wall state"); null until the snapshot
      *  delivers one. Sparse `placements` live inside it. */
@@ -285,17 +294,45 @@
         };
     }
 
+    /* The only content types this page can set: the server answers 422 to
+     * anything else, so nothing else is offered in the scene control. */
+    const SETTABLE_CONTENT = ["color", "calibration"];
+
+    function isSettableContent(type) {
+        return typeof type === "string" && SETTABLE_CONTENT.indexOf(type) !== -1;
+    }
+
     /**
-     * `scene.content.type`, reduced to the two values this control offers.
+     * `scene.content.type` exactly as the server reported it, or null when
+     * the payload carries no scene content at all.
      *
-     * Anything that is not `"calibration"` reads as `"color"`: that is the
-     * v1 fallback, and `"image"` is reserved in PROTOCOL.md but not
-     * implemented (the server answers 422 to a request for it), so it can
-     * never arrive here today.
+     * This must never round an unrecognised value down to `"color"`: the
+     * operator sees "color" and would believe the wall is showing colours
+     * when a newer server has moved on (PROTOCOL.md reserves `"image"` and
+     * may add more). The raw value is what `contentLabel` explains.
      */
     function sceneContentType(raw) {
         const content = raw && raw.scene && raw.scene.content;
-        return content && content.type === "calibration" ? "calibration" : "color";
+        if (!content || typeof content.type !== "string") return null;
+        const type = content.type.trim();
+        return type === "" ? null : type;
+    }
+
+    /**
+     * Honest, operator-facing name for a scene content type.
+     *
+     * `"color"` and `"calibration"` read as themselves — the two the control
+     * offers. `"image"` is named as what it is (this page cannot set it).
+     * Anything else is flagged as unsupported rather than shown as colour.
+     */
+    function contentLabel(type) {
+        if (type === null) return "no scene content reported";
+        if (isSettableContent(type)) return type;
+        if (type === "image") {
+            return "image content — this page cannot set it (only color and calibration)";
+        }
+        return "unsupported content type: " + type +
+            " — this page cannot set it (only color and calibration)";
     }
 
     /**
@@ -338,22 +375,6 @@
 
     function savedPlacement(deviceId) {
         return wall && wall.placements ? wall.placements[deviceId] || null : null;
-    }
-
-    /**
-     * Forget the footprint that belonged to a device that left the roster.
-     *
-     * PROTOCOL.md specifies that deleting a device also drops its placement,
-     * and the server broadcasts the new wall, so this is belt-and-braces: it
-     * keeps the diagram correct even if the `device_removed` event arrives
-     * before the matching `wall_updated`, or arrives without one.
-     */
-    function dropPlacement(deviceId) {
-        if (!wall || !wall.placements[deviceId]) return false;
-        const placements = Object.assign({}, wall.placements);
-        delete placements[deviceId];
-        wall.placements = placements;
-        return true;
     }
 
     /** "%" position inside the wall or a footprint. */
@@ -550,11 +571,14 @@
                 // Another controller issued the DELETE, or this one did and the
                 // echo arrived after the local removal. Either way the device is
                 // gone from the roster, so drop any tile still showing it.
+                // Its placement is NOT touched here: the server owns it, and a
+                // placement outlives the roster as a reservation (PROTOCOL.md
+                // "DELETE /devices/{device_id}/placement"). The diagram keeps
+                // showing the footprint — now as "vacant · reserved" — until a
+                // `wall_updated` says the server really cleared it.
                 const id = msg.device_id;
                 if (typeof id !== "string") return;
-                const known = devices.delete(id);
-                const hadPlacement = dropPlacement(id);
-                if (!known && !hadPlacement) return;
+                if (!devices.delete(id)) return;
                 syncTiles();
                 break;
             }
@@ -587,7 +611,7 @@
                 } else {
                     logStatus(
                         "Wall updated — revision " + wall.revision + " · scene " +
-                            wall.contentType + ".",
+                            contentLabel(wall.contentType) + ".",
                         "info"
                     );
                 }
@@ -845,6 +869,8 @@
         // still in flight (it is sent immediately, not on form submit).
         if (wall && pendingContent === null) {
             renderWallContent(wall.contentType);
+        } else if (!wall) {
+            renderContentState(null); // nothing reported: claim nothing
         }
 
         setWallControlsEnabled(wallReady());
@@ -856,14 +882,37 @@
         }
     }
 
+    /**
+     * Press the segment matching the server's content — and nothing when
+     * the content is something this page cannot set, so the control never
+     * claims a type it does not have. The state line below it says what the
+     * server actually reported in that case.
+     */
     function renderWallContent(type) {
-        if (!el.wallContent) return;
-        for (const button of el.wallContent.querySelectorAll(".seg-opt")) {
-            button.setAttribute(
-                "aria-pressed",
-                String(button.dataset.content === type)
-            );
+        if (el.wallContent) {
+            const pressed = isSettableContent(type) ? type : null;
+            for (const button of el.wallContent.querySelectorAll(".seg-opt")) {
+                button.setAttribute(
+                    "aria-pressed",
+                    String(button.dataset.content === pressed)
+                );
+            }
         }
+        renderContentState(type);
+    }
+
+    /** Amber caption under the scene control; silent when there is nothing
+     *  to warn about (settable content, or no scene reported at all). */
+    function renderContentState(type) {
+        const node = el.wallContentState;
+        if (!node) return;
+        if (type === null || isSettableContent(type)) {
+            node.hidden = true;
+            node.textContent = "";
+            return;
+        }
+        node.hidden = false;
+        node.textContent = contentLabel(type);
     }
 
     function setWallControlsEnabled(on) {
@@ -889,6 +938,11 @@
      * ------------------------------------------------------------------ */
 
     function renderWallMap() {
+        // The reservation list keys off the same roster + wall state, so it
+        // is redrawn here: a device leaving the roster turns its footprint
+        // into a vacant reservation, which is exactly a roster change.
+        renderReservations();
+
         const frame = el.mapFrame;
         frame.textContent = "";
 
@@ -923,15 +977,19 @@
         frame.style.height = Math.round(pxH) + "px";
 
         let placed = 0;
-        let orphans = 0;
+        let vacant = 0;
         let warns = 0;
 
+        // Every placement is drawn — including ones whose device is absent
+        // from the roster. Those are reservations (the tablet that returns
+        // reclaims its slot), not stale leftovers, so they are rendered and
+        // labelled "vacant · reserved" rather than skipped.
         for (const id of Object.keys(wall.placements)) {
             const device = devices.get(id);
             if (device) {
                 placed += 1;
             } else {
-                orphans += 1; // placement left behind by a removed device
+                vacant += 1;
             }
             const box = buildMapPlacement(
                 id, wall.placements[id], device, wallW, wallH, pxW, pxH
@@ -940,7 +998,7 @@
             frame.appendChild(box);
         }
 
-        if (placed === 0 && orphans === 0) {
+        if (placed === 0 && vacant === 0) {
             const note = document.createElement("p");
             note.className = "map-none";
             note.textContent = "no placements yet";
@@ -950,7 +1008,7 @@
         const unplaced = Math.max(0, devices.size - placed);
         const bits = [wallW + " × " + wallH + " u", placed + " placed"];
         if (unplaced > 0) bits.push(unplaced + " unplaced");
-        if (orphans > 0) bits.push(orphans + " orphaned");
+        if (vacant > 0) bits.push(vacant + " vacant · reserved");
         if (warns > 0) bits.push(warns + " aspect mismatch");
         el.mapCaption.textContent = bits.join(" · ");
     }
@@ -970,7 +1028,7 @@
         box.style.width = pct(placement.w, wallW);
         box.style.height = pct(placement.h, wallH);
         box.dataset.state = !device
-            ? "missing"
+            ? "vacant" // reserved for a tablet that is not in the roster
             : device.online === true ? "online" : "offline";
         box.dataset.aspect = mismatch ? "mismatch" : "match";
 
@@ -981,7 +1039,7 @@
             "device " + shortId(id) +
             " · footprint " + placement.x + "," + placement.y +
             " " + placement.w + "×" + placement.h +
-            (device ? "" : " · no longer in the roster") +
+            (device ? "" : " · vacant · reserved — not in the roster") +
             (mismatch
                 ? " · aspect mismatch: visible " + fmtAspect(visAspect) +
                   " vs viewport " + fmtAspect(devAspect) +
@@ -993,6 +1051,11 @@
         if (device) {
             box.addEventListener("click", function () {
                 focusTile(id);
+            });
+        } else {
+            // No tile to jump to — hand focus to its Release control instead.
+            box.addEventListener("click", function () {
+                focusRelease(id);
             });
         }
 
@@ -1014,6 +1077,15 @@
                 Math.max(6, Math.min(11, Math.round(room / 6))) + "px"
             );
             inset.appendChild(label);
+
+            if (!device) {
+                // The mark that keeps a reservation from reading as a device:
+                // amber sub-label under the id, matching the outline.
+                const sub = document.createElement("span");
+                sub.className = "map-sub";
+                sub.textContent = "vacant · reserved";
+                inset.appendChild(sub);
+            }
 
             if (mismatch && pxBoxW >= 76 && pxBoxH >= 34) {
                 const ratios = document.createElement("span");
@@ -1056,6 +1128,144 @@
             tile.flashTimer = null;
             if (tiles.get(deviceId) === tile) tile.el.dataset.flash = "false";
         }, FOCUS_FLASH_MS);
+    }
+
+    /* ------------------------------------------------------------------ *
+     * Vacant reservations — placements without a roster device
+     *
+     * Placements are persisted; the roster is not. After a restart a
+     * placement can belong to a device that has not re-registered — a
+     * reservation, not a leak (PROTOCOL.md "DELETE /devices/{device_id}/
+     * placement"). The tablet that returns reclaims its slot, so the only
+     * way to give the space back is this explicit release, offered here
+     * behind the same two-step confirm as Forget.
+     * ------------------------------------------------------------------ */
+
+    /** Placement ids that hold a slot for a device the roster has forgotten. */
+    function vacantIds() {
+        if (!wall) return [];
+        return Object.keys(wall.placements)
+            .filter(function (id) { return !devices.has(id); })
+            .sort(compareIds);
+    }
+
+    function reservationRow(deviceId) {
+        if (!el.resList) return null;
+        for (const row of el.resList.children) {
+            if (row.dataset.res === deviceId) return row;
+        }
+        return null;
+    }
+
+    function endReleaseConfirm() {
+        if (confirmReleaseTimer) clearTimeout(confirmReleaseTimer);
+        confirmReleaseTimer = null;
+        confirmingReleaseId = null;
+    }
+
+    function renderReservations() {
+        const wrap = el.reservations;
+        const list = el.resList;
+        if (!wrap || !list) return;
+
+        const ids = vacantIds();
+        // A confirmation whose reservation has vanished (released by another
+        // controller, tablet returned) is cancelled rather than rebuilt.
+        if (confirmingReleaseId && ids.indexOf(confirmingReleaseId) === -1) {
+            endReleaseConfirm();
+        }
+
+        list.textContent = "";
+        if (ids.length === 0) {
+            wrap.hidden = true;
+            return;
+        }
+        wrap.hidden = false;
+        for (const id of ids) {
+            list.appendChild(buildReservationRow(id, wall.placements[id]));
+        }
+    }
+
+    function buildReservationRow(id, placement) {
+        const row = document.createElement("li");
+        row.className = "res-row";
+        row.dataset.res = id;
+
+        const info = document.createElement("span");
+        info.className = "res-info";
+        const devId = document.createElement("span");
+        devId.className = "res-id mono";
+        devId.textContent = shortId(id);
+        devId.title = id;
+        const rect = document.createElement("span");
+        rect.className = "res-rect mono";
+        rect.textContent =
+            placement.x + "," + placement.y + " " + placement.w + "×" + placement.h;
+        info.append(devId, rect);
+        row.appendChild(info);
+
+        if (confirmingReleaseId === id) {
+            const question = document.createElement("span");
+            question.className = "forget-q";
+            question.textContent = "Release this reservation?";
+
+            const yes = document.createElement("button");
+            yes.type = "button";
+            yes.className = "btn btn-danger btn-sm";
+            yes.dataset.action = "release-confirm";
+            yes.textContent = "Release";
+
+            const no = document.createElement("button");
+            no.type = "button";
+            no.className = "btn btn-ghost btn-sm";
+            no.dataset.action = "release-cancel";
+            no.textContent = "Cancel";
+
+            row.append(question, yes, no);
+        } else {
+            const release = document.createElement("button");
+            release.type = "button";
+            release.className = "btn btn-danger btn-sm";
+            release.dataset.action = "release";
+            release.textContent = "Release";
+            release.title =
+                "Give this reserved slot back (DELETE the placement) — " +
+                "the tablet that returns will have to be placed again";
+            row.appendChild(release);
+        }
+        return row;
+    }
+
+    /** Map click on a vacant footprint → its Release control, the way a
+     *  roster footprint jumps to its tile. Focus only; the confirm is a
+     *  deliberate second step. */
+    function focusRelease(deviceId) {
+        const row = reservationRow(deviceId);
+        const button = row && row.querySelector("button[data-action]");
+        if (!button) return;
+        button.focus();
+    }
+
+    function beginRelease(deviceId) {
+        if (!wall || !wall.placements[deviceId] || devices.has(deviceId)) return;
+        if (confirmingReleaseId && confirmingReleaseId !== deviceId) {
+            cancelRelease(confirmingReleaseId);
+        }
+        confirmingReleaseId = deviceId;
+        renderReservations();
+        if (confirmReleaseTimer) clearTimeout(confirmReleaseTimer);
+        confirmReleaseTimer = setTimeout(function () {
+            cancelRelease(deviceId);
+        }, RELEASE_CONFIRM_MS);
+        const row = reservationRow(deviceId);
+        const yes = row && row.querySelector('[data-action="release-confirm"]');
+        if (yes) yes.focus();
+    }
+
+    function cancelRelease(deviceId) {
+        if (confirmingReleaseId !== deviceId) return;
+        endReleaseConfirm();
+        renderReservations();
     }
 
     /* ------------------------------------------------------------------ *
@@ -1379,11 +1589,15 @@
 
     function dropDevice(deviceId) {
         devices.delete(deviceId);
-        dropPlacement(deviceId);
+        // Deliberately does NOT touch wall.placements: the server decides
+        // whether a placement survives (a device delete drops its own; a
+        // mere roster gap leaves a reservation) and broadcasts `wall_updated`
+        // when it changes. Dropping it here would erase a reservation from
+        // the diagram before the server has said anything.
         removeTile(deviceId);
         renderTally();
         renderEmpty();
-        renderWallMap(); // the diagram may still be showing its placement
+        renderWallMap(); // its footprint now reads as a vacant reservation
     }
 
     /* ------------------------------------------------------------------ *
@@ -1414,7 +1628,9 @@
                 wall = {
                     width: width,
                     height: height,
-                    contentType: wall ? wall.contentType : "color",
+                    // No scene is known here (the response was not a wall
+                    // state), so none is claimed.
+                    contentType: wall ? wall.contentType : null,
                     generation: wall ? wall.generation : null,
                     revision: wall ? wall.revision : 0,
                     placements: wall ? wall.placements : {}
@@ -1590,6 +1806,61 @@
         }
     }
 
+    /**
+     * Release a vacant reservation: `DELETE /devices/{id}/placement`.
+     *
+     * This endpoint answers 200 when a placement exists even though the
+     * roster has forgotten the device, which is exactly the case a tile
+     * cannot reach. The placement is removed locally only because the
+     * server just confirmed it removed the placement; otherwise the server
+     * stays authoritative and `wall_updated` is what clears the diagram.
+     */
+    async function releasePlacement(deviceId) {
+        endReleaseConfirm(); // the confirm step is done; the request is in flight
+
+        const row = reservationRow(deviceId);
+        if (row) {
+            row.dataset.busy = "true";
+            for (const button of row.querySelectorAll("button")) button.disabled = true;
+        }
+
+        try {
+            await requestJson(
+                "DELETE",
+                "/devices/" + encodeURIComponent(deviceId) + "/placement"
+            );
+            if (wall && wall.placements[deviceId]) {
+                const placements = Object.assign({}, wall.placements);
+                delete placements[deviceId];
+                wall.placements = placements;
+            }
+            renderWall();
+            logStatus("Released the reservation for #" + shortId(deviceId) + ".", "ok");
+        } catch (err) {
+            if (err.status === 404) {
+                // Neither the device nor a placement exists any more — the
+                // server has already forgotten it, so this page may too.
+                if (wall && wall.placements[deviceId]) {
+                    const placements = Object.assign({}, wall.placements);
+                    delete placements[deviceId];
+                    wall.placements = placements;
+                }
+                renderWall();
+                logStatus(
+                    "Reservation for #" + shortId(deviceId) + " was already gone.",
+                    "info"
+                );
+            } else {
+                logStatus(
+                    "Could not release the reservation for #" + shortId(deviceId) +
+                        ": " + err.message,
+                    "err"
+                );
+                renderReservations(); // rebuild the row with working buttons
+            }
+        }
+    }
+
     /* ------------------------------------------------------------------ *
      * Forget — two-step confirmation
      * ------------------------------------------------------------------ */
@@ -1703,10 +1974,35 @@
                 const button = event.target.closest("button[data-content]");
                 if (!button || button.disabled) return;
                 const type = button.dataset.content;
-                if (type !== "color" && type !== "calibration") return;
+                if (!isSettableContent(type)) return; // only what the server accepts
                 if (pendingContent !== null) return; // one save at a time
                 if (wall && wall.contentType === type) return; // already there
                 saveSceneContent(type);
+            });
+        }
+
+        // Vacant reservations: Release is a two-step confirm, like Forget.
+        if (el.resList) {
+            el.resList.addEventListener("click", function (event) {
+                const button = event.target.closest("button[data-action]");
+                if (!button || button.disabled) return;
+                const row = button.closest(".res-row");
+                if (!row) return;
+                const id = row.dataset.res;
+
+                switch (button.dataset.action) {
+                    case "release":
+                        beginRelease(id);
+                        break;
+                    case "release-cancel":
+                        cancelRelease(id);
+                        break;
+                    case "release-confirm":
+                        releasePlacement(id);
+                        break;
+                    default:
+                        break;
+                }
             });
         }
 

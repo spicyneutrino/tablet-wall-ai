@@ -406,16 +406,73 @@
     /* Single entry point for every state change that affects the screen. */
     function render() {
         if (!wallState) return; /* no wall frame yet: colour-only surface */
-        if (wallState.contentType !== "calibration") {
+
+        if (wallState.contentType === "calibration") {
+            showCanvas(true);
+            if (!wallState.visible) {
+                drawUnplaced();
+            } else {
+                drawCalibration();
+            }
+            return;
+        }
+
+        /* Absent or colour content is the colour surface. Anything else is
+           content this page cannot draw — `image` today, or a type a newer
+           server invented. Falling back to the assigned colour would look
+           exactly like a healthy wall while showing the wrong thing, so say so
+           on the panel, where whoever is standing in front of it can see it. */
+        var type = wallState.contentType;
+        if (type === null || type === undefined || type === "color") {
             showCanvas(false); /* colour content: today's behaviour, untouched */
             return;
         }
+
         showCanvas(true);
-        if (!wallState.visible) {
-            drawUnplaced();
-        } else {
-            drawCalibration();
-        }
+        drawUnsupported(type);
+    }
+
+    /* Content this page cannot render. Saying so beats showing a colour. */
+    function drawUnsupported(type) {
+        var vp = viewportSize();
+        if (!vp) return;
+        var view = prepareCanvas(vp.w, vp.h);
+        if (!view) return;
+        var ctx = view.ctx;
+        ctx.setTransform(view.dpr, 0, 0, view.dpr, 0, 0);
+
+        ctx.fillStyle = PATTERN.background;
+        ctx.fillRect(0, 0, vp.w, vp.h);
+
+        var unit = Math.min(vp.w, vp.h);
+        var idSize = Math.max(28, unit * 0.16);
+        var noteSize = Math.max(16, unit * 0.07);
+        var hintSize = Math.max(12, unit * 0.034);
+        var midX = vp.w / 2;
+        var midY = vp.h / 2;
+
+        ctx.textAlign = "center";
+        ctx.textBaseline = "middle";
+
+        ctx.fillStyle = PATTERN.unplacedId;
+        ctx.font = "700 " + idSize + "px " + FONT_STACK;
+        ctx.fillText(shortDeviceId(), midX, midY - idSize * 0.45);
+
+        ctx.fillStyle = PATTERN.unplacedNote;
+        ctx.font = "700 " + noteSize + "px " + FONT_STACK;
+        ctx.fillText(
+            "CANNOT DISPLAY " + String(type).toUpperCase(),
+            midX,
+            midY + idSize * 0.35
+        );
+
+        ctx.fillStyle = PATTERN.unplacedHint;
+        ctx.font = hintSize + "px " + FONT_STACK;
+        ctx.fillText(
+            "This tablet does not render that content type.",
+            midX,
+            midY + idSize * 0.35 + noteSize
+        );
     }
 
     function drawCalibration() {

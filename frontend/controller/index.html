@@ -79,6 +79,11 @@
                             <button type="button" class="seg-opt" data-content="calibration"
                                     aria-pressed="false" disabled>calibration</button>
                         </div>
+                        <!-- Only color and calibration are offered: the server
+                             answers 422 to anything else. This line appears
+                             when the server reports content this page cannot
+                             set, so the control never pretends it is colour. -->
+                        <p class="content-state" id="wall-content-state" hidden></p>
                     </div>
                     <button type="submit" class="btn btn-primary" id="btn-wall-save" disabled>Save wall</button>
                 </form>
@@ -92,7 +97,8 @@
                     <button type="button" class="btn" id="btn-auto" disabled>Arrange online</button>
                     <p class="arrange-hint">
                         Lays every online tablet out on a grid and replaces its placement.
-                        Offline tablets keep what they have. Blank columns = server picks.
+                        Offline tablets keep what they have, and vacant reservations are
+                        left alone — releasing one is a separate action. Blank columns = server picks.
                     </p>
                 </div>
             </div>
@@ -106,8 +112,22 @@
                 <div class="map-legend" aria-label="Diagram legend">
                     <span class="lg"><span class="lg-box lg-online" aria-hidden="true"></span>online</span>
                     <span class="lg"><span class="lg-box lg-offline" aria-hidden="true"></span>offline</span>
+                    <span class="lg"><span class="lg-box lg-vacant" aria-hidden="true"></span>vacant · reserved</span>
                     <span class="lg"><span class="lg-box lg-hatch" aria-hidden="true"></span>bezel · hidden</span>
                     <span class="lg"><span class="lg-tri" aria-hidden="true"></span>aspect mismatch</span>
+                </div>
+
+                <!-- Placements whose device is absent from the roster. They
+                     are reservations, not leaks: the tablet that returns
+                     reclaims the slot, so the operator releases one only when
+                     it is not coming back. -->
+                <div class="reservations" id="reservations" hidden>
+                    <p class="k">Vacant reservations</p>
+                    <p class="res-hint">
+                        Slots kept for tablets that are not in the roster — a returning
+                        tablet reclaims its own. Auto-arrange never prunes these.
+                    </p>
+                    <ul class="res-list" id="res-list"></ul>
                 </div>
             </div>
         </div>
