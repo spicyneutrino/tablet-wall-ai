@@ -660,18 +660,20 @@ body {
     justify-content: center;
     gap: 2px;
     overflow: hidden;
-    background: rgba(255, 255, 255, 0.05);
+    /* Opaque on purpose: the hatch below is the bezel band, so the visible
+       rect must cover it wherever the bezel is zero. */
+    background: #191d23;
     box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.34);
 }
 
 .map-pl[data-state="online"] .map-vis {
-    background: rgba(53, 194, 93, 0.16);
-    box-shadow: inset 0 0 0 1px rgba(53, 194, 93, 0.55);
+    background: #14301f;
+    box-shadow: inset 0 0 0 1px rgba(53, 194, 93, 0.6);
 }
 
 .map-pl[data-state="offline"] .map-vis {
-    background: transparent;
-    box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.18);
+    background: #15181d;
+    box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.2);
 }
 
 .map-label {

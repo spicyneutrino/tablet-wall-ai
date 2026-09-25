@@ -310,6 +310,22 @@
         return wall && wall.placements ? wall.placements[deviceId] || null : null;
     }
 
+    /**
+     * Forget the footprint that belonged to a device that left the roster.
+     *
+     * PROTOCOL.md specifies that deleting a device also drops its placement,
+     * and the server broadcasts the new wall, so this is belt-and-braces: it
+     * keeps the diagram correct even if the `device_removed` event arrives
+     * before the matching `wall_updated`, or arrives without one.
+     */
+    function dropPlacement(deviceId) {
+        if (!wall || !wall.placements[deviceId]) return false;
+        const placements = Object.assign({}, wall.placements);
+        delete placements[deviceId];
+        wall.placements = placements;
+        return true;
+    }
+
     /** "%" position inside the wall or a footprint. */
     function pct(value, total) {
         return total > 0 ? (value / total) * 100 + "%" : "0%";
@@ -506,7 +522,9 @@
                 // gone from the roster, so drop any tile still showing it.
                 const id = msg.device_id;
                 if (typeof id !== "string") return;
-                if (!devices.delete(id)) return; // already gone locally
+                const known = devices.delete(id);
+                const hadPlacement = dropPlacement(id);
+                if (!known && !hadPlacement) return;
                 syncTiles();
                 break;
             }
@@ -1301,6 +1319,7 @@
 
     function dropDevice(deviceId) {
         devices.delete(deviceId);
+        dropPlacement(deviceId);
         removeTile(deviceId);
         renderTally();
         renderEmpty();
