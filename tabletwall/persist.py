@@ -80,9 +80,11 @@ def load_state() -> dict[str, Any] | None:
 def save_state(wall: Mapping[str, Any]) -> None:
     """Persist the wall state in one committed transaction.
 
-    Every mutating route calls this after the in-memory mutation and *before*
-    its broadcast, so a controller is never told about state that would not
-    survive a restart (PROTOCOL.md "Persistence").
+    Mutating routes call this on a *proposed* state (see ``main._commit_wall``)
+    and apply it to the live wall only after this returns, so the commit always
+    precedes both the in-memory mutation and the broadcast: a controller is
+    never told about state that would not survive a restart, and a failed save
+    leaves memory untouched (PROTOCOL.md "Persistence").
     """
     with _connection() as connection:
         connection.execute(

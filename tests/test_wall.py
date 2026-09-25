@@ -13,7 +13,10 @@ import re
 import uuid
 
 import pytest
+from fastapi.testclient import TestClient
 from starlette.websockets import WebSocketDisconnect
+
+import main
 
 DEVICE_ID = "0f8fad5b-d9cb-469f-a165-70867728950e"
 SECOND_ID = str(uuid.uuid4())
@@ -555,6 +558,11 @@ class TestPutScene:
             {"content": "calibration"},
             {},
             {"content": {"type": "calibration"}, "layout": "saved-wall"},
+            # Unknown keys *inside* the content object are 422 as well
+            # (PROTOCOL.md "Unknown keys"): ``mode`` was removed from the
+            # contract, so a client still sending it must be told no.
+            {"content": {"type": "color", "mode": "rainbow"}},
+            {"content": {"type": "calibration", "asset": "poster-1"}},
         ],
     )
     def test_put_scene_rejects_bad_bodies_with_422(self, client, body):
@@ -688,6 +696,65 @@ class TestPlacement:
         assert response.json()["placements"] == {}
         assert wall_state(client)["placements"] == {}
 
+    def test_delete_of_an_absent_device_with_a_placement_is_200(
+        self, client, device_payload
+    ):
+        """A reservation can outlive the roster (PROTOCOL.md).
+
+        Placements are persisted and the roster is not, so the device behind a
+        placement may be unknown. Releasing it is an explicit operator action
+        and must succeed on the strength of the placement alone.
+        """
+        register(client, device_payload, DEVICE_ID)
+        client.put(
+            f"/devices/{DEVICE_ID}/placement",
+            json={"x": 0, "y": 0, "w": 100, "h": 100},
+        )
+        before = wall_state(client)
+        # The roster is memory-only: exactly what a restart leaves behind.
+        main.devices.clear()
+
+        response = client.delete(f"/devices/{DEVICE_ID}/placement")
+
+        assert response.status_code == 200
+        state = response.json()
+        assert state["placements"] == {}
+        assert state["revision"] == before["revision"] + 1, (
+            "releasing a vacant slot is a real commit, not a silent no-op"
+        )
+        assert wall_state(client) == state
+
+    def test_a_reservation_survives_a_restart_and_can_be_released(
+        self, device_payload
+    ):
+        """Register + place, restart (roster gone, placement kept), release."""
+        with TestClient(main.app) as first:
+            register(first, device_payload, DEVICE_ID)
+            assert first.put(
+                f"/devices/{DEVICE_ID}/placement",
+                json={"x": 0, "y": 0, "w": 1000, "h": 1000},
+            ).status_code == 200
+
+        # A real restart loses the roster and the sockets (they are
+        # memory-only); the two TestClients below share a process, so drop
+        # them by hand exactly as the process exit would.
+        main.devices.clear()
+        main.device_sockets.clear()
+
+        with TestClient(main.app) as second:
+            # The roster was never persisted, but the placement was.
+            assert DEVICE_ID not in second.get("/devices").json()
+            assert DEVICE_ID in second.get("/wall").json()["placements"]
+
+            response = second.delete(f"/devices/{DEVICE_ID}/placement")
+
+            assert response.status_code == 200
+            assert response.json()["placements"] == {}
+
+        with TestClient(main.app) as third:
+            # The release was committed, not merely applied to memory.
+            assert third.get("/wall").json()["placements"] == {}
+
     @pytest.mark.parametrize(
         "device_id", [lambda: str(uuid.uuid4()), lambda: "not-a-uuid"]
     )
@@ -804,6 +871,32 @@ class TestWallAuto:
             "bezel": dict(ZERO_BEZEL),
         }
         assert THIRD_ID not in placements
+
+    def test_auto_keeps_a_vacant_reservation(self, client, device_payload):
+        """Auto-arranging must not silently destroy a slot a tablet is
+        expected to return to (PROTOCOL.md ``POST /wall/auto``)."""
+        register(client, device_payload, DEVICE_ID)
+        reserved = {"x": 7, "y": 8, "w": 900, "h": 400}
+        client.put(f"/devices/{DEVICE_ID}/placement", json=reserved)
+        # The roster is memory-only: the tablet never came back after a
+        # restart, so its placement is a reservation with no known device.
+        main.devices.clear()
+        register(client, device_payload, SECOND_ID)
+
+        with client.websocket_connect(device_url(SECOND_ID)):
+            response = client.post("/wall/auto", json={"columns": 1})
+
+        assert response.status_code == 200
+        placements = response.json()["placements"]
+        # The vacant reservation is untouched …
+        assert placements[DEVICE_ID] == {
+            "device_id": DEVICE_ID,
+            **reserved,
+            "bezel": dict(ZERO_BEZEL),
+        }
+        # … while the online device is arranged around it.
+        assert placements[SECOND_ID]["w"] == 2000
+        assert placements[SECOND_ID]["h"] == 1000
 
     def test_auto_with_an_empty_roster(self, client):
         response = client.post("/wall/auto")

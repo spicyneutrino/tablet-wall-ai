@@ -11,7 +11,9 @@ this module keeps the FastAPI app, lifespan, and routes.
 import asyncio
 import contextlib
 import json
+from collections.abc import Callable
 from contextlib import asynccontextmanager
+from copy import deepcopy
 from math import sqrt
 from typing import Any
 
@@ -149,9 +151,16 @@ class WallUpdate(BaseModel):
 
 
 class SceneContent(BaseModel):
-    """The scene's ``content`` object, discriminated by ``type``."""
+    """The scene's ``content`` object, discriminated by ``type``.
+
+    Unknown keys are forbidden here exactly as they are on the ``PUT``
+    bodies: a client still sending the removed ``mode`` field gets a 422
+    rather than having it quietly ignored (PROTOCOL.md "Unknown keys").
+    """
 
     type: str
+
+    model_config = ConfigDict(extra="forbid")
 
     @field_validator("type")
     @classmethod
@@ -220,6 +229,38 @@ class WallAutoCommand(BaseModel):
         if value is not None and value < 1:
             raise ValueError("columns must be a positive integer")
         return value
+
+
+# ---------------------------------------------------------------------------
+# commit boundary (PROTOCOL.md "Persistence")
+# ---------------------------------------------------------------------------
+
+
+def _commit_wall(change: Callable[[dict[str, Any]], None]) -> None:
+    """Persist a wall change, and only then let it into memory.
+
+    ``change`` applies one logical mutation to a wall-state dict. It runs
+    first on a **detached copy** of the live state, whose revision is bumped
+    and whose row is written; only once that write has committed does the same
+    ``change`` run on the live ``wall`` — mutated in place, because ``wall``
+    is re-exported through ``main`` and tests hold its identity — with the
+    same revision bump.
+
+    The ordering is the whole point: if ``save_state`` raises, nothing has
+    touched memory yet, so the live state, the database, and what subscribers
+    have been told all still agree, the route fails loudly as a 5xx, and no
+    broadcast follows (PROTOCOL.md "A commit happens before notification, so
+    a controller is never told about state that would not survive a
+    restart"). Every wall-mutating route commits through here.
+    """
+    proposed = deepcopy(wall)
+    change(proposed)
+    proposed["revision"] += 1
+    save_state(proposed)
+
+    # Reached only when the write committed.
+    change(wall)
+    wall["revision"] += 1
 
 
 # ---------------------------------------------------------------------------
@@ -329,18 +370,23 @@ async def delete_device(device_id: str):
     if key is None or key not in devices:
         raise HTTPException(status_code=404, detail="Unknown device")
 
-    # Both mutations happen before the first await, so no request can observe
-    # a half-removed device. The placement goes with the device: left behind,
-    # it keeps the wall map drawing a panel that no longer exists and reserves
-    # a hole on the wall that nothing can ever fill.
+    # The placement goes with the device: left behind, it keeps the wall map
+    # drawing a panel that no longer exists and reserves a hole on the wall
+    # that nothing can ever fill. The removal is *committed* first — the copy
+    # is persisted before the live wall is touched and long before the roster
+    # and socket entries are popped below — so a failed save cannot remove a
+    # device in memory while leaving its placement on disk.
+    dropped_placement = key in wall["layout"]["placements"]
+    if dropped_placement:
+        def apply(target: dict[str, Any]) -> None:
+            target["layout"]["placements"].pop(key, None)
+
+        _commit_wall(apply)
+
+    # Both pops happen before the first await, so no request can observe a
+    # half-removed device — and only after any wall change above is durable.
     record = devices.pop(key)
     websocket = device_sockets.pop(key, None)
-    dropped_placement = wall["layout"]["placements"].pop(key, None) is not None
-    if dropped_placement:
-        wall["revision"] += 1
-        # Committed before any broadcast below: controllers must never be
-        # told about a wall change that would not survive a restart.
-        save_state(wall)
 
     if websocket is not None:
         with contextlib.suppress(Exception):
@@ -375,19 +421,21 @@ async def get_wall():
 
 @app.put("/wall")
 async def put_wall(update: WallUpdate):
-    # The layout is mutated before the first await, then the revision is
-    # bumped, the new state committed, and only then broadcast — no request
-    # can observe a half-updated wall (PROTOCOL.md "Concurrency rules"), and
-    # no controller hears about state that would not survive a restart
-    # (PROTOCOL.md "Persistence").
-    layout = wall["layout"]
-    if update.width is not None:
-        layout["width"] = update.width
-    if update.height is not None:
-        layout["height"] = update.height
-    wall["revision"] += 1
+    # Layout only. The change is written to the database from a detached copy
+    # before it touches the live wall (``_commit_wall``), so a failed save
+    # leaves memory untouched and this route fails loudly instead of
+    # diverging from disk; only after the commit is the new state broadcast —
+    # no request can observe a half-updated wall (PROTOCOL.md "Concurrency
+    # rules") and no controller hears about state that would not survive a
+    # restart (PROTOCOL.md "Persistence").
+    def apply(target: dict[str, Any]) -> None:
+        layout = target["layout"]
+        if update.width is not None:
+            layout["width"] = update.width
+        if update.height is not None:
+            layout["height"] = update.height
 
-    save_state(wall)
+    _commit_wall(apply)
     await _broadcast_wall()
     return _wall_state()
 
@@ -397,38 +445,45 @@ async def put_scene(update: SceneUpdate):
     # Content only: the layout is untouched, the revision bumps, the new
     # state is committed, and only then is it broadcast — same ordering as
     # ``PUT /wall`` above.
-    wall["scene"]["content"] = update.content.model_dump()
-    wall["revision"] += 1
+    content = update.content.model_dump()
 
-    save_state(wall)
+    def apply(target: dict[str, Any]) -> None:
+        target["scene"]["content"] = content
+
+    _commit_wall(apply)
     await _broadcast_wall()
     return _wall_state()
 
 
 @app.put("/devices/{device_id}/placement")
 async def put_placement(device_id: str, placement: PlacementCommand):
+    # Placing is reserved for a device the server knows: you cannot place a
+    # device that has never registered, so an unknown (or malformed) id is a
+    # 404. Only *releasing* has to work without the roster — see the DELETE
+    # route below.
     key = _parse_device_id(device_id)
     if key is None or key not in devices:
         raise HTTPException(status_code=404, detail="Unknown device")
 
-    # Stored with its device_id (PROTOCOL.md's canonical placement shape); the
-    # per-device ``wall`` frame strips it again.
-    wall["layout"]["placements"][key] = {
-        "device_id": key,
-        "x": placement.x,
-        "y": placement.y,
-        "w": placement.w,
-        "h": placement.h,
-        "bezel": {
-            "top": placement.bezel.top,
-            "right": placement.bezel.right,
-            "bottom": placement.bezel.bottom,
-            "left": placement.bezel.left,
-        },
-    }
-    wall["revision"] += 1
+    def apply(target: dict[str, Any]) -> None:
+        # Stored with its device_id (PROTOCOL.md's canonical placement shape);
+        # the per-device ``wall`` frame strips it again. Built inside ``apply``
+        # so the persisted copy and the live wall never share one dict.
+        target["layout"]["placements"][key] = {
+            "device_id": key,
+            "x": placement.x,
+            "y": placement.y,
+            "w": placement.w,
+            "h": placement.h,
+            "bezel": {
+                "top": placement.bezel.top,
+                "right": placement.bezel.right,
+                "bottom": placement.bezel.bottom,
+                "left": placement.bezel.left,
+            },
+        }
 
-    save_state(wall)
+    _commit_wall(apply)
     await _broadcast_wall()
     return _wall_state()
 
@@ -436,14 +491,22 @@ async def put_placement(device_id: str, placement: PlacementCommand):
 @app.delete("/devices/{device_id}/placement")
 async def delete_placement(device_id: str):
     key = _parse_device_id(device_id)
-    if key is None or key not in devices:
+    # 404 only when there is *neither* a known device nor a placement to
+    # remove. Placements are persisted and the roster is not, so a restart
+    # can leave a placement owned by a device the server has forgotten: that
+    # is a reservation the operator must be able to release, so a valid id
+    # with a placement succeeds even when the device is absent (PROTOCOL.md
+    # "DELETE /devices/{device_id}/placement").
+    known = key is not None and key in devices
+    reserved = key is not None and key in wall["layout"]["placements"]
+    if not (known or reserved):
         raise HTTPException(status_code=404, detail="Unknown device")
 
     # 200 even when there was no placement to clear.
-    wall["layout"]["placements"].pop(key, None)
-    wall["revision"] += 1
+    def apply(target: dict[str, Any]) -> None:
+        target["layout"]["placements"].pop(key, None)
 
-    save_state(wall)
+    _commit_wall(apply)
     await _broadcast_wall()
     return _wall_state()
 
@@ -452,9 +515,12 @@ async def delete_placement(device_id: str):
 async def wall_auto(command: WallAutoCommand | None = None):
     """Place every online device in a regular grid covering the wall.
 
-    Offline devices keep whatever placement they had. With no ``columns`` the
-    default is ``max(1, round(sqrt(n)))`` where n is the number of online
-    devices; cell edges are rounded so the grid tiles the wall in whole units.
+    Offline devices keep whatever placement they had, and reservations whose
+    device is absent from the roster entirely are left alone too: releasing a
+    vacant slot is an explicit, separate action (PROTOCOL.md
+    ``POST /wall/auto``). With no ``columns`` the default is
+    ``max(1, round(sqrt(n)))`` where n is the number of online devices; cell
+    edges are rounded so the grid tiles the wall in whole units.
     """
     online = [device_id for device_id in list(devices) if _is_online(device_id)]
     count = len(online)
@@ -469,6 +535,7 @@ async def wall_auto(command: WallAutoCommand | None = None):
     height = wall["layout"]["height"]
     # Cell edges are rounded so the grid tiles the wall exactly in integer
     # units: adjacent cells share an edge and nothing overlaps or gaps.
+    assigned: dict[str, dict[str, Any]] = {}
     for index, device_id in enumerate(online):
         column = index % columns
         row = index // columns
@@ -476,7 +543,7 @@ async def wall_auto(command: WallAutoCommand | None = None):
         x1 = round((column + 1) * width / columns)
         y0 = round(row * height / rows)
         y1 = round((row + 1) * height / rows)
-        wall["layout"]["placements"][device_id] = {
+        assigned[device_id] = {
             "device_id": device_id,
             "x": x0,
             "y": y0,
@@ -484,9 +551,14 @@ async def wall_auto(command: WallAutoCommand | None = None):
             "h": y1 - y0,
             "bezel": {"top": 0, "right": 0, "bottom": 0, "left": 0},
         }
-    wall["revision"] += 1
 
-    save_state(wall)
+    def apply(target: dict[str, Any]) -> None:
+        # Only the online devices are assigned; everything else in the
+        # placements map — offline devices and vacant reservations alike —
+        # survives untouched.
+        target["layout"]["placements"].update(assigned)
+
+    _commit_wall(apply)
     await _broadcast_wall()
     return _wall_state()
 

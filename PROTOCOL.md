@@ -316,6 +316,13 @@ about which arrangement it meant.
 | `content` | content object | What tablets are asked to render.                |
 | `layout`  | `"active"`     | Reference to the layout in use. Named saved layouts are future work; today there is exactly one, the active layout. |
 
+**Recall semantics (recorded now, implemented with named scenes).** A saved
+scene recalls its *content* onto whatever layout is currently **active**. It
+never silently replaces the arrangement — recalling a scene must not throw away
+placement work the operator did afterwards. Restoring content *and* arrangement
+together is a different, separately named action (a preset), not an overload of
+"recall scene".
+
 `content` is discriminated by `type`:
 
 | `type`          | Extra fields                                                | Meaning |
@@ -423,8 +430,34 @@ The device keeps its placement across a reconnect.
 
 ### `DELETE /devices/{device_id}/placement`
 
-Clears the placement. `200` even if there was none. `404` if the device is
-unknown. Returns the new wall state.
+Clears the placement and returns the new wall state.
+
+- `200` when a placement was removed.
+- `200` when the device is known and had no placement — nothing to do.
+- `404` when there is neither a known device nor a placement to remove.
+
+**A placement can outlive the roster.** Placements are persisted and the roster
+is not, so after a restart a placement may belong to a device that has not yet
+re-registered. That is a **reservation, not a leak**: a tablet that comes back
+reclaims its slot, which is the whole point of persisting placements. It is
+removable either by that device returning, or by the operator releasing it
+explicitly through this endpoint — which is why a valid id with a placement
+must not `404` merely because the roster has forgotten the device.
+
+The controller labels a placement whose device is absent from the roster as
+**vacant** and offers a release action, so a stale reservation is visible
+rather than silently reserving wall space forever.
+
+`POST /wall/auto` does **not** prune reservations. Auto-arranging must not
+silently destroy a slot a tablet is expected to return to; releasing a vacant
+slot is an explicit, separate action.
+
+### Unknown keys
+
+`PUT /wall` and `PUT /scene` reject unknown keys with `422`, including inside
+the `content` object. A client still sending the removed `mode` field gets a
+`422` rather than having it quietly ignored, which is the point: silently
+accepting it would make every such caller believe a change had been applied.
 
 ### Shape and precedence notes
 
