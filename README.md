@@ -8,11 +8,13 @@ drives what they show.
 
 This project began as a copy of `tablet-wall`. New development happens here.
 
-> **Status: Phase 1 complete.** Tablets self-register, hold a live WebSocket,
-> heartbeat, and reconnect on their own; the controller is an operator
-> dashboard that shows the wall live and repaints any or all tablets. There is
-> no persistence and no authentication yet — see
-> [Known limitations](#known-limitations) and [Roadmap](#roadmap).
+> **Status: Phase 2 under way.** Tablets self-register, hold a live WebSocket,
+> heartbeat, and reconnect on their own. The controller is an operator
+> dashboard that shows the wall live, places tablets on a shared wall canvas,
+> and drives a calibration pattern to check the geometry. Content beyond colour
+> and calibration is not implemented, and there is still no persistence and no
+> authentication — see [Known limitations](#known-limitations) and
+> [Roadmap](#roadmap).
 
 ## Requirements
 
@@ -127,11 +129,25 @@ and every documented close code.
 
 ## Known limitations
 
-- **No persistence.** The roster and every assigned colour live in dicts in
-  `main.py` and are lost on restart. Tablets recover on their own — they
-  re-register and reconnect — but they return with no colour assigned, so the
-  controller and the wall can briefly disagree about what a tablet is showing.
-  Phase 3 fixes this.
+- **No persistence.** The roster, every assigned colour, the wall dimensions,
+  the placements, and the mode all live in dicts in `main.py` and are lost on
+  restart. Tablets recover on their own — they re-register and reconnect — but
+  they come back to a default 2000×1000 wall in colour mode with nothing
+  placed, so the controller and the wall can briefly disagree. Phase 3 fixes
+  this, and saving layouts depends on it.
+- **Bezels are abstract units, not millimetres.** Wall units are a layout
+  convenience, deliberately not physical measurement: panel sizes, browser
+  chrome, and zoom all make millimetres unreliable from a browser. A
+  well-aligned wall needs a calibration pass, not a spec sheet.
+- **Content is colour and calibration only.** There is no image or video
+  rendering yet, so the wall can prove its geometry but cannot yet show
+  anything you would want to look at.
+- **The aspect ratio compares against what the tablet reports.** The client
+  reports its viewport and re-registers when that changes, and the controller
+  warns when a placement's visible rect disagrees. When they do disagree the
+  client still renders, covering and cropping rather than distorting — so a
+  mismatch degrades the seam instead of breaking it. Pixel-perfect seams are
+  not achievable from a browser without kiosk-mode control.
 - **No authentication.** Anyone who can reach the server can register a device,
   read the roster, or repaint the wall.
 - **A device must register before it can open a socket.** A socket for an
@@ -178,11 +194,14 @@ and every documented close code.
 
 **Phase 2 — make it a wall**
 
-- [ ] Assign each tablet a grid position from the controller
-- [ ] Sync shared content across tablets (the actual video-wall effect)
+- [x] Protocol v2: version negotiation and capability advertisement
+- [x] Wall coordinate space, placements, and bezel insets
+- [x] Controller: wall panel, placement editing, wall map, auto-arrange
+- [x] Client: calibration rendering with a verified seam
+- [ ] Shared still image sliced across tablets
 - [ ] Server-time clock sync so playback lines up
-- [ ] Bezel compensation for physical gaps
-- [ ] Save and recall layouts/scenes
+- [ ] Save and recall layouts/scenes (needs the SQLite slice from Phase 3)
+- [ ] Video, gated behind capability detection and real-tablet testing
 
 **Phase 3 — ops**
 
