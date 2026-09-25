@@ -391,8 +391,8 @@ class TestPresence:
     ):
         # Patch before the app starts so the sweeper reads the short timings
         # from the very first pass of its loop.
-        monkeypatch.setattr(main, "HEARTBEAT_TIMEOUT_S", 0.3)
-        monkeypatch.setattr(main, "SWEEP_INTERVAL_S", 0.05)
+        monkeypatch.setattr(main.hub, "HEARTBEAT_TIMEOUT_S", 0.3)
+        monkeypatch.setattr(main.hub, "SWEEP_INTERVAL_S", 0.05)
 
         with TestClient(main.app) as client:
             client.post("/devices/register", json=device_payload)

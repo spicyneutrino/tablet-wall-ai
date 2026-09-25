@@ -2,355 +2,65 @@
 
 Phase 1 adds the realtime layer described in ``PROTOCOL.md``: WebSocket
 endpoints for devices and the controller, heartbeat-driven presence, and
-colour commands. Everything intentionally lives in this module — a later
-phase will split it up.
+colour commands. The implementation lives in the ``tabletwall`` package —
+``protocol`` (constants and validation helpers), ``state`` (the in-memory
+registries), and ``hub`` (frame delivery and the heartbeat sweeper) — while
+this module keeps the FastAPI app, lifespan, and routes.
 """
 
 import asyncio
 import contextlib
 import json
-import re
-import uuid
 from contextlib import asynccontextmanager
-from datetime import datetime, timezone
 from math import sqrt
 from typing import Any, Literal
 
-import anyio
 from fastapi import FastAPI, HTTPException, Query, WebSocket, WebSocketDisconnect
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, UUID4, Field, field_validator, model_validator
 
-# Timing constants (PROTOCOL.md "Timing constants"). Tests monkeypatch these,
-# so every read must happen at call time rather than being captured at import.
-HEARTBEAT_INTERVAL_MS = 5000
-HEARTBEAT_TIMEOUT_S = 15
-SWEEP_INTERVAL_S = 2
-
-# WebSocket close codes (PROTOCOL.md "WebSocket close codes").
-WS_CLOSE_BAD_REQUEST = 4400
-WS_CLOSE_UNKNOWN_DEVICE = 4404
-WS_CLOSE_HEARTBEAT_TIMEOUT = 4408
-WS_CLOSE_REPLACED = 4409
-WS_CLOSE_NORMAL = 1000
-# Post-handshake close for a present-but-unsupported ``protocol`` query param,
-# so a browser can observe the code rather than a bare 1006 (PROTOCOL.md
-# "Protocol versions").
-WS_CLOSE_UNSUPPORTED_PROTOCOL = 4426
-
-# Protocol negotiation (PROTOCOL.md "Protocol versions"). An absent ``protocol``
-# means version 1; only these majors are accepted.
-SUPPORTED_PROTOCOLS = (1, 2)
-
-# What this server can render/serve for version-2 clients.
-SERVER_CAPS = ["calibration"]
-
-# Wall defaults (PROTOCOL.md "Wall state"): a 2x1 wall of landscape panels.
-DEFAULT_WALL_WIDTH = 2000
-DEFAULT_WALL_HEIGHT = 1000
-
-
-def _fresh_wall() -> dict[str, Any]:
-    """A brand-new wall state: the PROTOCOL.md defaults, revision 0."""
-    return {
-        "width": DEFAULT_WALL_WIDTH,
-        "height": DEFAULT_WALL_HEIGHT,
-        "mode": "color",
-        "revision": 0,
-        "placements": {},
-    }
-
-
-# Roster: device_id -> device record. Only metadata is stored; ``online`` is
-# derived from the presence of a live socket plus ``last_seen``.
-devices: dict[str, dict[str, Any]] = {}
-
-# One open socket per device, and every open controller socket.
-device_sockets: dict[str, WebSocket] = {}
-controller_sockets: set[WebSocket] = set()
-
-# The negotiated protocol major for every connected controller. Kept beside
-# ``controller_sockets`` so version-1 controllers never see a version-2 frame.
-controller_protocols: dict[WebSocket, int] = {}
-
-# In-memory wall state (PROTOCOL.md "Version 2 — wall, placements, and scenes").
-# Persistence is a later increment; tests reset it via ``_fresh_wall``.
-wall: dict[str, Any] = _fresh_wall()
+# ``tabletwall.hub`` is imported both as a module and as its individual names:
+# the tests patch the sweeper's timing constants on the reader module, i.e.
+# ``monkeypatch.setattr(main.hub, "HEARTBEAT_TIMEOUT_S", ...)``.
+from tabletwall import hub
+from tabletwall.hub import (
+    _broadcast,
+    _broadcast_offline,
+    _broadcast_wall,
+    _send_color_to_device,
+    _send_wall_to_device,
+    _sweep_loop,
+)
+from tabletwall.protocol import (
+    HEARTBEAT_INTERVAL_MS,
+    SERVER_CAPS,
+    WS_CLOSE_BAD_REQUEST,
+    WS_CLOSE_NORMAL,
+    WS_CLOSE_REPLACED,
+    WS_CLOSE_UNKNOWN_DEVICE,
+    WS_CLOSE_UNSUPPORTED_PROTOCOL,
+    _now_iso,
+    _normalise_color,
+    _parse_caps,
+    _parse_device_id,
+    _parse_protocol,
+)
+# Re-exports of the state objects (never copies): tests clear and reset them
+# through ``main`` (``main.devices.clear()``, ``main.wall.update(...)``, …)
+# and must keep mutating what the running app uses.
+from tabletwall.state import (
+    _device_record,
+    _fresh_wall,
+    _is_online,
+    _wall_state,
+    controller_protocols,
+    controller_sockets,
+    device_sockets,
+    devices,
+    wall,
+)
 
 _sweeper_task: asyncio.Task[Any] | None = None
-
-_COLOR_PATTERN = re.compile(r"#?[0-9a-fA-F]{6}")
-
-
-# ---------------------------------------------------------------------------
-# helpers
-# ---------------------------------------------------------------------------
-
-
-def _now_iso() -> str:
-    """Current UTC time as ISO-8601 with an explicit ``+00:00`` offset."""
-    return datetime.now(timezone.utc).isoformat()
-
-
-def _normalise_color(value: str) -> str:
-    """Validate ``^#?[0-9a-fA-F]{6}$`` and normalise to lowercase ``#rrggbb``."""
-    if not _COLOR_PATTERN.fullmatch(value):
-        raise ValueError("color must be 6 hex digits, optionally prefixed with #")
-    return "#" + value.lower().removeprefix("#")
-
-
-def _parse_device_id(raw: str | None) -> str | None:
-    """Return the canonical lowercase UUID4 string, or None if it is not one."""
-    if not raw:
-        return None
-    try:
-        parsed = uuid.UUID(raw)
-    except (AttributeError, TypeError, ValueError):
-        return None
-    if parsed.version != 4:
-        return None
-    return str(parsed)
-
-
-def _parse_protocol(raw: str | None) -> int | None:
-    """Negotiate the major protocol version from the ``protocol`` query param.
-
-    Absent means version 1 (PROTOCOL.md "Protocol versions"). Returns None
-    when the param is present but unparseable or unsupported — the caller
-    accepts the handshake first and then closes with 4426, so a browser can
-    observe the real close code.
-    """
-    if raw is None:
-        return 1
-    try:
-        version = int(raw)
-    except (TypeError, ValueError):
-        return None
-    return version if version in SUPPORTED_PROTOCOLS else None
-
-
-def _parse_caps(raw: str | None) -> list[str]:
-    """Split the comma-separated ``caps`` query param into a clean list."""
-    if not raw:
-        return []
-    return [cap.strip() for cap in raw.split(",") if cap.strip()]
-
-
-def _seconds_since_last_seen(device_id: str) -> float | None:
-    """Seconds since this device last checked in, or None if it is unknown."""
-    record = devices.get(device_id)
-    if record is None:
-        return None
-    return (datetime.now(timezone.utc) - datetime.fromisoformat(record["last_seen"])).total_seconds()
-
-
-def _is_online(device_id: str) -> bool:
-    """True iff the device holds an open socket that has not timed out."""
-    if device_id not in device_sockets:
-        return False
-    age = _seconds_since_last_seen(device_id)
-    return age is not None and age <= HEARTBEAT_TIMEOUT_S
-
-
-def _device_record(device_id: str) -> dict[str, Any]:
-    """The wire shape of a device record (PROTOCOL.md "Device record").
-
-    Also carries the version-2 additions: ``protocol`` (the major negotiated
-    by the last socket, or None before any socket connected) and ``caps`` (the
-    capabilities that socket advertised, empty until then).
-    """
-    record = devices[device_id]
-    return {
-        **record,
-        "protocol": record.get("protocol"),
-        "caps": list(record.get("caps") or []),
-        "online": _is_online(device_id),
-    }
-
-
-async def _broadcast(frame: dict[str, Any]) -> None:
-    """Send one frame to every controller.
-
-    Iterates a copy of the socket collection and wraps each send so that one
-    dead socket does not abort the remaining sends.
-    """
-    for websocket in list(controller_sockets):
-        try:
-            await websocket.send_json(frame)
-        except Exception:
-            # Drop *and* close. Discarding alone would leave a controller
-            # holding an open socket that is never sent to again: it would go
-            # silently stale, with no close event to trigger its reconnect.
-            controller_sockets.discard(websocket)
-            with contextlib.suppress(Exception):
-                await websocket.close(code=WS_CLOSE_NORMAL)
-
-
-async def _send_color_to_device(device_id: str, color: str) -> bool:
-    """Push a ``set_color`` frame to a device; True when it was handed over."""
-    websocket = device_sockets.get(device_id)
-    if websocket is None:
-        return False
-    try:
-        await websocket.send_json({"type": "set_color", "color": color})
-    except Exception:
-        return False
-    return True
-
-
-async def _broadcast_offline(device_id: str, last_seen: str) -> None:
-    """Tell controllers a device went away.
-
-    The device task may be unwinding from a cancellation (the test client
-    cancels a socket task when its session closes), so the send is shielded:
-    controllers must still learn about the disconnect.
-    """
-    frame = {"type": "device_offline", "device_id": device_id, "last_seen": last_seen}
-    with anyio.CancelScope(shield=True):
-        await _broadcast(frame)
-
-
-# ---------------------------------------------------------------------------
-# wall state (PROTOCOL.md "Version 2 — wall, placements, and scenes")
-# ---------------------------------------------------------------------------
-
-
-def _placement_for_client(placement: dict[str, Any] | None) -> dict[str, Any] | None:
-    """The wire shape of a placement: the example frame carries no device_id
-    (the frame is already about the receiving device); the stored copy keeps
-    it, matching the canonical placement example in PROTOCOL.md."""
-    if placement is None:
-        return None
-    return {
-        "x": placement["x"],
-        "y": placement["y"],
-        "w": placement["w"],
-        "h": placement["h"],
-        "bezel": dict(placement["bezel"]),
-    }
-
-
-def _wall_state() -> dict[str, Any]:
-    """A detached copy of the wall state, safe to hand to a caller or a frame."""
-    return {
-        "width": wall["width"],
-        "height": wall["height"],
-        "mode": wall["mode"],
-        "revision": wall["revision"],
-        "placements": {
-            device_id: {**placement, "bezel": dict(placement["bezel"])}
-            for device_id, placement in wall["placements"].items()
-        },
-    }
-
-
-def _wall_frame(device_id: str, record: dict[str, Any]) -> dict[str, Any]:
-    """Build the ``wall`` frame for one device (version 2 only).
-
-    Per-device mode downgrade: a device that did not advertise the
-    ``calibration`` cap is never asked to render a calibration pattern, so it
-    is told the wall is in ``color`` mode instead.
-    """
-    mode = wall["mode"]
-    if mode == "calibration" and "calibration" not in record.get("caps", ()):
-        mode = "color"
-    return {
-        "type": "wall",
-        "revision": wall["revision"],
-        "mode": mode,
-        "wall": {"width": wall["width"], "height": wall["height"]},
-        "placement": _placement_for_client(wall["placements"].get(device_id)),
-    }
-
-
-async def _send_wall_to_device(
-    device_id: str, websocket: WebSocket, record: dict[str, Any]
-) -> None:
-    """Send the current ``wall`` frame to one version-2 device socket."""
-    try:
-        await websocket.send_json(_wall_frame(device_id, record))
-    except Exception:
-        # Drop *and* close (the pattern from ``_broadcast``), then report the
-        # device offline: a failed send means the socket is gone, and dropping
-        # the slot silently would leave controllers rendering a live-looking
-        # tablet forever — the device task's own finally block skips the
-        # broadcast once somebody else owns the slot.
-        if device_sockets.get(device_id) is websocket:
-            device_sockets.pop(device_id, None)
-            with contextlib.suppress(Exception):
-                await websocket.close(code=WS_CLOSE_NORMAL)
-            await _broadcast_offline(device_id, record.get("last_seen", _now_iso()))
-
-
-async def _broadcast_wall() -> None:
-    """Push the current wall to every version-2 socket.
-
-    State is fully mutated before this is called (no await mid-mutation).
-    Iterates copies of both socket collections; every send is individually
-    guarded so one dead socket cannot abort the rest (PROTOCOL.md
-    "Concurrency rules"). Version-1 sockets never receive a version-2 frame.
-    """
-    wall_updated = {"type": "wall_updated", "wall": _wall_state()}
-    for websocket in list(controller_sockets):
-        if controller_protocols.get(websocket, 1) != 2:
-            continue
-        try:
-            await websocket.send_json(wall_updated)
-        except Exception:
-            controller_sockets.discard(websocket)
-            controller_protocols.pop(websocket, None)
-            with contextlib.suppress(Exception):
-                await websocket.close(code=WS_CLOSE_NORMAL)
-
-    for device_id, websocket in list(device_sockets.items()):
-        record = devices.get(device_id)
-        if record is None or record.get("protocol") != 2:
-            continue
-        await _send_wall_to_device(device_id, websocket, record)
-
-
-# ---------------------------------------------------------------------------
-# heartbeat sweeper
-# ---------------------------------------------------------------------------
-
-
-async def _sweep_once() -> None:
-    # Timing constants are read here, inside the loop, so tests can patch them.
-    timeout = HEARTBEAT_TIMEOUT_S
-
-    stale: list[tuple[str, WebSocket]] = []
-    for device_id, websocket in list(device_sockets.items()):
-        age = _seconds_since_last_seen(device_id)
-        if age is None or age > timeout:
-            stale.append((device_id, websocket))
-
-    for device_id, websocket in stale:
-        if device_sockets.get(device_id) is not websocket:
-            continue  # replaced by a newer socket in the meantime
-
-        # Re-check immediately before acting: closing the sockets above
-        # yielded, so this device may have sent a heartbeat in the meantime.
-        age = _seconds_since_last_seen(device_id)
-        if age is not None and age <= timeout:
-            continue  # it came back while we were working through the list
-
-        device_sockets.pop(device_id, None)
-        with contextlib.suppress(Exception):
-            await websocket.close(code=WS_CLOSE_HEARTBEAT_TIMEOUT)
-
-        record = devices.get(device_id)
-        if record is not None and device_id not in device_sockets:
-            # Skips the broadcast only when the device reconnected or was
-            # deleted while we were closing the dead socket: somebody else has
-            # already reported the change in those cases.
-            await _broadcast_offline(device_id, record["last_seen"])
-
-
-async def _sweep_loop() -> None:
-    while True:
-        # Sleep first and re-read the interval on every pass: tests patch it.
-        await asyncio.sleep(SWEEP_INTERVAL_S)
-        await _sweep_once()
 
 
 @asynccontextmanager
