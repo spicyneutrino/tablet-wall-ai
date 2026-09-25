@@ -129,12 +129,13 @@ and every documented close code.
 
 ## Known limitations
 
-- **No persistence.** The roster, every assigned colour, the wall dimensions,
-  the placements, and the mode all live in dicts in `main.py` and are lost on
-  restart. Tablets recover on their own — they re-register and reconnect — but
-  they come back to a default 2000×1000 wall in colour mode with nothing
-  placed, so the controller and the wall can briefly disagree. Phase 3 fixes
-  this, and saving layouts depends on it.
+- **The roster is not persisted.** The active layout, scene, revision, and
+  generation survive a restart in SQLite, so a wall you arranged stays arranged
+  and a restart resynchronises tablets rather than blanking them. But devices,
+  presence, and heartbeat timestamps live in memory: after a restart the roster
+  is empty until tablets re-register, which they do on their own. A placement
+  can therefore be momentarily orphaned until its device comes back. Nothing
+  else about Phase 3 — authentication, roster persistence, ops — is in yet.
 - **Bezels are abstract units, not millimetres.** Wall units are a layout
   convenience, deliberately not physical measurement: panel sizes, browser
   chrome, and zoom all make millimetres unreliable from a browser. A
@@ -198,9 +199,11 @@ and every documented close code.
 - [x] Wall coordinate space, placements, and bezel insets
 - [x] Controller: wall panel, placement editing, wall map, auto-arrange
 - [x] Client: calibration rendering with a verified seam
+- [x] Separate layout from scene; add the generation reset rule
+- [x] Persist the active layout and scene (SQLite)
 - [ ] Shared still image sliced across tablets
 - [ ] Server-time clock sync so playback lines up
-- [ ] Save and recall layouts/scenes (needs the SQLite slice from Phase 3)
+- [ ] Save and recall named layouts and scenes
 - [ ] Video, gated behind capability detection and real-tablet testing
 
 **Phase 3 — ops**
