@@ -53,6 +53,7 @@
             <h2 class="kicker" id="wall-title">Wall</h2>
             <p class="wall-meta">
                 <span class="wall-rev">revision <span class="mono" id="wall-rev">—</span></span>
+                <span class="wall-gen" title="Server state lineage — a new value means the server resynchronised and its revision counter may have moved backwards.">gen <span class="mono" id="wall-gen">—</span></span>
                 <span class="wall-note" id="wall-note">no wall state from the server</span>
             </p>
         </div>
@@ -71,11 +72,11 @@
                                inputmode="numeric" autocomplete="off" disabled>
                     </div>
                     <div class="field">
-                        <span class="k" id="wall-mode-label">Mode</span>
-                        <div class="seg" id="wall-mode" role="group" aria-labelledby="wall-mode-label">
-                            <button type="button" class="seg-opt" data-mode="color"
+                        <span class="k" id="wall-content-label">Scene content</span>
+                        <div class="seg" id="wall-content" role="group" aria-labelledby="wall-content-label">
+                            <button type="button" class="seg-opt" data-content="color"
                                     aria-pressed="true" disabled>color</button>
-                            <button type="button" class="seg-opt" data-mode="calibration"
+                            <button type="button" class="seg-opt" data-content="calibration"
                                     aria-pressed="false" disabled>calibration</button>
                         </div>
                     </div>

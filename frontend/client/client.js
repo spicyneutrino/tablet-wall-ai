@@ -6,11 +6,16 @@
  * interval the server asks for in its `welcome` frame, and paints the whole
  * viewport with any colour the server sends.
  *
- * As a version-2 client it also stores the `wall` frame's state (ignoring
- * any revision that is not newer than the one it holds) and, when the wall
- * mode is `calibration`, draws this device's slice of a calibration pattern
- * mapped from its visible rect (footprint minus bezel) onto the viewport by
- * covering.
+ * As a version-2 client it also stores the `wall` frame's state — the wall's
+ * dimensions, this device's placement, and `scene.content.type`. A frame whose
+ * revision is not newer than the one already held is ignored, but ONLY while
+ * the frame's `generation` is the one held: on a change of generation the
+ * frame is accepted and the held revision is reset, because a restored or
+ * rolled-back server may legitimately offer a lower revision than this tablet
+ * has already seen (PROTOCOL.md "Revision and generation"). When the scene
+ * content is `calibration`, it draws this device's slice of a calibration
+ * pattern mapped from its visible rect (footprint minus bezel) onto the
+ * viewport by covering.
  *
  * Must work on a plain-HTTP LAN origin with no internet access, so:
  *   - no external resources of any kind,
@@ -272,13 +277,17 @@
 
     /*
      * Latest accepted `wall` frame, normalised to
-     *   { width, height, mode, revision, placement, visible }
-     * where `visible` is the placement's footprint shrunk by its bezel, or
-     * null when this device has no usable placement. `heldRevision` is the
-     * revision of the state we hold, null until the first accepted frame.
+     *   { width, height, contentType, revision, generation, placement,
+     *     visible }
+     * where `contentType` is `scene.content.type` ("color" or "calibration"),
+     * `visible` is the placement's footprint shrunk by its bezel (or null
+     * when this device has no usable placement), and `heldRevision` /
+     * `heldGeneration` describe the state we hold: both null until the first
+     * accepted frame.
      */
     var wallState = null;
     var heldRevision = null;
+    var heldGeneration = null;
 
     var canvasEl = null;
     var canvasResolved = false;
@@ -397,8 +406,8 @@
     /* Single entry point for every state change that affects the screen. */
     function render() {
         if (!wallState) return; /* no wall frame yet: colour-only surface */
-        if (wallState.mode !== "calibration") {
-            showCanvas(false); /* colour mode: today's behaviour, untouched */
+        if (wallState.contentType !== "calibration") {
+            showCanvas(false); /* colour content: today's behaviour, untouched */
             return;
         }
         showCanvas(true);
@@ -623,14 +632,34 @@
     }
 
     /*
-     * Store a `wall` frame. A frame whose revision is not newer than the one
-     * we already hold is dropped untouched, so a replayed frame on reconnect
-     * can never roll the wall back. Returns true when it was applied.
+     * Store a `wall` frame.
+     *
+     * Two rules, and the second one is the point of `generation`:
+     *
+     *  1. A frame whose revision is not newer than the one we hold is dropped
+     *     untouched, so a replayed frame on reconnect can never roll the wall
+     *     back — but ONLY while its `generation` is the generation we hold.
+     *     When the generation differs the frame is accepted regardless of its
+     *     revision and the held revision is reset to the frame's. A server
+     *     restored from a backup, rolled back, or started on a wiped database
+     *     can legitimately be at a lower revision than this tablet has seen
+     *     (12 → 0), and a client that refused those frames would stay stuck
+     *     on stale state forever.
+     *  2. The whole frame is validated BEFORE anything is stored, so a
+     *     malformed frame can neither render nor reset the held revision.
+     *
+     * Returns true when it was applied.
      */
     function applyWallFrame(frame) {
         var revision = frame.revision;
         if (!Number.isFinite(revision)) return false;
-        if (heldRevision !== null && revision <= heldRevision) return false;
+
+        /* A frame with no (string) generation is treated as its own,
+         * unknown lineage: it never matches a held generation, so it is
+         * always accepted rather than wedging the tablet on a comparison it
+         * cannot make. */
+        var generation =
+            typeof frame.generation === "string" ? frame.generation : null;
 
         var wall = frame.wall;
         if (!wall || typeof wall !== "object") return false;
@@ -638,6 +667,18 @@
         var height = Number(wall.height);
         if (!Number.isFinite(width) || !Number.isFinite(height)) return false;
         if (width <= 0 || height <= 0) return false;
+
+        /* scene.content.type — "color" is the fallback for a frame that
+         * omits the scene, which keeps the v1 colour behaviour intact. */
+        var scene = frame.scene;
+        var content =
+            scene && scene.content && typeof scene.content === "object"
+                ? scene.content
+                : null;
+        var contentType =
+            content && typeof content.type === "string" && content.type !== ""
+                ? content.type
+                : "color";
 
         var placement = frame.placement == null ? null : frame.placement;
         var visible = null;
@@ -649,12 +690,23 @@
             }
         }
 
+        /* Revision monotonic only within a generation (see rule 1 above). */
+        if (
+            heldRevision !== null &&
+            generation === heldGeneration &&
+            revision <= heldRevision
+        ) {
+            return false;
+        }
+
         heldRevision = revision;
+        heldGeneration = generation;
         wallState = {
             width: width,
             height: height,
-            mode: typeof frame.mode === "string" ? frame.mode : "color",
+            contentType: contentType,
             revision: revision,
+            generation: generation,
             placement: placement,
             visible: visible,
         };

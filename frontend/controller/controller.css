@@ -436,7 +436,8 @@ body {
     color: var(--fg-dim);
 }
 
-.wall-rev .mono {
+.wall-rev .mono,
+.wall-gen .mono {
     color: var(--fg);
     font-weight: 600;
 }

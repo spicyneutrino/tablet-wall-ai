@@ -10,6 +10,8 @@
      *   - All commands are plain HTTP POST/PUT/DELETE.
      *   - v2 frames: `snapshot` also carries the wall, and `wall_updated`
      *     replaces it (see "Server → controller (v2 additions)").
+     *   - Wall state is layout + scene + revision + generation: dimensions
+     *     are written with PUT /wall, scene content with PUT /scene.
      *
      * There is NO polling. The only timer is a 1 Hz UI tick that redraws
      * relative timestamps and the reconnect countdown; it never touches
@@ -78,11 +80,12 @@
         globalSel: document.getElementById("global-sel"),
         btnApplyAll: document.getElementById("btn-apply-all"),
         wallRev: document.getElementById("wall-rev"),
+        wallGen: document.getElementById("wall-gen"),
         wallNote: document.getElementById("wall-note"),
         wallForm: document.getElementById("wall-form"),
         wallWidth: document.getElementById("wall-width"),
         wallHeight: document.getElementById("wall-height"),
-        wallMode: document.getElementById("wall-mode"),
+        wallContent: document.getElementById("wall-content"),
         btnWallSave: document.getElementById("btn-wall-save"),
         autoColumns: document.getElementById("auto-columns"),
         btnAuto: document.getElementById("btn-auto"),
@@ -129,12 +132,13 @@
      *  delivers one. Sparse `placements` live inside it. */
     let wall = null;
 
-    /** True while the wall form holds unsaved edits, so an incoming
+    /** True while the wall form holds unsaved dimension edits, so an incoming
      *  `wall_updated` cannot overwrite what the operator is typing. */
     let wallDirty = false;
 
-    /** Mode chosen in the wall form but not yet saved. */
-    let pendingMode = null;
+    /** Scene content chosen in the control but not yet confirmed by the
+     *  server's PUT /scene response (or its `wall_updated` echo). */
+    let pendingContent = null;
 
     /* ------------------------------------------------------------------ *
      * Small helpers
@@ -142,6 +146,13 @@
 
     function shortId(id) {
         return String(id).slice(0, 8);
+    }
+
+    /** Generation is an opaque lineage token; the first 8 characters are
+     *  enough to spot a change on the wall panel. */
+    function shortGeneration(generation) {
+        if (generation == null || generation === "") return "—";
+        return String(generation).slice(0, 8);
     }
 
     /** "#3B82F6" / "3b82f6" -> "#3b82f6"; anything else -> null. */
@@ -275,7 +286,25 @@
     }
 
     /**
+     * `scene.content.type`, reduced to the two values this control offers.
+     *
+     * Anything that is not `"calibration"` reads as `"color"`: that is the
+     * v1 fallback, and `"image"` is reserved in PROTOCOL.md but not
+     * implemented (the server answers 422 to a request for it), so it can
+     * never arrive here today.
+     */
+    function sceneContentType(raw) {
+        const content = raw && raw.scene && raw.scene.content;
+        return content && content.type === "calibration" ? "calibration" : "color";
+    }
+
+    /**
      * Build local wall state from a server payload.
+     *
+     * The payload shape is the whole wall state — the one `GET /wall`
+     * returns and `snapshot` / `wall_updated` / every `PUT` echoes back:
+     * layout fields (`width`, `height`, `placements`), `scene`, `revision`
+     * and `generation`.
      *
      * A payload that omits `placements` entirely keeps the placements we
      * already hold (`{}` is a real value and is honoured); only a payload
@@ -296,7 +325,8 @@
         return {
             width: Math.max(0, Math.round(numOr(raw.width, 0))),
             height: Math.max(0, Math.round(numOr(raw.height, 0))),
-            mode: raw.mode === "calibration" ? "calibration" : "color",
+            contentType: sceneContentType(raw),
+            generation: typeof raw.generation === "string" ? raw.generation : null,
             revision: Math.max(0, Math.round(numOr(raw.revision, 0))),
             placements: placements
         };
@@ -476,11 +506,11 @@
                     }
                 }
                 // The snapshot is authoritative: adopt its wall even when the
-                // revision moved backwards, which is what a restarted server
-                // looks like. Clear first so a v1 snapshot means "no wall".
+                // revision moved backwards, which is what a server resyncing
+                // under a new generation looks like. Clear first so a v1
+                // snapshot means "no wall".
                 wall = null;
                 if (msg.wall) wall = normalizeWall(msg.wall);
-                if (!wallDirty && wall) pendingMode = wall.mode;
                 if (awaitingSnapshot) {
                     awaitingSnapshot = false;
                     logStatus(
@@ -532,16 +562,35 @@
             case "wall_updated": {
                 const next = normalizeWall(msg.wall);
                 if (!next) return;
-                // Revisions are monotonic; anything not newer than what we
-                // hold is a replay and must not rewind the diagram.
-                if (wall && next.revision <= wall.revision) return;
+                // Revisions are monotonic only WITHIN a generation, so a
+                // frame that is not newer than what we hold is a replay and
+                // must not rewind the diagram — unless the generation changed,
+                // in which case the server resynchronised (restore, rollback,
+                // wiped database) and may legitimately be at a lower revision.
+                if (
+                    wall &&
+                    next.generation === wall.generation &&
+                    next.revision <= wall.revision
+                ) {
+                    return;
+                }
+                const resynced = !!wall && next.generation !== wall.generation;
                 wall = next;
-                if (!wallDirty) pendingMode = wall.mode;
                 renderWall();
-                logStatus(
-                    "Wall updated — revision " + wall.revision + " · " + wall.mode + ".",
-                    "info"
-                );
+                if (resynced) {
+                    logStatus(
+                        "Server resynchronised — generation " +
+                            shortGeneration(wall.generation) + " · revision " +
+                            wall.revision + ".",
+                        "ok"
+                    );
+                } else {
+                    logStatus(
+                        "Wall updated — revision " + wall.revision + " · scene " +
+                            wall.contentType + ".",
+                        "info"
+                    );
+                }
                 break;
             }
 
@@ -765,11 +814,14 @@
     }
 
     /* ------------------------------------------------------------------ *
-     * Wall panel — size, mode, revision, arrange
+     * Wall panel — size, scene content, revision, generation, arrange
      * ------------------------------------------------------------------ */
 
     function renderWall() {
         el.wallRev.textContent = wall ? String(wall.revision) : "—";
+        if (el.wallGen) {
+            el.wallGen.textContent = wall ? shortGeneration(wall.generation) : "—";
+        }
 
         if (wallReady()) {
             el.wallNote.hidden = true;
@@ -788,8 +840,11 @@
             if (document.activeElement !== el.wallHeight) {
                 el.wallHeight.value = String(wall.height);
             }
-            pendingMode = wall.mode;
-            renderWallMode(pendingMode);
+        }
+        // The scene control follows the server too, except while a choice is
+        // still in flight (it is sent immediately, not on form submit).
+        if (wall && pendingContent === null) {
+            renderWallContent(wall.contentType);
         }
 
         setWallControlsEnabled(wallReady());
@@ -801,9 +856,13 @@
         }
     }
 
-    function renderWallMode(mode) {
-        for (const button of el.wallMode.querySelectorAll(".seg-opt")) {
-            button.setAttribute("aria-pressed", String(button.dataset.mode === mode));
+    function renderWallContent(type) {
+        if (!el.wallContent) return;
+        for (const button of el.wallContent.querySelectorAll(".seg-opt")) {
+            button.setAttribute(
+                "aria-pressed",
+                String(button.dataset.content === type)
+            );
         }
     }
 
@@ -813,7 +872,8 @@
         el.btnWallSave.disabled = !on;
         el.autoColumns.disabled = !on;
         el.btnAuto.disabled = !on;
-        for (const button of el.wallMode.querySelectorAll(".seg-opt")) {
+        if (!el.wallContent) return;
+        for (const button of el.wallContent.querySelectorAll(".seg-opt")) {
             button.disabled = !on;
         }
     }
@@ -1337,14 +1397,13 @@
             logStatus("Wall width and height must be positive whole numbers.", "err");
             return;
         }
-        const mode = pendingMode || (wall ? wall.mode : "color");
-
+        // Layout only: scene content goes to PUT /scene (see below), so the
+        // two never share a request (PROTOCOL.md "Wall state").
         el.btnWallSave.disabled = true;
         try {
             const data = await requestJson("PUT", "/wall", {
                 width: width,
-                height: height,
-                mode: mode
+                height: height
             });
             const next = normalizeWall(data);
             if (next && next.width > 0 && next.height > 0) {
@@ -1355,22 +1414,57 @@
                 wall = {
                     width: width,
                     height: height,
-                    mode: mode,
+                    contentType: wall ? wall.contentType : "color",
+                    generation: wall ? wall.generation : null,
                     revision: wall ? wall.revision : 0,
                     placements: wall ? wall.placements : {}
                 };
             }
             wallDirty = false;
-            pendingMode = wall.mode;
             renderWall();
             logStatus(
                 "Wall saved — revision " + wall.revision + " · " +
-                    wall.width + "×" + wall.height + " " + wall.mode + ".",
+                    wall.width + "×" + wall.height + ".",
                 "ok"
             );
         } catch (err) {
             logStatus("Wall not saved: " + err.message, "err");
         } finally {
+            renderWall();
+        }
+    }
+
+    /**
+     * Scene content — `PUT /scene` with `{content: {type}}`.
+     *
+     * Sent the moment the operator picks a value rather than on form
+     * submit, because it is a different endpoint from the dimensions and
+     * deliberately independent of them (PROTOCOL.md "Wall state": layout and
+     * scene are kept separate on purpose). The response is the full wall
+     * state, so it is adopted directly; a failure rolls the control back to
+     * whatever the server last told us and says so in the status bar.
+     */
+    async function saveSceneContent(type) {
+        if (!wall) return;
+        pendingContent = type;
+        renderWallContent(type);
+
+        try {
+            const data = await requestJson("PUT", "/scene", {
+                content: { type: type }
+            });
+            const next = normalizeWall(data);
+            if (next && next.width > 0 && next.height > 0) {
+                wall = next;
+            }
+            logStatus(
+                "Scene content → " + type + " — revision " + wall.revision + ".",
+                "ok"
+            );
+        } catch (err) {
+            logStatus("Scene content not saved: " + err.message, "err");
+        } finally {
+            pendingContent = null;
             renderWall();
         }
     }
@@ -1602,13 +1696,19 @@
         el.wallWidth.addEventListener("input", markWallDirty);
         el.wallHeight.addEventListener("input", markWallDirty);
 
-        el.wallMode.addEventListener("click", function (event) {
-            const button = event.target.closest("button[data-mode]");
-            if (!button || button.disabled) return;
-            pendingMode = button.dataset.mode;
-            wallDirty = true;
-            renderWallMode(pendingMode);
-        });
+        /* Scene content: applied immediately via PUT /scene — it is not part
+         * of the form submit, which only saves the dimensions. */
+        if (el.wallContent) {
+            el.wallContent.addEventListener("click", function (event) {
+                const button = event.target.closest("button[data-content]");
+                if (!button || button.disabled) return;
+                const type = button.dataset.content;
+                if (type !== "color" && type !== "calibration") return;
+                if (pendingContent !== null) return; // one save at a time
+                if (wall && wall.contentType === type) return; // already there
+                saveSceneContent(type);
+            });
+        }
 
         el.btnAuto.addEventListener("click", arrangeWall);
 
@@ -1708,6 +1808,29 @@
      * Boot
      * ------------------------------------------------------------------ */
 
+    /**
+     * Seed the wall panel from `GET /wall` so the layout is visible before
+     * the roster socket has delivered a snapshot — or while it is down.
+     *
+     * It is authoritative only while we hold nothing: a snapshot or a
+     * `wall_updated` arriving first always wins, and a failure (server down,
+     * older server without the route) is not worth reporting — the snapshot
+     * will bring the state anyway.
+     */
+    function fetchWallState() {
+        requestJson("GET", "/wall")
+            .then(function (data) {
+                if (wall) return; // the socket already delivered one
+                const next = normalizeWall(data);
+                if (!next) return;
+                wall = next;
+                renderWall();
+            })
+            .catch(function () {
+                /* unreachable or not implemented yet — wait for the snapshot */
+            });
+    }
+
     function init() {
         buildGlobalPalette();
         bindEvents();
@@ -1716,6 +1839,7 @@
         renderEmpty();
         renderWall(); // wall is null here: disables the panel, notes the wait
         logStatus("Connecting to " + wsUrl() + " …", "info");
+        fetchWallState();
         connect();
         setInterval(tick, 1000);
     }
