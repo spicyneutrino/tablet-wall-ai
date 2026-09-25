@@ -26,6 +26,11 @@
     const WS_PATH = "/ws/controller";
     const PROTOCOL = 2;
 
+    /* The client page's path below an origin. A configured tablet origin
+     * may already end in it ("https://<tablet-host>/client/"), in which
+     * case it is not appended a second time. */
+    const CLIENT_PATH = "client/";
+
     /* Tasteful preset palette — solid colours, no gradients. */
     const PRESETS = [
         { color: "#ef4444", name: "red" },
@@ -222,6 +227,13 @@
     /** Asset picked in the list but not yet sent. null means no selection,
      *  and no image scene is ever sent without one. */
     let selectedAsset = null;
+
+    /* Tablet URL (GET /operator-config, read once at boot). `tabletUrl` is
+     * the validated address to show and copy, or null while none is known
+     * or the answer could not be trusted. */
+    let tabletUrl = null;
+    let tabletUrlState = "pending"; // "pending" | "ready" | "unavailable"
+    let tabletUrlReason = null;     // why it is unavailable; null otherwise
 
     /* ------------------------------------------------------------------ *
      * Small helpers
@@ -3866,10 +3878,12 @@
         });
 
         el.btnCopyUrl.addEventListener("click", function () {
-            const text = el.clientUrl.textContent;
+            // Disabled while no URL is known — guard anyway, so a stale or
+            // synthetic click can never put the status text on the clipboard.
+            if (tabletUrl === null) return;
             // navigator.clipboard is secure-context only — guard it.
             if (window.isSecureContext && navigator.clipboard && navigator.clipboard.writeText) {
-                navigator.clipboard.writeText(text).then(
+                navigator.clipboard.writeText(tabletUrl).then(
                     function () { logStatus("Client URL copied.", "ok"); },
                     function () { selectClientUrl(); }
                 );
@@ -3890,6 +3904,127 @@
             /* selection unavailable — the URL is still visible on screen */
         }
         logStatus("Clipboard unavailable — press Ctrl/Cmd+C to copy the highlighted URL.", "info");
+    }
+
+    /* ------------------------------------------------------------------ *
+     * Tablet URL — GET /operator-config, one read at boot, never polled
+     *
+      * The device stage always shows — and copies — the address a tablet should
+     * open. That address is NOT always this page's own origin: the
+     * operator page and the tablets can be served from two different
+     * origins, and the server is the one that knows which. Contract:
+     *
+      *     { "tablet_origin": "https://<tablet-host>" }
+     *     { "tablet_origin": null }   → not configured
+     *
+     * A configured origin is used verbatim (after validation); `null`
+     * falls back to the single-origin dev default, location.origin plus
+     * "/client/". Everything else — a failed read, a non-object answer, a
+     * missing key, a malformed or unsafe value — leaves the address
+     * unavailable and Copy disabled. Guessing `location` in those cases
+     * could hand the operator a URL pointing at the wrong host in a
+     * two-origin deployment, and a wrong URL is worse than none.
+     * ------------------------------------------------------------------ */
+
+    /** The dev default: this page's own origin plus the client path. */
+    function devTabletUrl() {
+        return location.origin + "/" + CLIENT_PATH;
+    }
+
+    /**
+     * Validate a configured `tablet_origin` and turn it into the URL a
+     * tablet should open. Returns null for anything malformed or unsafe:
+     * a non-string, a blank value, embedded whitespace (URL parsing
+     * silently strips tabs and newlines, which would change what is
+     * opened), an over-long one, something `URL` cannot parse, a scheme
+     * other than http(s), a host-less URL, embedded credentials, or a
+     * query/fragment that would silently redirect the tablet elsewhere.
+     *
+      * The backend contract is a bare origin only ("https://<host>"). A
+      * path, even "/client/", is a configuration error, never silently
+      * transformed into another URL. Nothing bakes in a hostname — the host
+      * comes from the server's answer.
+     *
+     * Whatever comes back reaches the DOM through `textContent` only.
+     */
+    function tabletUrlFromOrigin(raw) {
+        if (typeof raw !== "string") return null;
+        const value = raw;
+        if (value === "" || value.length > 2048 || /\s/.test(value)) return null;
+
+        let url;
+        try {
+            url = new URL(value);
+        } catch (_err) {
+            return null;
+        }
+        if (url.protocol !== "http:" && url.protocol !== "https:") return null;
+        if (url.host === "") return null;
+        if (url.username !== "" || url.password !== "") return null;
+        if (url.search !== "" || url.hash !== "") return null;
+        // URL parsing normalizes case, ports and trailing slashes. Refuse a
+        // value it would rewrite, rather than hiding a misconfigured ingress.
+        if (url.pathname !== "/" || url.origin !== value) return null;
+        return value + "/" + CLIENT_PATH;
+    }
+
+    /** One boot-time read of the configured tablet origin. */
+    async function fetchOperatorConfig() {
+        try {
+            const data = await requestJson("GET", "/operator-config");
+            if (!data || typeof data !== "object" || Array.isArray(data)) {
+                throw new Error("the answer was not an operator config");
+            }
+            if (!Object.prototype.hasOwnProperty.call(data, "tablet_origin")) {
+                throw new Error("the answer carried no tablet_origin");
+            }
+            if (data.tablet_origin === null) {
+                tabletUrl = devTabletUrl(); // not configured: single-origin dev
+            } else {
+                tabletUrl = tabletUrlFromOrigin(data.tablet_origin);
+                if (tabletUrl === null) {
+                    throw new Error("tablet_origin is not a usable http(s) URL");
+                }
+            }
+            tabletUrlState = "ready";
+            tabletUrlReason = null;
+        } catch (err) {
+            tabletUrl = null;
+            tabletUrlState = "unavailable";
+            const detail = err && typeof err.message === "string" ? err.message : "unknown error";
+            // Server-supplied text is only ever assigned as text, and kept
+            // short so the box stays readable.
+            tabletUrlReason = detail.length > 90 ? detail.slice(0, 89) + "…" : detail;
+            logStatus("Tablet URL unavailable — " + tabletUrlReason + ".", "err");
+        }
+        renderTabletUrl();
+    }
+
+    /**
+     * The URL box and its Copy button. Copy is enabled only once a
+     * validated URL exists, so neither a click nor the keyboard can put an
+     * unverified address — or the message explaining why there is none —
+     * on the clipboard. All text goes through `textContent`.
+     */
+    function renderTabletUrl() {
+        const node = el.clientUrl;
+        const button = el.btnCopyUrl;
+        if (tabletUrl !== null) {
+            node.textContent = tabletUrl;
+            node.dataset.state = "ready";
+            button.disabled = false;
+            button.title = "Copy the tablet URL to the clipboard";
+            return;
+        }
+        button.disabled = true;
+        node.dataset.state = tabletUrlState;
+        if (tabletUrlState === "pending") {
+            node.textContent = "Reading the tablet URL from the server…";
+            button.title = "Waiting for GET /operator-config";
+        } else {
+            node.textContent = "Tablet URL unavailable — " + tabletUrlReason + ".";
+            button.title = "The server's operator config could not be read";
+        }
     }
 
     /* ------------------------------------------------------------------ *
@@ -3922,7 +4057,8 @@
     function init() {
         buildGlobalPalette();
         bindEvents();
-        el.clientUrl.textContent = location.origin + "/client/";
+        // Pending until GET /operator-config answers: no URL is guessed here.
+        renderTabletUrl();
         renderConn();
         renderEmpty();
         renderWall(); // wall is null here: disables the panel, notes the wait
@@ -3930,6 +4066,10 @@
         renderSnapshotPanel("scene");
         logStatus("Connecting to " + wsUrl() + " …", "info");
         fetchWallState();
+        // The tablet address comes from the server. It is read alongside the
+        // other boot reads; a failure says so in the URL box and leaves Copy
+        // disabled rather than falling back to this page's own origin.
+        fetchOperatorConfig();
         // Quiet: a server without GET /assets (or with an empty directory) is
         // a fact to note, not a failure to shout about at startup.
         refreshAssets(true);

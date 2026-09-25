@@ -38,6 +38,10 @@ def isolated_registry(tmp_path, monkeypatch) -> Iterator[None]:
     """
     monkeypatch.setenv("TABLET_WALL_DB", str(tmp_path / "tablet-wall.db"))
     monkeypatch.setenv("TABLET_WALL_ASSET_DIR", str(tmp_path / "assets"))
+    # Deployment environment must not change the existing API contract tests;
+    # security-specific cases opt in to these origin settings explicitly.
+    monkeypatch.delenv("TABLET_WALL_OPERATOR_ORIGIN", raising=False)
+    monkeypatch.delenv("TABLET_WALL_TABLET_ORIGIN", raising=False)
     _clear_state()
     yield
     _clear_state()

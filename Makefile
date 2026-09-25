@@ -5,6 +5,7 @@
 
 ROOT := $(dir $(realpath $(firstword $(MAKEFILE_LIST))))
 PORT ?= 8000
+HOST ?= 127.0.0.1
 
 .DEFAULT_GOAL := help
 
@@ -22,7 +23,7 @@ dev: ## Run the dev server with auto-reload
 	@cd "$(ROOT)" && uv run fastapi dev main.py --port $(PORT)
 
 run: ## Run the server without auto-reload
-	@cd "$(ROOT)" && uv run fastapi run main.py --port $(PORT)
+	@cd "$(ROOT)" && uv run fastapi run main.py --host $(HOST) --port $(PORT)
 
 test: ## Run the test suite
 	@cd "$(ROOT)" && uv run pytest

@@ -37,16 +37,21 @@ Then open:
 | Controller | http://127.0.0.1:8000/controller/ |
 | API docs   | http://127.0.0.1:8000/docs        |
 
-To open the client from a tablet, use the host machine's LAN address instead of
-localhost, e.g. `http://192.168.1.50:8000/client/`. Find it with:
+`make dev` and `make run` bind to loopback by default; a tablet cannot reach
+them via the host's LAN address. For a laptop-hotspot trial with tablets, use
+the [two-origin Caddy reference](deploy/README.md) instead: it exposes only
+the tablet paths on the hotspot address and keeps the backend on loopback.
+Find the host's interface addresses with:
 
 ```bash
 hostname -I | awk '{print $1}'
 ```
 
-Read [Known limitations](#known-limitations) before trying this. The client
-uses `crypto.getRandomValues` when `randomUUID` is unavailable on a plain-HTTP
-LAN origin.
+Read [Known limitations](#known-limitations) before trying this. A deliberately
+ungated test on an isolated trusted LAN is possible with
+`make run HOST=0.0.0.0`, but that exposes **all** operator routes and is not
+Phase 3 security. The client uses `crypto.getRandomValues` when `randomUUID`
+is unavailable on a plain-HTTP LAN origin.
 
 ## Project layout
 
@@ -203,8 +208,11 @@ node tests/client_image.test.js
   client still renders, covering and cropping rather than distorting — so a
   mismatch degrades the seam instead of breaking it. Pixel-perfect seams are
   not achievable from a browser without kiosk-mode control.
-- **No authentication.** Anyone who can reach the server can register a device,
-  read the roster, or repaint the wall.
+- **No built-in authentication.** Anyone who reaches the backend directly can
+  register a device, read the roster, or repaint the wall. The optional
+  operator-Origin check is a browser CSRF/WS guard, **not authentication**;
+  the [two-origin hotspot reference](deploy/README.md) uses proxy Basic auth
+  and a loopback-only backend. This ingress has not been physically validated.
 - **A device must register before it can open a socket.** A socket for an
   unregistered id is closed with `4404` rather than registering on the fly, so
   registration stays the single source of device metadata.
@@ -269,10 +277,10 @@ clock, and clock sync without a timed medium is cost with no visible capability.
 
 **Phase 3 — safe, unattended operation**
 
-- [ ] **3a** Trust boundary: first gate the controller, its socket and all
-  operator writes behind an authenticated reverse proxy over TLS or a VPN;
-  device identity, pairing and revocation need a separate decision. This proxy
-  is a deployment requirement, **not** a protection already present in the app.
+- [ ] **3a** Trust boundary: a two-origin laptop-hotspot proxy reference and
+  configurable same-origin operator guards are in progress. Physical ingress
+  checks and certificate trust on real tablets are required before calling it
+  secure. Device identity, pairing and revocation remain separate decisions.
 - [ ] **3b** HTTPS, deployment service, kiosk/fullscreen guidance, backups
 - [ ] **3c** Operational resilience: structured logs, health/readiness, asset-error states, soak tests
 - [ ] **3d** Engineering gate: ruff, targeted mypy, CI (basic CI starts in 2a)

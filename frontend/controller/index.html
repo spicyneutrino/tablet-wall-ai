@@ -301,6 +301,17 @@
 </section>
 
 <main class="stage">
+    <div class="tablet-link">
+        <span class="k">Tablet URL</span>
+        <div class="empty-url">
+            <!-- This link remains available while tablets join. The address
+                 and Copy state are driven by GET /operator-config; an
+                 unverified address is never copied. -->
+            <code class="mono" id="client-url" role="status" aria-atomic="true">/client/</code>
+            <button type="button" class="btn btn-ghost btn-sm" id="btn-copy-url"
+                    aria-label="Copy the tablet URL" aria-describedby="client-url" disabled>Copy</button>
+        </div>
+    </div>
     <div class="grid" id="grid" aria-label="Registered devices"></div>
 
     <section class="empty" id="empty" hidden>
@@ -311,14 +322,11 @@
             here within a second or two.
         </p>
 
-        <div class="empty-url">
-            <code class="mono" id="client-url">/client/</code>
-            <button type="button" class="btn btn-ghost btn-sm" id="btn-copy-url">Copy</button>
-        </div>
-
         <ol class="empty-steps">
-            <li>Find this machine's LAN address: <code class="mono">hostname -I | awk '{print $1}'</code></li>
-            <li>On the tablet, browse to that address on the same network, path <code class="mono">/client/</code>.</li>
+            <li>Connect each tablet to the hotspot or LAN that serves the tablet URL.</li>
+            <li>Open the exact URL shown above. If it says <code class="mono">localhost</code>
+                or <code class="mono">127.0.0.1</code>, configure the tablet ingress
+                before using a separate device — the loopback URL is only for local development.</li>
             <li>Leave the page open. Reloading is safe — each tablet keeps its id in local storage.</li>
         </ol>
     </section>

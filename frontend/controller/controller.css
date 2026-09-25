@@ -1748,6 +1748,15 @@ body {
     border-radius: 3px;
 }
 
+.tablet-link .empty-url {
+    margin-bottom: 14px;
+}
+
+.tablet-link .k {
+    display: block;
+    margin-bottom: 6px;
+}
+
 .empty-url code {
     flex: 1;
     min-width: 0;

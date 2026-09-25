@@ -1,0 +1,65 @@
+# Reference for a laptop hotspot, not a production credential or certificate.
+# Set WALL_HOTSPOT_IP to the address assigned to the laptop's hotspot interface.
+# Set WALL_OPERATOR_PASSWORD_HASH to a Caddy `hash-password` result (never a
+# plaintext password). Both services must already be on loopback:8000.
+{
+	auto_https disable_redirects
+}
+
+https://{$WALL_HOTSPOT_IP}:8443 {
+	bind {$WALL_HOTSPOT_IP}
+	tls internal
+
+	# Exact public tablet surface. No unmatched URL or method is forwarded;
+	# /assets (inventory), the operator socket, and all wall writes are denied.
+	@client {
+		method GET
+		path /client/ /client/index.html /client/client.js /client/client.css
+	}
+	handle @client {
+		reverse_proxy 127.0.0.1:8000
+	}
+
+	@register {
+		method POST
+		path /devices/register
+	}
+	handle @register {
+		reverse_proxy 127.0.0.1:8000
+	}
+
+	@device_socket {
+		method GET
+		path /ws/device
+	}
+	handle @device_socket {
+		reverse_proxy 127.0.0.1:8000
+	}
+
+	@asset_bytes {
+		method GET
+		path_regexp ^/assets/sha256:[0-9a-f]{64}$
+	}
+	handle @asset_bytes {
+		reverse_proxy 127.0.0.1:8000
+	}
+
+	handle {
+		respond "Forbidden" 403
+	}
+}
+
+# Only the laptop itself may reach the operator origin in this hotspot example.
+# For a later server/VPN deployment, replace the bind/address and re-test the
+# entire ingress; do not expose this operator listener to the tablet LAN.
+https://localhost:8444 {
+	bind 127.0.0.1 ::1
+	tls internal
+	basic_auth {
+		operator {$WALL_OPERATOR_PASSWORD_HASH}
+	}
+	reverse_proxy 127.0.0.1:8000 {
+		header_up -Authorization
+		header_up -Cookie
+	}
+}

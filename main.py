@@ -11,17 +11,22 @@ this module keeps the FastAPI app, lifespan, and routes.
 
 import asyncio
 import contextlib
+import ipaddress
 import json
+import os
+import re
 from collections.abc import Callable
 from contextlib import asynccontextmanager
 from copy import deepcopy
 from math import sqrt
 from typing import Any
+from urllib.parse import urlsplit
 
 from fastapi import (
     FastAPI,
     HTTPException,
     Query,
+    Request,
     Response,
     WebSocket,
     WebSocketDisconnect,
@@ -29,6 +34,7 @@ from fastapi import (
 from fastapi.responses import JSONResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, UUID4, ConfigDict, Field, field_validator, model_validator
+from starlette.datastructures import Headers
 
 # ``tabletwall.hub`` is imported both as a module and as its individual names:
 # the tests patch the sweeper's timing constants on the reader module, i.e.
@@ -422,6 +428,284 @@ app.mount(
     StaticFiles(directory="frontend/controller", html=True),
     name="controller"
 )
+
+
+# ---------------------------------------------------------------------------
+# Operator origin guard (DEFENSE-IN-DEPTH, NOT AUTHENTICATION)
+# ---------------------------------------------------------------------------
+#
+# ``TABLET_WALL_OPERATOR_ORIGIN`` (e.g. ``https://operator.wall.test``)
+# optionally pins which browser origin is allowed to drive a *write*: when it
+# is set, every state-changing HTTP request must carry exactly one ``Origin``
+# header equal to it, and the ``/ws/controller`` handshake must prove the same
+# before it is upgraded.
+#
+# What this is: a CSRF/cross-site request fence. It says "the request came
+# from the operator page we serve", nothing more.
+#
+# What this is NOT, and must never be described as: authentication or
+# authorization. There is no identity, credential, token, or session scheme
+# here at all — an ``Origin`` header is trivially forged by anything that is
+# not a browser, so this only constrains browsers. Authenticating the operator
+# is the reverse proxy's job in front of this app; treat this guard as a
+# second, independent line of defence, never as the only one.
+#
+# With the variable unset (the default, and how ``make dev`` runs) the guard
+# is inert: no header is required and nothing about direct local development
+# changes. The environment is read per request, so a running server picks up
+# a change without a code change, and tests can flip it per case.
+#
+# ``GET /operator-config`` (below) reports where the *tablet* page is served
+# from; it is a plain read and is not guarded — who may read it is the
+# proxy's call, not this guard's.
+
+OPERATOR_ORIGIN_ENV = "TABLET_WALL_OPERATOR_ORIGIN"
+TABLET_ORIGIN_ENV = "TABLET_WALL_TABLET_ORIGIN"
+
+# The methods that change something. Reads (GET/HEAD/OPTIONS) are never
+# guarded, so the pages, the asset inventory, and CORS preflight traffic are
+# untouched.
+_GUARDED_METHODS = frozenset({"POST", "PUT", "PATCH", "DELETE"})
+
+# The one state-changing endpoint reachable without a matching operator
+# origin: a tablet registers itself from the tablet page, which is served
+# under the *tablet* origin and can never present the operator's. Registration
+# is the protocol's deliberately public write (it carries no privilege beyond
+# "here is my id and size"), and a tablet must be able to introduce itself
+# before anything else can be arranged around it.
+_ORIGIN_EXEMPT_POST_PATHS = frozenset({"/devices/register"})
+
+# Outcome of reading an origin variable: unset (guard off), valid (compare
+# exactly), invalid (fail closed). "Invalid" is deliberately not "unset".
+_ORIGIN_UNSET = "unset"
+_ORIGIN_VALID = "valid"
+_ORIGIN_INVALID = "invalid"
+
+# A DNS hostname: labels of alphanumerics and inner hyphens, dots between.
+_ORIGIN_LABEL = r"[A-Za-z0-9](?:[A-Za-z0-9-]{0,61}[A-Za-z0-9])?"
+_ORIGIN_HOSTNAME = re.compile(rf"^{_ORIGIN_LABEL}(?:\.{_ORIGIN_LABEL})*$")
+
+
+def _validated_origin(value: str) -> str | None:
+    """``value`` when it is *exactly* ``scheme://host[:port]``, else ``None``.
+
+    Strictness is the feature. The guard compares this string byte for byte
+    against the request's ``Origin`` header — that is what makes the check
+    unambiguous — so a configured value the browser could never send is a
+    *configuration* error and must be rejected rather than quietly repaired:
+    a path (even a bare ``/``), a query, a fragment, userinfo, a wildcard
+    host, a missing or non-http(s) scheme, whitespace/control characters, a
+    port that does not parse, a hostname that is neither a DNS name nor an IP
+    literal, or anything ``urlsplit`` would silently normalise away (a
+    uppercased scheme, say) all yield ``None``.
+
+    Callers must never treat ``None`` as "not configured": for the guard that
+    would open the gate the operator meant to close, and for
+    ``GET /operator-config`` it would hand out a value nobody can trust.
+    """
+    if not value or not value.isascii():
+        return None
+    # No whitespace anywhere — ``urlsplit``/``URL`` strip tabs and newlines
+    # on their own, which would turn "something the browser cannot send"
+    # into something it can. Everything must stay printable ASCII.
+    if any(ch.isspace() or not 0x21 <= ord(ch) <= 0x7E for ch in value):
+        return None
+    # No wildcards (never valid in an origin), no userinfo at all (credentials
+    # do not belong in an origin), no backslash (several parsers read it as a
+    # path separator, so it would mean two different things to two readers).
+    if any(ch in value for ch in "*@\\"):
+        return None
+    try:
+        parts = urlsplit(value)
+        hostname = parts.hostname
+        port = parts.port
+    except ValueError:
+        # Unbalanced IPv6 brackets, or a port that is not a number.
+        return None
+    if parts.scheme not in ("http", "https"):
+        return None
+    if not parts.netloc:
+        return None
+    if parts.username is not None or parts.password is not None:
+        return None
+    if parts.path or parts.query or parts.fragment:
+        return None
+    if port is not None and not 1 <= port <= 65535:
+        return None
+    # Round-trip: the pieces must rebuild the input exactly, so nothing was
+    # folded, dropped, or lowercased on the way in. This is also why the
+    # scheme must be written lowercase — the browser will send it that way.
+    if f"{parts.scheme}://{parts.netloc}" != value:
+        return None
+    if not hostname:
+        return None
+    if ":" in hostname:
+        # An IPv6 literal; ``urlsplit`` has already removed the brackets.
+        try:
+            ipaddress.IPv6Address(hostname)
+        except ValueError:
+            return None
+    elif not _ORIGIN_HOSTNAME.fullmatch(hostname):
+        return None
+    return value
+
+
+def _origin_env_state(name: str) -> tuple[str, str | None]:
+    """Read ``name`` as ``(state, origin)``.
+
+    Unset *and* empty both mean "not configured": an empty variable in a
+    deployment manifest is how you switch a value off, and it must behave
+    exactly like never having set it (the guard then stays inert, as it is in
+    a plain dev run). A value that is set but does not validate is something
+    else again — it comes back ``_ORIGIN_INVALID`` with no origin, so callers
+    fail closed instead of silently disabling the guard.
+    """
+    raw = os.environ.get(name)
+    if not raw:
+        return _ORIGIN_UNSET, None
+    origin = _validated_origin(raw)
+    if origin is None:
+        return _ORIGIN_INVALID, None
+    return _ORIGIN_VALID, origin
+
+
+def _origin_allowed(origin: str, headers: Headers) -> bool:
+    """Exactly one ``Origin`` header, byte for byte equal to ``origin``.
+
+    Absent fails (a browser always sends ``Origin`` on a state-changing
+    request, so its absence means a non-browser client — or a request that
+    was not shaped the way this guard expects). Duplicated fails, because two
+    ``Origin`` headers mean some hop re-sent or merged them and the comparison
+    is no longer trustworthy. So does the literal ``null`` a sandboxed iframe
+    or a ``file://`` page sends.
+    """
+    values = headers.getlist("origin")
+    return len(values) == 1 and values[0] == origin
+
+
+def _origin_denial(headers: Headers) -> JSONResponse | None:
+    """A 403 response when these headers do not satisfy the guard, else ``None``.
+
+    ``None`` means "allowed" — either no operator origin is configured at
+    all, or the single ``Origin`` header matches the configured one exactly.
+    """
+    state, origin = _origin_env_state(OPERATOR_ORIGIN_ENV)
+    if state == _ORIGIN_UNSET:
+        return None
+    if state == _ORIGIN_INVALID:
+        # Fail closed, loudly: the operator asked for the guard and the value
+        # they gave it cannot match anything a browser sends.
+        return JSONResponse(
+            status_code=403,
+            content={
+                "detail": (
+                    f"{OPERATOR_ORIGIN_ENV} is not an origin of the form "
+                    "scheme://host[:port]; every state-changing request is "
+                    "refused until it is fixed"
+                )
+            },
+        )
+    if not _origin_allowed(origin, headers):
+        return JSONResponse(
+            status_code=403,
+            content={"detail": "Origin is missing or does not match the operator origin"},
+        )
+    return None
+
+
+def _http_origin_denial(method: str, path: str, headers: Headers) -> JSONResponse | None:
+    """The guard's decision for one HTTP request, exemptions included."""
+    if method not in _GUARDED_METHODS:
+        return None
+    # Only ever exempts the exact tablet registration POST; every other
+    # write — including a ``PUT`` aimed at the same path — is guarded.
+    if method == "POST" and path in _ORIGIN_EXEMPT_POST_PATHS:
+        return None
+    return _origin_denial(headers)
+
+
+@app.middleware("http")
+async def operator_origin_guard(request: Request, call_next):
+    """Refuse a state-changing request whose ``Origin`` does not match.
+
+    Deliberately an ordinary HTTP middleware and nothing more exotic: an HTTP
+    middleware only ever sees ``scope["type"] == "http"`` (``BaseHTTPMiddleware``
+    hands every other scope straight through), so WebSocket handshakes are not
+    routed, wrapped, or re-implemented here — ``/ws/controller`` guards itself
+    inside its own endpoint, before it accepts. No ASGI wrapper around the
+    router, no body sniffing, no dependency on how the app is mounted.
+
+    The denial is returned *before* ``call_next``, so a refused request never
+    reaches a route: no commit, no database write, no broadcast, no validation
+    — and a 403 can never be confused with a route's own 404/405/422, nor can
+    a hostile request learn anything about the wall it asked to change.
+    """
+    denial = _http_origin_denial(request.method, request.url.path, request.headers)
+    if denial is not None:
+        return denial
+    return await call_next(request)
+
+
+@app.get("/operator-config")
+async def operator_config():
+    """``{"tablet_origin": <origin or null>}`` — where the tablet page lives.
+
+    The controller page reads this once at boot to show the address a tablet
+    should open: in a two-origin deployment that address is not its own
+    origin, and the server is the only party that knows the right one.
+
+    ``TABLET_WALL_TABLET_ORIGIN`` unset (or empty) means "not configured" and
+    answers ``null``, which is the caller's cue to fall back to the
+    single-origin dev default. A value that is set but is not exactly
+    ``scheme://host[:port]`` answers ``500`` instead: loud is the point.
+    Silently answering ``null`` would read as "not configured" and push the
+    caller to guess an origin — a wrong URL in a two-origin deployment is
+    worse than no URL — and handing the value back unvalidated would pass a
+    malformed origin straight through to whoever is reading.
+
+    This is a plain read: the Origin guard above fences writes, not reads, so
+    *who* may see the answer is decided at the proxy — the operator listener
+    authenticates it, the tablet listener denies it (deploy/smoke.sh pins
+    both). There is no authentication here to lean on.
+    """
+    state, origin = _origin_env_state(TABLET_ORIGIN_ENV)
+    if state == _ORIGIN_UNSET:
+        return {"tablet_origin": None}
+    if state == _ORIGIN_INVALID:
+        return JSONResponse(
+            status_code=500,
+            content={
+                "detail": (
+                    f"{TABLET_ORIGIN_ENV} is not an origin of the form "
+                    "scheme://host[:port]"
+                )
+            },
+        )
+    return {"tablet_origin": origin}
+
+
+async def _deny_websocket(websocket: WebSocket, response: JSONResponse) -> None:
+    """Refuse the handshake itself, with a real HTTP status.
+
+    ``send_denial_response`` answers the upgrade request with ``response``
+    (403) instead of upgrading, so the client sees a *denied handshake* —
+    never a socket that opens and immediately drops, which would look to a
+    controller like an ordinary disconnect. A server that does not implement
+    the ASGI ``websocket.http.response`` extension cannot carry a body;
+    closing before accept is the spec's fallback, and conforming servers
+    (uvicorn included) answer it with HTTP 403 anyway — either way the
+    handshake fails, which is the requirement.
+
+    Cosmetic caveat: uvicorn's ``websockets-sansio`` implementation logs
+    "ASGI callable returned without completing handshake" after an
+    extension-based denial, because an initial HTTP response does not set its
+    internal handshake-complete flag. The 403 is still written and no 500 is
+    substituted (the protocol guards 500s once a response is recorded).
+    """
+    try:
+        await websocket.send_denial_response(response)
+    except RuntimeError:
+        await websocket.close()
 
 
 # ---------------------------------------------------------------------------
@@ -1122,6 +1406,18 @@ async def ws_device(
 async def ws_controller(
     websocket: WebSocket, protocol: str | None = Query(default=None)
 ):
+    # Checked on the handshake, BEFORE accept: a controller whose Origin is
+    # missing or not the configured operator origin is never upgraded, never
+    # enters ``controller_sockets``, and never receives a snapshot — there is
+    # no frame, and no state, for a rejected caller to observe. The socket
+    # endpoint is deliberately not guarded (a tablet is reached on the tablet
+    # origin); this one is the operator's, so it carries the same fence as a
+    # state-changing POST.
+    denial = _origin_denial(websocket.headers)
+    if denial is not None:
+        await _deny_websocket(websocket, denial)
+        return
+
     await websocket.accept()
 
     negotiated = _parse_protocol(protocol)
