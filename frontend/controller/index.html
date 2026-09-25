@@ -47,6 +47,72 @@
     </div>
 </section>
 
+<section class="wall" aria-labelledby="wall-title">
+    <div class="wall-inner">
+        <div class="wall-head">
+            <h2 class="kicker" id="wall-title">Wall</h2>
+            <p class="wall-meta">
+                <span class="wall-rev">revision <span class="mono" id="wall-rev">—</span></span>
+                <span class="wall-note" id="wall-note">no wall state from the server</span>
+            </p>
+        </div>
+
+        <div class="wall-cols">
+            <div class="wall-panel">
+                <form class="wall-form" id="wall-form" novalidate>
+                    <div class="field">
+                        <label class="k" for="wall-width">Width</label>
+                        <input class="inp" id="wall-width" type="number" min="1" step="1"
+                               inputmode="numeric" autocomplete="off" disabled>
+                    </div>
+                    <div class="field">
+                        <label class="k" for="wall-height">Height</label>
+                        <input class="inp" id="wall-height" type="number" min="1" step="1"
+                               inputmode="numeric" autocomplete="off" disabled>
+                    </div>
+                    <div class="field">
+                        <span class="k" id="wall-mode-label">Mode</span>
+                        <div class="seg" id="wall-mode" role="group" aria-labelledby="wall-mode-label">
+                            <button type="button" class="seg-opt" data-mode="color"
+                                    aria-pressed="true" disabled>color</button>
+                            <button type="button" class="seg-opt" data-mode="calibration"
+                                    aria-pressed="false" disabled>calibration</button>
+                        </div>
+                    </div>
+                    <button type="submit" class="btn btn-primary" id="btn-wall-save" disabled>Save wall</button>
+                </form>
+
+                <div class="wall-arrange">
+                    <div class="field">
+                        <label class="k" for="auto-columns">Columns</label>
+                        <input class="inp" id="auto-columns" type="number" min="1" step="1"
+                               inputmode="numeric" autocomplete="off" placeholder="auto" disabled>
+                    </div>
+                    <button type="button" class="btn" id="btn-auto" disabled>Arrange online</button>
+                    <p class="arrange-hint">
+                        Lays every online tablet out on a grid and replaces its placement.
+                        Offline tablets keep what they have. Blank columns = server picks.
+                    </p>
+                </div>
+            </div>
+
+            <div class="wall-mapwrap">
+                <p class="map-caption mono" id="map-caption"></p>
+                <div class="map-viewport" id="map-viewport">
+                    <div class="map-frame" id="map-frame" hidden></div>
+                </div>
+                <p class="map-empty" id="map-empty">Waiting for the wall state from the server.</p>
+                <div class="map-legend" aria-label="Diagram legend">
+                    <span class="lg"><span class="lg-box lg-online" aria-hidden="true"></span>online</span>
+                    <span class="lg"><span class="lg-box lg-offline" aria-hidden="true"></span>offline</span>
+                    <span class="lg"><span class="lg-box lg-hatch" aria-hidden="true"></span>bezel · hidden</span>
+                    <span class="lg"><span class="lg-tri" aria-hidden="true"></span>aspect mismatch</span>
+                </div>
+            </div>
+        </div>
+    </div>
+</section>
+
 <main class="stage">
     <div class="grid" id="grid" aria-label="Registered devices"></div>
 
@@ -114,6 +180,64 @@
         <div class="tile-controls">
             <div class="palette palette-sm" role="group" aria-label="Colour presets"></div>
         </div>
+
+        <section class="place" aria-label="Wall placement">
+            <div class="place-head">
+                <span class="k">Placement</span>
+                <span class="place-state mono" data-state="unplaced">UNPLACED</span>
+            </div>
+
+            <div class="place-row">
+                <span class="pf-row-k" aria-hidden="true">rect</span>
+                <div class="place-fields">
+                    <label class="pf"><span class="pf-k">x</span>
+                        <input class="inp" type="number" step="any" inputmode="numeric"
+                               autocomplete="off" data-field="x" aria-label="Footprint x"></label>
+                    <label class="pf"><span class="pf-k">y</span>
+                        <input class="inp" type="number" step="any" inputmode="numeric"
+                               autocomplete="off" data-field="y" aria-label="Footprint y"></label>
+                    <label class="pf"><span class="pf-k">w</span>
+                        <input class="inp" type="number" step="any" inputmode="numeric"
+                               autocomplete="off" data-field="w" aria-label="Footprint width"></label>
+                    <label class="pf"><span class="pf-k">h</span>
+                        <input class="inp" type="number" step="any" inputmode="numeric"
+                               autocomplete="off" data-field="h" aria-label="Footprint height"></label>
+                </div>
+            </div>
+
+            <div class="place-row">
+                <span class="pf-row-k">bezel</span>
+                <div class="place-fields" role="group" aria-label="Bezel, in wall units">
+                    <label class="pf"><span class="pf-k">top</span>
+                        <input class="inp" type="number" step="any" inputmode="numeric"
+                               autocomplete="off" data-field="bezel-top" aria-label="Bezel top"></label>
+                    <label class="pf"><span class="pf-k">right</span>
+                        <input class="inp" type="number" step="any" inputmode="numeric"
+                               autocomplete="off" data-field="bezel-right" aria-label="Bezel right"></label>
+                    <label class="pf"><span class="pf-k">bottom</span>
+                        <input class="inp" type="number" step="any" inputmode="numeric"
+                               autocomplete="off" data-field="bezel-bottom" aria-label="Bezel bottom"></label>
+                    <label class="pf"><span class="pf-k">left</span>
+                        <input class="inp" type="number" step="any" inputmode="numeric"
+                               autocomplete="off" data-field="bezel-left" aria-label="Bezel left"></label>
+                </div>
+            </div>
+
+            <p class="place-readout" data-state="none">
+                <span class="ro-row ro-vp mono"></span>
+                <span class="ro-row ro-vis mono"></span>
+                <span class="ro-flag" hidden>
+                    <span class="warn-badge" aria-hidden="true">!</span>
+                    <span class="ro-flag-text"></span>
+                </span>
+            </p>
+
+            <div class="place-actions">
+                <button type="button" class="btn btn-sm" data-action="place-save">Save</button>
+                <button type="button" class="btn btn-ghost btn-sm"
+                        data-action="place-clear" disabled>Unplace</button>
+            </div>
+        </section>
 
         <footer class="tile-foot">
             <input type="color" class="colour-input tile-colour-input" aria-label="Custom colour for this device">

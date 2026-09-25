@@ -25,6 +25,22 @@ body {
 }
 
 /*
+ * Calibration / placement surface. Hidden by default so colour mode is
+ * exactly the plain painted background; client.js flips it to `display:
+ * block` only while it has something to draw. Sits under the status pill.
+ */
+#surface {
+    display: none;
+    position: fixed;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    z-index: 1;
+    pointer-events: none;
+}
+
+/*
  * Connection status pill. Visible ONLY while the socket is down so a healthy
  * wall is a clean surface. Translucent dark background keeps it readable on
  * whatever colour the server has assigned.

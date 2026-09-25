@@ -402,6 +402,354 @@ body {
 }
 
 /* ---------------------------------------------------------------- *
+ * Wall panel + preview map
+ * ---------------------------------------------------------------- */
+
+.wall {
+    background: #101317;
+    border-bottom: 1px solid var(--line);
+}
+
+.wall-inner {
+    max-width: 1480px;
+    margin: 0 auto;
+    padding: 12px 16px;
+}
+
+.wall-head {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: baseline;
+    justify-content: space-between;
+    gap: 6px 16px;
+    margin-bottom: 10px;
+}
+
+.wall-meta {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 4px 16px;
+    margin: 0;
+    font-size: 11px;
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+    color: var(--fg-dim);
+}
+
+.wall-rev .mono {
+    color: var(--fg);
+    font-weight: 600;
+}
+
+/* Amber, monospace, sentence case: an operator note, not an error. */
+.wall-note {
+    color: var(--amber);
+    font-family: var(--mono);
+    font-size: 11px;
+    letter-spacing: 0.02em;
+    text-transform: none;
+}
+
+.wall-cols {
+    display: grid;
+    grid-template-columns: minmax(250px, 380px) minmax(0, 1fr);
+    gap: 14px 22px;
+    align-items: start;
+}
+
+.wall-form {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: flex-end;
+    gap: 10px;
+}
+
+.field {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+    min-width: 0;
+}
+
+.inp {
+    width: 8ch;
+    min-height: 29px;
+    padding: 6px 5px;
+    font: 12px/1.2 var(--mono);
+    font-variant-numeric: tabular-nums;
+    color: var(--fg);
+    background: var(--bg);
+    border: 1px solid var(--line-strong);
+    border-radius: 3px;
+}
+
+.inp:disabled {
+    opacity: 0.45;
+}
+
+.inp::placeholder {
+    color: var(--fg-dim);
+}
+
+/* Spinners would eat the width of a dense number cell. */
+.inp[type="number"] {
+    -moz-appearance: textfield;
+    appearance: textfield;
+}
+
+.inp[type="number"]::-webkit-inner-spin-button,
+.inp[type="number"]::-webkit-outer-spin-button {
+    -webkit-appearance: none;
+    margin: 0;
+}
+
+.seg {
+    display: inline-flex;
+    border: 1px solid var(--line-strong);
+    border-radius: 3px;
+    overflow: hidden;
+}
+
+.seg-opt {
+    font: 11px/1 var(--mono);
+    letter-spacing: 0.03em;
+    padding: 9px 10px;
+    background: var(--bg);
+    color: var(--fg-dim);
+    border: 0;
+    border-right: 1px solid var(--line-strong);
+    cursor: pointer;
+}
+
+.seg-opt:last-child {
+    border-right: 0;
+}
+
+.seg-opt:hover:not(:disabled) {
+    color: var(--fg);
+}
+
+.seg-opt[aria-pressed="true"] {
+    background: var(--accent);
+    color: #fff;
+    font-weight: 700;
+}
+
+.seg-opt:disabled {
+    opacity: 0.45;
+    cursor: not-allowed;
+}
+
+.wall-arrange {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: flex-end;
+    gap: 10px;
+    margin-top: 12px;
+    padding-top: 12px;
+    border-top: 1px dashed var(--line);
+}
+
+.arrange-hint {
+    flex-basis: 100%;
+    margin: 0;
+    font-size: 11px;
+    line-height: 1.5;
+    color: var(--fg-dim);
+}
+
+.wall-mapwrap {
+    min-width: 0;
+}
+
+.map-caption {
+    margin: 0 0 6px;
+    font-size: 11px;
+    letter-spacing: 0.05em;
+    color: var(--fg-dim);
+}
+
+.map-viewport {
+    overflow: auto;
+    max-height: 332px;
+}
+
+/* The wall rectangle itself: hairline frame, faint 10% grid. The outline
+   (not a border) keeps the inner coordinate space exactly wall-sized. */
+.map-frame {
+    position: relative;
+    overflow: hidden;
+    outline: 1px solid var(--line-strong);
+    background-color: #0e1115;
+    background-image:
+        linear-gradient(to right, rgba(255, 255, 255, 0.055) 0 1px, transparent 1px),
+        linear-gradient(to bottom, rgba(255, 255, 255, 0.055) 0 1px, transparent 1px);
+    background-size: 10% 10%;
+}
+
+.map-frame[hidden] {
+    display: none;
+}
+
+.map-empty {
+    margin: 0;
+    padding: 16px 12px;
+    border: 1px dashed var(--line-strong);
+    font-size: 12px;
+    color: var(--fg-dim);
+}
+
+.map-none {
+    position: absolute;
+    inset: 0;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    margin: 0;
+    font: 11px var(--mono);
+    letter-spacing: 0.14em;
+    text-transform: uppercase;
+    color: var(--fg-dim);
+}
+
+/* One placement: hatched band = bezel (hidden), inset box = visible rect.
+   The outline draws the footprint without disturbing the coordinate box
+   the visible rect is positioned against. */
+.map-pl {
+    position: absolute;
+    display: block;
+    margin: 0;
+    padding: 0;
+    border: 0;
+    font: inherit;
+    color: inherit;
+    cursor: pointer;
+    overflow: hidden;
+    background: repeating-linear-gradient(
+        45deg,
+        rgba(255, 255, 255, 0.05) 0 3px,
+        transparent 3px 7px
+    );
+    outline: 1.5px solid;
+    outline-offset: -1.5px;
+}
+
+.map-pl:hover {
+    filter: brightness(1.4);
+}
+
+.map-pl[data-state="online"] {
+    outline-color: rgba(53, 194, 93, 0.95);
+}
+
+.map-pl[data-state="offline"] {
+    outline-color: var(--fg-dim);
+    outline-style: dashed;
+}
+
+.map-pl[data-state="missing"] {
+    outline-color: var(--amber);
+    outline-style: dotted;
+}
+
+.map-vis {
+    position: absolute;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 2px;
+    overflow: hidden;
+    background: rgba(255, 255, 255, 0.05);
+    box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.34);
+}
+
+.map-pl[data-state="online"] .map-vis {
+    background: rgba(53, 194, 93, 0.16);
+    box-shadow: inset 0 0 0 1px rgba(53, 194, 93, 0.55);
+}
+
+.map-pl[data-state="offline"] .map-vis {
+    background: transparent;
+    box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.18);
+}
+
+.map-label {
+    font-family: var(--mono);
+    font-size: var(--label-fs, 10px);
+    font-weight: 700;
+    letter-spacing: 0.06em;
+    color: var(--fg);
+}
+
+.map-pl[data-state="offline"] .map-label {
+    color: var(--fg-mid);
+}
+
+.map-ar {
+    font-family: var(--mono);
+    font-size: 8px;
+    letter-spacing: 0.02em;
+    color: var(--amber);
+}
+
+/* Corner flag on a mismatched footprint — plus the two ratios inside. */
+.map-pl[data-aspect="mismatch"]::after {
+    content: "";
+    position: absolute;
+    top: 0;
+    right: 0;
+    z-index: 1;
+    border-top: 10px solid var(--amber);
+    border-left: 10px solid transparent;
+}
+
+.map-legend {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px 16px;
+    margin-top: 8px;
+    font-size: 11px;
+    color: var(--fg-dim);
+}
+
+.lg {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+}
+
+.lg-box {
+    width: 16px;
+    height: 11px;
+}
+
+.lg-online {
+    border: 1.5px solid var(--ok);
+    background: rgba(53, 194, 93, 0.16);
+}
+
+.lg-offline {
+    border: 1.5px dashed var(--fg-dim);
+}
+
+.lg-hatch {
+    border: 1px solid var(--line-strong);
+    background: repeating-linear-gradient(
+        45deg,
+        rgba(255, 255, 255, 0.08) 0 3px,
+        transparent 3px 7px
+    );
+}
+
+.lg-tri {
+    width: 0;
+    height: 0;
+    border-top: 11px solid var(--amber);
+    border-left: 11px solid transparent;
+}
+
+/* ---------------------------------------------------------------- *
  * Stage + grid
  * ---------------------------------------------------------------- */
 
@@ -447,9 +795,16 @@ body {
 }
 
 .tile[data-busy="true"] .tile-controls,
-.tile[data-busy="true"] .tile-foot {
+.tile[data-busy="true"] .tile-foot,
+.tile[data-busy="true"] .place {
     opacity: 0.55;
     pointer-events: none;
+}
+
+/* Map click: outline the tile it jumped to, briefly. */
+.tile[data-flash="true"] {
+    outline: 2px solid var(--focus);
+    outline-offset: 2px;
 }
 
 .tile-top {
@@ -678,6 +1033,155 @@ body {
 }
 
 /* ---------------------------------------------------------------- *
+ * Per-device placement editor
+ * ---------------------------------------------------------------- */
+
+.place {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    padding-top: 8px;
+    border-top: 1px dashed var(--line);
+}
+
+.place-head {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 8px;
+}
+
+.place-state {
+    padding: 3px 6px;
+    border: 1px solid var(--line-strong);
+    border-radius: 3px;
+    font-size: 10px;
+    font-weight: 700;
+    letter-spacing: 0.12em;
+    color: var(--fg-dim);
+}
+
+.place-state[data-state="placed"] {
+    color: var(--ok-fg);
+    background: rgba(53, 194, 93, 0.09);
+    border-color: rgba(53, 194, 93, 0.5);
+}
+
+/* Unplaced is a state, not a fault: dashed, quiet, never red. */
+.place-state[data-state="unplaced"] {
+    border-style: dashed;
+}
+
+.place-row {
+    display: flex;
+    align-items: flex-end;
+    gap: 6px;
+}
+
+.pf-row-k {
+    flex: none;
+    width: 38px;
+    padding-bottom: 7px;
+    font-size: 9px;
+    font-weight: 700;
+    letter-spacing: 0.1em;
+    text-transform: uppercase;
+    color: var(--fg-dim);
+}
+
+.place-fields {
+    display: grid;
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+    gap: 6px;
+    flex: 1;
+    min-width: 0;
+}
+
+.pf {
+    display: flex;
+    flex-direction: column;
+    gap: 3px;
+    min-width: 0;
+}
+
+.pf-k {
+    font-size: 9px;
+    font-weight: 700;
+    letter-spacing: 0.1em;
+    text-transform: uppercase;
+    color: var(--fg-dim);
+}
+
+.pf .inp {
+    width: 100%;
+    min-height: 26px;
+    padding: 5px 4px;
+    font-size: 11px;
+    text-align: center;
+}
+
+.place-readout {
+    display: flex;
+    flex-direction: column;
+    gap: 3px;
+    margin: 0;
+    font-size: 11px;
+    line-height: 1.4;
+}
+
+.ro-row {
+    color: var(--fg-mid);
+}
+
+.place-readout[data-state="none"] .ro-vis,
+.place-readout[data-state="edit"] .ro-vis,
+.place-readout[data-state="unknown"] .ro-vis {
+    color: var(--fg-dim);
+}
+
+.place-readout[data-state="ok"] .ro-vis {
+    color: var(--ok-fg);
+}
+
+.place-readout[data-state="mismatch"] .ro-vis,
+.place-readout[data-state="invalid"] .ro-vis {
+    color: var(--amber);
+}
+
+.ro-flag {
+    display: inline-flex;
+    align-items: flex-start;
+    gap: 6px;
+    color: var(--amber);
+}
+
+.ro-flag[hidden] {
+    display: none;
+}
+
+.ro-flag[data-kind="dim"] {
+    color: var(--fg-dim);
+}
+
+.warn-badge {
+    flex: none;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 14px;
+    height: 14px;
+    margin-top: 1px;
+    border: 1px solid currentColor;
+    border-radius: 2px;
+    font: 700 10px/1 var(--mono);
+}
+
+.place-actions {
+    display: flex;
+    gap: 8px;
+}
+
+/* ---------------------------------------------------------------- *
  * Empty state
  * ---------------------------------------------------------------- */
 
@@ -786,8 +1290,18 @@ body {
  * Responsive
  * ---------------------------------------------------------------- */
 
+@media (max-width: 980px) {
+    .wall-cols {
+        grid-template-columns: 1fr;
+    }
+}
+
 @media (max-width: 720px) {
     .stage {
+        padding: 10px;
+    }
+
+    .wall-inner {
         padding: 10px;
     }
 
@@ -807,6 +1321,10 @@ body {
     .tile {
         padding: 10px;
     }
+
+    .map-viewport {
+        max-height: 260px;
+    }
 }
 
 @media (max-width: 420px) {
@@ -825,6 +1343,16 @@ body {
     .statusbar {
         flex-wrap: wrap;
         gap: 4px 10px;
+    }
+
+    /* Row captions earn their space less than inputs do. */
+    .pf-row-k {
+        width: 30px;
+        font-size: 8px;
+    }
+
+    .seg-opt {
+        padding: 8px 7px;
     }
 }
 
