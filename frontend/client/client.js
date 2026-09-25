@@ -543,13 +543,25 @@
         /*
          * Cover: scale so the visible rect fills the viewport
          * (scale = max(vw / visible.w, vh / visible.h)), then translate so
-         * the rect's top-left sits at the viewport origin. Anything outside
-         * the rect falls outside the canvas and is cropped.
+         * the rect's CENTRE sits at the viewport's centre: the overflow is
+         * cropped equally on all sides, so a viewport whose aspect differs
+         * from the rect still shows the middle of its slice (PROTOCOL.md
+         * "Aspect and seam caveats"). Anything outside the rect falls
+         * outside the canvas and is cropped.
          */
         var scale = Math.max(vp.w / visible.w, vp.h / visible.h);
         if (!Number.isFinite(scale) || scale <= 0) return;
         var k = scale * view.dpr; /* wall unit -> device pixel */
-        view.ctx.setTransform(k, 0, 0, k, -visible.x * k, -visible.y * k);
+        var ox = (visible.w - vp.w / scale) / 2;
+        var oy = (visible.h - vp.h / scale) / 2;
+        view.ctx.setTransform(
+            k,
+            0,
+            0,
+            k,
+            -(visible.x + ox) * k,
+            -(visible.y + oy) * k
+        );
         drawPattern(view.ctx, scale, view.dpr, visible);
     }
 
@@ -1366,7 +1378,12 @@
         if (!Number.isFinite(scale) || scale <= 0) return "surface";
         var k = scale * view.dpr; /* wall unit -> device pixel */
         var ctx = view.ctx;
-        ctx.setTransform(k, 0, 0, k, -visible.x * k, -visible.y * k);
+        /* Centred cover of the visible rect onto the viewport, exactly as
+         * the calibration mapping: rect centre to viewport centre, overflow
+         * cropped equally on all sides. */
+        var ox = (visible.w - vp.w / scale) / 2;
+        var oy = (visible.h - vp.h / scale) / 2;
+        ctx.setTransform(k, 0, 0, k, -(visible.x + ox) * k, -(visible.y + oy) * k);
 
         var W = wallState.width;
         var H = wallState.height;

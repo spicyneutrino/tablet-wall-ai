@@ -291,10 +291,12 @@ is invalid (`422`).
 ### Aspect and seam caveats
 
 A client fills its viewport with its visible rect by **covering** — scaling so
-the rect covers the viewport and cropping the overflow. Seams line up when each
-placement's visible rect has the same aspect ratio as that device's reported
-viewport. When they differ the device still renders, but the image is cropped
-inconsistently.
+the rect covers the viewport and cropping the overflow **equally on all sides**:
+the rect's centre is kept at the viewport's centre, so a device whose aspect
+differs still shows the middle of its slice and the cropped band is split
+across its seams. Seams line up when each placement's visible rect has the same
+aspect ratio as that device's reported viewport. When they differ the device
+still renders, but the image is cropped inconsistently.
 
 The controller surfaces that mismatch rather than hiding it. Pixel-perfect
 seams are **not** achievable from a browser without kiosk/fullscreen control and
@@ -570,12 +572,14 @@ A version-2 client that advertises `calibration` and/or `image` must:
    the `generation` differs**, in which case accept it and reset the held
    revision. See "Revision and generation".
 3. When `scene.content.type` is `"calibration"`, render the calibration pattern
-   for its **visible rect**, mapped onto its viewport by covering.
+   for its **visible rect**, mapped onto its viewport by centred covering
+   (rect centre to viewport centre).
 4. When `scene.content.type` is `"color"`, keep rendering the assigned colour.
 5. When it advertises `image` and receives `scene.content.type` `"image"`,
    load the server-supplied same-origin URL, decode it, draw one centered-cover
    image over the **whole logical wall**
-   and map only this tablet's visible rect to its viewport. While loading or on
+   and map only this tablet's visible rect to its viewport with the same
+   centred covering. While loading or on
    failure, show an unmistakable diagnostic rather than a blank or silently
    stale surface; ignore a late decode for a superseded generation/revision.
    An unplaced tablet reports `NO PLACEMENT` instead of showing an independent

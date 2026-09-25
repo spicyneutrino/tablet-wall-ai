@@ -1004,10 +1004,14 @@ test("colour, unknown type, resize and reconnect still work", async () => {
         h.named("stroke").length > 0,
         "the calibration pattern still draws"
     );
-    /* Its transform is still the visible-rect -> viewport cover. */
+    /* Its transform is still the visible-rect -> viewport cover, centred:
+     * rect 1000x1000 onto an 800x600 viewport scales by 0.8 and crops
+     * (1000 - 600/0.8)/2 = 125 wall units off top and bottom — the rect
+     * centre stays at the viewport centre, so the translate is
+     * -(0 + 125) * 0.8 = -100 device pixels, not 0. */
     assertCloseAll(
         calibrationTransform(h),
-        [COVER_SCALE, 0, 0, COVER_SCALE, -0, -0],
+        [COVER_SCALE, 0, 0, COVER_SCALE, -0, -100],
         "calibration still maps its own slice"
     );
 
