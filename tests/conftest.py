@@ -12,16 +12,22 @@ def _clear_state() -> None:
     main.devices.clear()
     main.device_sockets.clear()
     main.controller_sockets.clear()
+    main.controller_protocols.clear()
+    # The wall is module-level state too: reset it to the PROTOCOL.md defaults
+    # (revision 0, no placements) so no test sees another test's mutations.
+    main.wall.clear()
+    main.wall.update(main._fresh_wall())
 
 
 @pytest.fixture(autouse=True)
 def isolated_registry() -> Iterator[None]:
-    """Keep the in-memory device registry from leaking between tests.
+    """Keep the in-memory device registry and wall from leaking between tests.
 
-    ``main.devices`` is module-level mutable state, so without this every test
-    would see the devices registered by the tests that ran before it. The
-    WebSocket registries are cleared too: a socket left over from an earlier
-    test would make its device look online.
+    ``main.devices`` and ``main.wall`` are module-level mutable state, so
+    without this every test would see the devices registered — and the wall
+    mutations made — by the tests that ran before it. The WebSocket registries
+    are cleared too: a socket left over from an earlier test would make its
+    device look online.
     """
     _clear_state()
     yield
