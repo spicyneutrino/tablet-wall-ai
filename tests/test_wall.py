@@ -9,6 +9,7 @@ frame (and that their ``welcome`` / ``snapshot`` shapes did not change).
 performs the handshake, and exiting it simulates a clean disconnect.
 """
 
+import re
 import uuid
 
 import pytest
@@ -204,7 +205,8 @@ class TestWallFramesToDevice:
         assert frame == {
             "type": "wall",
             "revision": 0,
-            "mode": "color",
+            "generation": wall_state(client)["generation"],
+            "scene": {"content": {"type": "color"}, "layout": "active"},
             "wall": {"width": 2000, "height": 1000},
             "placement": None,
         }
@@ -276,22 +278,25 @@ class TestWallFramesToDevice:
             initial = device.receive_json()
             assert initial["revision"] == 0
 
-            assert client.put("/wall", json={"mode": "calibration"}).status_code == 200
+            assert client.put(
+                "/scene", json={"content": {"type": "calibration"}}
+            ).status_code == 200
             pushed = device.receive_json()
 
         assert pushed == {
             "type": "wall",
             "revision": 1,
-            "mode": "calibration",
+            "generation": wall_state(client)["generation"],
+            "scene": {"content": {"type": "calibration"}, "layout": "active"},
             "wall": {"width": 2000, "height": 1000},
             "placement": None,
         }
 
-    def test_mode_downgrades_without_the_calibration_cap(
+    def test_content_downgrades_without_the_calibration_cap(
         self, client, device_payload
     ):
         register(client, device_payload, DEVICE_ID)
-        client.put("/wall", json={"mode": "calibration"})
+        client.put("/scene", json={"content": {"type": "calibration"}})
         client.put(
             f"/devices/{DEVICE_ID}/placement",
             json={"x": 0, "y": 0, "w": 1000, "h": 1000},
@@ -301,16 +306,16 @@ class TestWallFramesToDevice:
             device.receive_json()  # welcome
             frame = device.receive_json()
 
-        assert frame["mode"] == "color", (
+        assert frame["scene"]["content"] == {"type": "color"}, (
             "a device without the calibration cap must never be asked "
             "to render a calibration pattern"
         )
         assert frame["revision"] == 2
         assert frame["placement"] is not None
 
-    def test_calibration_cap_keeps_calibration_mode(self, client, device_payload):
+    def test_calibration_cap_keeps_calibration_content(self, client, device_payload):
         register(client, device_payload, DEVICE_ID)
-        client.put("/wall", json={"mode": "calibration"})
+        client.put("/scene", json={"content": {"type": "calibration"}})
 
         with client.websocket_connect(
             device_url(protocol=2, caps="calibration")
@@ -318,7 +323,7 @@ class TestWallFramesToDevice:
             device.receive_json()  # welcome
             frame = device.receive_json()
 
-        assert frame["mode"] == "calibration"
+        assert frame["scene"]["content"] == {"type": "calibration"}
 
 
 class TestControllerWall:
@@ -356,8 +361,9 @@ class TestControllerWall:
         assert frame["wall"] == {
             "width": 2000,
             "height": 1000,
-            "mode": "color",
+            "scene": {"content": {"type": "color"}, "layout": "active"},
             "revision": 0,
+            "generation": wall_state(client)["generation"],
             "placements": {},
         }
         assert [d["device_id"] for d in frame["devices"]] == [DEVICE_ID]
@@ -384,16 +390,20 @@ class TestControllerWall:
             assert client.put("/wall", json={"width": 1500}).status_code == 200
             first = controller.receive_json()
 
-            client.put("/wall", json={"mode": "calibration"})
+            assert client.put(
+                "/scene", json={"content": {"type": "calibration"}}
+            ).status_code == 200
             second = controller.receive_json()
 
+        generation = wall_state(client)["generation"]
         assert first == {
             "type": "wall_updated",
             "wall": {
                 "width": 1500,
                 "height": 1000,
-                "mode": "color",
+                "scene": {"content": {"type": "color"}, "layout": "active"},
                 "revision": 1,
+                "generation": generation,
                 "placements": {},
             },
         }
@@ -402,8 +412,9 @@ class TestControllerWall:
             "wall": {
                 "width": 1500,
                 "height": 1000,
-                "mode": "calibration",
+                "scene": {"content": {"type": "calibration"}, "layout": "active"},
                 "revision": 2,
+                "generation": generation,
                 "placements": {},
             },
         }
@@ -411,35 +422,50 @@ class TestControllerWall:
 
 class TestGetWall:
     def test_default_wall_state(self, client):
-        assert client.get("/wall").json() == {
+        state = client.get("/wall").json()
+
+        # The whole state in one read, with the generation isolated because
+        # its value is minted fresh on every server start (only its shape is
+        # part of the contract here).
+        generation = state.pop("generation")
+        assert state == {
             "width": 2000,
             "height": 1000,
-            "mode": "color",
+            "scene": {"content": {"type": "color"}, "layout": "active"},
             "revision": 0,
             "placements": {},
         }
+        assert re.fullmatch(r"[0-9a-f]{8}", generation), (
+            "a fresh server starts a fresh generation lineage"
+        )
 
 
 class TestPutWall:
     def test_put_wall_accepts_any_subset(self, client):
+        generation = wall_state(client)["generation"]
+
         response = client.put("/wall", json={"width": 3000})
         assert response.status_code == 200
         assert response.json() == {
             "width": 3000,
             "height": 1000,
-            "mode": "color",
+            "scene": {"content": {"type": "color"}, "layout": "active"},
             "revision": 1,
+            "generation": generation,
             "placements": {},
         }
 
         client.put("/wall", json={"height": 500})
-        client.put("/wall", json={"mode": "calibration"})
+        assert client.put(
+            "/scene", json={"content": {"type": "calibration"}}
+        ).status_code == 200
 
         assert wall_state(client) == {
             "width": 3000,
             "height": 500,
-            "mode": "calibration",
+            "scene": {"content": {"type": "calibration"}, "layout": "active"},
             "revision": 3,
+            "generation": generation,
             "placements": {},
         }
 
@@ -452,6 +478,10 @@ class TestPutWall:
             {"height": -10},
             {"width": "wide"},
             {"width": 1.5},
+            # ``mode`` is content, not layout: it now belongs to PUT /scene, so
+            # sending it here is an unknown key rather than a bad value. It is
+            # still 422 either way, and still must not mutate (the valid and
+            # invalid content values themselves are covered by TestPutScene).
             {"mode": "rainbow"},
             {"mode": 5},
         ],
@@ -460,6 +490,77 @@ class TestPutWall:
         before = wall_state(client)
 
         response = client.put("/wall", json=body)
+
+        assert response.status_code == 422
+        assert wall_state(client) == before, "a rejected update must not mutate"
+
+
+class TestPutScene:
+    """``PUT /scene``: content only, with the layout left untouched."""
+
+    def test_put_scene_replaces_the_content_and_bumps_the_revision(self, client):
+        generation = wall_state(client)["generation"]
+
+        response = client.put("/scene", json={"content": {"type": "calibration"}})
+
+        assert response.status_code == 200
+        assert response.json() == {
+            "width": 2000,
+            "height": 1000,
+            "scene": {"content": {"type": "calibration"}, "layout": "active"},
+            "revision": 1,
+            "generation": generation,
+            "placements": {},
+        }
+        assert wall_state(client) == response.json()
+
+        # A second accepted scene change keeps climbing within the generation.
+        client.put("/scene", json={"content": {"type": "color"}})
+        state = wall_state(client)
+        assert state["scene"] == {"content": {"type": "color"}, "layout": "active"}
+        assert state["revision"] == 2
+        assert state["generation"] == generation
+
+    def test_put_scene_leaves_the_layout_alone(self, client, device_payload):
+        register(client, device_payload, DEVICE_ID)
+        client.put("/wall", json={"width": 3000, "height": 1500})
+        client.put(
+            f"/devices/{DEVICE_ID}/placement",
+            json={"x": 0, "y": 0, "w": 1000, "h": 1000},
+        )
+        before = wall_state(client)
+
+        assert client.put(
+            "/scene", json={"content": {"type": "calibration"}}
+        ).status_code == 200
+
+        after = wall_state(client)
+        assert after["width"] == before["width"] == 3000
+        assert after["height"] == before["height"] == 1500
+        assert after["placements"] == before["placements"]
+        assert after["revision"] == before["revision"] + 1
+
+    @pytest.mark.parametrize(
+        "body",
+        [
+            # Unknown content types.
+            {"content": {"type": "rainbow"}},
+            {"content": {"type": ""}},
+            # ``image`` is reserved in the spec and not implemented yet.
+            {"content": {"type": "image"}},
+            {"content": {"type": "image", "asset": "poster-1"}},
+            # Malformed bodies.
+            {"content": {}},
+            {"content": {"type": 5}},
+            {"content": "calibration"},
+            {},
+            {"content": {"type": "calibration"}, "layout": "saved-wall"},
+        ],
+    )
+    def test_put_scene_rejects_bad_bodies_with_422(self, client, body):
+        before = wall_state(client)
+
+        response = client.put("/scene", json=body)
 
         assert response.status_code == 422
         assert wall_state(client) == before, "a rejected update must not mutate"
@@ -727,7 +828,7 @@ class TestRevisionMonotonic:
         client.put("/wall", json={"width": 1500})
         revisions.append(wall_state(client)["revision"])
 
-        client.put("/wall", json={"mode": "calibration"})
+        client.put("/scene", json={"content": {"type": "calibration"}})
         revisions.append(wall_state(client)["revision"])
 
         client.put(

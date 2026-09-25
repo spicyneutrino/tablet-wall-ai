@@ -13,11 +13,11 @@ import contextlib
 import json
 from contextlib import asynccontextmanager
 from math import sqrt
-from typing import Any, Literal
+from typing import Any
 
 from fastapi import FastAPI, HTTPException, Query, WebSocket, WebSocketDisconnect
 from fastapi.staticfiles import StaticFiles
-from pydantic import BaseModel, UUID4, Field, field_validator, model_validator
+from pydantic import BaseModel, UUID4, ConfigDict, Field, field_validator, model_validator
 
 # ``tabletwall.hub`` is imported both as a module and as its individual names:
 # the tests patch the sweeper's timing constants on the reader module, i.e.
@@ -45,6 +45,9 @@ from tabletwall.protocol import (
     _parse_device_id,
     _parse_protocol,
 )
+# Persistence of the wall state (PROTOCOL.md "Persistence"): the roster,
+# sockets, presence, and heartbeat timestamps stay in memory.
+from tabletwall.persist import load_state, save_state
 # Re-exports of the state objects (never copies): tests clear and reset them
 # through ``main`` (``main.devices.clear()``, ``main.wall.update(...)``, …)
 # and must keep mutating what the running app uses.
@@ -52,6 +55,7 @@ from tabletwall.state import (
     _device_record,
     _fresh_wall,
     _is_online,
+    _new_generation,
     _wall_state,
     controller_protocols,
     controller_sockets,
@@ -63,9 +67,30 @@ from tabletwall.state import (
 _sweeper_task: asyncio.Task[Any] | None = None
 
 
+def _restore_wall_state() -> None:
+    """Load the persisted wall state before the app can accept a socket.
+
+    The generation is minted fresh on **every** start: a normal restart, a
+    restored backup, and a rolled-back database must all force clients to
+    resynchronise rather than reject the server's state as stale
+    (PROTOCOL.md "Revision and generation"). The revision itself is persisted
+    and continues from where it left off, and the row is rewritten at once so
+    the database always holds the lineage the running server is actually
+    using.
+    """
+    persisted = load_state()
+    wall.clear()
+    wall.update(persisted if persisted is not None else _fresh_wall())
+    wall["generation"] = _new_generation()
+    save_state(wall)
+
+
 @asynccontextmanager
 async def lifespan(_: FastAPI):
     global _sweeper_task
+    # Before the first yield: no socket may be accepted against state that
+    # has not been loaded from the database.
+    _restore_wall_state()
     _sweeper_task = asyncio.create_task(_sweep_loop())
     try:
         yield
@@ -102,11 +127,16 @@ class ColorCommand(BaseModel):
 
 
 class WallUpdate(BaseModel):
-    """``PUT /wall`` body — any subset of ``width``/``height``/``mode``."""
+    """``PUT /wall`` body — layout only: any subset of ``width``/``height``.
+
+    Content does not belong here any more, so an unknown key (``mode``, say)
+    is a 422 rather than a silently ignored setting: ``PUT /scene`` owns it.
+    """
 
     width: int | None = None
     height: int | None = None
-    mode: Literal["color", "calibration"] | None = None
+
+    model_config = ConfigDict(extra="forbid")
 
     @field_validator("width", "height")
     @classmethod
@@ -116,6 +146,32 @@ class WallUpdate(BaseModel):
         if value is not None and value <= 0:
             raise ValueError("width and height must be positive integers")
         return value
+
+
+class SceneContent(BaseModel):
+    """The scene's ``content`` object, discriminated by ``type``."""
+
+    type: str
+
+    @field_validator("type")
+    @classmethod
+    def supported_type(cls, value: str) -> str:
+        # Raises ValueError — FastAPI turns it into a 422 — for a type the
+        # server cannot render: the reserved-but-unimplemented ``image``, or
+        # anything unknown (PROTOCOL.md "HTTP (v2 additions)").
+        if value == "image":
+            raise ValueError("image content is reserved but not implemented")
+        if value not in ("color", "calibration"):
+            raise ValueError("unknown content type")
+        return value
+
+
+class SceneUpdate(BaseModel):
+    """``PUT /scene`` body — content only, nothing else may be set."""
+
+    content: SceneContent
+
+    model_config = ConfigDict(extra="forbid")
 
 
 class Bezel(BaseModel):
@@ -279,9 +335,12 @@ async def delete_device(device_id: str):
     # a hole on the wall that nothing can ever fill.
     record = devices.pop(key)
     websocket = device_sockets.pop(key, None)
-    dropped_placement = wall["placements"].pop(key, None) is not None
+    dropped_placement = wall["layout"]["placements"].pop(key, None) is not None
     if dropped_placement:
         wall["revision"] += 1
+        # Committed before any broadcast below: controllers must never be
+        # told about a wall change that would not survive a restart.
+        save_state(wall)
 
     if websocket is not None:
         with contextlib.suppress(Exception):
@@ -316,17 +375,32 @@ async def get_wall():
 
 @app.put("/wall")
 async def put_wall(update: WallUpdate):
-    # The whole state is mutated before the first await, then the revision is
-    # bumped and the new state broadcast — no request can observe a half-updated
-    # wall (PROTOCOL.md "Concurrency rules").
+    # The layout is mutated before the first await, then the revision is
+    # bumped, the new state committed, and only then broadcast — no request
+    # can observe a half-updated wall (PROTOCOL.md "Concurrency rules"), and
+    # no controller hears about state that would not survive a restart
+    # (PROTOCOL.md "Persistence").
+    layout = wall["layout"]
     if update.width is not None:
-        wall["width"] = update.width
+        layout["width"] = update.width
     if update.height is not None:
-        wall["height"] = update.height
-    if update.mode is not None:
-        wall["mode"] = update.mode
+        layout["height"] = update.height
     wall["revision"] += 1
 
+    save_state(wall)
+    await _broadcast_wall()
+    return _wall_state()
+
+
+@app.put("/scene")
+async def put_scene(update: SceneUpdate):
+    # Content only: the layout is untouched, the revision bumps, the new
+    # state is committed, and only then is it broadcast — same ordering as
+    # ``PUT /wall`` above.
+    wall["scene"]["content"] = update.content.model_dump()
+    wall["revision"] += 1
+
+    save_state(wall)
     await _broadcast_wall()
     return _wall_state()
 
@@ -339,7 +413,7 @@ async def put_placement(device_id: str, placement: PlacementCommand):
 
     # Stored with its device_id (PROTOCOL.md's canonical placement shape); the
     # per-device ``wall`` frame strips it again.
-    wall["placements"][key] = {
+    wall["layout"]["placements"][key] = {
         "device_id": key,
         "x": placement.x,
         "y": placement.y,
@@ -354,6 +428,7 @@ async def put_placement(device_id: str, placement: PlacementCommand):
     }
     wall["revision"] += 1
 
+    save_state(wall)
     await _broadcast_wall()
     return _wall_state()
 
@@ -365,9 +440,10 @@ async def delete_placement(device_id: str):
         raise HTTPException(status_code=404, detail="Unknown device")
 
     # 200 even when there was no placement to clear.
-    wall["placements"].pop(key, None)
+    wall["layout"]["placements"].pop(key, None)
     wall["revision"] += 1
 
+    save_state(wall)
     await _broadcast_wall()
     return _wall_state()
 
@@ -389,8 +465,8 @@ async def wall_auto(command: WallAutoCommand | None = None):
         columns = max(1, round(sqrt(count)))
     rows = max(1, -(-count // columns))
 
-    width = wall["width"]
-    height = wall["height"]
+    width = wall["layout"]["width"]
+    height = wall["layout"]["height"]
     # Cell edges are rounded so the grid tiles the wall exactly in integer
     # units: adjacent cells share an edge and nothing overlaps or gaps.
     for index, device_id in enumerate(online):
@@ -400,7 +476,7 @@ async def wall_auto(command: WallAutoCommand | None = None):
         x1 = round((column + 1) * width / columns)
         y0 = round(row * height / rows)
         y1 = round((row + 1) * height / rows)
-        wall["placements"][device_id] = {
+        wall["layout"]["placements"][device_id] = {
             "device_id": device_id,
             "x": x0,
             "y": y0,
@@ -410,6 +486,7 @@ async def wall_auto(command: WallAutoCommand | None = None):
         }
     wall["revision"] += 1
 
+    save_state(wall)
     await _broadcast_wall()
     return _wall_state()
 

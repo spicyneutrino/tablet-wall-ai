@@ -296,21 +296,63 @@ a calibration pass; treat this as "good enough to look aligned", not "lab grade"
 
 ## Wall state
 
-| Field       | Type                        | Meaning                                   |
-| ----------- | --------------------------- | ----------------------------------------- |
-| `width`     | int > 0                     | Wall width in units.                      |
-| `height`    | int > 0                     | Wall height in units.                     |
-| `mode`      | `"color"` \| `"calibration"`| What tablets are asked to render.         |
-| `revision`  | int, increments             | Bumped on every change.                   |
-| `placements`| `{device_id: placement}`    | Sparse — a device may have no placement.  |
+The wall's state is three things, kept separate on purpose: an **arrangement**,
+what is **being shown**, and an **ordering token**. Fusing them would make a
+saved layout carry content with it, and make "recall this scene" ambiguous
+about which arrangement it meant.
 
-`revision` is monotonic. A client that receives a revision older than the one it
-holds **must ignore it**; this is what makes reconnect and replay safe.
+### Layout
 
-`mode: "color"` keeps the version-1 behaviour. `mode: "calibration"` asks every
-placed device to render its slice of a calibration pattern, which is how the
-operator checks the geometry before trusting it. An unplaced device renders its
-device id and a note that it has no placement.
+| Field        | Type                     | Meaning                                  |
+| ------------ | ------------------------ | ---------------------------------------- |
+| `width`      | int > 0                  | Wall width in units.                     |
+| `height`     | int > 0                  | Wall height in units.                    |
+| `placements` | `{device_id: placement}` | Sparse — a device may have no placement. |
+
+### Scene
+
+| Field     | Type           | Meaning                                          |
+| --------- | -------------- | ------------------------------------------------ |
+| `content` | content object | What tablets are asked to render.                |
+| `layout`  | `"active"`     | Reference to the layout in use. Named saved layouts are future work; today there is exactly one, the active layout. |
+
+`content` is discriminated by `type`:
+
+| `type`          | Extra fields                                                | Meaning |
+| --------------- | ----------------------------------------------------------- | ------- |
+| `"color"`       | —                                                            | Version-1 behaviour: each tablet shows its assigned colour. |
+| `"calibration"` | —                                                            | Each placed tablet renders its slice of the calibration pattern, which is how the operator checks the geometry. |
+| `"image"`       | `asset`, `url`, `fit`, `intrinsicWidth`, `intrinsicHeight`   | **Reserved, not implemented.** Defined below so the shape does not have to change when it lands. |
+
+### Revision and generation
+
+| Field        | Type   | Meaning                                              |
+| ------------ | ------ | ---------------------------------------------------- |
+| `revision`   | int    | Monotonic. Bumped on every accepted change to layout or scene. |
+| `generation` | string | Identifies this server's state lineage.              |
+
+`revision` is monotonic **within a generation**. A client that receives a
+revision not newer than the one it holds **must ignore it** — that is what
+makes reconnect and replay safe.
+
+It must ignore it **only when the generation matches**. Persistence means a
+server can come back holding a *lower* revision than a tablet is holding: a
+restore from backup, a rollback, a wiped database. If the client kept refusing
+those frames, a tablet that had seen revision 12 would reject a freshly
+restored server at revision 0 forever.
+
+**The generation is therefore regenerated on every server start**, and the
+revision is persisted and continues climbing. That makes the reset
+unconditional rather than something the server has to detect: after any
+restart — ordinary, restored, or rolled back — a client accepts the first frame
+it sees and resets its held revision. (Detecting "did I write this state
+myself?" reliably is not possible from inside the database alone, and getting
+it wrong means a wall that never resynchronises.)
+
+An unplaced device in `calibration` content renders its device id and a note
+that it has no placement. In `color` content it keeps rendering its assigned
+colour, as version 1 did — an unplaced tablet is still a tablet, and the
+controller's wall map already reports how many are unplaced.
 
 ## Messages
 
@@ -320,15 +362,19 @@ device id and a note that it has no placement.
 { "type": "welcome", "device_id": "<uuid>", "heartbeat_interval_ms": 5000,
   "protocol": 2, "server_caps": ["calibration"] }
 
-{ "type": "wall", "revision": 7, "mode": "calibration",
+{ "type": "wall", "revision": 7, "generation": "5c1f9a2e",
   "wall": { "width": 2000, "height": 1000 },
+  "scene": { "content": { "type": "calibration" }, "layout": "active" },
   "placement": { "x": 0, "y": 0, "w": 1000, "h": 1000,
                  "bezel": { "top": 0, "right": 0, "bottom": 0, "left": 0 } } }
 ```
 
-`placement` is `null` when this device is not placed. The `wall` frame is sent
-after `welcome`, and again on every change — including on reconnect, so a
-tablet always restores the current wall without being told again.
+`placement` is `null` when this device is not placed. The frame carries
+everything this tablet needs to render — the wall's dimensions, its own
+placement, and the content — so it is the *complete presentation* for that
+device, not a delta. It is sent after `welcome`, and again on every change,
+including on reconnect, so a tablet always restores the current wall without
+being told again.
 
 ### Server → controller (v2 additions)
 
@@ -337,20 +383,32 @@ tablet always restores the current wall without being told again.
 { "type": "wall_updated", "wall": { … } }
 ```
 
-`wall` carries the full wall state including `placements` and `revision`.
+`wall` carries the full state: the layout fields, `scene`, `revision`, and
+`generation`.
 
 ## HTTP (v2 additions)
 
 ### `GET /wall`
 
+The whole state in one read, which is what the controller needs:
+
 ```json
-{ "width": 2000, "height": 1000, "mode": "color", "revision": 3, "placements": { … } }
+{ "width": 2000, "height": 1000,
+  "revision": 3, "generation": "5c1f9a2e",
+  "placements": { … },
+  "scene": { "content": { "type": "color" }, "layout": "active" } }
 ```
 
 ### `PUT /wall`
 
-Body may set any of `width`, `height`, `mode`. `200` returns the new wall state.
-`422` if a dimension is not a positive int or `mode` is unknown.
+Layout only. Body may set `width` and/or `height`. `200` returns the new wall
+state. `422` if a dimension is not a positive int.
+
+### `PUT /scene`
+
+Content only. Body is `{ "content": { "type": … } }`. `200` returns the new
+wall state. `422` if `type` is unknown, or if an `image` is requested before it
+is implemented.
 
 ### `PUT /devices/{device_id}/placement`
 
@@ -398,10 +456,49 @@ the new wall state.
 
 A version-2 client that advertises `calibration` must:
 
-1. Record the wall state and its placement from the latest `wall` frame,
-   ignoring any frame whose `revision` is not newer than the one it holds.
-2. When `mode` is `"calibration"`, render the calibration pattern for its
-   **visible rect**, mapped onto its viewport by covering.
-3. When `mode` is `"color"`, keep rendering the assigned colour.
-4. Re-render on viewport resize, since the mapping depends on it.
+1. Record the wall state and its placement from the latest `wall` frame. The
+   frame is the complete presentation for this device, so there is nothing to
+   merge and no delta to accumulate.
+2. Ignore a frame whose `revision` is not newer than the one it holds — **unless
+   the `generation` differs**, in which case accept it and reset the held
+   revision. See "Revision and generation".
+3. When `scene.content.type` is `"calibration"`, render the calibration pattern
+   for its **visible rect**, mapped onto its viewport by covering.
+4. When `scene.content.type` is `"color"`, keep rendering the assigned colour.
+5. Re-render on viewport resize, since the mapping depends on it.
+
+---
+
+## Reserved: still images (not implemented)
+
+The shape is fixed now so it does not have to change when it lands. Nothing
+serves or renders an image yet; a `PUT /scene` asking for one is a `422`.
+
+- **Assets** are curated files in a server-owned directory, **outside** the
+  frontend static mounts, inventoried as opaque IDs with intrinsic dimensions
+  and MIME type. They are served same-origin and read-only. The controller
+  sends an asset **ID**, never a filesystem path or an arbitrary URL, and there
+  is no upload endpoint until there is authentication.
+- **Fit** is centered `cover` of the image onto the **entire logical wall**:
+  with image `Iw × Ih` and wall `W × H`, scale by `max(W/Iw, H/Ih)` and centre
+  the overflow. Every tablet then applies the *same* global transform and clips
+  to its own visible rect. Covering the image independently into each tablet's
+  visible rect would destroy the seams, because each tablet would choose a
+  different scale.
+- A device that has not advertised the `image` capability is never sent image
+  content; it falls back to colour and the controller marks it unsupported.
+- A missing or undecodable asset must not present as a blank wall: show a
+  visible error state and report it.
+
+## Persistence
+
+The active layout, the active scene, the revision, and the generation are
+persisted; sockets, presence, and heartbeat timestamps stay in memory. A commit
+happens before notification, so a controller is never told about state that
+would not survive a restart.
+
+The generation exists because of this: a restored or replaced database can come
+back at a lower revision than a connected tablet holds, and the client must
+resynchronise rather than reject the server's state as stale.
+
 

@@ -3,8 +3,16 @@
 Everything here is module-level mutable state plus the pure helpers that read
 it. Tests mutate these objects directly through ``main``'s re-exports, so the
 names must be imported, never copied.
+
+The wall keeps its four contract pieces separate (PROTOCOL.md "Wall state"):
+``layout`` (width, height, placements), ``scene`` (content plus its layout
+reference), ``revision``, and ``generation``. The roster and the socket
+registries are memory-only; ``tabletwall.persist`` writes the wall dict to
+SQLite.
 """
 
+import uuid
+from copy import deepcopy
 from datetime import datetime, timezone
 from typing import Any
 
@@ -17,14 +25,29 @@ DEFAULT_WALL_WIDTH = 2000
 DEFAULT_WALL_HEIGHT = 1000
 
 
+def _new_generation() -> str:
+    """A fresh ``generation`` token (PROTOCOL.md "Revision and generation").
+
+    Short lowercase hex, matching the example frame in the protocol. It is
+    minted on every server start so a restarted, restored, or rolled-back
+    server forces clients to resynchronise instead of rejecting its state as
+    stale; revision monotonicity only orders frames within a generation.
+    """
+    return uuid.uuid4().hex[:8]
+
+
 def _fresh_wall() -> dict[str, Any]:
-    """A brand-new wall state: the PROTOCOL.md defaults, revision 0."""
+    """A brand-new wall state: the PROTOCOL.md defaults, revision 0, a new
+    generation."""
     return {
-        "width": DEFAULT_WALL_WIDTH,
-        "height": DEFAULT_WALL_HEIGHT,
-        "mode": "color",
+        "layout": {
+            "width": DEFAULT_WALL_WIDTH,
+            "height": DEFAULT_WALL_HEIGHT,
+            "placements": {},
+        },
+        "scene": {"content": {"type": "color"}, "layout": "active"},
         "revision": 0,
-        "placements": {},
+        "generation": _new_generation(),
     }
 
 
@@ -40,8 +63,10 @@ controller_sockets: set[WebSocket] = set()
 # ``controller_sockets`` so version-1 controllers never see a version-2 frame.
 controller_protocols: dict[WebSocket, int] = {}
 
-# In-memory wall state (PROTOCOL.md "Version 2 — wall, placements, and scenes").
-# Persistence is a later increment; tests reset it via ``_fresh_wall``.
+# The wall state (PROTOCOL.md "Version 2 — wall, placements, and scenes"),
+# kept as its four pieces: ``layout`` {width, height, placements}, ``scene``
+# {content, layout}, ``revision``, ``generation``. ``tabletwall.persist`` saves
+# this dict to SQLite; tests reset it through ``_fresh_wall``.
 wall: dict[str, Any] = _fresh_wall()
 
 
@@ -98,33 +123,47 @@ def _placement_for_client(placement: dict[str, Any] | None) -> dict[str, Any] | 
 
 
 def _wall_state() -> dict[str, Any]:
-    """A detached copy of the wall state, safe to hand to a caller or a frame."""
+    """The whole wall state in one read, in the ``GET /wall`` wire shape.
+
+    A detached copy, safe to hand to a caller or a frame: the layout fields
+    are flattened to the top level, with ``scene``, ``revision``, and
+    ``generation`` beside them (PROTOCOL.md "HTTP (v2 additions)").
+    """
+    layout = wall["layout"]
     return {
-        "width": wall["width"],
-        "height": wall["height"],
-        "mode": wall["mode"],
+        "width": layout["width"],
+        "height": layout["height"],
         "revision": wall["revision"],
+        "generation": wall["generation"],
         "placements": {
             device_id: {**placement, "bezel": dict(placement["bezel"])}
-            for device_id, placement in wall["placements"].items()
+            for device_id, placement in layout["placements"].items()
         },
+        "scene": deepcopy(wall["scene"]),
     }
 
 
 def _wall_frame(device_id: str, record: dict[str, Any]) -> dict[str, Any]:
     """Build the ``wall`` frame for one device (version 2 only).
 
-    Per-device mode downgrade: a device that did not advertise the
+    The frame is the complete presentation for this device: the wall's
+    dimensions, its own placement, the scene, and both ordering tokens.
+
+    Per-device content downgrade: a device that did not advertise the
     ``calibration`` cap is never asked to render a calibration pattern, so it
-    is told the wall is in ``color`` mode instead.
+    is sent ``color`` content instead.
     """
-    mode = wall["mode"]
-    if mode == "calibration" and "calibration" not in record.get("caps", ()):
-        mode = "color"
+    scene = deepcopy(wall["scene"])
+    if scene["content"].get("type") == "calibration" and "calibration" not in record.get(
+        "caps", ()
+    ):
+        scene["content"] = {"type": "color"}
+    layout = wall["layout"]
     return {
         "type": "wall",
         "revision": wall["revision"],
-        "mode": mode,
-        "wall": {"width": wall["width"], "height": wall["height"]},
-        "placement": _placement_for_client(wall["placements"].get(device_id)),
+        "generation": wall["generation"],
+        "wall": {"width": layout["width"], "height": layout["height"]},
+        "scene": scene,
+        "placement": _placement_for_client(layout["placements"].get(device_id)),
     }

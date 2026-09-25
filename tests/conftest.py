@@ -20,23 +20,33 @@ def _clear_state() -> None:
 
 
 @pytest.fixture(autouse=True)
-def isolated_registry() -> Iterator[None]:
-    """Keep the in-memory device registry and wall from leaking between tests.
+def isolated_registry(tmp_path, monkeypatch) -> Iterator[None]:
+    """Keep the in-memory state *and* the database from leaking between tests.
 
     ``main.devices`` and ``main.wall`` are module-level mutable state, so
     without this every test would see the devices registered — and the wall
     mutations made — by the tests that ran before it. The WebSocket registries
     are cleared too: a socket left over from an earlier test would make its
     device look online.
+
+    ``TABLET_WALL_DB`` points at a per-test file under ``tmp_path``, so the
+    suite never opens a real ``tablet-wall.db`` in the repository and no test
+    can read another test's persisted wall.
     """
+    monkeypatch.setenv("TABLET_WALL_DB", str(tmp_path / "tablet-wall.db"))
     _clear_state()
     yield
     _clear_state()
 
 
 @pytest.fixture
-def client() -> Iterator[TestClient]:
-    """An HTTP client bound to the app, without starting a network server."""
+def client(isolated_registry) -> Iterator[TestClient]:
+    """An HTTP client bound to the app, without starting a network server.
+
+    Depends on ``isolated_registry`` explicitly so the database path is set
+    before this fixture starts the app: entering ``TestClient`` runs the
+    lifespan, which loads the persisted wall from ``TABLET_WALL_DB``.
+    """
     with TestClient(main.app) as test_client:
         yield test_client
 
