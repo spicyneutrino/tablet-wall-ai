@@ -26,9 +26,7 @@
     const WS_PATH = "/ws/controller";
     const PROTOCOL = 2;
 
-    /* The client page's path below an origin. A configured tablet origin
-     * may already end in it ("https://<tablet-host>/client/"), in which
-     * case it is not appended a second time. */
+    /* Client page path appended to the configured bare tablet origin. */
     const CLIENT_PATH = "client/";
 
     /* Tasteful preset palette — solid colours, no gradients. */

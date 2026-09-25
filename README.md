@@ -60,6 +60,8 @@ main.py                     FastAPI app: HTTP and WebSocket routes
 tabletwall/                 wall state, SQLite persistence, hub, asset inventory
 assets/                     optional server-local curated images (create it)
 PROTOCOL.md                 the realtime contract between server and pages
+deploy/                     hotspot proxy reference, service unit template,
+                            operations + kiosk notes, backup/restore tool
 frontend/
   client/                   runs on each tablet; paints its wall slice
     index.html  client.js  client.css
@@ -112,7 +114,10 @@ limits are 10 MiB and 12 megapixels per image. Normalize EXIF rotation before
 copying an image. The controller selects an opaque SHA-256 asset ID rather than
 a path, so a rename preserves a scene but changing the bytes gives the image a
 new identity and requires re-selection. Back up **both** the SQLite database
-and the curated files: the database contains references, not image bytes.
+and the referenced curated image bytes: the database contains references,
+not image bytes. Unreferenced files are not in this snapshot; preserve them
+separately if needed. The snapshot/restore drill is in
+[deploy/OPERATIONS.md](deploy/OPERATIONS.md#backups).
 Keep this directory modest: inventory, scene selection and asset serving
 re-scan and decode its candidates, so a large collection or repeated LAN
 requests can consume substantial CPU and I/O.
@@ -235,7 +240,10 @@ node tests/client_image.test.js
   viewport for aspect-mismatch warnings, but device-type identification is not
   implemented.
 - **The server has no wake-lock story.** A tablet's screen will still sleep;
-  that needs either kiosk software or HTTPS plus the Screen Wake Lock API.
+  that needs either kiosk software or HTTPS plus the Screen Wake Lock API. The
+  page currently makes no wake-lock, fullscreen or visibility request at all,
+  so screen sleep, fullscreen and staying-foreground are entirely OS settings —
+  see [deploy/KIOSK.md](deploy/KIOSK.md).
 
 ## Roadmap
 
@@ -277,13 +285,26 @@ clock, and clock sync without a timed medium is cost with no visible capability.
 
 **Phase 3 — safe, unattended operation**
 
+*Sequencing: the software is currently ahead of the hardware evidence. Do not
+start 3c or 3d until the build through 3b has been confirmed on the actual
+tablets — the real-device gates are in [deploy/KIOSK.md](deploy/KIOSK.md) and
+the manual ingress checks in [deploy/README.md](deploy/README.md).*
+
 - [ ] **3a** Trust boundary: a two-origin laptop-hotspot proxy reference and
   configurable same-origin operator guards are in progress. Physical ingress
   checks and certificate trust on real tablets are required before calling it
   secure. Device identity, pairing and revocation remain separate decisions.
-- [ ] **3b** HTTPS, deployment service, kiosk/fullscreen guidance, backups
-- [ ] **3c** Operational resilience: structured logs, health/readiness, asset-error states, soak tests
-- [ ] **3d** Engineering gate: ruff, targeted mypy, CI (basic CI starts in 2a)
+- [ ] **3b** HTTPS, deployment service, kiosk guidance, backups — **reference
+  artifacts pending validation**: [service unit
+  template](deploy/tablet-wall.service.example), [operations
+  notes](deploy/OPERATIONS.md), [kiosk/tablet
+  notes](deploy/KIOSK.md) and the backup/restore tool
+  ([deploy/backup.py](deploy/backup.py)) are written and covered by automated
+  tests, including a full backup/verify/restore drill; none of it has been
+  exercised in a real deployment. Not complete, and not an unattended
+  deployment.
+- [ ] **3c** Operational resilience: structured logs, health/readiness, asset-error states, soak tests — **deferred until the tablet trial confirms 2a–3b**
+- [ ] **3d** Engineering gate: ruff, targeted mypy, CI (basic CI starts in 2a) — **deferred for the same reason**
 
 **Phase 4 — timed media, only if validated**
 

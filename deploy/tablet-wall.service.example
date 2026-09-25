@@ -1,0 +1,90 @@
+# tablet-wall-ai — reference systemd unit template (Phase 3b).
+#
+# This is a REFERENCE ARTIFACT, not an installed service. Nothing in this
+# repository copies it into place, enables it, starts it, or runs systemctl on
+# your behalf. As shipped it is unusable on purpose: every /REPLACE/... and
+# https://REPLACE-... value must be filled in by the operator, and the result
+# reviewed, before it is used. It has not been validated on a real host.
+#
+# Choose the unit scope yourself and adapt this template to it; the repository
+# deliberately does not pick one for you:
+#
+#   system unit  /etc/systemd/system/tablet-wall.service
+#                installed as root, runs as the account named in User=,
+#                starts with the machine, started via `systemctl`.
+#   user unit    ~/.config/systemd/user/tablet-wall.service
+#                installed by you, runs as your own account, started via
+#                `systemctl --user`; boot-time start additionally needs
+#                lingering (`loginctl enable-linger <user>`).
+#
+# For a system unit, add User=/Group= for a dedicated non-root account with
+# read access to the checkout and read/write access to the data paths; without
+# User=, a system service runs as root. A user unit inherits your account and
+# must not set User=. Choose the matching [Install] target for the unit scope.
+#
+# Manual operator steps (never performed by this repository):
+#   1. Copy this file to the location you chose and replace every placeholder.
+#   2. `systemctl daemon-reload` for a system unit, or
+#      `systemctl --user daemon-reload` for a user unit.
+#   3. Enable/start it only when you intend to run it as a service:
+#      `systemctl enable --now tablet-wall.service`, or
+#      `systemctl --user enable --now tablet-wall.service`.
+
+[Unit]
+Description=tablet-wall-ai wall server (reference template; fill in placeholders)
+Documentation=file:///REPLACE/with/checkout/of/tablet-wall-ai/README.md
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+# The app must run from the repository root: main.py mounts its static
+# directories by relative path, so importing it from anywhere else fails
+# (README, "Project layout" and "Known limitations").
+WorkingDirectory=/REPLACE/with/checkout/of/tablet-wall-ai
+
+# Absolute data paths, both inside a directory you back up — not inside the
+# checkout. Set them explicitly instead of relying on the defaults, which are
+# relative filenames that would land next to the code.
+Environment=TABLET_WALL_DB=/REPLACE/with/data-dir/wall.db
+Environment=TABLET_WALL_ASSET_DIR=/REPLACE/with/data-dir/assets
+
+# Exact origins as the browser address bar shows them: scheme, host and port,
+# no trailing slash. These are the strings the operator-Origin guard compares
+# against; a mismatch fails closed (operator writes are refused), so keep them
+# in step with the reverse proxy in front of this process.
+Environment=TABLET_WALL_OPERATOR_ORIGIN=https://REPLACE-operator-host.example:8444
+Environment=TABLET_WALL_TABLET_ORIGIN=https://REPLACE-tablet-host.example:8443
+
+# Secrets never belong in a committed unit file. Keep Caddy's credentials in
+# Caddy's own private configuration, not this backend service. If additional
+# backend settings need an environment file, create it outside the checkout
+# with mode 600 and uncomment this line after filling in its real path:
+# EnvironmentFile=/REPLACE/with/private/tablet-wall.env
+
+# Exactly one process, one worker: active wall state, revisions and sockets
+# are process-local (README, "Known limitations"). Never add --workers, never
+# run a second copy against the same database, and never add a second
+# ExecStart line. --host keeps this process on loopback so only the reverse
+# proxy in front of it is reachable from the network.
+#
+# Run `uv sync` in the checkout first so that .venv/bin/fastapi exists.
+ExecStart=/REPLACE/with/checkout/of/tablet-wall-ai/.venv/bin/fastapi run main.py --host 127.0.0.1 --port 8000
+
+Restart=on-failure
+RestartSec=5
+
+# The roster is in memory, not on disk: after a restart this service comes up
+# with an empty roster until tablets re-register (they do so on their own),
+# and placements whose tablet has not returned show as vacant reservations.
+# Restarting is therefore a visible event for the wall, not a silent one.
+
+# Optional hardening (PrivateTmp, NoNewPrivileges, ProtectSystem, ...) is
+# worth adding only after you verify it against this WorkingDirectory and the
+# data paths above; untested sandboxing fails in ways that look like
+# application errors, so this template ships none.
+
+# [Install] is commented out on purpose: WantedBy=multi-user.target suits a
+# system unit, default.target suits a user unit, and the repository does not
+# choose between them. Uncomment after you decide.
+# [Install]
+# WantedBy=multi-user.target

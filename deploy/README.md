@@ -19,6 +19,24 @@ Safari and Android Chrome separately. If certificates cannot be trusted on
 physical tablets, stop and choose a suitable name/certificate solution rather
 than silently exposing the operator API over HTTP.
 
+## Status and related reference artifacts
+
+**Phase 3b status: reference artifacts pending validation.** The documents and
+template below are written down but not yet exercised end to end on a real
+host with real tablets. The repository installs, enables and starts none of
+them, and none of it makes this deployment unattended.
+
+| Artifact | What it is |
+| --- | --- |
+| [`README.md`](README.md) (this file) | the two-origin hotspot ingress reference |
+| [OPERATIONS.md](OPERATIONS.md) | placeholders, service lifecycle, backup/verify/restore drill, rollback, open decisions |
+| [KIOSK.md](KIOSK.md) | OS-side display behaviour (screen sleep, fullscreen, launch surface) and real-device gates |
+| [tablet-wall.service.example](tablet-wall.service.example) | placeholder-only systemd unit template; you choose and install the unit yourself |
+| [`backup.py`](backup.py) (this directory) | verified snapshot of the database plus only its referenced assets, with verify and new-target-only restore — commands and exit codes in [OPERATIONS.md](OPERATIONS.md#backups) |
+
+Cross-links: the parent [../README.md](../README.md) describes what the
+software does; this directory describes how traffic reaches it.
+
 ## Set up a temporary laptop trial
 
 1. Install Caddy (v2.8+ with `basic_auth`) before disconnecting WAN. Determine
@@ -122,5 +140,7 @@ device pairing or per-tablet identity yet. A LAN peer that learns/guesses a
 device UUID can replace its socket and spoof presence; rate limiting and
 pairing/revocation belong to subsequent security work. Curated asset bytes are
 public on the tablet origin, not private operator content. The SQLite DB plus
-the asset directory both require backups; SQLite should be backed up using
-its online backup API, not a raw file copy during writes.
+its referenced image bytes both require backups; SQLite should be backed up
+using its online backup API, not a raw file copy during writes. The snapshot,
+verify and restore drill — including stopping the service first and restoring only
+into new paths — is in [OPERATIONS.md](OPERATIONS.md#backups).
