@@ -32,6 +32,20 @@
  *   - a missing 2d context is transient: the image stays READY and repaints;
  *   - the `<img>` fallback survives Safari rejecting decode() before onload;
  *   - colour, unknown-type, resize and reconnect behaviour is unchanged.
+ *
+ * Added later on the same harness (data-driven geometry matrix, 20 distinct
+ * viewport/placement setups, the 19 tests above untouched):
+ *   - 16 single-slice viewports re-derive the one wall-cover rectangle and
+ *     their own centered transform from placement + viewport alone
+ *     (multi-size arrangements, centered mismatch crop, exact edges where
+ *     the aspect matches), fetching and decoding exactly once each;
+ *   - four unplaced viewports fetch nothing, then fetch once and take up
+ *     the same per-tile geometry when the placement arrives;
+ *   - a 2x2 grid of aspect-matched viewports tiles the wall with zero
+ *     seam drift in both directions;
+ *   - on that grid, generations across lower revisions stay repeatable:
+ *     a same-generation replay is a no-op, a new lineage at a lower
+ *     revision refetches, and a stale in-flight lineage never paints.
  */
 
 "use strict";
@@ -1614,6 +1628,569 @@ test("an unplaced tablet fetches nothing until it is placed", async () => {
         "back to NO PLACEMENT"
     );
     assert.strictEqual(h.named("drawImage").length, 0, "and nothing is drawn");
+});
+
+/* ================================================================== */
+/* Data-driven viewport geometry matrix                               */
+/*                                                                    */
+/* Every expected number below was worked out BY HAND from the        */
+/* documented contract (PROTOCOL.md "Fit" + the transform the image   */
+/* scene shares with calibration):                                    */
+/*                                                                    */
+/*   visible = footprint shrunk by the bezel                          */
+/*   scale   = max(vpw / visible.w, vph / visible.h)  (k = scale*dpr)  */
+/*   ox, oy  = centred crop: (visible.w - vpw/scale)/2, same for .h    */
+/*   T       = [k, 0, 0, k, -(visible.x + ox)*k, -(visible.y + oy)*k] */
+/*   cover   = s = max(W/iw, H/ih); dw = iw*s; dh = ih*s;             */
+/*             dx = (W - dw)/2;  dy = (H - dh)/2                      */
+/*                                                                    */
+/* Identities used to hand-check the table without reading the code:  */
+/*   - ox == 0 (and oy == 0) exactly when the viewport aspect equals  */
+/*     the visible-rect aspect; then the rect's edges land precisely  */
+/*     on the viewport's edges;                                       */
+/*   - otherwise the rect's CENTRE still lands on the viewport centre */
+/*     (screenX(T, cx) == vpw/2) — the centred half of centering.     */
+/* ================================================================== */
+
+/* Wall 4000x2000, image 1000x1500 => s = max(4, 4/3) = 4: ONE cover
+ * rectangle in wall coordinates that every viewport must agree on. */
+const MATRIX_COVER = [0, -2000, 4000, 6000];
+
+/* All matrix tiles are 2000x1000 with a zero bezel, so the visible rect
+ * is [x, y, 2000, 1000] and the "slots" are placements on that one wall:
+ * left column, middle slice, right column, bottom row. ox / oy are the
+ * hand-derived centred crops the transform must absorb; e / f the
+ * resulting translate entries; k the resulting wall->device-pixel scale. */
+const MATRIX = [
+    { id: "800x600-1-left", vp: { w: 800, h: 600, dpr: 1 }, x: 0, y: 0, k: 0.6, e: -200, f: -0, ox: 333.33333333333337, oy: 0 },
+    { id: "2400x800-1-left", vp: { w: 2400, h: 800, dpr: 1 }, x: 0, y: 0, k: 1.2, e: -0, f: -200, ox: 0, oy: 166.66666666666669 },
+    { id: "1366x1024-1-left", vp: { w: 1366, h: 1024, dpr: 1 }, x: 0, y: 0, k: 1.024, e: -341, f: -0, ox: 333.0078125, oy: 0 },
+    { id: "1200x2000-1-left", vp: { w: 1200, h: 2000, dpr: 1 }, x: 0, y: 0, k: 2, e: -1400, f: -0, ox: 700, oy: 0 },
+    { id: "2400x1400-1-left", vp: { w: 2400, h: 1400, dpr: 1 }, x: 0, y: 0, k: 1.4, e: -200, f: -0, ox: 142.85714285714286, oy: 0 },
+    { id: "800x600-1-mid", vp: { w: 800, h: 600, dpr: 1 }, x: 1000, y: 500, k: 0.6, e: -800, f: -300, ox: 333.33333333333337, oy: 0 },
+    { id: "1000x1000-1-mid", vp: { w: 1000, h: 1000, dpr: 1 }, x: 1000, y: 500, k: 1, e: -1500, f: -500, ox: 500, oy: 0 },
+    { id: "1200x600-1-mid", vp: { w: 1200, h: 600, dpr: 1 }, x: 1000, y: 500, k: 0.6, e: -600, f: -300, ox: 0, oy: 0 },
+    { id: "2400x1200-2-mid", vp: { w: 2400, h: 1200, dpr: 2 }, x: 1000, y: 500, k: 2.4, e: -2400, f: -1200, ox: 0, oy: 0 },
+    { id: "750x1000-1-right", vp: { w: 750, h: 1000, dpr: 1 }, x: 2000, y: 0, k: 1, e: -2625, f: -0, ox: 625, oy: 0 },
+    { id: "1200x2000-1-right", vp: { w: 1200, h: 2000, dpr: 1 }, x: 2000, y: 0, k: 2, e: -5400, f: -0, ox: 700, oy: 0 },
+    { id: "2100x1400-2-right", vp: { w: 2100, h: 1400, dpr: 2 }, x: 2000, y: 0, k: 2.8, e: -6300, f: -0, ox: 250, oy: 0 },
+    { id: "400x1100-1-right", vp: { w: 400, h: 1100, dpr: 1 }, x: 2000, y: 0, k: 1.1, e: -3100, f: -0, ox: 818.1818181818182, oy: 0 },
+    { id: "1600x800-1-bottom", vp: { w: 1600, h: 800, dpr: 1 }, x: 0, y: 1000, k: 0.8, e: -0, f: -800, ox: 0, oy: 0 },
+    { id: "810x1620-2-bottom", vp: { w: 810, h: 1620, dpr: 2 }, x: 0, y: 1000, k: 3.24, e: -2430, f: -3240, ox: 750, oy: 0 },
+    { id: "341x408-3-left", vp: { w: 341, h: 408, dpr: 3 }, x: 0, y: 0, k: 1.224, e: -712.5, f: -0, ox: 582.1078431372549, oy: 0 },
+];
+
+const MATRIX_BY_ID = Object.fromEntries(MATRIX.map((entry) => [entry.id, entry]));
+
+function vpOpts(vp) {
+    return { width: vp.w, height: vp.h, dpr: vp.dpr };
+}
+
+function screenY(t, y) {
+    return t[3] * y + t[5];
+}
+
+/* The underlay fillRect: the first fillRect after the last fillStyle
+ * write that precedes the picture. drawWallImage pins the opaque
+ * background immediately before filling the visible rect, so this is
+ * that fill's rectangle in wall coordinates. */
+function underlayRect(harness) {
+    const draw = lastIndexOfNamed(harness, "drawImage");
+    assert.ok(draw >= 0, "expected a drawImage call");
+    let styleIndex = -1;
+    for (let i = draw - 1; i >= 0; i--) {
+        if (harness.calls[i].name === "setFillStyle") {
+            styleIndex = i;
+            break;
+        }
+    }
+    assert.ok(styleIndex >= 0, "an underlay fill style is chosen before the picture");
+    for (let i = styleIndex + 1; i < draw; i++) {
+        if (harness.calls[i].name === "fillRect") return harness.calls[i].args;
+    }
+    throw new Error("no underlay fillRect before the picture");
+}
+
+const MATRIX_PLACEMENT = { x: 0, y: 0, w: 2000, h: 1000, bezel: ZERO_BEZEL };
+function tilePlacement(x, y) {
+    return Object.assign({}, MATRIX_PLACEMENT, { x: x, y: y });
+}
+
+function matrixWall(entry) {
+    return { width: 4000, height: 2000 };
+}
+
+/* Shared assertions for one placed+ready matrix client. */
+function assertTileGeometry(h, entry, label) {
+    const vis = [entry.x, entry.y, 2000, 1000];
+    const transform = wallTransform(h);
+
+    assertCloseAll(clipRect(h), vis, label + " clip = the device's visible rect");
+    assertCloseAll(
+        transform,
+        [entry.k, 0, 0, entry.k, entry.e, entry.f],
+        label + " centered-cover transform"
+    );
+    assertCloseAll(
+        lastDrawImage(h).slice(1),
+        MATRIX_COVER,
+        label + " draws the ONE wall-cover rectangle"
+    );
+
+    /* The centred half: the slice's centre is the viewport's centre. */
+    assertClose(
+        screenX(transform, entry.x + 1000),
+        (entry.vp.w * entry.vp.dpr) / 2,
+        label + " keeps the slice's x centre"
+    );
+    assertClose(
+        screenY(transform, entry.y + 500),
+        (entry.vp.h * entry.vp.dpr) / 2,
+        label + " keeps the slice's y centre"
+    );
+
+    /* Where the aspect matches, the edges are exact; where it does not,
+     * the rect overflows and the crop centre holds. */
+    if (entry.ox === 0) {
+        assertClose(screenX(transform, entry.x), 0, label + " left edge exact");
+        assertClose(
+            screenX(transform, entry.x + 2000),
+            entry.vp.w * entry.vp.dpr,
+            label + " right edge exact"
+        );
+    } else {
+        assert.ok(
+            screenX(transform, entry.x) <= 0 &&
+                screenX(transform, entry.x + 2000) >= entry.vp.w * entry.vp.dpr,
+            label + " crops an equal x overflow"
+        );
+    }
+    if (entry.oy === 0) {
+        assertClose(screenY(transform, entry.y), 0, label + " top edge exact");
+        assertClose(
+            screenY(transform, entry.y + 1000),
+            entry.vp.h * entry.vp.dpr,
+            label + " bottom edge exact"
+        );
+    } else {
+        assert.ok(
+            screenY(transform, entry.y) <= 0 &&
+                screenY(transform, entry.y + 1000) >= entry.vp.h * entry.vp.dpr,
+            label + " crops an equal y overflow"
+        );
+    }
+
+    /* Opaque underlay over the visible rect, before the picture. */
+    assertCloseAll(underlayRect(h), vis, label + " underlays the visible rect");
+
+    /* Repeatability: exactly one fetch, one decode (held), one paint —
+     * and the loading diagnostic never outlives the picture. */
+    assert.strictEqual(
+        h.named("drawImage").length,
+        1,
+        label + " paints the picture exactly once"
+    );
+    assert.strictEqual(
+        h.fetchLog.filter((f) => String(f.url).includes(ASSET_A)).length,
+        1,
+        label + " fetches the asset exactly once"
+    );
+    assert.strictEqual(h.bitmaps.length, 1, label + " decodes exactly once");
+    assert.strictEqual(
+        h.bitmaps[0].closed,
+        false,
+        label + " holds its decoded bitmap while placed"
+    );
+    const lastDraw = lastIndexOfNamed(h, "drawImage");
+    const lastText = lastIndexOfNamed(h, "fillText");
+    assert.ok(
+        lastText < lastDraw,
+        label + " leaves no diagnostic over the picture"
+    );
+    return transform;
+}
+
+test("matrix: 16 viewports agree on one wall cover and centre their own slice", async () => {
+    for (const entry of MATRIX) {
+        const h = await startHarness(vpOpts(entry.vp));
+        h.setFetch(
+            route({ [ASSET_A]: okResponse(assetBlob(entry.id, 1000, 1500)) })
+        );
+        h.emit(
+            wallFrame({
+                wall: matrixWall(entry),
+                revision: 1,
+                scene: {
+                    content: imageContent({ intrinsicWidth: 1000, intrinsicHeight: 1500 }),
+                    layout: "active",
+                },
+                placement: tilePlacement(entry.x, entry.y),
+            })
+        );
+        await drain();
+
+        assertTileGeometry(h, entry, entry.id + ":");
+        /* One asset request plus the registration, nothing else. */
+        assert.strictEqual(
+            h.fetchLog.length,
+            2,
+            entry.id + ": no other request than the asset and the registration"
+        );
+
+        /* The backing store follows the viewport in device pixels. */
+        assert.strictEqual(h.canvas.width, entry.vp.w * entry.vp.dpr, entry.id + " backing width");
+        assert.strictEqual(h.canvas.height, entry.vp.h * entry.vp.dpr, entry.id + " backing height");
+    }
+});
+
+test("matrix: unplaced viewports fetch nothing, then take their place's geometry", async () => {
+    const UNPLACED_IDS = [
+        "800x600-1-left",
+        "1200x2000-1-left",
+        "1000x1000-1-mid",
+        "810x1620-2-bottom",
+    ];
+    for (const id of UNPLACED_IDS) {
+        const entry = MATRIX_BY_ID[id];
+        const h = await startHarness(vpOpts(entry.vp));
+        h.setFetch(
+            route({ [ASSET_A]: okResponse(assetBlob("u-" + entry.id, 1000, 1500)) })
+        );
+
+        h.emit(
+            wallFrame({
+                wall: matrixWall(entry),
+                revision: 1,
+                placement: null,
+                scene: {
+                    content: imageContent({ intrinsicWidth: 1000, intrinsicHeight: 1500 }),
+                    layout: "active",
+                },
+            })
+        );
+        await drain();
+        assert.ok(
+            h.texts().includes("NO PLACEMENT"),
+            entry.id + " says so out loud: " + JSON.stringify(h.texts())
+        );
+        assert.strictEqual(
+            h.fetchLog.filter((f) => String(f.url).includes(ASSET_A)).length,
+            0,
+            entry.id + " fetches no image while unplaced"
+        );
+        assert.strictEqual(
+            h.named("drawImage").length,
+            0,
+            entry.id + " paints nothing while unplaced"
+        );
+        assert.strictEqual(
+            h.named("clip").length,
+            0,
+            entry.id + " builds no wall mapping while unplaced"
+        );
+
+        /* The placement arrives: exactly one fetch, same per-tile geometry
+         * as the placed matrix run above. */
+        h.emit(
+            wallFrame({
+                wall: matrixWall(entry),
+                revision: 2,
+                placement: tilePlacement(entry.x, entry.y),
+                scene: {
+                    content: imageContent({ intrinsicWidth: 1000, intrinsicHeight: 1500 }),
+                    layout: "active",
+                },
+            })
+        );
+        await drain();
+        assert.strictEqual(
+            h.fetchLog.filter((f) => String(f.url).includes(ASSET_A)).length,
+            1,
+            entry.id + " fetches exactly once once placed"
+        );
+        assert.strictEqual(
+            h.named("drawImage").length,
+            1,
+            entry.id + " paints exactly once once placed"
+        );
+        assertTileGeometry(h, entry, entry.id + " (placed):");
+    }
+});
+
+/* ------------------------------------------------------------------ */
+/* A 2x2 grid of aspect-matched viewports                             */
+/* ------------------------------------------------------------------ */
+
+/* Wall 4000x2000 tiled by four 2000x1000 slices; image 2000x1000 (2:1)
+ * covers the wall EXACTLY once (s = max(2, 2) = 2, dx = dy = 0), so the
+ * picture is exactly two viewport-widths on each device and every seam
+ * has nothing to forgive. Each slice's aspect equals the viewport's
+ * (2000:1000 == 2:1), so ox = oy = 0 and the edges are exact. */
+const GRID_COVER = [0, 0, 4000, 2000];
+const GRID_C = "sha256:" + "c".repeat(64);
+
+const GRID = [
+    { id: "1000x500-1-tl", vp: { w: 1000, h: 500, dpr: 1 }, slot: [0, 0], k: 0.5 },
+    { id: "1400x700-1-tr", vp: { w: 1400, h: 700, dpr: 1 }, slot: [2000, 0], k: 0.7 },
+    { id: "1800x900-1-bl", vp: { w: 1800, h: 900, dpr: 1 }, slot: [0, 1000], k: 0.9 },
+    { id: "2200x1100-1-br", vp: { w: 2200, h: 1100, dpr: 1 }, slot: [2000, 1000], k: 1.1 },
+];
+
+function gridImage(overrides) {
+    return imageContent(
+        Object.assign(
+            { intrinsicWidth: 2000, intrinsicHeight: 1000 },
+            overrides
+        )
+    );
+}
+
+function gridScene(assetOverrides) {
+    return { content: gridImage(assetOverrides), layout: "active" };
+}
+
+function gridPlacement(slot) {
+    return { x: slot[0], y: slot[1], w: 2000, h: 1000, bezel: ZERO_BEZEL };
+}
+
+function gridFrame(fields) {
+    return Object.assign(
+        {
+            wall: { width: 4000, height: 2000 },
+            scene: gridScene(),
+            revision: 20,
+            generation: "g-1",
+        },
+        fields
+    );
+}
+
+/* One placed grid client, loaded with the grid asset. Returns the
+ * assertions' expected translate entries. */
+async function startGridTile(entry) {
+    const h = await startHarness(vpOpts(entry.vp));
+    h.setFetch(
+        route({ [ASSET_A]: okResponse(assetBlob("grid-" + entry.id, 2000, 1000)) })
+    );
+    h.emit(wallFrame(Object.assign(gridFrame({}), { placement: gridPlacement(entry.slot) })));
+    await drain();
+
+    assertCloseAll(
+        lastDrawImage(h).slice(1),
+        GRID_COVER,
+        entry.id + " draws the wall-cover rectangle"
+    );
+    assertCloseAll(
+        wallTransform(h),
+        [entry.k, 0, 0, entry.k, -entry.slot[0] * entry.k, -entry.slot[1] * entry.k],
+        entry.id + " transform"
+    );
+    assert.strictEqual(
+        h.fetchLog.filter((f) => String(f.url).includes(ASSET_A)).length,
+        1,
+        entry.id + " fetched the asset once"
+    );
+    return h;
+}
+
+test("grid: a 2x2 aspect-matched arrangement tiles the wall with zero seam drift", async () => {
+    const e = -0; /* the translate of a slot sitting at the wall's origin */
+    const tiles = [
+        { entry: GRID[0], t: [GRID[0].k, 0, 0, GRID[0].k, e, e] },
+        { entry: GRID[1], t: [GRID[1].k, 0, 0, GRID[1].k, -1400, e] },
+        { entry: GRID[2], t: [GRID[2].k, 0, 0, GRID[2].k, e, -900] },
+        { entry: GRID[3], t: [GRID[3].k, 0, 0, GRID[3].k, -2200, -1100] },
+    ];
+
+    for (const tile of tiles) {
+        const entry = tile.entry;
+        const h = await startGridTile(entry);
+        const t = wallTransform(h);
+
+        assertCloseAll(t, tile.t, entry.id + " transform");
+        assertCloseAll(lastDrawImage(h).slice(1), GRID_COVER, entry.id + " cover");
+        assertCloseAll(
+            clipRect(h),
+            [entry.slot[0], entry.slot[1], 2000, 1000],
+            entry.id + " clip"
+        );
+        assertCloseAll(
+            underlayRect(h),
+            [entry.slot[0], entry.slot[1], 2000, 1000],
+            entry.id + " underlay"
+        );
+
+        /* Every edge of this tile's slice lands exactly on the viewport
+         * edge: aspect matched, so the seam is exact, not cropped. */
+        assertClose(screenX(t, entry.slot[0]), 0, entry.id + " left edge");
+        assertClose(
+            screenX(t, entry.slot[0] + 2000),
+            entry.vp.w,
+            entry.id + " right edge"
+        );
+        assertClose(screenY(t, entry.slot[1]), 0, entry.id + " top edge");
+        assertClose(
+            screenY(t, entry.slot[1] + 1000),
+            entry.vp.h,
+            entry.id + " bottom edge"
+        );
+        assert.strictEqual(h.named("drawImage").length, 1, entry.id + " paints once");
+        assert.strictEqual(h.bitmaps.length, 1, entry.id + " decodes once");
+    }
+
+    /* The seam itself, read off the transforms: the internal wall edge is
+     * the right edge of the left tile's viewport and the left edge of the
+     * right one's — same line, no gap, no overlap; ditto vertically. */
+    const tl = tiles[0].t;
+    const tr = tiles[1].t;
+    const bl = tiles[2].t;
+    const br = tiles[3].t;
+    assertClose(screenX(tl, 2000), 1000, "top row: x=2000 is the left tile's right edge");
+    assertClose(screenX(tr, 2000), 0, "top row: x=2000 is the right tile's left edge");
+    assertClose(screenX(bl, 2000), 1800, "bottom row: x=2000 is the left tile's right edge");
+    assertClose(screenX(br, 2000), 0, "bottom row: x=2000 is the right tile's left edge");
+    assertClose(screenY(tl, 1000), 500, "left column: y=1000 is the top tile's bottom edge");
+    assertClose(screenY(Array.from(bl), 1000), 0, "left column: y=1000 is the bottom tile's top edge");
+    assertClose(screenY(tr, 1000), 700, "right column: y=1000 is the top tile's bottom edge");
+    assertClose(screenY(br, 1000), 0, "right column: y=1000 is the bottom tile's top edge");
+    /* The wall's own far corner lands exactly at the bottom-right tile's
+     * viewport corner — nothing spills, nothing is missing. */
+    assertClose(screenX(br, 4000), 2200, "wall's right edge at the grid's right edge");
+    assertClose(screenY(br, 2000), 1100, "wall's bottom edge at the grid's bottom edge");
+});
+
+test("grid: lower-revision generations stay repeatable and a stale lineage never paints", async () => {
+    for (const entry of GRID) {
+        const h = await startGridTile(entry);
+        const paintsReady = h.named("drawImage").length; /* 1 */
+
+        /* A reconnect replay of the SAME generation at a LOWER revision:
+         * dropped untouched, no repaint at all, no refetch. */
+        h.reset();
+        h.emit(
+            wallFrame(
+                Object.assign(gridFrame({ revision: 8, generation: "g-1" }), {
+                    placement: gridPlacement(entry.slot),
+                })
+            )
+        );
+        await drain();
+        assert.strictEqual(
+            h.calls.length,
+            0,
+            entry.id + " replays nothing: zero canvas calls"
+        );
+        assert.strictEqual(
+            h.fetchLog.filter((f) => String(f.url).includes(ASSET_A)).length,
+            1,
+            entry.id + " does not refetch on a replay"
+        );
+
+        /* A NEW generation at a LOWER revision starts its own load and
+         * keeps the retained picture under the loading banner. */
+        const lineage = deferred();
+        h.setFetch(route({ [GRID_C]: lineage.promise }));
+        h.emit(
+            wallFrame(
+                Object.assign(
+                    gridFrame({
+                        revision: 9,
+                        generation: "g-2",
+                        scene: gridScene({
+                            asset: GRID_C,
+                            url: "/assets/" + GRID_C,
+                            intrinsicWidth: 1000,
+                            intrinsicHeight: 1000,
+                        }),
+                    }),
+                    { placement: gridPlacement(entry.slot) }
+                )
+            )
+        );
+        await drain();
+        assert.strictEqual(
+            h.fetchLog.filter((f) => String(f.url).includes("c".repeat(16))).length,
+            1,
+            entry.id + " refetches under the new lineage despite the lower revision"
+        );
+        assert.strictEqual(
+            h.named("drawImage").length,
+            1,
+            entry.id + " retains the previous picture while loading"
+        );
+        assertCloseAll(
+            lastDrawImage(h).slice(1),
+            GRID_COVER,
+            entry.id + " retained picture is the old one"
+        );
+        assert.ok(
+            h.texts().some((t) => String(t).includes("LOADING IMAGE")),
+            entry.id + " says it is loading"
+        );
+
+        /* The new lineage turns out to be the same picture the cache
+         * already holds (the C fetch is still pending): a frame back at a
+         * LOWER revision in a third generation re-shows it without any
+         * further request — from the cache, not the network. */
+        h.emit(
+            wallFrame(
+                Object.assign(
+                    gridFrame({ revision: 10, generation: "g-3" }),
+                    { placement: gridPlacement(entry.slot) }
+                )
+            )
+        );
+        await drain();
+        assert.strictEqual(
+            h.fetchLog.filter((f) => String(f.url).includes(ASSET_A)).length,
+            1,
+            entry.id + " shows it from the cache with no new request"
+        );
+        assert.strictEqual(
+            h.named("drawImage").length,
+            2,
+            entry.id + " repaints the cached picture"
+        );
+        assertCloseAll(
+            lastDrawImage(h).slice(1),
+            GRID_COVER,
+            entry.id + " back on the wall-cover rectangle"
+        );
+
+        /* The pending C response arrives LAST, already a generation
+         * stale: it paints nothing, releases its bitmap to nobody, and
+         * starts nothing on its own. */
+        const paintsNow = h.named("drawImage").length;
+        const fetchesNow = h.fetchLog.length;
+        lineage.resolve(okResponse(assetBlob("late-lineage", 1000, 1000)));
+        await drain();
+        const late = h.bitmaps.find((b) => b.tag === "late-lineage");
+        assert.ok(late, entry.id + " decoded the late response before judging it");
+        assert.strictEqual(
+            late.closed,
+            true,
+            entry.id + " releases the stale lineage's bitmap"
+        );
+        assert.strictEqual(
+            h.named("drawImage").length,
+            paintsNow,
+            entry.id + " paints nothing for a stale lineage"
+        );
+        assert.strictEqual(
+            h.fetchLog.length,
+            fetchesNow,
+            entry.id + " retries nothing on its own"
+        );
+        assert.ok(
+            !paintedRects(h).some((r) => r.join() === "0,-1000,4000,4000"),
+            entry.id + " never shows the stale picture's rectangle"
+        );
+        assertCloseAll(
+            lastDrawImage(h).slice(1),
+            GRID_COVER,
+            entry.id + " still shows the current one"
+        );
+    }
 });
 
 /* "#rrggbb" is opaque; rgba()/hsla() carries its own alpha. */

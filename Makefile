@@ -9,7 +9,7 @@ HOST ?= 127.0.0.1
 
 .DEFAULT_GOAL := help
 
-.PHONY: help sync dev run test clean
+.PHONY: help sync dev run test sim clean
 
 help: ## Show this help
 	@echo "tablet-wall-ai:"
@@ -25,8 +25,13 @@ dev: ## Run the dev server with auto-reload
 run: ## Run the server without auto-reload
 	@cd "$(ROOT)" && uv run fastapi run main.py --host $(HOST) --port $(PORT)
 
-test: ## Run the test suite
+test: ## Run Python and client JavaScript tests
 	@cd "$(ROOT)" && uv run pytest
+	@cd "$(ROOT)" && node tests/client_image.test.js
+
+sim: ## Exercise 18 virtual tablets against an isolated app/database
+	@cd "$(ROOT)" && uv run python simulator/run.py
+	@cd "$(ROOT)" && uv run pytest -q simulator/test_simulator_selftest.py
 
 clean: ## Remove the virtualenv and Python caches
 	@cd "$(ROOT)" && rm -rf .venv .pytest_cache

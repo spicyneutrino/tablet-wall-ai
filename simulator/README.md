@@ -1,0 +1,222 @@
+# Virtual tablet simulator
+
+A bounded, **test-only** harness that drives the real FastAPI app with
+virtual tablets: 18 devices by default (15–20 supported) registering,
+connecting over WebSocket, receiving per-device `wall` frames, reconnecting,
+and being measured for placement/tiling/visible-rect seam geometry — against
+a temporary database and asset directory, never the operator's data.
+
+**No browser runs here.** No JavaScript, no canvas, no pixels: a green run
+proves what the app *sends* and what geometry *follows from the protocol* —
+never what a screen would show. See [Limitations](#limitations-versus-a-real-browser).
+
+Everything here lives under `simulator/`. No production file, schema,
+Makefile target, or README outside this directory is touched.
+
+## Quick start
+
+From the repository root:
+
+```bash
+uv run python simulator/run.py
+```
+
+Expected: a per-scenario line, then a summary, exit code `0` — meaning every
+check on the wire frames and the geometry passed. That is not a rendering
+check; see the limitations below before trusting a green wall.
+
+```
+tablet-wall simulator: 22 scenarios, 18 virtual tablets, work dir /tmp/tablet-wall-sim-…
+  ok   01_isolation                 11/11 checks   0.05s
+  …
+  ok   22_sweeper                   8/8 checks   1.81s
+scenarios: 23 passed, 0 failed, 0 errored of 23
+checks:    1075 passed, 0 failed of 1075
+duration:  8.16s
+note:      no browser/canvas execution — see the limitations in the report
+```
+
+A run is deterministic in structure (stable UUID4s derived from a hash of the
+slot number, fixed fleet, fixed wall geometry) and takes about 8–10 s. The
+only timing that matters is bounded: every frame wait has a deadline
+(`--timeout`, default 5 s), so a regression fails instead of hanging.
+
+## Options
+
+| Flag | Meaning |
+| --- | --- |
+| `--devices N` | virtual tablets, `15`–`20` (default `18`) |
+| `--scenario ID` | run the sequence **up to and including** that id (repeatable); see `--list` |
+| `--list` | print scenario ids and exit |
+| `--report PATH` | write the JSON report to `PATH` (`-` = stdout). **Opt-in**: nothing is written unless this is given, so a default run leaves no generated file behind |
+| `--no-report` | accepted for compatibility; identical to the default (no report file) |
+| `--timeout S` | deadline for any single frame wait (default `5`) |
+| `--fail-fast` | stop at the first failing scenario |
+| `--keep-work-dir` | keep the temporary database/asset directory |
+| `--quiet` | only print the summary |
+
+Exit codes: `0` all checks passed · `1` a check failed, a scenario errored or
+never finished, a reader thread leaked, the temporary data survived, or the
+repository changed · `2` usage error (bad flag, out-of-range `--devices`,
+unknown or ambiguous `--scenario`).
+
+Scenarios build on each other (later ones assume the roster, wall and
+sockets earlier ones made), so `--scenario 15` runs `01`…`15` from a clean
+app rather than 15 alone. Matching is explicit: an exact id
+(`15_auto_tiling`), a longer unambiguous prefix (`15_auto`), or a bare
+number mapped onto its zero-padded id (`15`). A prefix that matches
+several ids — `2`, which prefixes `20_…`, `21_…` and `22_…` — is rejected
+with exit `2` instead of being silently broadened. `--scenario 22` (or no
+flag) is the full run.
+
+## What a run exercises
+
+| id | what it proves |
+| --- | --- |
+| `01_isolation` | database and asset dir are in the temporary work dir; origin fences cleared; fresh DB starts at revision 0 |
+| `02_registration` | all tablets register, roster records are complete, `GET /device/{id}`, add/remove a guest |
+| `03_registration_validation` | malformed id / version-1 UUID / missing field / wrong type → `422`; re-registration is idempotent |
+| `04_controller_snapshot` | a v2 controller's first frame is a snapshot of the roster plus the live wall |
+| `05_device_handshake` | `welcome` + immediate `wall` replay for every tablet; `4404` unknown device, `4426` bad protocol, `4400` bad id |
+| `06_presence` | a controller opened later sees every tablet online; a **v1** controller gets no `wall` frame (while the v2 one beside it does) |
+| `07_colour` | broadcast and single-tablet colour, `delivered` counts, normalisation, `422`/`404` |
+| `08_wall_layout` | `PUT /wall` resizes, broadcasts to every fleet tablet, validates dimensions and unknown keys |
+| `09_placements` | an explicit placement for every tablet, +1 revision each, per-device frame carries its own rect without `device_id`, the band tiles its rectangle |
+| `10_placement_validation` | `404` unknown/malformed device, `422` degenerate rect or bezel, release is idempotent and its `wall` frame follows |
+| `11_scene_colour` | content-only scene change; `422` for unknown type, image without asset, asset on colour, unknown key |
+| `12_scene_calibration_caps` | calibration reaches capable tablets, others get `color`, generation/placement untouched |
+| `13_scene_image` | inventory, content-id = SHA-256 of the bytes, byte re-hashing on serve, headers, per-device image descriptor vs colour downgrade, `422` unknown asset, inventory refresh on add/remove, vanished asset 404s |
+| `14_snapshots` | layout/scene save and recall are independent; saves and deletes never bump the revision; recalls do; `409` duplicates, `422` names, `404` unknown; stored scene has no composed `url` |
+| `15_auto_tiling` | default `columns` leaves exactly the predictable vacancy; explicit `columns` is an exact partition (sum = union = wall area, zero overlap, zero uncovered); per-device cells match an independent recomputation; seam gaps match hand-derived crops |
+| `16_seam_matched` | 4:3 cells for 4:3 tablets → every seam gap and every cover crop is `0` (within 1e-9); unplaced tablets get `placement: null` |
+| `17_seam_mismatch` | hand-computed crops for mismatched aspects (87.5 / 37.5 wall units) and a bezel seam of exactly 127.5 units (40 bezel + 87.5 cover crop) |
+| `18_revision_generation` | six mixed mutations, +1 revision each, one generation throughout, every tablet and controller receives every revision in order and nothing extra |
+| `19_reconnect` | drop → `device_offline` + roster kept + placement intact → reconnect → `welcome`, wall replay at the current revision, `device_online` (never an `offline` first), `last_seen` advanced |
+| `20_socket_replacement` | the superseded socket closes with `4409`, the replacement is welcomed and replayed, controllers see only `device_online` |
+| `21_restart` | new generation, revision/placements/scene persisted, roster and sockets gone (emulated process death), `4404` until re-registration, clean reconnect |
+| `22_sweeper` | a heartbeat moves `last_seen`; a silenced tablet is swept with `4408` (timing constants patched in-process), controllers are told, everyone else stays up, then it reconnects |
+| `23_teardown` | every reader thread stopped, temporary DB/assets deleted, **no repository file created, removed or modified** |
+
+## How the geometry is checked
+
+`simulator/geometry.py` re-implements PROTOCOL.md's rules as pure arithmetic —
+the visible rect (`footprint − bezel`), the client's centred cover
+(`scale`, `ox`, `oy`, and the wall-space window actually drawn), union/overlap
+areas for a set of cells, and the gap between two neighbours' displayed
+windows. Scenarios then compare those numbers against the wire in three ways:
+
+1. **Independent recomputation** — the auto grid's cells and its uncovered
+   area are recalculated from the rounded edge rules here, not read back as
+   claims (default fleet: exactly `288000` wall units² left vacant by the
+   default `columns`, `0` by an explicit divisor of the fleet size).
+2. **Hand-derived constants** — for the default fleet in `400×400` cells:
+   a 4:3 tablet crops `50` units vertically, the 16:9 kiosk `87.5` vertically,
+   the portrait tablet `50` horizontally; the reported seam gaps must equal
+   the sum of the two crops on that axis. Every one of the 27 seam pairs is
+   checked, deviation `0.0`.
+3. **Invariants** — aspect-matched placements must produce gap `0` and crop
+   `0` (within `1e-9`, because a division can leave a `1e-14` residue);
+   cells must be pairwise non-overlapping and cover their union exactly.
+
+**The hand-derived numbers are an 18-device oracle.** The `27` seam pairs,
+the crop constants, and the `288000`-unit vacancy are true only for the
+default `--devices 18` run on the `400×400` grid; any other fleet size
+recomputes the grid independently, keeps the invariants, and records a
+`seam anchors skipped` note in the report instead of pretending the
+constants carry over.
+
+Bezel is part of the answer: the distance between two visible rects adds to
+their crop, which is why a 40-unit frame plus an 87.5-unit crop is asserted as
+a 127.5-unit gap.
+
+The numbers describe the frames a browser would be handed. Nothing here
+executes `frontend/client/client.js`, so these are *not* rendered pixels —
+see limitations.
+
+## TestClient and WebSocket concurrency
+
+The harness uses `fastapi.testclient.TestClient` against the real app:
+
+* entering `TestClient` as a context manager gives **one shared blocking
+  portal**, so HTTP requests, all fleet device sockets and every controller
+  socket run on a single event loop — a broadcast can only reach a socket
+  that shares its loop;
+* **each socket has one dedicated reader thread** that blocks in
+  `receive_json()` and parks frames on an unbounded queue. Scenarios consume
+  them from the main thread with deadlines. A slow reader can never stall a
+  broadcast (the streams are unbounded), and a reader never waits forever
+  (every wait is bounded);
+* **the main thread owns the client**: it performs all HTTP and opens/closes
+  every socket. Reader threads only receive. Closing a socket unblocks its
+  reader with an exception, which the reader turns into a `socket-closed`
+  marker frame — a replacement session is attached only after that, so a
+  `4409`/`4408` close code is always observed by the socket it belongs to;
+* a heartbeat thread keeps every tablet checking in (default 2.5 s against a
+  15 s server timeout) so long runs stay healthy, and it re-reads its
+  interval every 50 ms so a scenario that shortens it takes effect at once;
+* restarting (`21_restart`) cycles the lifespan over the same database and
+  explicitly clears the in-memory roster/socket registries, because a real
+  restart loses that memory while an in-process lifespan restart would not.
+
+## Safety: no production data
+
+Before anything else the run:
+
+1. sets `TABLET_WALL_DB` and `TABLET_WALL_ASSET_DIR` to a fresh
+   `tempfile.mkdtemp()` directory (the defaults, `./tablet-wall.db` and
+   `./assets`, are operator data and never become reachable);
+2. clears `TABLET_WALL_OPERATOR_ORIGIN` / `TABLET_WALL_TABLET_ORIGIN` so an
+   ambient shell cannot change what is exercised;
+3. fingerprints every file in the repository (excluding `.git`, `.venv` and
+   caches; when `--report` points inside the repository, the report file
+   itself) and re-checks the fingerprint after teardown — any created,
+   removed or modified file fails the run with exit `1`.
+
+The temporary directory is deleted at the end unless `--keep-work-dir` is
+given, and a leftover reader thread is itself a failing check.
+
+## Report
+
+Nothing is written by default. Pass `--report PATH` (or `--report -` for
+stdout) to get a report; it holds run metadata (timestamps, duration,
+Python version, git head, mode, the temp paths), the fleet, per-scenario
+status/duration/checks/notes, the summary counts, the failure list, the
+limitations, and the resulting exit code. With `--report -` stdout carries
+only the JSON — the progress and summary lines go to stderr.
+
+> If you point `--report` into the repository, the file is generated
+> output — do not commit it. The default writes nothing so that no
+> generated `simulator/report.json` can be committed by accident.
+
+## Limitations versus a real browser
+
+Repeated in every report:
+
+* **No JavaScript runs.** `frontend/client/client.js` is never executed, so
+  canvas drawing, image decode, DOM/layout, device-pixel-ratio and resize
+  behaviour are not observed — only the frames and the geometry a browser
+  would receive.
+* **No pixels.** Seam numbers are arithmetic; "the wall looks aligned" would
+  need a screenshot or a real client.
+* **In-process ASGI.** No TCP, no uvicorn, no reverse proxy, no TLS: socket
+  framing, proxy timeouts and any enforcement in front of the app are outside
+  the run.
+* **Timing constants are patched in one scenario.** The real 15 s heartbeat
+  timeout is not waited for; `22_sweeper` shortens the sweeper's constants in
+  the simulator process only.
+* **Not a substitute for the pytest suite.** Operator-origin (CSRF) fencing,
+  asset validation failures (corrupt/oversized/rotated/symlinked), persistence
+  edge cases and backup tooling stay covered by `uv run pytest` (`500` tests).
+
+## Files
+
+| file | role |
+| --- | --- |
+| `run.py` | CLI, repository fingerprint, scenario loop, report, exit code |
+| `harness.py` | environment isolation, the app lifecycle, virtual devices, socket readers, heartbeat |
+| `scenarios.py` | the numbered scenarios and the `Ctx` check API |
+| `geometry.py` | pure visible-rect / centred-cover / tiling / seam arithmetic |
+| `report.py` | check and scenario records, JSON emission |
+| `test_simulator_selftest.py` | plumbing self-tests, no app needed — `uv run pytest simulator/test_simulator_selftest.py` |
+
+No report file is written unless `--report` names one.
