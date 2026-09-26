@@ -48,7 +48,7 @@ only timing that matters is bounded: every frame wait has a deadline
 | `--devices N` | virtual tablets, `15`–`20` (default `18`) |
 | `--scenario ID` | run the sequence **up to and including** that id (repeatable); see `--list` |
 | `--list` | print scenario ids and exit |
-| `--report PATH` | write the JSON report to `PATH` (`-` = stdout). **Opt-in**: nothing is written unless this is given, so a default run leaves no generated file behind |
+| `--report PATH` | write JSON outside the repository (`-` = stdout). Relative paths resolve from the caller's directory. **Opt-in**: a default run leaves no generated file behind |
 | `--no-report` | accepted for compatibility; identical to the default (no report file) |
 | `--timeout S` | deadline for any single frame wait (default `5`) |
 | `--fail-fast` | stop at the first failing scenario |

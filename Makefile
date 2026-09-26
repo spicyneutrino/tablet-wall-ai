@@ -26,6 +26,7 @@ run: ## Run the server without auto-reload
 	@cd "$(ROOT)" && uv run fastapi run main.py --host $(HOST) --port $(PORT)
 
 test: ## Run Python and client JavaScript tests
+	@command -v node >/dev/null 2>&1 || { echo "make test needs Node.js for the client tests"; exit 1; }
 	@cd "$(ROOT)" && uv run pytest
 	@cd "$(ROOT)" && node tests/client_image.test.js
 

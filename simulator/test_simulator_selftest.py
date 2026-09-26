@@ -128,6 +128,12 @@ def test_report_and_no_report_conflict() -> None:
     assert excinfo.value.code == 2
 
 
+def test_report_inside_repository_is_rejected() -> None:
+    with pytest.raises(SystemExit) as excinfo:
+        simulator_run.main(["--report", str(SIMULATOR_DIR / "report.json")])
+    assert excinfo.value.code == 2
+
+
 # ---------------------------------------------------------------------------
 # Recorder: a never-finished scenario can not be green
 # ---------------------------------------------------------------------------

@@ -329,6 +329,16 @@ def main(argv: list[str] | None = None) -> int:
         parser.error("--timeout must be positive")
     if args.report is not None and args.no_report:
         parser.error("--report and --no-report cannot be used together")
+    # Resolve relative to the caller, not to the repository directory that
+    # prepare_runtime() switches into. Reports inside the source tree would
+    # invalidate the repository-unchanged audit by excluding their own path.
+    report_path = (
+        Path(args.report).expanduser().resolve()
+        if args.report and args.report != "-" and not args.no_report
+        else None
+    )
+    if report_path is not None and report_path.is_relative_to(REPO_ROOT):
+        parser.error("--report must point outside the repository")
 
     prepare_runtime()
 
@@ -340,12 +350,6 @@ def main(argv: list[str] | None = None) -> int:
         selected = select_scenarios(args)
     except ValueError as exc:
         parser.error(str(exc))
-    report_path = (
-        None
-        if args.no_report or not args.report or args.report == "-"
-        else Path(args.report).expanduser().resolve()
-    )
-
     started_at = datetime.now(timezone.utc)
     clock_start = time.monotonic()
     before_files = snapshot_repo(exclude=report_path)
