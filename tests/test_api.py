@@ -20,6 +20,37 @@ class TestRootAndStaticMounts:
         assert response.json() == {"message": "Hello Tablet Wall"}
 
     @pytest.mark.parametrize(
+        "route",
+        [
+            "/client/",
+            "/client/client.js",
+            "/client/client.css",
+            "/controller/",
+            "/controller/controller.js",
+            "/controller/controller.css",
+        ],
+    )
+    def test_frontend_files_must_be_revalidated(self, client, route):
+        """A tablet must never run a new page against a cached old script.
+
+        Without ``Cache-Control`` a browser may reuse ``client.js`` for hours
+        from its ``Last-Modified`` date, while ``index.html`` is re-fetched.
+        ``no-cache`` still allows a cheap 304 through the ETag.
+        """
+        response = client.get(route)
+
+        assert response.status_code == 200
+        assert response.headers["cache-control"] == "no-cache"
+        assert response.headers.get("etag")
+
+    def test_unchanged_frontend_file_revalidates_to_304(self, client):
+        etag = client.get("/client/client.js").headers["etag"]
+
+        again = client.get("/client/client.js", headers={"if-none-match": etag})
+
+        assert again.status_code == 304
+
+    @pytest.mark.parametrize(
         ("route", "assets"),
         [
             ("/client/", ["client.css", "client.js"]),

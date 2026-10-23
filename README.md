@@ -225,9 +225,11 @@ node tests/client_image.test.js
   controllers when something changes, so a controller must render an online
   device as live rather than counting up a stale timestamp. See
   [PROTOCOL.md](PROTOCOL.md).
-- **Frontend changes may need a hard refresh.** The static mounts send no
-  `Cache-Control`, so browsers heuristically cache `client.js` and
-  `controller.js`. `fastapi dev` reloads the server, not the browser.
+- **Frontend files are always revalidated.** The static mounts send
+  `Cache-Control: no-cache`, so a browser asks the server (ETag, usually a 304)
+  before reusing `client.js` or `controller.js`. A tablet that loaded the page
+  *before* this header existed may still need one hard refresh.
+  `fastapi dev` reloads the server, not the browser.
 - **The app must run from the repository root.** The static mounts use relative
   paths (`StaticFiles(directory="frontend/client")`), so importing `main` from
   any other directory raises `RuntimeError: Directory 'frontend/client' does not

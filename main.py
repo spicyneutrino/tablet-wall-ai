@@ -417,15 +417,31 @@ def _valid_saved_content(saved: Any) -> bool:
 
 app = FastAPI(lifespan=lifespan)
 
+
+class RevalidatedStaticFiles(StaticFiles):
+    """Static files that browsers must revalidate on every load.
+
+    Without a ``Cache-Control`` header a browser may reuse ``client.js`` and
+    ``client.css`` for hours (heuristic freshness from ``Last-Modified``) while
+    still re-fetching ``index.html``, so a tablet runs a new page against an
+    old script. ``no-cache`` keeps the ETag: an unchanged file is a cheap 304.
+    """
+
+    def file_response(self, *args: Any, **kwargs: Any):
+        response = super().file_response(*args, **kwargs)
+        response.headers["Cache-Control"] = "no-cache"
+        return response
+
+
 app.mount(
     "/client",
-    StaticFiles(directory="frontend/client", html=True),
+    RevalidatedStaticFiles(directory="frontend/client", html=True),
     name="client"
 )
 
 app.mount(
     "/controller",
-    StaticFiles(directory="frontend/controller", html=True),
+    RevalidatedStaticFiles(directory="frontend/controller", html=True),
     name="controller"
 )
 
