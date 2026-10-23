@@ -1658,6 +1658,101 @@
     }
 
     /* ------------------------------------------------------------------ */
+    /* Full-screen button                                                 */
+    /* ------------------------------------------------------------------ */
+
+    /*
+     * Tablets have no F11. A small button toggles the Fullscreen API (the
+     * request must come from a user gesture, which the tap is). It is shown
+     * for FS_BUTTON_VISIBLE_MS after load and after every touch, then fades
+     * out so a healthy wall is a clean surface. While hidden it ignores the
+     * pointer, so the touch that reveals it can never press it by accident.
+     * No Fullscreen API (e.g. iPhone Safari): the button never appears.
+     */
+    var FS_BUTTON_VISIBLE_MS = 5000;
+    var fsButtonEl = document.getElementById("fs-toggle");
+    var fsButtonTimer = null;
+
+    function fullscreenElement() {
+        return document.fullscreenElement || document.webkitFullscreenElement || null;
+    }
+
+    function fullscreenSupported() {
+        var root = document.documentElement;
+        return !!(
+            root &&
+            (typeof root.requestFullscreen === "function" ||
+                typeof root.webkitRequestFullscreen === "function")
+        );
+    }
+
+    function updateFullscreenLabel() {
+        if (!fsButtonEl) return;
+        var label = fullscreenElement() ? "Exit full screen" : "Full screen";
+        fsButtonEl.textContent = label;
+        fsButtonEl.setAttribute("aria-label", label);
+    }
+
+    function hideFullscreenButton() {
+        fsButtonTimer = null;
+        if (fsButtonEl) fsButtonEl.setAttribute("data-visible", "false");
+    }
+
+    function showFullscreenButton() {
+        if (!fsButtonEl) return;
+        fsButtonEl.setAttribute("data-visible", "true");
+        if (fsButtonTimer !== null) clearTimeout(fsButtonTimer);
+        fsButtonTimer = setTimeout(hideFullscreenButton, FS_BUTTON_VISIBLE_MS);
+    }
+
+    function toggleFullscreen() {
+        var root = document.documentElement;
+        var result;
+        try {
+            if (fullscreenElement()) {
+                var exit = document.exitFullscreen || document.webkitExitFullscreen;
+                result = exit && exit.call(document);
+            } else {
+                var enter = root.requestFullscreen || root.webkitRequestFullscreen;
+                result = enter && enter.call(root);
+            }
+        } catch (err) {
+            warn("fullscreen toggle failed", err);
+        }
+        if (result && typeof result.catch === "function") {
+            result.catch(function (err) {
+                warn("fullscreen request rejected", err);
+            });
+        }
+        showFullscreenButton(); /* restart the 5 s window after the press */
+    }
+
+    if (
+        fsButtonEl &&
+        fullscreenSupported() &&
+        typeof document.addEventListener === "function"
+    ) {
+        fsButtonEl.hidden = false;
+        updateFullscreenLabel();
+        fsButtonEl.addEventListener("click", function (event) {
+            event.stopPropagation();
+            toggleFullscreen();
+        });
+        /* Any touch or click brings the button back. Idempotent, so firing
+         * both pointer and touch events for one gesture is harmless. */
+        ["pointerdown", "touchstart", "mousedown"].forEach(function (type) {
+            document.addEventListener(type, showFullscreenButton, true);
+        });
+        ["fullscreenchange", "webkitfullscreenchange"].forEach(function (type) {
+            document.addEventListener(type, function () {
+                updateFullscreenLabel();
+                onViewportChange();
+            });
+        });
+        showFullscreenButton();
+    }
+
+    /* ------------------------------------------------------------------ */
     /* WebSocket                                                          */
     /* ------------------------------------------------------------------ */
 

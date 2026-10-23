@@ -243,8 +243,9 @@ node tests/client_image.test.js
   implemented.
 - **The server has no wake-lock story.** A tablet's screen will still sleep;
   that needs either kiosk software or HTTPS plus the Screen Wake Lock API. The
-  page currently makes no wake-lock, fullscreen or visibility request at all,
-  so screen sleep, fullscreen and staying-foreground are entirely OS settings —
+  page makes no wake-lock or visibility request, and its only fullscreen
+  request is the on-screen "Full screen" button (shown for 5 s after a touch),
+  so screen sleep and staying-foreground are entirely OS settings —
   see [deploy/KIOSK.md](deploy/KIOSK.md).
 
 ## Roadmap
