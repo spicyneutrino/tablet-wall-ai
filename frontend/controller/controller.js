@@ -69,7 +69,8 @@
 
     /* Preview map frame, in CSS pixels. The wall rectangle keeps its aspect
      * ratio inside these bounds; extreme walls scroll in the viewport. */
-    const MAP_MAX_H = 300;
+    const MAP_MAX_H = 420;
+    const DEVICE_TYPE_NAMES = { ipad: "iPad", iphone: "iPhone", android: "Android" };
     const MAP_MIN_H = 92;
     const FOCUS_FLASH_MS = 1600;
 
@@ -285,7 +286,7 @@
      * been gone.
      */
     function seenLabel(device) {
-        return device.online === true ? "live" : relTime(device.last_seen);
+        return device.online === true ? "Connected now" : relTime(device.last_seen);
     }
 
     function pad2(n) {
@@ -430,10 +431,11 @@
      * flagged as unsupported rather than shown as colour.
      */
     function contentLabel(type) {
-        if (type === null) return "no scene content reported";
-        if (isSettableContent(type)) return type;
-        if (type === "image") return "image";
-        return "unsupported content type: " + type;
+        if (type === null) return "No content reported";
+        if (type === "color") return "Colour (no image)";
+        if (type === "calibration") return "Calibration grid (no image)";
+        if (type === "image") return "Image";
+        return "Unsupported content: " + type;
     }
 
     /**
@@ -442,12 +444,9 @@
      */
     function contentHint(type) {
         if (type === null || isSettableContent(type)) return null;
-        if (type === "image") {
-            return "image content — this control offers only color and calibration. " +
-                "The still-image panel below owns the image.";
-        }
-        return "unsupported content type: " + type +
-            " — this page cannot set it (only color and calibration)";
+        if (type === "image") return null; // the Image block says so itself
+        return "The wall shows content this page cannot set (" + type +
+            "). Choose solid colour or the calibration grid to replace it.";
     }
 
     /**
@@ -543,7 +542,7 @@
             awaitingSnapshot = true; // snapshot is the first frame on connect
             connState = "open";
             renderConn();
-            logStatus("Roster socket open — waiting for the snapshot.", "info");
+            logStatus("Connected. Waiting for the current state.", "info");
         });
 
         socket.addEventListener("message", function (event) {
@@ -572,7 +571,7 @@
         connState = "down";
         renderConn();
         logStatus(
-            "Lost the roster socket — retry " + attempt + " in " + (delay / 1000).toFixed(1) + "s.",
+            "Lost the connection. Retry " + attempt + " in " + (delay / 1000).toFixed(1) + "s.",
             "err"
         );
 
@@ -599,7 +598,7 @@
                 /* already gone */
             }
         }
-        logStatus("Reconnecting now…", "info");
+        logStatus("Reconnecting…", "info");
         connect();
     }
 
@@ -607,12 +606,12 @@
         el.conn.dataset.state = connState;
         let label;
         if (connState === "open") {
-            label = "socket open";
+            label = "Live";
         } else if (connState === "connecting") {
-            label = "connecting…";
+            label = "Connecting…";
         } else {
             const secs = retryAt ? Math.max(0, Math.ceil((retryAt - Date.now()) / 1000)) : 0;
-            label = attempt > 0 ? "retry in " + secs + "s · attempt " + attempt : "disconnected";
+            label = attempt > 0 ? "Offline, retrying in " + secs + "s (attempt " + attempt + ")" : "Disconnected";
         }
         el.connLabel.textContent = label;
         el.conn.title = wsUrl();
@@ -651,7 +650,7 @@
                 if (awaitingSnapshot) {
                     awaitingSnapshot = false;
                     logStatus(
-                        "Snapshot received — " + devices.size + " device(s) on the wall.",
+                        devices.size + (devices.size === 1 ? " tablet" : " tablets") + " known to the server.",
                         "info"
                     );
                 }
@@ -719,15 +718,15 @@
                 renderWall();
                 if (resynced) {
                     logStatus(
-                        "Server resynchronised — generation " +
-                            shortGeneration(wall.generation) + " · revision " +
+                        "The server restarted or restored a backup. Session " +
+                            shortGeneration(wall.generation) + ", revision " +
                             wall.revision + ".",
                         "ok"
                     );
                 } else {
                     logStatus(
-                        "Wall updated — revision " + wall.revision + " · scene " +
-                            contentLabel(wall.contentType) + ".",
+                        "Wall updated (revision " + wall.revision + "). Showing: " +
+                            contentLabel(wall.contentType).toLowerCase() + ".",
                         "info"
                     );
                 }
@@ -850,7 +849,7 @@
         forget.type = "button";
         forget.className = "btn btn-danger btn-sm";
         forget.dataset.action = "forget";
-        forget.textContent = "Forget";
+        forget.textContent = "Forget tablet";
         applyForgetAvailability(forget, deviceId);
         tile.foot.appendChild(forget);
     }
@@ -875,7 +874,7 @@
     function updateTile(tile, device) {
         const online = device.online === true;
         tile.el.dataset.state = online ? "online" : "offline";
-        tile.badgeLabel.textContent = online ? "ONLINE" : "OFFLINE";
+        tile.badgeLabel.textContent = online ? "Online" : "Offline";
 
         // Re-applied on every sync so the button tracks presence changes.
         const forget = tile.foot.querySelector('[data-action="forget"]');
@@ -887,7 +886,8 @@
             Number.isFinite(w) && Number.isFinite(h) && device.width != null && device.height != null
                 ? w + "×" + h
                 : "—";
-        tile.type.textContent = typeof device.type === "string" && device.type ? device.type : "—";
+        tile.type.textContent = typeof device.type === "string" && device.type
+            ? (DEVICE_TYPE_NAMES[device.type.toLowerCase()] || device.type) : "—";
 
         const color = normalizeColor(device.color);
         if (color) {
@@ -904,7 +904,7 @@
             tile.screenNote.hidden = false;
             tile.curSwatch.style.background = "";
             tile.curSwatch.dataset.empty = "true";
-            tile.curHex.textContent = "unset";
+            tile.curHex.textContent = "Not set";
         }
 
         tile.seen.textContent = seenLabel(device);
@@ -949,12 +949,12 @@
     function renderEmptyConn() {
         if (el.empty.hidden) return;
         if (connState === "open") {
-            el.emptyConn.textContent = "socket open · waiting for the first tablet";
+            el.emptyConn.textContent = "Connected. Waiting for the first tablet.";
         } else if (connState === "connecting") {
-            el.emptyConn.textContent = "connecting to " + wsUrl();
+            el.emptyConn.textContent = "Connecting to the server…";
         } else {
             const secs = retryAt ? Math.max(0, Math.ceil((retryAt - Date.now()) / 1000)) : 0;
-            el.emptyConn.textContent = "connection lost · retrying in " + secs + "s";
+            el.emptyConn.textContent = "Connection lost. Retrying in " + secs + "s.";
         }
     }
 
@@ -963,9 +963,9 @@
      * ------------------------------------------------------------------ */
 
     function renderWall() {
-        el.wallRev.textContent = wall ? String(wall.revision) : "—";
+        el.wallRev.textContent = wall ? String(wall.revision) : "–";
         if (el.wallGen) {
-            el.wallGen.textContent = wall ? shortGeneration(wall.generation) : "—";
+            el.wallGen.textContent = wall ? shortGeneration(wall.generation) : "–";
         }
 
         if (wallReady()) {
@@ -973,8 +973,8 @@
         } else {
             el.wallNote.hidden = false;
             el.wallNote.textContent = wall
-                ? "wall width/height not set"
-                : "no wall state from the server";
+                ? "Set a wall width and height to see the map."
+                : "Waiting for the server.";
         }
 
         // Never stomp on an edit in progress; otherwise follow the server.
@@ -1021,7 +1021,7 @@
      */
     function renderWallContent(type) {
         if (el.wallContent) {
-            const pressed = isSettableContent(type) ? type : null;
+            const pressed = isSettableContent(type) || type === "image" ? type : null;
             for (const button of el.wallContent.querySelectorAll(".seg-opt")) {
                 button.setAttribute(
                     "aria-pressed",
@@ -1236,7 +1236,7 @@
         assetsError = null;
         if (el.btnAssetsRefresh) {
             el.btnAssetsRefresh.disabled = true;
-            el.btnAssetsRefresh.textContent = "Reading…";
+            el.btnAssetsRefresh.textContent = "Loading…";
         }
         renderAssetList();
 
@@ -1267,7 +1267,7 @@
                 );
             } else if (cleared) {
                 logStatus(
-                    "The selected asset is no longer in the inventory — selection cleared.",
+                    "The selected image is no longer in the list, so the selection was cleared.",
                     "info"
                 );
             }
@@ -1284,7 +1284,7 @@
             assetsLoading = false;
             if (el.btnAssetsRefresh) {
                 el.btnAssetsRefresh.disabled = false;
-                el.btnAssetsRefresh.textContent = "Refresh inventory";
+                el.btnAssetsRefresh.textContent = "Refresh list";
             }
             renderImagePanel();
         }
@@ -1309,7 +1309,7 @@
         if (!wall) {
             node.dataset.state = "none";
             node.title = "";
-            text.textContent = "no wall state from the server";
+            text.textContent = "Waiting for the server";
             return;
         }
         if (wall.contentType !== "image") {
@@ -1324,14 +1324,12 @@
         if (!id) {
             node.dataset.state = "missing";
             node.title = "";
-            text.textContent = "image content reported with no asset id";
+            text.textContent = "An image with no file named";
             return;
         }
 
         const asset = assetById(id);
-        const bits = ["image", shortAsset(id)];
-        if (asset && asset.name) bits.push(asset.name);
-        if (asset && asset.mime) bits.push(asset.mime);
+        const bits = [asset && asset.name ? asset.name : "Image " + shortAsset(id)];
 
         const rawW = content.intrinsicWidth !== undefined
             ? content.intrinsicWidth : (asset ? asset.width : null);
@@ -1340,21 +1338,20 @@
         const width = Number(rawW);
         const height = Number(rawH);
         if (Number.isFinite(width) && Number.isFinite(height) && width > 0 && height > 0) {
-            bits.push(Math.round(width) + "×" + Math.round(height) +
-                " · ar " + fmtAspect(aspectOf(width, height)));
+            bits.push(Math.round(width) + "×" + Math.round(height));
         }
         if (typeof content.fit === "string" && content.fit !== "") {
-            bits.push("fit " + content.fit);
+            bits.push(content.fit === "cover" ? "fills the wall" : "fit " + content.fit);
         }
 
         const missing = activeAssetMissing();
-        if (missing) bits.push("NOT IN THE INVENTORY");
-        else if (assetsError) bits.push("inventory stale — availability unknown");
-        else if (!assetsLoaded) bits.push("inventory not read");
+        if (missing) bits.push("not in the image list");
+        else if (assetsError) bits.push("image list may be out of date");
+        else if (!assetsLoaded) bits.push("image list not loaded yet");
 
         node.dataset.state = missing ? "missing" : "image";
         node.title = id;
-        text.textContent = bits.join(" · ");
+        text.textContent = bits.join(", ");
     }
 
     function renderAssetList() {
@@ -1399,10 +1396,10 @@
             let empty = "";
             if (assets.length === 0) {
                 if (assetsLoaded) {
-                    empty = "No curated assets found. Put JPEG or PNG files in the " +
-                        "server's asset directory, then press Refresh inventory.";
+                    empty = "No images found. Put JPEG or PNG files in the " +
+                        "server's image folder, then press Refresh list.";
                 } else if (!assetsLoading && !assetsError) {
-                    empty = "Asset inventory not read yet — press Refresh inventory.";
+                    empty = "The image list has not loaded yet. Press Refresh list.";
                 }
             }
             el.imageEmpty.hidden = empty === "";
@@ -1450,7 +1447,7 @@
 
         const flag = document.createElement("span");
         flag.className = "asset-flag";
-        flag.textContent = "active";
+        flag.textContent = "On the wall";
         flag.hidden = !isActive;
 
         row.append(name, dims, ar, size, id, flag);
@@ -1467,7 +1464,7 @@
         } else {
             selectedAsset = asset.id;
             logStatus(
-                "Selected " + asset.name + " — press Show on wall to put it on the wall.",
+                "Selected " + asset.name + ". Press Show on wall to put it on the wall.",
                 "info"
             );
         }
@@ -1507,7 +1504,7 @@
         if (el.btnMissingPick) {
             const hasAssets = assets.length > 0;
             el.btnMissingPick.textContent =
-                hasAssets ? "Pick a replacement" : "Refresh the inventory";
+                hasAssets ? "Pick a replacement" : "Refresh the image list";
             el.btnMissingPick.dataset.mode = hasAssets ? "pick" : "refresh";
         }
         for (const button of box.querySelectorAll("button[data-content-action]")) {
@@ -1520,16 +1517,16 @@
 
         if (el.imageSel) {
             if (!selectedAsset) {
-                el.imageSel.textContent = "no asset selected";
+                el.imageSel.textContent = "No image selected";
                 el.imageSel.title = "";
             } else {
                 const asset = assetById(selectedAsset);
-                const bits = ["selected: " + (asset ? asset.name : shortAsset(selectedAsset))];
+                const bits = [asset ? asset.name : shortAsset(selectedAsset)];
                 if (asset && asset.width !== null && asset.height !== null) {
                     bits.push(asset.width + "×" + asset.height);
                 }
-                if (active && selectedAsset === active) bits.push("already active");
-                el.imageSel.textContent = bits.join(" · ");
+                if (active && selectedAsset === active) bits.push("already on the wall");
+                el.imageSel.textContent = bits.join(", ");
                 el.imageSel.title = selectedAsset;
             }
         }
@@ -1544,10 +1541,10 @@
                 ? "Applying…"
                 : same ? "Already on the wall" : "Show on wall";
             el.btnImageApply.title = !selectedAsset
-                ? "Select an asset first — no image is sent without a selection."
+                ? "Pick an image first. Nothing is sent without a selection."
                 : same
-                    ? "This asset is already the active scene content."
-                    : "PUT /scene — show this asset across the whole wall";
+                    ? "This image is already on the wall."
+                    : "Show this image across the whole wall";
         }
 
         // The preview follows the selection only: the wall's own copy of the
@@ -1566,8 +1563,7 @@
                 el.imagePreview.hidden = failed;
                 el.imagePreviewNote.hidden = !failed;
                 el.imagePreviewNote.textContent = failed
-                    ? "Preview could not be loaded — refresh to try again; the wall " +
-                        "reports its own error state either way."
+                    ? "The preview did not load. Refresh the list to try again."
                     : "";
             } else {
                 if (el.imagePreviewImg.getAttribute("src")) {
@@ -1577,8 +1573,8 @@
                 el.imagePreview.hidden = true;
                 el.imagePreviewNote.hidden = false;
                 el.imagePreviewNote.textContent = asset
-                    ? "No preview URL in the inventory for this asset."
-                    : "Nothing selected — pick an asset from the list.";
+                    ? "This image has no preview."
+                    : "Pick an image from the list.";
             }
         }
     }
@@ -1591,7 +1587,7 @@
         if (!wall) return;
         const asset = selectedAsset;
         if (!asset) {
-            logStatus("No asset selected — pick one before showing an image.", "err");
+            logStatus("Pick an image from the list first.", "err");
             return;
         }
         if (asset === activeImageId()) return;
@@ -1615,12 +1611,11 @@
             }
             wall = next;
             logStatus(
-                "Scene → image " + shortAsset(asset) + " — revision " +
-                    wall.revision + ".",
+                "Showing the image on the wall (revision " + wall.revision + ").",
                 "ok"
             );
         } catch (err) {
-            logStatus("Image not shown: " + err.message, "err");
+            logStatus("Could not show the image: " + err.message, "err");
         } finally {
             pendingContent = null;
             renderWall();
@@ -1635,7 +1630,7 @@
             return;
         }
         focusFirstAsset();
-        logStatus("Pick a replacement, then press Show on wall.", "info");
+        logStatus("Pick an image, then press Show on wall.", "info");
     }
 
     function focusFirstAsset() {
@@ -1712,19 +1707,19 @@
 
         if (el.alertNoCapTitle) {
             el.alertNoCapTitle.textContent = live
-                ? "The active image will not cover the whole wall"
-                : "A still image would not cover the whole wall";
+                ? "The image will not cover the whole wall"
+                : "An image would not cover the whole wall";
         }
         if (el.alertNoCapText) {
             el.alertNoCapText.textContent =
                 ids.length + (ids.length === 1
                     ? " placed online tablet does"
                     : " placed online tablets do") +
-                " not support image wall content: " +
-                ids.map(function (id) { return "#" + shortId(id); }).join(", ") + ". " +
+                " not support images: " +
+                ids.map(function (id) { return shortId(id); }).join(", ") + ". " +
                 (live
-                    ? "They show their colour while the rest show the picture, so the image stops at their edges."
-                    : "Showing a still image would leave them on colour.");
+                    ? "They show their colour while the rest show the picture, so the image has gaps."
+                    : "They would stay on colour if you showed an image.");
             el.alertNoCapText.title = ids.join(", ");
         }
     }
@@ -1740,10 +1735,10 @@
         if (el.alertUnverifiedText) {
             el.alertUnverifiedText.textContent =
                 entries.map(function (entry) {
-                    return "#" + shortId(entry.id) + " — " + entry.note;
-                }).join(" · ") +
-                ". Their current display cannot be confirmed; a " +
-                "returning tablet reclaims its own slot.";
+                    return shortId(entry.id) + " (" + entry.note + ")";
+                }).join(", ") +
+                ". There is no way to confirm what these show. A " +
+                "tablet that comes back takes its own spot again.";
             el.alertUnverifiedText.title = entries.map(function (entry) {
                 return entry.id + " (" + entry.note + ")";
             }).join("\n");
@@ -1775,28 +1770,28 @@
         let text;
         if (online && hasImage) {
             kind = "ok";
-            text = "image cap";
+            text = "Shows images";
         } else if (online && device.protocol === 1) {
             kind = "warn";
-            text = "protocol 1";
+            text = "Old version";
         } else if (online && lacksImage) {
             kind = "warn";
-            text = "no image cap";
+            text = "No image support";
         } else if (online) {
             kind = "dim";
-            text = "cap unknown";
+            text = "Image support unknown";
         } else if (hasImage) {
             kind = "dim";
-            text = "offline · image cap";
+            text = "Shows images";
         } else if (device.protocol === 1) {
             kind = "dim";
-            text = "offline · protocol 1";
+            text = "Old version";
         } else if (lacksImage) {
             kind = "dim";
-            text = "offline · no image cap";
+            text = "No image support";
         } else {
             kind = "dim";
-            text = "offline · cap unknown";
+            text = "Image support unknown";
         }
         tile.capChip.dataset.kind = kind;
         tile.capChip.textContent = text;
@@ -1831,7 +1826,7 @@
             el.mapCaption.textContent = "";
             el.mapEmpty.hidden = false;
             el.mapEmpty.textContent = wall
-                ? "Wall width and height are not set — the diagram needs both."
+                ? "Set a wall width and height to see the map."
                 : "Waiting for the wall state from the server.";
             return;
         }
@@ -1881,16 +1876,26 @@
         if (placed === 0 && vacant === 0) {
             const note = document.createElement("p");
             note.className = "map-none";
-            note.textContent = "no placements yet";
+            note.textContent = "No tablets are placed on the wall yet";
             frame.appendChild(note);
         }
 
         const unplaced = Math.max(0, devices.size - placed);
-        const bits = [wallW + " × " + wallH + " u", placed + " placed"];
-        if (unplaced > 0) bits.push(unplaced + " unplaced");
-        if (vacant > 0) bits.push(vacant + " vacant · reserved");
-        if (warns > 0) bits.push(warns + " aspect mismatch");
-        el.mapCaption.textContent = bits.join(" · ");
+        const bits = [wallW + " × " + wallH, placed + " placed"];
+        if (unplaced > 0) bits.push(unplaced + " not placed");
+        if (vacant > 0) bits.push(vacant + (vacant === 1 ? " saved spot" : " saved spots") + " with no tablet");
+        if (warns > 0) bits.push(warns + (warns === 1 ? " tablet" : " tablets") + " with a different screen shape");
+        el.mapCaption.textContent = bits.join(", ");
+    }
+
+    /** True when black text reads better than white on this colour. */
+    function isLightColor(hex) {
+        const m = /^#?([0-9a-fA-F]{2})([0-9a-fA-F]{2})([0-9a-fA-F]{2})$/.exec(hex);
+        if (!m) return false;
+        const r = parseInt(m[1], 16);
+        const g = parseInt(m[2], 16);
+        const b = parseInt(m[3], 16);
+        return (0.299 * r + 0.587 * g + 0.114 * b) > 160;
     }
 
     function buildMapPlacement(id, placement, device, wallW, wallH, pxW, pxH) {
@@ -1917,7 +1922,7 @@
 
         const summary =
             "device " + shortId(id) +
-            " · footprint " + placement.x + "," + placement.y +
+            " · position " + placement.x + "," + placement.y +
             " " + placement.w + "×" + placement.h +
             (device ? "" : " · vacant · reserved — not in the roster") +
             (mismatch
@@ -1963,7 +1968,7 @@
                 // amber sub-label under the id, matching the outline.
                 const sub = document.createElement("span");
                 sub.className = "map-sub";
-                sub.textContent = "vacant · reserved";
+                sub.textContent = "no tablet";
                 inset.appendChild(sub);
             }
 
@@ -1973,6 +1978,16 @@
                 ratios.textContent = fmtAspect(visAspect) + " ≠ " + fmtAspect(devAspect);
                 inset.appendChild(ratios);
             }
+        }
+
+        // While the wall shows solid colour, paint each tablet with the colour
+        // it was given, so the map reads as the wall itself.
+        const shown = device && wall && wall.contentType === "color"
+            ? normalizeColor(device.color) : null;
+        if (shown) {
+            inset.dataset.shown = "true";
+            inset.dataset.tone = isLightColor(shown) ? "light" : "dark";
+            inset.style.setProperty("--shown", shown);
         }
 
         box.appendChild(inset);
@@ -1988,7 +2003,7 @@
         const tile = tiles.get(deviceId);
         if (!tile) {
             logStatus(
-                "Device #" + shortId(deviceId) + " has no tile — it is not in the roster.",
+                "Tablet " + shortId(deviceId) + " is not connected, so it has no card.",
                 "err"
             );
             return;
@@ -2087,7 +2102,7 @@
         if (confirmingReleaseId === id) {
             const question = document.createElement("span");
             question.className = "forget-q";
-            question.textContent = "Release this reservation?";
+            question.textContent = "Release this saved spot?";
 
             const yes = document.createElement("button");
             yes.type = "button";
@@ -2161,7 +2176,7 @@
         if (!tile.placeDirty) syncPlacementInputs(tile, saved);
 
         // "Unplaced" is a state, not a fault — dashed and quiet, never red.
-        tile.placeState.textContent = saved ? "PLACED" : "UNPLACED";
+        tile.placeState.textContent = saved ? "Placed" : "Not placed";
         tile.placeState.dataset.state = saved ? "placed" : "unplaced";
         tile.placeState.title = saved
             ? "Footprint at " + saved.x + "," + saved.y + " · " +
@@ -2241,7 +2256,7 @@
         }
         const visible = visibleRect(placement);
         if (!(visible.w > 0) || !(visible.h > 0)) {
-            return "the bezel leaves no visible area";
+            return "the frame leaves no visible area";
         }
         return null;
     }
@@ -2265,24 +2280,24 @@
             devW > 0 && devH > 0;
         const devAspect = hasViewport ? devW / devH : null;
         tile.placeVp.textContent = hasViewport
-            ? "viewport " + devW + " × " + devH + " · ar " + fmtAspect(devAspect)
-            : "viewport not reported";
+            ? "Screen " + devW + " × " + devH + " (shape " + fmtAspect(devAspect) + ")"
+            : "Screen size not reported";
 
         const evaluating = tile.placeDirty || !!savedPlacement(device.device_id);
         if (!evaluating) {
-            setReadout(tile, "none", "visible — · not placed", false, "");
+            setReadout(tile, "none", "Not on the wall", false, "");
             return;
         }
 
         const placement = readPlacementInputs(tile);
         if (!placement) {
-            setReadout(tile, "edit", "visible — · fill in every field", false, "");
+            setReadout(tile, "edit", "Fill in every field", false, "");
             return;
         }
 
         const problem = placementProblem(placement);
         if (problem) {
-            setReadout(tile, "invalid", "visible — · invalid", true, problem);
+            setReadout(tile, "invalid", "Invalid position", true, problem);
             return;
         }
 
@@ -2290,20 +2305,20 @@
         const visAspect = aspectOf(visible.w, visible.h);
         const delta = aspectDelta(visAspect, devAspect);
         const row =
-            "visible " + visible.w + " × " + visible.h +
-            " · ar " + fmtAspect(visAspect) +
-            " vs " + fmtAspect(devAspect) +
-            " · Δ " + fmtDelta(delta);
+            "Visible area " + visible.w + " × " + visible.h +
+            " (shape " + fmtAspect(visAspect) +
+            ", screen " + fmtAspect(devAspect) +
+            ", " + fmtDelta(delta) + " off)";
 
         if (devAspect === null) {
             setReadout(
                 tile, "unknown", row, true,
-                "no viewport reported — aspect cannot be compared", "dim"
+                "This tablet has not reported its screen size, so the shapes cannot be compared.", "dim"
             );
         } else if (isAspectMismatch(delta)) {
             setReadout(
                 tile, "mismatch", row, true,
-                "aspect mismatch — this slice crops differently from the rest"
+                "The shape of this area differs from the tablet screen, so the picture will be cropped."
             );
         } else {
             setReadout(tile, "ok", row, false, "");
@@ -2383,7 +2398,7 @@
         const color = normalizeColor(rawColor);
         const tile = tiles.get(deviceId);
         if (!color) {
-            logStatus("Not a #rrggbb colour: " + rawColor, "err");
+            logStatus("That is not a valid colour: " + rawColor, "err");
             return;
         }
         if (tile) tile.el.dataset.busy = "true";
@@ -2405,12 +2420,12 @@
             }
 
             logStatus(
-                "#" + shortId(deviceId) + " → " + applied +
-                    (delivered ? " · delivered" : " · stored, applies when the tablet reconnects"),
+                "Tablet " + shortId(deviceId) + " set to " + applied +
+                    (delivered ? "." : ". It will change when the tablet reconnects."),
                 delivered ? "ok" : "info"
             );
         } catch (err) {
-            logStatus("Colour not applied to #" + shortId(deviceId) + ": " + err.message, "err");
+            logStatus("Could not set the colour on tablet " + shortId(deviceId) + ": " + err.message, "err");
         } finally {
             if (tile) tile.el.dataset.busy = "false";
         }
@@ -2433,15 +2448,15 @@
             syncTiles();
 
             if (updated === 0) {
-                logStatus("Applied " + applied + " to 0 devices — the roster is empty.", "info");
+                logStatus("No tablets to colour yet.", "info");
             } else {
                 logStatus(
-                    "Applied " + applied + " to " + updated + " device(s) · delivered to " + delivered,
+                    "Set " + applied + " on " + updated + (updated === 1 ? " tablet" : " tablets") + ", " + delivered + " updated right away.",
                     "ok"
                 );
             }
         } catch (err) {
-            logStatus("Apply-to-all failed: " + err.message, "err");
+            logStatus("Could not apply the colour: " + err.message, "err");
         } finally {
             el.btnApplyAll.disabled = !globalColor;
         }
@@ -2454,14 +2469,14 @@
         try {
             await requestJson("DELETE", "/devices/" + encodeURIComponent(deviceId));
             dropDevice(deviceId);
-            logStatus("Forgot device #" + shortId(deviceId) + ".", "ok");
+            logStatus("Forgot tablet " + shortId(deviceId) + ".", "ok");
         } catch (err) {
             if (err.status === 404) {
                 // Already gone from the server's roster — forget it locally too.
                 dropDevice(deviceId);
-                logStatus("Device #" + shortId(deviceId) + " was already gone.", "info");
+                logStatus("Tablet " + shortId(deviceId) + " was already gone.", "info");
             } else {
-                logStatus("Could not forget #" + shortId(deviceId) + ": " + err.message, "err");
+                logStatus("Could not forget tablet " + shortId(deviceId) + ": " + err.message, "err");
                 if (tile) tile.el.dataset.busy = "false";
             }
         }
@@ -2521,12 +2536,11 @@
             wallDirty = false;
             renderWall();
             logStatus(
-                "Wall saved — revision " + wall.revision + " · " +
-                    wall.width + "×" + wall.height + ".",
+                "Wall size saved: " + wall.width + " × " + wall.height + " (revision " + wall.revision + ").",
                 "ok"
             );
         } catch (err) {
-            logStatus("Wall not saved: " + err.message, "err");
+            logStatus("Could not save the wall size: " + err.message, "err");
         } finally {
             renderWall();
         }
@@ -2557,11 +2571,11 @@
                 wall = next;
             }
             logStatus(
-                "Scene content → " + type + " — revision " + wall.revision + ".",
+                "Wall now shows " + contentLabel(type).replace(" (no image)", "").toLowerCase() + " (revision " + wall.revision + ").",
                 "ok"
             );
         } catch (err) {
-            logStatus("Scene content not saved: " + err.message, "err");
+            logStatus("Could not change what the wall shows: " + err.message, "err");
         } finally {
             pendingContent = null;
             renderWall();
@@ -2574,7 +2588,7 @@
         if (raw !== "") {
             const columns = Number(raw);
             if (!Number.isInteger(columns) || columns < 1) {
-                logStatus("Columns must be a positive whole number — or blank for auto.", "err");
+                logStatus("Columns must be a whole number above zero, or empty for automatic.", "err");
                 return;
             }
             body.columns = columns;
@@ -2587,12 +2601,12 @@
             if (next && next.width > 0 && next.height > 0) {
                 wall = next;
                 renderWall();
-                logStatus("Arranged online devices — revision " + next.revision + ".", "ok");
+                logStatus("Arranged the online tablets (revision " + next.revision + ").", "ok");
             } else {
-                logStatus("Arrange sent — waiting for the wall update.", "info");
+                logStatus("Arrange sent. Waiting for the wall to update.", "info");
             }
         } catch (err) {
-            logStatus("Arrange failed: " + err.message, "err");
+            logStatus("Could not arrange the tablets: " + err.message, "err");
         } finally {
             renderWall();
         }
@@ -2607,7 +2621,7 @@
         const placement = readPlacementInputs(tile);
         if (!placement) {
             logStatus(
-                "Placement for #" + shortId(deviceId) + " needs a number in every field.",
+                "Tablet " + shortId(deviceId) + " needs a number in every position field.",
                 "err"
             );
             updatePlacementReadout(tile, device);
@@ -2616,7 +2630,7 @@
         const problem = placementProblem(placement);
         if (problem) {
             logStatus(
-                "Placement for #" + shortId(deviceId) + " rejected: " + problem + ".",
+                "Tablet " + shortId(deviceId) + " position rejected: " + problem + ".",
                 "err"
             );
             updatePlacementReadout(tile, device);
@@ -2639,15 +2653,15 @@
             }
             tile.placeDirty = false;
             renderWall();
-            logStatus("Placement saved for #" + shortId(deviceId) + ".", "ok");
+            logStatus("Position saved for tablet " + shortId(deviceId) + ".", "ok");
         } catch (err) {
             if (err.status === 404) {
                 // Unknown device: the roster lost it while we were editing.
                 dropDevice(deviceId);
-                logStatus("Device #" + shortId(deviceId) + " was already gone.", "info");
+                logStatus("Tablet " + shortId(deviceId) + " was already gone.", "info");
             } else {
                 logStatus(
-                    "Placement not saved for #" + shortId(deviceId) + ": " + err.message,
+                    "Could not save the position of tablet " + shortId(deviceId) + ": " + err.message,
                     "err"
                 );
             }
@@ -2673,14 +2687,14 @@
             }
             tile.placeDirty = false;
             renderWall();
-            logStatus("Placement cleared for #" + shortId(deviceId) + ".", "ok");
+            logStatus("Tablet " + shortId(deviceId) + " removed from the wall.", "ok");
         } catch (err) {
             if (err.status === 404) {
                 dropDevice(deviceId);
-                logStatus("Device #" + shortId(deviceId) + " was already gone.", "info");
+                logStatus("Tablet " + shortId(deviceId) + " was already gone.", "info");
             } else {
                 logStatus(
-                    "Could not clear the placement of #" + shortId(deviceId) + ": " + err.message,
+                    "Could not remove tablet " + shortId(deviceId) + " from the wall: " + err.message,
                     "err"
                 );
             }
@@ -2718,7 +2732,7 @@
                 wall.placements = placements;
             }
             renderWall();
-            logStatus("Released the reservation for #" + shortId(deviceId) + ".", "ok");
+            logStatus("Released the saved spot of tablet " + shortId(deviceId) + ".", "ok");
         } catch (err) {
             if (err.status === 404) {
                 // Neither the device nor a placement exists any more — the
@@ -2730,12 +2744,12 @@
                 }
                 renderWall();
                 logStatus(
-                    "Reservation for #" + shortId(deviceId) + " was already gone.",
+                    "The saved spot of tablet " + shortId(deviceId) + " was already gone.",
                     "info"
                 );
             } else {
                 logStatus(
-                    "Could not release the reservation for #" + shortId(deviceId) +
+                    "Could not release the saved spot of tablet " + shortId(deviceId) +
                         ": " + err.message,
                     "err"
                 );
@@ -3011,8 +3025,8 @@
             question.className = "snap-q";
             question.textContent = snap.confirm.action === "delete"
                 ? 'Delete "' + item.name + '" for good? The wall itself is not changed.'
-                : "Replace the active layout? Dimensions and every placement — " +
-                  "reservations included. The scene content stays.";
+                : "Replace the current layout? Wall size and every tablet position change. " +
+                  "What the wall shows stays the same.";
 
             const yes = document.createElement("button");
             yes.type = "button";
@@ -3556,7 +3570,7 @@
 
         const question = document.createElement("span");
         question.className = "forget-q";
-        question.textContent = "Forget this device?";
+        question.textContent = "Forget this tablet?";
 
         const yes = document.createElement("button");
         yes.type = "button";
@@ -3594,7 +3608,8 @@
     function selectGlobalColor(rawColor) {
         const color = normalizeColor(rawColor);
         globalColor = color;
-        el.globalSel.textContent = color || "—";
+        el.globalSel.textContent = color || "None chosen";
+        el.globalSel.dataset.set = color ? "true" : "false";
         el.btnApplyAll.disabled = !color;
         el.btnApplyAll.textContent = color ? "Apply " + color + " to all" : "Apply to all";
         if (color) el.globalColor.value = color;
@@ -3609,7 +3624,7 @@
             const button = makeSwatch(preset, "global-color");
             button.setAttribute(
                 "aria-label",
-                "Select " + preset.name + " " + preset.color + " for all devices"
+                "Select " + preset.name + " " + preset.color + " for all tablets"
             );
             el.globalPalette.appendChild(button);
         }
@@ -3655,6 +3670,12 @@
                 const button = event.target.closest("button[data-content]");
                 if (!button || button.disabled) return;
                 const type = button.dataset.content;
+                // An image needs a choice of file first, so this option only
+                // takes you to the list; "Show on wall" is what sends it.
+                if (type === "image") {
+                    if (!wall || wall.contentType !== "image") focusAssetPicker();
+                    return;
+                }
                 if (!isSettableContent(type)) return; // only what the server accepts
                 if (pendingContent !== null) return; // one save at a time
                 if (wall && wall.contentType === type) return; // already there
@@ -3882,7 +3903,7 @@
             // navigator.clipboard is secure-context only — guard it.
             if (window.isSecureContext && navigator.clipboard && navigator.clipboard.writeText) {
                 navigator.clipboard.writeText(tabletUrl).then(
-                    function () { logStatus("Client URL copied.", "ok"); },
+                    function () { logStatus("Tablet address copied.", "ok"); },
                     function () { selectClientUrl(); }
                 );
             } else {
@@ -3901,7 +3922,7 @@
         } catch (_err) {
             /* selection unavailable — the URL is still visible on screen */
         }
-        logStatus("Clipboard unavailable — press Ctrl/Cmd+C to copy the highlighted URL.", "info");
+        logStatus("Copying is blocked here. Press Ctrl+C or Cmd+C to copy the highlighted address.", "info");
     }
 
     /* ------------------------------------------------------------------ *
@@ -3993,7 +4014,7 @@
             // Server-supplied text is only ever assigned as text, and kept
             // short so the box stays readable.
             tabletUrlReason = detail.length > 90 ? detail.slice(0, 89) + "…" : detail;
-            logStatus("Tablet URL unavailable — " + tabletUrlReason + ".", "err");
+            logStatus("Tablet address unavailable: " + tabletUrlReason + ".", "err");
         }
         renderTabletUrl();
     }
@@ -4017,10 +4038,10 @@
         button.disabled = true;
         node.dataset.state = tabletUrlState;
         if (tabletUrlState === "pending") {
-            node.textContent = "Reading the tablet URL from the server…";
+            node.textContent = "Reading the address from the server…";
             button.title = "Waiting for GET /operator-config";
         } else {
-            node.textContent = "Tablet URL unavailable — " + tabletUrlReason + ".";
+            node.textContent = "Address unavailable: " + tabletUrlReason + ".";
             button.title = "The server's operator config could not be read";
         }
     }
