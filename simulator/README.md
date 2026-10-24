@@ -408,11 +408,13 @@ a 5 s step right after the first cut, while the next preparation is ready and
 renewing. It requires a `playback` frame with reason `host suspend` and a new
 epoch at both clients, `GET /api/v3/playback` reporting `stopped`, no further
 `ready` renewals for the cancelled preparation, no commit and no draw of its
-asset past its planned time, and a canvas unchanged until 1.5 s after that
-planned time. It records what stays visible: the clients keep showing the last
-committed still, they do not revert to the persisted scene. A reload shows the
-persisted scene was untouched, and a fresh session started after the epoch
-change carries the new epoch and paints.
+asset until 1.5 s past its planned time. It records what stays visible and accepts either the last
+committed still or the persisted scene, never the cancelled cut. Today the
+clients keep the last committed still: the abort sends only a stopped frame and
+the client clears timers without redrawing the scene (`visible_state` and
+`product_note` in the report). A reload shows the persisted scene was
+untouched, and a fresh session started after the epoch change carries the new
+epoch and paints.
 
 A page-level `performance.now` step cannot do this and the report says so: the
 epoch exists only on the server, the client takes `clockEpoch` only from

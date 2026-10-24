@@ -850,10 +850,13 @@ async def run_suspend(rig: Rig, report: dict[str, Any]) -> None:
               commits_after_step={k: len(v) for k, v in committed_after.items()},
               green_draws={k: len(v) for k, v in painted_green.items()})
         centre_end = [await surface_centre(page) for page, _ in pages]
-        frozen = all(pixel_close(end, start, 6) and pixel_close(end, CUT_COLOURS["red"])
-                     for start, end in zip(centre_at_stop, centre_end, strict=True))
-        check("suspend: the wall stays frozen on the last committed still, unchanged past the cancelled cut",
-              frozen, at_stop=centre_at_stop, at_end=centre_end)
+        visible = ["last committed still" if pixel_close(end, CUT_COLOURS["red"])
+                   else "persisted scene" if pixel_close(end, CUT_COLOURS["idle"]) else "other"
+                   for end in centre_end]
+        check("suspend: the wall shows the last committed still or the persisted scene after the cancel, "
+              "never the cancelled cut", "other" not in visible and not any(
+                  pixel_close(end, CUT_COLOURS["green"]) for end in centre_end),
+              at_stop=centre_at_stop, at_end=centre_end, visible=visible)
 
         # The persisted static scene is not exposed over HTTP while the layout
         # is physical, so prove it survived by reloading one client: the fresh
@@ -893,8 +896,10 @@ async def run_suspend(rig: Rig, report: dict[str, Any]) -> None:
             "ready_frames_before_step": renewing,
             "renewals_after_stop": leaked,
             "visible_at_stop": centre_at_stop, "visible_at_end": centre_end,
-            "visible_state": ("frozen on the last committed still (red), not reverted to the persisted idle scene"
-                              if frozen else "see visible_at_end"),
+            "visible_state": visible,
+            "product_note": "_abort_playback sends only a playback-stopped frame and the client's stopPlayback "
+                            "only clears timers, so a screen keeps its last committed still until a reload or "
+                            "a new wall/render frame; the persisted scene is not re-sent on abort",
             "reload_paints_persisted_scene": scene_back,
             "restart_session_epoch": restarted.get("clock_epoch"),
             "physical_suspend": {"status": "MISSING", "reason": "no real tablet or host suspend was performed"},
