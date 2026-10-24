@@ -11,6 +11,7 @@ registries are memory-only; ``tabletwall.persist`` writes the wall dict to
 SQLite.
 """
 
+import time
 import uuid
 from copy import deepcopy
 from datetime import datetime, timezone
@@ -18,7 +19,7 @@ from typing import Any
 
 from fastapi import WebSocket
 
-from tabletwall.protocol import HEARTBEAT_TIMEOUT_S, _asset_url
+from tabletwall.protocol import HEARTBEAT_TIMEOUT_S, _asset_url, _now_iso
 
 # Wall defaults (PROTOCOL.md "Wall state"): a 2x1 wall of landscape panels.
 DEFAULT_WALL_WIDTH = 2000
@@ -70,11 +71,35 @@ controller_protocols: dict[WebSocket, int] = {}
 wall: dict[str, Any] = _fresh_wall()
 
 
+def _touch_device(device_id: str) -> None:
+    """Record that ``device_id`` just made contact.
+
+    Two clocks, for two jobs: ``last_seen`` is a UTC ISO timestamp for
+    operators and logs, and ``last_seen_mono`` is a monotonic reading used for
+    expiry. Presence must not be decided by the wall clock, because a clock
+    step or an NTP correction could otherwise mark every tablet stale at once
+    or keep a dead one online forever.
+    """
+    record = devices.get(device_id)
+    if record is None:
+        return
+    record["last_seen"] = _now_iso()
+    record["last_seen_mono"] = time.monotonic()
+
+
 def _seconds_since_last_seen(device_id: str) -> float | None:
-    """Seconds since this device last checked in, or None if it is unknown."""
+    """Seconds since this device last checked in, or None if it is unknown.
+
+    Uses the monotonic contact reading; a record that predates it (only
+    possible in tests or within one process, never across a restart) falls
+    back to its UTC timestamp so presence still degrades to a sane answer.
+    """
     record = devices.get(device_id)
     if record is None:
         return None
+    monotonic = record.get("last_seen_mono")
+    if isinstance(monotonic, (int, float)):
+        return time.monotonic() - monotonic
     return (datetime.now(timezone.utc) - datetime.fromisoformat(record["last_seen"])).total_seconds()
 
 
@@ -91,11 +116,12 @@ def _device_record(device_id: str) -> dict[str, Any]:
 
     Also carries the version-2 additions: ``protocol`` (the major negotiated
     by the last socket, or None before any socket connected) and ``caps`` (the
-    capabilities that socket advertised, empty until then).
+    capabilities that socket advertised, empty until then). ``last_seen_mono``
+    is process-local bookkeeping and never leaves the process.
     """
     record = devices[device_id]
     return {
-        **record,
+        **{key: value for key, value in record.items() if key != "last_seen_mono"},
         "protocol": record.get("protocol"),
         "caps": list(record.get("caps") or []),
         "online": _is_online(device_id),

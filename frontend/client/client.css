@@ -133,3 +133,42 @@ body {
 #status[data-state="connected"] {
     display: none;
 }
+
+/*
+ * Ownership takeover. When another page claims this tablet identity the
+ * losing socket is closed with 4409; the client stops retrying and offers one
+ * deliberate action instead of racing the winner. A large target, always
+ * above the status pill, and hidden until the server says another page won.
+ */
+#takeover {
+    position: fixed;
+    left: 50%;
+    bottom: calc(16px + 3.2em); /* clears the status pill */
+    bottom: calc(max(16px, env(safe-area-inset-bottom)) + 3.2em);
+    transform: translateX(-50%);
+    z-index: 20;
+    padding: 0.7em 1.4em;
+    min-height: 48px;
+    border-radius: 12px;
+    background: #e2e8f0;
+    border: 1px solid #0f172a;
+    color: #0f172a;
+    font: inherit;
+    font-size: 18px;
+    font-weight: 700;
+    letter-spacing: 0.01em;
+    cursor: pointer;
+}
+
+#takeover[hidden] {
+    display: none;
+}
+
+#takeover:focus-visible {
+    outline: 3px solid #22d3ee;
+    outline-offset: 3px;
+}
+
+#status[data-state="replaced"] .status-dot {
+    background: #22d3ee;
+}

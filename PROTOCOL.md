@@ -32,7 +32,10 @@ stranding a tablet that is already mounted on a wall.
   client can see the code. A version-1 device is never sent a version-2 frame.
 - `caps` advertises what a client can *render* (`calibration` and `image`;
   timed media is future work). The server must not send content a client has
-  not advertised.
+  not advertised. Caps are advisory, so a hostile query is trimmed rather than
+  rejected: entries longer than 32 characters are dropped, duplicates are
+  removed, and at most 32 are kept. The whole query string is capped at 2048
+  characters by the HTTP layer.
 
 Version 1 is the colour-only contract as originally specified. Everything in the
 "Wall, placements, and scenes" section below is version 2.
@@ -163,6 +166,12 @@ One socket per device: a second connection for the same id replaces the first,
 which is closed with 4409 and does **not** broadcast `device_offline`. The
 replacement stays connected and keeps the device online.
 
+A client that receives 4409 stops its reconnect loop and shows a takeover
+control instead. Retrying on a timer would take the slot straight back and
+produce an endless replacement storm between two pages that share the identity.
+The client resumes only on an explicit action, which replaces the other page in
+turn.
+
 **These codes are sent after the handshake completes**, not by rejecting it. A
 server that refuses the upgrade gives the browser nothing but a generic `1006`,
 so the client could never tell a bad id from a dead server. The server
@@ -185,13 +194,28 @@ Returns a single device record. `404` if unknown.
 
 ### `POST /devices/register`
 
-Unchanged request body:
+Request body:
 
 ```json
 { "device_id": "<uuid4>", "width": 1024, "height": 768, "device_type": "ipad" }
 ```
 
 Response is unchanged: `{"registered": true, "device": "<device_id>"}`.
+
+This is the one unauthenticated write, so every field is bounded before the
+record enters memory:
+
+| Field         | Bound                                            | `422` when |
+| ------------- | ------------------------------------------------ | ---------- |
+| `device_id`   | UUID4                                            | not a UUID4 |
+| `width`       | `1 … 16384`                                      | outside that range |
+| `height`      | `1 … 16384`                                      | outside that range |
+| `device_type` | `1 … 32` characters, printable ASCII (`0x20–0x7e`) | empty, longer, or any other character |
+
+The roster holds `512` records. A registration that would exceed it evicts the
+least recently contacted **offline** device; placements are stored separately
+and survive as reservations. If every record is online the server answers
+`429` instead of evicting a live tablet.
 
 Re-registering an existing id updates `width`, `height`, `type`, and
 `last_seen`, preserves any assigned `color` and an open socket, and broadcasts

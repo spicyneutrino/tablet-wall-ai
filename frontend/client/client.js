@@ -65,6 +65,7 @@
         reconnecting: "Reconnecting\u2026",
         offline: "Offline \u00b7 retrying",
         connected: "",
+        replaced: "Showing on another screen",
     };
 
     /* Calibration pattern geometry, in wall units. */
@@ -118,11 +119,44 @@
     var statusTextEl = statusEl
         ? statusEl.querySelector(".status-text")
         : null;
+    var takeoverEl = document.getElementById("takeover");
 
     function setStatus(state) {
         if (!statusEl || !statusTextEl) return;
         statusEl.setAttribute("data-state", state);
         statusTextEl.textContent = STATUS_TEXT[state] || "";
+    }
+
+    /* One tablet identity has one live socket. When another page on the same
+     * origin takes it over, the server closes the losing socket with 4409.
+     * Retrying would take the slot straight back and start a replacement
+     * storm, so the loser stops and waits for a deliberate Take over. */
+    var takeoverWaiters = [];
+
+    function setReplaced(replaced) {
+        if (!takeoverEl) return;
+        takeoverEl.hidden = !replaced;
+        if (replaced) {
+            takeoverEl.focus();
+        }
+    }
+
+    function waitForTakeover() {
+        if (!takeoverEl) {
+            return new Promise(function () {}); // no control, no claim: stay put
+        }
+        return new Promise(function (resolve) {
+            takeoverWaiters.push(resolve);
+        });
+    }
+
+    if (takeoverEl) {
+        takeoverEl.addEventListener("click", function () {
+            setReplaced(false);
+            var waiting = takeoverWaiters;
+            takeoverWaiters = [];
+            for (var i = 0; i < waiting.length; i++) waiting[i]();
+        });
     }
 
     function warn(message, err) {
@@ -1827,7 +1861,9 @@
         }
     }
 
-    /* Resolves when the socket closes, with `true` if a `welcome` arrived. */
+    /* Resolves when the socket closes: `{welcomed, code}`. The close code is
+     * the server's own diagnosis (PROTOCOL.md "WebSocket close codes"); 4409
+     * means another page took this identity over. */
     function openSocket() {
         return new Promise(function (resolve) {
             var socket;
@@ -1835,7 +1871,7 @@
                 socket = new WebSocket(deviceSocketUrl());
             } catch (err) {
                 warn("could not open websocket", err);
-                resolve(false);
+                resolve({ welcomed: false, code: null });
                 return;
             }
 
@@ -1852,9 +1888,12 @@
                 // A close event always follows; nothing to do here.
             });
 
-            socket.addEventListener("close", function () {
+            socket.addEventListener("close", function (event) {
                 stopHeartbeat();
-                resolve(welcomed);
+                resolve({
+                    welcomed: welcomed,
+                    code: event && typeof event.code === "number" ? event.code : null,
+                });
             });
         });
     }
@@ -1884,7 +1923,7 @@
         });
     }
 
-    /* One register + connect cycle. Never throws. */
+    /* One register + connect cycle. Never throws; returns the close outcome. */
     function attemptCycle() {
         setStatus(welcomedOnce ? "reconnecting" : "connecting");
         return register()
@@ -1893,19 +1932,31 @@
             })
             .catch(function (err) {
                 warn("connection attempt failed", err);
+                return { welcomed: false, code: null };
             })
-            .then(function () {
+            .then(function (outcome) {
                 setStatus(welcomedOnce ? "reconnecting" : "offline");
+                return outcome;
             });
     }
 
     async function run() {
         for (;;) {
+            var outcome;
             try {
-                await attemptCycle();
+                outcome = await attemptCycle();
             } catch (err) {
                 warn("connection cycle failed", err);
                 setStatus(welcomedOnce ? "reconnecting" : "offline");
+                outcome = { welcomed: false, code: null };
+            }
+            if (outcome && outcome.code === 4409) {
+                // Another page owns this tablet identity. Do not take it back
+                // on a timer: stop here until someone asks for it explicitly.
+                setStatus("replaced");
+                setReplaced(true);
+                await waitForTakeover();
+                setStatus("connecting");
             }
             await sleep(nextDelay());
         }

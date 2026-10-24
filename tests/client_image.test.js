@@ -151,9 +151,38 @@ function createHarness(opts = {}) {
         },
     };
 
+    /* The connection status pill and the explicit takeover control. The
+     * client must never fight another page for this tablet identity on a
+     * timer; 4409 shows this control and stops. */
+    const statusText = { textContent: "" };
+    const status = {
+        state: "connecting",
+        hidden: false,
+        setAttribute(name, value) {
+            if (name === "data-state") status.state = value;
+        },
+        querySelector(selector) {
+            return selector === ".status-text" ? statusText : null;
+        },
+    };
+    const takeoverListeners = [];
+    const takeover = {
+        hidden: true,
+        focused: false,
+        addEventListener(type, fn) {
+            if (type === "click") takeoverListeners.push(fn);
+        },
+        focus() {
+            this.focused = true;
+        },
+    };
+
     const documentMock = {
         getElementById(id) {
-            return id === "surface" ? canvas : null;
+            if (id === "surface") return canvas;
+            if (id === "status") return status;
+            if (id === "takeover") return takeover;
+            return null;
         },
         documentElement: {
             clientWidth: opts.width || VP.width,
@@ -287,9 +316,9 @@ function createHarness(opts = {}) {
             (this.listeners[type] = this.listeners[type] || []).push(fn);
         }
         send() {}
-        close() {
+        close(code) {
             this.readyState = 3;
-            this.emit("close");
+            this.emit("close", { code: code === undefined ? 1000 : code });
         }
         emit(type, event) {
             for (const fn of this.listeners[type] || []) fn(event);
@@ -426,6 +455,23 @@ function createHarness(opts = {}) {
             assert.ok(socket, "client has not opened its device socket yet");
             socket.emit("message", { data: JSON.stringify(frame) });
         },
+        socketCount() {
+            return sockets.length;
+        },
+        closeSocket(code) {
+            const socket = sockets[sockets.length - 1];
+            assert.ok(socket, "client has not opened its device socket yet");
+            socket.close(code);
+        },
+        clickTakeover() {
+            for (const fn of takeoverListeners) fn({});
+        },
+        status() {
+            return { state: status.state, text: statusText.textContent };
+        },
+        takeover() {
+            return takeover;
+        },
         click() {
             for (const fn of docListeners.click || []) fn({});
         },
@@ -437,6 +483,16 @@ async function drain() {
     for (let i = 0; i < 6; i++) {
         await new Promise((resolve) => setImmediate(resolve));
     }
+}
+
+/* Bounded wait for real time to pass in the client's own backoff loop. */
+async function waitFor(predicate, message, timeoutMs = 4000) {
+    const deadline = Date.now() + timeoutMs;
+    while (Date.now() < deadline) {
+        if (predicate()) return;
+        await new Promise((resolve) => setTimeout(resolve, 10));
+    }
+    assert.fail(message);
 }
 
 async function startHarness(opts) {
@@ -1055,6 +1111,67 @@ test("colour, unknown type, resize and reconnect still work", async () => {
         h.fetchLog.length,
         fetchesBefore,
         "a replayed frame changes nothing"
+    );
+});
+
+test("a taken-over page stops retrying and offers an explicit takeover", async () => {
+    const h = await startHarness(VP);
+    assert.strictEqual(h.socketCount(), 1, "one connection attempt is open");
+    const attemptsBefore = h.fetchLog.length;
+
+    /* Server semantics for T2: the newer socket owns the identity and the
+     * loser is closed with 4409. */
+    h.closeSocket(4409);
+    await drain();
+
+    assert.deepStrictEqual(
+        h.status(),
+        { state: "replaced", text: "Showing on another screen" },
+        "the page says why it stopped"
+    );
+    assert.strictEqual(h.takeover().hidden, false, "a takeover control appears");
+    assert.strictEqual(h.takeover().focused, true, "the control takes focus");
+
+    /* Several backoff windows pass with no replacement attempt: that is the
+     * whole fix. A timer here would restart the two-page replacement storm. */
+    await new Promise((resolve) => setTimeout(resolve, 700));
+    await drain();
+    assert.strictEqual(h.socketCount(), 1, "no automatic replacement attempt");
+    assert.strictEqual(
+        h.fetchLog.length,
+        attemptsBefore,
+        "the stopped page does not even re-register"
+    );
+
+    /* A deliberate click resumes the ordinary register + connect cycle. */
+    h.clickTakeover();
+    assert.strictEqual(h.takeover().hidden, true, "the control hides on click");
+    await waitFor(
+        () => h.socketCount() === 2,
+        "the takeover click starts one new connection attempt"
+    );
+    h.emit({ type: "welcome", heartbeat_interval_ms: 5000, protocol: 2 });
+    await drain();
+    assert.deepStrictEqual(
+        h.status(),
+        { state: "connected", text: "" },
+        "a welcomed takeover returns the page to the wall"
+    );
+});
+
+test("an ordinary close still reconnects and never offers takeover", async () => {
+    const h = await startHarness(VP);
+    assert.strictEqual(h.socketCount(), 1);
+
+    h.closeSocket(1006);
+    await waitFor(
+        () => h.socketCount() === 2,
+        "an unremarkable close keeps the automatic reconnect"
+    );
+    assert.strictEqual(
+        h.takeover().hidden,
+        true,
+        "no takeover control for a network close"
     );
 });
 

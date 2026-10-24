@@ -14,6 +14,19 @@ HEARTBEAT_INTERVAL_MS = 5000
 HEARTBEAT_TIMEOUT_S = 15
 SWEEP_INTERVAL_S = 2
 
+# Registration bounds (PROTOCOL.md "Device record"). Registration is the one
+# public write, so every field is bounded before it can enter memory: a CSS
+# viewport beyond 16384 px is not a tablet, a device type is a short label,
+# and the roster has a hard ceiling so an unauthenticated caller cannot grow
+# the process without limit. Caps are advisory strings used only for content
+# downgrade; overlong values are dropped rather than rejected so a hostile
+# query cannot make the socket handshake fail open or closed unpredictably.
+MAX_DEVICE_DIMENSION = 16384
+MAX_DEVICE_TYPE_LENGTH = 32
+MAX_DEVICE_CAPS = 32
+MAX_DEVICE_CAP_LENGTH = 32
+MAX_DEVICES = 512
+
 # WebSocket close codes (PROTOCOL.md "WebSocket close codes").
 WS_CLOSE_BAD_REQUEST = 4400
 WS_CLOSE_UNKNOWN_DEVICE = 4404
@@ -104,10 +117,26 @@ def _parse_protocol(raw: str | None) -> int | None:
 
 
 def _parse_caps(raw: str | None) -> list[str]:
-    """Split the comma-separated ``caps`` query param into a clean list."""
+    """Split the comma-separated ``caps`` query param into a bounded clean list.
+
+    Caps are advisory: the server uses them only to downgrade content a client
+    cannot render. A malformed or oversized entry is therefore dropped rather
+    than failing the handshake — the safe outcome is "this client did not
+    advertise that capability", which never sends it more than it asked for.
+    The list itself is capped so a long query cannot retain unbounded memory.
+    """
     if not raw:
         return []
-    return [cap.strip() for cap in raw.split(",") if cap.strip()]
+    caps: list[str] = []
+    for cap in raw.split(","):
+        cap = cap.strip()
+        if not cap or len(cap) > MAX_DEVICE_CAP_LENGTH:
+            continue
+        if cap not in caps:
+            caps.append(cap)
+        if len(caps) >= MAX_DEVICE_CAPS:
+            break
+    return caps
 
 
 def _parse_snapshot_name(raw: str) -> str | None:

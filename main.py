@@ -51,6 +51,9 @@ from tabletwall.hub import (
 from tabletwall.protocol import (
     DEFAULT_FIT,
     HEARTBEAT_INTERVAL_MS,
+    MAX_DEVICE_DIMENSION,
+    MAX_DEVICE_TYPE_LENGTH,
+    MAX_DEVICES,
     SERVER_CAPS,
     SUPPORTED_FITS,
     WS_CLOSE_BAD_REQUEST,
@@ -93,6 +96,7 @@ from tabletwall.state import (
     _fresh_wall,
     _is_online,
     _new_generation,
+    _touch_device,
     _wall_state,
     controller_protocols,
     controller_sockets,
@@ -152,10 +156,28 @@ async def lifespan(_: FastAPI):
 
 
 class DeviceRegistration(BaseModel):
+    """``POST /devices/register`` body — the one public write.
+
+    Every field is bounded here, before the record can enter memory. The
+    viewport numbers are a reporter's claim about its CSS size, not a
+    credential, so they only need to be plausible: a non-positive or absurdly
+    large value is a malformed registration, not a wall-size command.
+    """
+
     device_id: UUID4
-    width: int
-    height: int
-    device_type: str
+    width: int = Field(gt=0, le=MAX_DEVICE_DIMENSION)
+    height: int = Field(gt=0, le=MAX_DEVICE_DIMENSION)
+    device_type: str = Field(min_length=1, max_length=MAX_DEVICE_TYPE_LENGTH)
+
+    @field_validator("device_type")
+    @classmethod
+    def printable_label(cls, value: str) -> str:
+        # The label is rendered as text by the controller and carried in every
+        # roster frame: control characters would break layouts and logs, and
+        # there is no reason a device type needs them.
+        if any(not 0x20 <= ord(ch) <= 0x7E for ch in value):
+            raise ValueError("device_type must be printable ASCII")
+        return value
 
 
 class ColorCommand(BaseModel):
@@ -747,6 +769,29 @@ async def device_register(device: DeviceRegistration):
     device_id = str(device.device_id)
     existing = devices.get(device_id)
 
+    if existing is None and len(devices) >= MAX_DEVICES:
+        # The roster is memory-only, so a full one is a process that has met a
+        # lot of endpoints. Old tablets get replaced; keeping a dead record
+        # forever would block the replacement. Evict the least recently
+        # contacted *offline* record — never a live socket, never a placement
+        # (placements are persisted separately and survive as reservations).
+        offline = [
+            (record.get("last_seen_mono", 0.0), key)
+            for key, record in devices.items()
+            if key not in device_sockets
+        ]
+        if not offline:
+            raise HTTPException(
+                status_code=429,
+                detail="Device roster is full and every device is online",
+            )
+        evicted = min(offline)[1]
+        devices.pop(evicted, None)
+        # The controller may still render the evicted tile; removal is the
+        # event that tells it to drop it. Its placement is left in the wall as
+        # a reservation, so a later re-registration reclaims the same cell.
+        await _broadcast({"type": "device_removed", "device_id": evicted})
+
     # The record is complete before anything is awaited; re-registering keeps
     # the assigned colour, any open socket, and the protocol negotiated by that
     # socket (the client re-registers before every connection attempt, so the
@@ -761,6 +806,8 @@ async def device_register(device: DeviceRegistration):
         "caps": list(existing.get("caps") or []) if existing is not None else [],
         "last_seen": _now_iso(),
     }
+    # Stamp the monotonic contact reading too; presence expiry uses it.
+    _touch_device(device_id)
     record = _device_record(device_id)
 
     await _broadcast({"type": "device_updated", "device": record})
@@ -1342,7 +1389,7 @@ async def _device_loop(websocket: WebSocket, device_id: str) -> None:
         if isinstance(payload, dict) and payload.get("type") == "heartbeat":
             # A replaced socket must not keep the new one alive.
             if device_sockets.get(device_id) is websocket and device_id in devices:
-                devices[device_id]["last_seen"] = _now_iso()
+                _touch_device(device_id)
 
 
 @app.websocket("/ws/device")
@@ -1350,7 +1397,7 @@ async def ws_device(
     websocket: WebSocket,
     device_id: str | None = Query(default=None),
     protocol: str | None = Query(default=None),
-    caps: str | None = Query(default=None),
+    caps: str | None = Query(default=None, max_length=2048),
 ):
     # Accept first so a browser can observe the protocol's custom close codes
     # (a rejected handshake would only ever surface as 1006 to the client).
@@ -1378,7 +1425,7 @@ async def ws_device(
     replaced = device_sockets.get(key)
     device_sockets[key] = websocket
     record = devices[key]
-    record["last_seen"] = _now_iso()
+    _touch_device(key)
     record["protocol"] = negotiated
     record["caps"] = _parse_caps(caps)
 
