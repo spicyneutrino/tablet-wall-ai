@@ -74,15 +74,20 @@ def prepare_environment(work_dir: Path) -> dict[str, str]:
     work = Path(work_dir)
     assets = work / "assets"
     assets.mkdir(parents=True, exist_ok=True)
+    media = work / "media"
+    media.mkdir(parents=True, exist_ok=True)
     database = work / "tablet-wall.db"
     env = {
         "TABLET_WALL_DB": str(database),
         "TABLET_WALL_ASSET_DIR": str(assets),
+        "TABLET_WALL_MEDIA_DIR": str(media),
+        "TABLET_WALL_UPLOAD_MODE": "disabled",
     }
     for key, value in env.items():
         os.environ[key] = value
     os.environ.pop("TABLET_WALL_OPERATOR_ORIGIN", None)
     os.environ.pop("TABLET_WALL_TABLET_ORIGIN", None)
+    os.environ.pop("TABLET_WALL_OPERATOR_CREDENTIAL", None)
     return env
 
 

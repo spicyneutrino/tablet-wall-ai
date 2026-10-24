@@ -314,6 +314,14 @@ or profile, and the fixture is small enough to be fully buffered. HTTP range
 delivery is exercised by the fixture server only as probe plumbing; production
 range semantics belong to R4.
 
+The R1 flow runs the real operator UI through upload and show: it writes a
+solid-colour JPEG, chooses it with the file input, presses Upload, waits for
+`Ready: r1-upload.jpg`, presses Show on wall, and samples the centre of all
+three client canvases for that colour. It then uploads a text file, requires
+the explicit rejection message, and checks the scene did not change. The
+server runs the direct-local admission mode for this disposable origin, so the
+flow proves the loopback path, not the authenticated proxy path.
+
 Reports contain per-page console messages, page errors, HTTP statuses, failed
 requests, socket frames, close codes, pixel checks, collision counts, cleanup
 evidence, versions, the tested `HEAD`, a hash of the working diff, and evidence

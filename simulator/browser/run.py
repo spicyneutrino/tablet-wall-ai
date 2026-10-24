@@ -407,6 +407,12 @@ async def exercise(artifacts: Path, report: dict[str, Any], observation_seconds:
         listener.listen(128)
         base = f"http://127.0.0.1:{listener.getsockname()[1]}"
         report["origin"] = base
+        # Uploads are operator-only. The disposable server runs the explicit
+        # direct-local mode: a loopback peer, this exact origin, and no proxy
+        # header interpretation. Every state-changing API call below carries
+        # the same Origin the browser would send.
+        env["TABLET_WALL_UPLOAD_MODE"] = "loopback"
+        env["TABLET_WALL_OPERATOR_ORIGIN"] = base
         log = (artifacts / "server.log").open("x")
         process = subprocess.Popen(
             [sys.executable, "-m", "uvicorn", "main:app", "--fd", str(listener.fileno()),
@@ -474,7 +480,9 @@ async def exercise(artifacts: Path, report: dict[str, Any], observation_seconds:
         await controller.goto(base + "/controller/")
 
         async def api(method: str, path: str, data: dict[str, Any] | None = None) -> Any:
-            response = await request.fetch(path, method=method, data=data)
+            response = await request.fetch(
+                path, method=method, data=data, headers={"Origin": base}
+            )
             check(method + " " + path, response.ok, status=response.status)
             if not response.ok:
                 raise RuntimeError(await response.text())
@@ -885,14 +893,107 @@ async def exercise(artifacts: Path, report: dict[str, Any], observation_seconds:
                 probe_thread.join(5)
         report["p0"]["video"] = probe
 
+        # ------------------------------------------------------------------
+        # R1: upload through the real controller and show it on real clients
+        # ------------------------------------------------------------------
+
+        upload_path = root / "r1-upload.jpg"
+        Image.new("RGB", (640, 360), (200, 30, 160)).save(
+            upload_path, format="JPEG", quality=95
+        )
+        bad_path = root / "not-an-image.txt"
+        bad_path.write_text("this is not an image", encoding="utf-8")
+
+        async def canvas_centre(page: Any) -> tuple[int, int, int]:
+            encoded = await page.locator("#surface").evaluate("c => c.toDataURL('image/png')")
+            image = Image.open(io.BytesIO(base64.b64decode(encoded.split(",", 1)[1]))).convert("RGB")
+            return image.getpixel((image.width // 2, image.height // 2))
+
+        async def wait_for_colour(page: Any, wanted: tuple[int, int, int]) -> tuple[int, int, int]:
+            deadline = time.monotonic() + 10
+            seen = (0, 0, 0)
+            while time.monotonic() < deadline:
+                seen = await canvas_centre(page)
+                if max(abs(a - b) for a, b in zip(seen, wanted)) <= 25:
+                    return seen
+                await asyncio.sleep(.1)
+            return seen
+
+        r1: dict[str, Any] = {}
+        await controller.wait_for_selector("#upload-block:not([hidden])", timeout=10000)
+        await controller.set_input_files("#upload-file", str(upload_path))
+        await controller.click("#btn-upload")
+        await controller.wait_for_function(
+            "document.querySelector('#upload-status').textContent.startsWith('Ready:')",
+            timeout=30000,
+        )
+        ready_text = await controller.locator("#upload-status").text_content()
+        r1["ready_text"] = ready_text
+        check("controller upload reports a ready image", ready_text == "Ready: r1-upload.jpg",
+              text=ready_text)
+
+        wall_before = await api("GET", "/wall")
+        async with controller.expect_response(
+            lambda response: response.url == base + "/scene"
+            and response.request.method == "PUT"
+        ) as changed:
+            await controller.click("#btn-image-apply")
+        check("controller upload apply response", (await changed.value).ok)
+        wall_after = await api("GET", "/wall")
+        uploaded_id = wall_after["scene"]["content"]["asset"]
+        r1["asset"] = uploaded_id
+        check("uploaded asset replaces the curated scene",
+              uploaded_id != wall_before["scene"]["content"].get("asset")
+              and uploaded_id.startswith("sha256:"))
+        check("controller active image names the upload",
+              "r1-upload.jpg" in (await controller.locator("#image-active-text").text_content() or ""))
+        library = (await api("GET", "/media"))["assets"]
+        check("uploaded library lists exactly the new image",
+              [entry["name"] for entry in library] == ["r1-upload.jpg"], library=library)
+
+        colours = {}
+        for page, observation in pages:
+            colours[observation.spec.name] = await wait_for_colour(page, (200, 30, 160))
+        r1["colours"] = colours
+        check("every client paints the uploaded image",
+              all(max(abs(a - b) for a, b in zip(colour, (200, 30, 160))) <= 25
+                  for colour in colours.values()), colours=colours)
+        await controller.screenshot(path=str(artifacts / "controller-upload.png"), full_page=True)
+
+        before_bad = (await api("GET", "/wall"))["scene"]["content"]["asset"]
+        r1_rejection_start = time.monotonic()
+        await controller.set_input_files("#upload-file", str(bad_path))
+        await controller.click("#btn-upload")
+        await controller.wait_for_function(
+            "document.querySelector('#upload-status').textContent.startsWith('Upload failed:')",
+            timeout=15000,
+        )
+        failure_text = await controller.locator("#upload-status").text_content()
+        r1["failure_text"] = failure_text
+        after_bad = (await api("GET", "/wall"))["scene"]["content"]["asset"]
+        check("a rejected upload says why and changes nothing",
+              failure_text.startswith("Upload failed:") and before_bad == after_bad,
+              text=failure_text)
+        report["r1"] = r1
+
 
         for observation in observations:
-            errors = [event for event in observation.events if event["kind"] in ("page_error", "request_failed", "ws_error")
-                      or event["kind"] == "console" and event["level"] in ("warning", "error")
-                      or event["kind"] == "http" and event["status"] >= 400
-                      or event["kind"] == "ws_close" and event["code"] not in (1000, 1001)
-                      and not (event["code"] == 4409 and observation.spec.name in ("landscape", "duplicate")
-                               and event["time"] >= collision_start)]
+            errors = [event for event in observation.events if (
+                event["kind"] in ("page_error", "request_failed", "ws_error")
+                or (event["kind"] == "console" and event["level"] in ("warning", "error"))
+                or (event["kind"] == "http" and event["status"] >= 400)
+                or (event["kind"] == "ws_close" and event["code"] not in (1000, 1001))
+            ) and not (
+                (event["kind"] == "ws_close" and event["code"] == 4409
+                 and observation.spec.name in ("landscape", "duplicate")
+                 and event["time"] >= collision_start)
+                or (event["kind"] == "http"
+                    and event["url"].endswith("/uploads?name=not-an-image.txt")
+                    and event["status"] == 415)
+                or (event["kind"] == "console" and event["time"] >= r1_rejection_start
+                    and event["text"].startswith("Failed to load resource")
+                    and "415" in event["text"])
+            )]
             check(observation.spec.name + " no unexpected browser errors", not errors, errors=errors)
 
         # ------------------------------------------------------------------
