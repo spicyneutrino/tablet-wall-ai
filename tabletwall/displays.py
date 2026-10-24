@@ -158,12 +158,13 @@ def copy_records(source_id: str, target_id: str) -> dict[str, int]:
     """
     source, target = _device(source_id), _device(target_id)
     with persist._connection() as connection:
-        have = connection.execute(
+        count = (
             "SELECT (SELECT COUNT(*) FROM display_profiles WHERE device_id = ?) + "
-            "(SELECT COUNT(*) FROM calibrations WHERE device_id = ?)",
-            (target, target),
-        ).fetchone()[0]
-        if have:
+            "(SELECT COUNT(*) FROM calibrations WHERE device_id = ?)"
+        )
+        if not connection.execute(count, (source, source)).fetchone()[0]:
+            return {"profiles": 0, "calibrations": 0}
+        if connection.execute(count, (target, target)).fetchone()[0]:
             raise DisplayError("the new device already has display records")
         profiles = connection.execute(
             "INSERT INTO display_profiles SELECT ?, revision, active_width_mm, "

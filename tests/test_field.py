@@ -358,3 +358,17 @@ def test_rebind_refuses_a_new_device_that_has_its_own_display_records(client):
     response = client.post(f"/devices/{new}/rebind", json={"replaces": old})
     assert response.status_code == 409
     assert old in client.get("/devices").json()
+
+
+def test_rebind_from_an_unmeasured_old_device_ignores_the_new_devices_records(client):
+    old = register(client)
+    new = register(client)
+    displays.save_profile(
+        new, active_width_mm=90, active_height_mm=50,
+        bezels={"left": 1, "top": 1, "right": 1, "bottom": 1},
+        panel_pixels=None, label="new", provenance="hand-derived",
+    )
+    response = client.post(f"/devices/{new}/rebind", json={"replaces": old})
+    assert response.status_code == 200, response.text
+    assert response.json()["display_records"] == {"profiles": 0, "calibrations": 0}
+    assert displays.profile(new, 1)["label"] == "new"
