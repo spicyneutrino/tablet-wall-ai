@@ -22,10 +22,12 @@ from http.server import SimpleHTTPRequestHandler, ThreadingHTTPServer
 import threading
 import time
 import traceback
+import uuid
 from dataclasses import asdict, dataclass, field
 from datetime import datetime, timezone
 from typing import Any
 
+import httpx
 from PIL import Image, ImageDraw
 
 REPO = Path(__file__).resolve().parents[2]
@@ -974,6 +976,111 @@ async def exercise(artifacts: Path, report: dict[str, Any], observation_seconds:
         check("a rejected upload says why and changes nothing",
               failure_text.startswith("Upload failed:") and before_bad == after_bad,
               text=failure_text)
+        # Restore proof: back up this run's data, restore into new targets,
+        # start a second disposable server, and paint the restored bytes in a
+        # real client. This closes the R1 requirement that a restore is shown,
+        # not merely hash-checked.
+        backup_dest = root / "r1-backup"
+        restored_root = root / "restored"
+        restored_root.mkdir()
+        (restored_root / "tmp").mkdir()
+        backup_run = subprocess.run(
+            [sys.executable, str(REPO / "deploy" / "backup.py"), "backup",
+             "--db", str(root / "wall.db"), "--assets", str(root / "assets"),
+             "--media", str(root / "media"), "--dest", str(backup_dest)],
+            cwd=REPO, capture_output=True, text=True, timeout=120,
+        )
+        check("backup of the live run succeeds", backup_run.returncode == 0,
+              stderr=backup_run.stderr[-1000:])
+        restore_run = subprocess.run(
+            [sys.executable, str(REPO / "deploy" / "backup.py"), "restore",
+             "--src", str(backup_dest), "--db", str(restored_root / "wall.db"),
+             "--assets", str(restored_root / "assets"),
+             "--media", str(restored_root / "media")],
+            cwd=REPO, capture_output=True, text=True, timeout=120,
+        )
+        check("restore into new targets succeeds", restore_run.returncode == 0,
+              stderr=restore_run.stderr[-1000:])
+
+        restored_listener = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+        restored_listener.bind(("127.0.0.1", 0))
+        restored_listener.listen(128)
+        restored_base = f"http://127.0.0.1:{restored_listener.getsockname()[1]}"
+        restored_env = child_environment(restored_root)
+        restored_env["TABLET_WALL_UPLOAD_MODE"] = "disabled"
+        restored_env.pop("TABLET_WALL_OPERATOR_ORIGIN", None)
+        restored_process = subprocess.Popen(
+            [sys.executable, "-m", "uvicorn", "main:app", "--fd",
+             str(restored_listener.fileno()), "--workers", "1", "--no-access-log"],
+            cwd=REPO, env=restored_env, pass_fds=(restored_listener.fileno(),),
+            stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
+        )
+        restored_context = None
+        try:
+            deadline = time.monotonic() + 15
+            while True:
+                try:
+                    if httpx.get(restored_base + "/wall", timeout=.5).status_code == 200:
+                        break
+                except httpx.HTTPError:
+                    pass
+                if time.monotonic() >= deadline:
+                    raise RuntimeError("restored server did not become ready")
+                await asyncio.sleep(.1)
+            restored_http = httpx.Client(base_url=restored_base, timeout=5)
+            try:
+                restored_context = await browser.new_context(
+                    viewport={"width": 800, "height": 600}, device_scale_factor=1
+                )
+                resources.append(restored_context)
+                restored_id = str(uuid.uuid4())
+                registration = restored_http.post("/devices/register", json={
+                    "device_id": restored_id, "width": 800, "height": 600,
+                    "device_type": "restored",
+                })
+                placement = restored_http.put(
+                    f"/devices/{restored_id}/placement",
+                    json={"x": 0, "y": 0, "w": 1200, "h": 800},
+                )
+                check("restored device registers and is placed",
+                      registration.status_code == 200 and placement.status_code == 200,
+                      registration=registration.status_code,
+                      placement=placement.status_code)
+                restored_page, restored_obs = await watch_page(
+                    restored_context, ClientSpec("restored", 800, 600, 1), observations
+                )
+                captured_pages.append((restored_page, restored_obs))
+                await restored_page.add_init_script(
+                    f"localStorage.setItem('tablet-wall-device-id', '{restored_id}')"
+                )
+                await restored_page.goto(restored_base + "/client/")
+                restored_obs.device_id = await connected(restored_page)
+                restored_colour = await wait_for_colour(restored_page, (200, 30, 160))
+                served = restored_http.get(f"/assets/{uploaded_id}")
+                check(
+                    "a restored upload is served and painted by a real client",
+                    max(abs(a - b) for a, b in zip(restored_colour, (200, 30, 160))) <= 25
+                    and served.status_code == 200
+                    and len(served.content) == library[0]["bytes"],
+                    colour=restored_colour, status=served.status_code,
+                )
+                r1["restore"] = {"colour": restored_colour,
+                                 "asset": uploaded_id,
+                                 "bytes": len(served.content)}
+                await restored_page.screenshot(
+                    path=str(artifacts / "restored-client.png")
+                )
+            finally:
+                restored_http.close()
+        finally:
+            restored_process.terminate()
+            try:
+                restored_process.wait(timeout=5)
+            except subprocess.TimeoutExpired:
+                restored_process.kill()
+                restored_process.wait(timeout=5)
+            restored_listener.close()
+
         report["r1"] = r1
 
 
