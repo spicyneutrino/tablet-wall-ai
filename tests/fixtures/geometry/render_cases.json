@@ -1,0 +1,150 @@
+{
+  "note": "Hand-derived v3 geometry fixtures. Values are independent of tabletwall.geometry and frontend/client/view.js; both implementations are checked against these numbers.",
+  "cases": [
+    {
+      "name": "asymmetric_bezel_mount_90_quarter_1",
+      "active_size": [100, 60],
+      "bezels": {"left": 13, "top": 13, "right": 7, "bottom": 17},
+      "center_mm": [300, 400],
+      "nudge_mm": [5, -3],
+      "mount_angle": 90,
+      "bounds": [0, 0, 1200, 800],
+      "source_size": [2000, 1000],
+      "fit": "cover",
+      "calibration": {
+        "viewport_width": 600,
+        "viewport_height": 800,
+        "quarter_turn": 1,
+        "panel_offset_mm": [10, 20],
+        "mm_per_css": [0.16666666666666666, 0.16666666666666666],
+        "panel_width": 100,
+        "panel_height": 60
+      },
+      "backing": [750, 1000],
+      "rect": [600, 800],
+      "expected": {
+        "body": {"width": 120, "height": 90},
+        "active": {"x": -47, "y": -32, "width": 100, "height": 60},
+        "panel_to_wall": [0, 1, -1, 0, 337, 350],
+        "panel_from_source": [0, -1600, 800, 0, -350, 537],
+        "u_c_to_p": [0, 0.16666666666666666, -0.16666666666666666, 0, 143.33333333333331, 20],
+        "canvas": [-6, 0, 0, -6, 3877.5, 3700],
+        "clip": {"x": -150, "y": 325, "width": 450, "height": 750},
+        "points": [
+          {"source": [583.75, 533.3333333333334], "backing": [375, 500]},
+          {"source": [600, 550], "backing": [277.5, 400]},
+          {"source": [620, 580], "backing": [157.5, 220]}
+        ]
+      }
+    },
+    {
+      "name": "mount_180_quarter_0",
+      "active_size": [100, 60],
+      "bezels": {"left": 0, "top": 0, "right": 0, "bottom": 0},
+      "center_mm": [100, 100],
+      "nudge_mm": [0, 0],
+      "mount_angle": 180,
+      "bounds": [0, 0, 200, 120],
+      "source_size": [400, 240],
+      "fit": "cover",
+      "calibration": {
+        "viewport_width": 200,
+        "viewport_height": 120,
+        "quarter_turn": 0,
+        "panel_offset_mm": [0, 0],
+        "mm_per_css": [1, 1],
+        "panel_width": 100,
+        "panel_height": 60
+      },
+      "backing": [200, 120],
+      "rect": [200, 120],
+      "expected": {
+        "body": {"width": 100, "height": 60},
+        "active": {"x": -50, "y": -30, "width": 100, "height": 60},
+        "panel_to_wall": [-1, 0, 0, -1, 150, 130],
+        "panel_from_source": [-200, 0, 0, -120, 150, 130],
+        "u_c_to_p": [1, 0, 0, 1, 0, 0],
+        "canvas": [-0.5, 0, 0, -0.5, 150, 130],
+        "clip": {"x": 0, "y": 0, "width": 100, "height": 60},
+        "points": [
+          {"source": [100, 140], "backing": [100, 60]},
+          {"source": [0, 0], "backing": [150, 130]},
+          {"source": [400, 240], "backing": [-50, 10]}
+        ]
+      }
+    },
+    {
+      "name": "portrait_body_quarter_3",
+      "active_size": [60, 100],
+      "bezels": {"left": 10, "top": 5, "right": 10, "bottom": 5},
+      "center_mm": [200, 200],
+      "nudge_mm": [0, 0],
+      "mount_angle": 0,
+      "bounds": [0, 0, 300, 300],
+      "source_size": [300, 300],
+      "fit": "cover",
+      "calibration": {
+        "viewport_width": 300,
+        "viewport_height": 300,
+        "quarter_turn": 3,
+        "panel_offset_mm": [0, 0],
+        "mm_per_css": [1, 1],
+        "panel_width": 60,
+        "panel_height": 100
+      },
+      "backing": [300, 300],
+      "rect": [300, 300],
+      "expected": {
+        "body": {"width": 80, "height": 110},
+        "active": {"x": -30, "y": -50, "width": 60, "height": 100},
+        "panel_to_wall": [1, 0, 0, 1, 170, 150],
+        "panel_from_source": [300, 0, 0, 300, -170, -150],
+        "u_c_to_p": [0, -1, 1, 0, 0, 300],
+        "canvas": [0, 1, -1, 0, 450, -170],
+        "clip": {"x": 200, "y": 0, "width": 100, "height": 60},
+        "points": [
+          {"source": [0, 0], "backing": [450, -170]},
+          {"source": [300, 0], "backing": [450, 130]},
+          {"source": [0, 300], "backing": [150, -170]},
+          {"source": [320, 300], "backing": [150, 150]}
+        ]
+      }
+    },
+    {
+      "name": "half_turn_quarter_2",
+      "active_size": [100, 60],
+      "bezels": {"left": 0, "top": 0, "right": 0, "bottom": 0},
+      "center_mm": [100, 100],
+      "nudge_mm": [0, 0],
+      "mount_angle": 0,
+      "bounds": [0, 0, 200, 120],
+      "source_size": [400, 240],
+      "fit": "cover",
+      "calibration": {
+        "viewport_width": 200,
+        "viewport_height": 120,
+        "quarter_turn": 2,
+        "panel_offset_mm": [0, 0],
+        "mm_per_css": [1, 1],
+        "panel_width": 100,
+        "panel_height": 60
+      },
+      "backing": [200, 120],
+      "rect": [200, 120],
+      "expected": {
+        "body": {"width": 100, "height": 60},
+        "active": {"x": -50, "y": -30, "width": 100, "height": 60},
+        "panel_to_wall": [1, 0, 0, 1, 50, 70],
+        "panel_from_source": [200, 0, 0, 120, -50, -70],
+        "u_c_to_p": [-1, 0, 0, -1, 200, 120],
+        "canvas": [-0.5, 0, 0, -0.5, 250, 190],
+        "clip": {"x": 100, "y": 60, "width": 100, "height": 60},
+        "points": [
+          {"source": [0, 0], "backing": [250, 190]},
+          {"source": [100, 60], "backing": [200, 160]},
+          {"source": [400, 240], "backing": [50, 70]}
+        ]
+      }
+    }
+  ]
+}
