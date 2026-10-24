@@ -102,7 +102,7 @@ def test_manifest_2_records_closure_and_marks_unused_uploads(managed):
 
     assert manifest["manifest_version"] == 2
     assert manifest["scope"] == "referenced"
-    assert manifest["schema_version"] == 1
+    assert manifest["schema_version"] == 2
     assert manifest["references"] == [objects["display"][0]]
     assert {entry["asset_id"] for entry in manifest["media_assets"]} == {
         "0f8fad5b-d9cb-469f-a165-70867728950e"
