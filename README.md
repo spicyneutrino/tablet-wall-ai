@@ -8,14 +8,15 @@ they show.
 
 This project began as a copy of `tablet-wall`. New development happens here.
 
-> **Status: Phase 2 software complete; physical tablet validation pending.**
-> Tablets self-register, hold a live WebSocket, heartbeat, and reconnect on
-> their own. The controller is an operator dashboard that shows the wall live,
-> places tablets on a shared wall canvas, drives a calibration pattern to check
-> the geometry, and shows a curated image as one whole-wall scene. The active
-> layout and scene persist across restarts. Named layout and scene save/recall
-> is available; authentication is not implemented — see
-> [Known limitations](#known-limitations) and [Roadmap](#roadmap).
+> **Status: R1-R3 software scope implemented; physical and optical validation
+> pending.** Tablets self-register, hold a live WebSocket, heartbeat, reconnect,
+> and stop fighting over one identity. The operator can upload stills (when an
+> admission mode is configured), show them on the logical wall, measure and
+> calibrate physical panels, place bodies with an accessible editor, and run
+> hard-cut still playlists with clock compensation and leased readiness. Schema
+> 2 and protocol 3 are live; v1/v2 remain compatible. Physical seams, real
+> tablet suspend, 100-cut optical timing and video are not claimed — see
+> [Known limitations](#known-limitations).
 
 ## Requirements
 
@@ -56,17 +57,20 @@ is unavailable on a plain-HTTP LAN origin.
 ## Project layout
 
 ```
-main.py                     FastAPI app: HTTP and WebSocket routes
-tabletwall/                 wall state, SQLite persistence, hub, asset inventory
+main.py                     FastAPI app: HTTP, v3 API and WebSocket routes
+tabletwall/                 state, persistence, hub, media, displays, geometry,
+                            clock, playback, writer and the image worker
 assets/                     optional server-local curated images (create it)
+media/                      managed upload objects and staging (created at run)
 PROTOCOL.md                 the realtime contract between server and pages
 deploy/                     hotspot proxy reference, service unit template,
                             operations + kiosk notes, backup/restore tool
 frontend/
   client/                   runs on each tablet; paints its wall slice
-    index.html  client.js  client.css
+    index.html  client.js  client.css  view.js
   controller/               operator dashboard; roster, wall and content control
     index.html  controller.js  controller.css
+    physical.html physical.js physical.css
 tests/                      pytest contract tests (HTTP + WebSocket)
 pyproject.toml              deps, dev deps, pytest config
 ```
@@ -105,9 +109,15 @@ SQLite database as the active wall, so include it in backups.
 
 ### Curating still images
 
-Create an `assets/` directory at the repository root (or set
-`TABLET_WALL_ASSET_DIR` to another server-local directory) and copy JPEG or PNG
-files into it. There is **no upload endpoint**. Use the controller's asset
+There are two sources. **Curated files**: create an `assets/` directory at the
+repository root (or set `TABLET_WALL_ASSET_DIR` to another server-local
+directory) and copy JPEG or PNG files into it. **Managed uploads**: set
+`TABLET_WALL_MEDIA_DIR` (default `./media`), choose
+`TABLET_WALL_UPLOAD_MODE=loopback` for direct local use or `proxy` with
+`TABLET_WALL_OPERATOR_CREDENTIAL` behind the authenticated operator listener,
+and use the controller's upload panel. Uploads are disabled by default; the
+normalized master and renditions are exact-byte objects behind `/assets/{id}`.
+Use the controller's asset
 refresh control to discover newly copied files without restarting the server.
 Only top-level, non-symlink, non-animated files are inventoried; the initial
 limits are 10 MiB and 12 megapixels per image. Normalize EXIF rotation before
