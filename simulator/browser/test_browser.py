@@ -243,3 +243,46 @@ def test_missing_browser_saves_failure_report_and_cleans_server(tmp_path):
     assert report["cleanup"]["remaining_processes"] == {}
     assert report["cleanup"]["errors"] == []
     assert (destination / "server.log").exists()
+
+
+def test_cuts_argument_is_validated_before_anything_is_created(tmp_path):
+    destination = tmp_path / "never-created"
+    result = subprocess.run(
+        [sys.executable, str(REPO / "simulator/browser/run.py"), "--artifacts", str(destination), "--cuts", "1"],
+        capture_output=True, text=True, timeout=25,
+    )
+    assert result.returncode == 2
+    assert "--cuts" in result.stderr
+    assert not destination.exists()
+
+
+CLOCK_STEP_PROBE = """
+import json, os, sys
+from pathlib import Path
+step = Path(sys.argv[1])
+step.write_text("0")
+os.environ["SIM_BOOTTIME_STEP_FILE"] = str(step)
+from simulator.browser import clock_app  # noqa: F401
+from tabletwall import clock
+instance = clock.ServerClock()
+first = instance.epoch
+quiet = instance.check_suspend()
+step.write_text("1500")
+under = instance.check_suspend()
+same = instance.epoch == first
+step.write_text("6500")
+over = instance.check_suspend()
+print(json.dumps([quiet, under, same, over, instance.epoch != first]))
+"""
+
+
+def test_clock_adapter_step_changes_the_epoch_only_past_the_suspend_threshold(tmp_path):
+    result = subprocess.run(
+        [sys.executable, "-c", CLOCK_STEP_PROBE, str(tmp_path / "step")],
+        cwd=REPO, capture_output=True, text=True, timeout=25,
+        env={**os.environ, "TABLET_WALL_DB": str(tmp_path / "wall.db"),
+             "TABLET_WALL_ASSET_DIR": str(tmp_path / "assets"),
+             "TABLET_WALL_MEDIA_DIR": str(tmp_path / "media")},
+    )
+    assert result.returncode == 0, result.stderr
+    assert json.loads(result.stdout) == [False, False, True, True, True]

@@ -349,15 +349,89 @@ paths. The report checks the server was reaped, recorded descendant processes
 are gone, and the temporary root was removed. Artifacts remain for review,
 including failure reports, server logs, and available failure screenshots.
 
+### R3 software cuts and the suspend step (`--cuts`, `--suspend`)
+
+Both are opt-in; the default run is unchanged (same 106 checks).
+
+```bash
+uv run --group browser python simulator/browser/run.py --cuts 100
+uv run --group browser python simulator/browser/run.py --suspend
+```
+
+`--cuts N` (2 to 1000) adds about `N + 10` seconds (`--suspend` about 15). It opens three more
+independent calibrated clients (two contexts in one Chromium process, one
+persistent profile in another; 240x160 at DPR 1, 200x150 at 1.25, 220x140 at
+1.5; mounts 0, 180, 0), each with its own display, calibration and slot in one
+physical layout. A four-item solid-colour loop runs at the shortest legal
+dwell, 1000 ms (the run also checks the server refuses 999). The static scene
+is a fifth colour, so the first commit is a visible cut. Every committed
+occurrence counts as a cut, including the first.
+
+Onset is measured inside each renderer, not by polling. An init script wraps
+`CanvasRenderingContext2D.drawImage` and records, per new image on `#surface`,
+`performance.timeOrigin + performance.now()` taken before the call, plus the
+centre pixel read from a copy afterwards. It also logs the `commit`, `prepare`,
+`cancel`, `playback` and `clock_bootstrap` frames with the same clock. Pages
+share the host clock, so the stamps compare across renderers. Events are keyed
+by the server's occurrence (`loop * items + item_index`), not by asset, so a
+repeated asset cannot satisfy a different cut.
+
+Per event the report gives each member's commit receipt, onset, pixel check and
+lateness against the planned `effective_server_ms` (mapped onto the page clock
+with the host's wall-minus-monotonic offset; it includes clock-estimate error),
+the software onset delta (max minus min across the planned cohort, never
+pooled), completion, the server's `missed` list and the client-side missing
+members. An event is complete only when every cohort member painted the right
+colour. A missing commit, a missing paint or a wrong pixel is a failed event.
+It stays in the denominator, and the whole-show percentiles treat it as
+unbounded (`null`). The healthy-subset p50/p95/max (nearest rank) are reported
+apart from the whole show. Degradation windows are runs of consecutive failed,
+server-missed or re-anchored events (effective-time gap different from the
+dwell). Commits after event `N-1` exist only because the run stops about a
+second after the last counted cut; they are reported as
+`trailing_commits_not_counted` and are not scored.
+
+Every figure is labelled "software, not optical". It is a `drawImage` call
+time on a desktop Chromium, for solid stills, on one host. It excludes
+decode-to-glass, compositor, panel scanout and any camera uncertainty. The
+optical gate row stays `MISSING` in the report and in `evidence_gaps`; nothing
+here is compared against the 100 ms / 250 ms optical gate.
+
+`--suspend` starts a second disposable server through
+`simulator/browser/clock_app.py`. That entry only replaces `ServerClock`'s
+`sample` adapter (the injected `(BOOTTIME, MONOTONIC)` reader): BOOTTIME gets a
+persistent step read from a file the runner owns, MONOTONIC and scheduling are
+untouched. A step above the 2 s `SUSPEND_THRESHOLD_MS` looks to
+`check_suspend` exactly like a host suspend. With two real clients and a 6 s
+dwell, the run first applies a 1.5 s step (a control: nothing may change), then
+a 5 s step right after the first cut, while the next preparation is ready and
+renewing. It requires a `playback` frame with reason `host suspend` and a new
+epoch at both clients, `GET /api/v3/playback` reporting `stopped`, no further
+`ready` renewals for the cancelled preparation, no commit and no draw of its
+asset past its planned time, and a canvas unchanged until 1.5 s after that
+planned time. It records what stays visible: the clients keep showing the last
+committed still, they do not revert to the persisted scene. A reload shows the
+persisted scene was untouched, and a fresh session started after the epoch
+change carries the new epoch and paints.
+
+A page-level `performance.now` step cannot do this and the report says so: the
+epoch exists only on the server, the client takes `clockEpoch` only from
+`clock_bootstrap`, and only `cancel` and `playback` frames stop its pending
+work. This is not a physical or host suspend; `physical_suspend` stays
+`MISSING`.
+
 Run the focused safety and oracle checks with the browser group installed.
 They cover path rejection, environment isolation, independent pixel anchors,
 process reaping, signal cancellation during cleanup, partial server launch,
 and a real missing-browser failure that still saves a report and cleans up
 its server. SIGINT and SIGTERM cancel the runner task while keeping
-Playwright's event reader alive until browser shutdown finishes.
+Playwright's event reader alive until browser shutdown finishes. The
+`--cuts` argument check, the clock-adapter step, and the pure event analysis
+(`test_evidence.py`: per-event deltas, failed events, unbounded whole-show
+percentiles, degradation windows) run without a browser session.
 
 ```bash
-uv run --group browser pytest -q simulator/browser/test_browser.py
+uv run --group browser pytest -q simulator/browser/test_browser.py simulator/browser/test_evidence.py
 ```
 
 Every report explicitly marks physical old/new iPad and Android inventory,
