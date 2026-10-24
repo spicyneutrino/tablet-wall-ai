@@ -60,6 +60,21 @@ class TestControllerSocket:
                 assert event["device"]["online"] is True
                 assert client.get("/devices").json()[DEVICE_ID]["online"] is True
 
+    def test_device_accepts_a_long_browser_dpr(self, client, device_payload):
+        """Browsers serialize devicePixelRatio with full double precision."""
+        client.post("/devices/register", json=device_payload)
+        url = (
+            device_url()
+            + "&protocol=3&caps=calibration,image,physical"
+            + "&w=768&h=393&dpr=1.4666666984558105&orientation=0&mode=tab"
+        )
+
+        with client.websocket_connect(url) as device:
+            welcome = device.receive_json()
+
+        assert welcome["type"] == "welcome"
+        assert welcome["protocol"] == 3
+
     def test_device_disconnect_marks_it_offline_but_keeps_the_roster(
         self, client, device_payload
     ):

@@ -2293,7 +2293,7 @@ async def ws_device(
     caps: str | None = Query(default=None, max_length=2048),
     w: str | None = Query(default=None, max_length=16),
     h: str | None = Query(default=None, max_length=16),
-    dpr: str | None = Query(default=None, max_length=16),
+    dpr: str | None = Query(default=None, max_length=32),
     orientation: str | None = Query(default=None, max_length=8),
     mode: str | None = Query(default=None, max_length=16),
 ):
