@@ -16,14 +16,19 @@ This is the important half of the distinction: screen sleep, fullscreen and
 foreground behaviour are **operating-system decisions** here, not app
 features. The client page today has:
 
-- **no Screen Wake Lock API usage** — it never asks the browser to keep the
-  screen on, so the OS timer decides when the display sleeps;
+- **only a best-effort Screen Wake Lock** — in a secure context (HTTPS) the
+  page asks the browser to keep the screen on while it is visible and reports
+  `held`, `released`, `unsupported`, `insecure` or `denied` to the roster. On
+  a plain-HTTP origin the API does not exist (`insecure`), and even a held
+  lock does not replace the OS display timeout, Guided Access or power
+  settings, which stay the real controls;
 - **no automatic fullscreen** — the only Fullscreen API call is the "Full
   screen" button, which appears for 5 s after a touch and needs a tap (browsers
   require a user gesture). It is not a kiosk mode: it does not survive a page
   reload, and it is absent where the browser lacks the API (e.g. iPhone Safari);
-- **no `visibilitychange`/focus nudge** — it does not detect being
-  backgrounded, throttled or frozen and does not try to wake anything up;
+- **no focus nudge** — the only `visibilitychange` use is releasing and
+  retaking the wake lock; it does not detect being throttled or frozen and
+  does not try to wake anything up;
 - **no service worker and no offline cache** — a page loaded from cache after
   the server is gone is not a supported mode;
 - **no third-party resources** — no CDN, no web fonts, no analytics; every

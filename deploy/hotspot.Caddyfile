@@ -14,7 +14,7 @@ https://{$WALL_HOTSPOT_IP}:8443 {
 	tls internal
 
 	# Exact public tablet surface. No unmatched URL or method is forwarded;
-	# /assets (inventory), /uploads, /media, the operator socket, and all wall
+	# /assets (inventory), /uploads, /media, /diagnostics, rebinding, the operator socket, and all wall
 	# writes are denied. Every upstream strips the internal operator credential,
 	# so a forged header from a tablet never reaches the backend.
 	@client {

@@ -58,7 +58,7 @@ expect_ws 101 "$TABLET_ORIGIN/ws/device?device_id=00000000-0000-4000-8000-000000
 # Everything operator-only (including GET reads, docs, and alternate paths)
 # must hit the tablet origin's default-deny branch before it reaches FastAPI.
 for route in / /controller/ /ws/controller /wall /devices /assets \
-    /layouts /scenes /docs /openapi.json /operator-config \
+    /layouts /scenes /docs /openapi.json /operator-config /diagnostics /media \
     '/%77all' '/./wall' '/x/../wall' '//wall' '/client/%2e%2e/controller/' \
     '/client/..%2fwall' '/client/%2e%2e%2fwall' \
     '/client/%252e%252e/wall' '/client/..%5cwall' \
@@ -72,6 +72,7 @@ expect 403 -X POST "$TABLET_ORIGIN/wall/auto"
 expect 403 -X POST "$TABLET_ORIGIN/layouts/probe/recall"
 expect 403 -X DELETE "$TABLET_ORIGIN/devices/00000000-0000-4000-8000-000000000001"
 expect 403 -X POST "$TABLET_ORIGIN/devices/color"
+expect 403 -X POST "$TABLET_ORIGIN/devices/00000000-0000-4000-8000-000000000001/rebind"
 expect 403 -X POST "$TABLET_ORIGIN/devices/00000000-0000-4000-8000-000000000001/color"
 expect 403 -X PUT "$TABLET_ORIGIN/scene"
 expect 403 -X PUT "$TABLET_ORIGIN/devices/00000000-0000-4000-8000-000000000001/placement"
@@ -89,6 +90,7 @@ expect_ws 403 "$TABLET_ORIGIN/ws/controller?protocol=2"
 expect 401 "$OPERATOR_ORIGIN/controller/"
 expect 401 "$OPERATOR_ORIGIN/wall"
 expect 401 "$OPERATOR_ORIGIN/operator-config"
+expect 401 "$OPERATOR_ORIGIN/diagnostics"
 expect 401 -X POST "$OPERATOR_ORIGIN/wall/auto"
 expect_ws 401 "$OPERATOR_ORIGIN/ws/controller?protocol=2"
 

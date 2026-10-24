@@ -149,6 +149,12 @@ retention window are **open decisions** below.
 5. Record how long the whole drill took; that number is your real recovery
    time.
 
+`deploy/drill.py` rehearses the whole cycle (populate, backup while running,
+restore to new targets, boot, compare) on a throwaway instance; see
+[README.md](README.md#backup-and-recovery-drill) for what it proves and what
+it leaves to a real host. After a real restore, `GET /diagnostics?verify=1`
+re-hashes every ready upload.
+
 ### Rollback — keep the old targets
 
 Restore never modifies the previous database, asset or media directory, so
@@ -160,6 +166,9 @@ one has been verified in normal use; they are your rollback, and they are also
 the only copy the restore tool will not overwrite.
 
 ## CA trust (decide later)
+
+The step-by-step trust checklist (a human task) and origin-migration recipe are
+in [README.md](README.md#field-readiness-r5-operations-notes).
 
 The hotspot reference uses Caddy's local certificate authority. Decisions that
 are still open: who holds the CA private key, how its **public certificate**

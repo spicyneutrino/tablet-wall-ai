@@ -53,6 +53,9 @@ Environment=TABLET_WALL_ASSET_DIR=/REPLACE/with/data-dir/assets
 # behind the authenticated operator listener.
 Environment=TABLET_WALL_MEDIA_DIR=/REPLACE/with/data-dir/media
 Environment=TABLET_WALL_UPLOAD_MODE=disabled
+# Optional: a directory of backup.py snapshots (or one snapshot). Only read, to
+# show the newest manifest time in GET /diagnostics; the service never writes it.
+# Environment=TABLET_WALL_BACKUP_DIR=/REPLACE/with/backup-dir
 
 # Exact origins as the browser address bar shows them: scheme, host and port,
 # no trailing slash. These are the strings the operator-Origin guard compares
