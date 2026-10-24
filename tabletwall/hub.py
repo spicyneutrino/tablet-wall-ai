@@ -11,6 +11,8 @@ from typing import Any
 import anyio
 from fastapi import WebSocket
 
+from tabletwall import displays
+from tabletwall import writer as writers
 from tabletwall.protocol import (
     HEARTBEAT_TIMEOUT_S,
     SWEEP_INTERVAL_S,
@@ -19,6 +21,7 @@ from tabletwall.protocol import (
     _now_iso,
 )
 from tabletwall.state import (
+    _render_frame,
     _seconds_since_last_seen,
     _wall_frame,
     _wall_state,
@@ -26,7 +29,16 @@ from tabletwall.state import (
     controller_sockets,
     device_sockets,
     devices,
+    wall,
 )
+
+
+async def _send(websocket: WebSocket, frame: dict[str, Any]) -> None:
+    writer = writers.get(websocket)
+    if writer is not None:
+        await writer.send(frame)
+    else:
+        await websocket.send_json(frame)
 
 
 async def _broadcast(frame: dict[str, Any]) -> None:
@@ -37,7 +49,7 @@ async def _broadcast(frame: dict[str, Any]) -> None:
     """
     for websocket in list(controller_sockets):
         try:
-            await websocket.send_json(frame)
+            await _send(websocket, frame)
         except Exception:
             # Drop *and* close. Discarding alone would leave a controller
             # holding an open socket that is never sent to again: it would go
@@ -53,7 +65,7 @@ async def _send_color_to_device(device_id: str, color: str) -> bool:
     if websocket is None:
         return False
     try:
-        await websocket.send_json({"type": "set_color", "color": color})
+        await _send(websocket, {"type": "set_color", "color": color})
     except Exception:
         return False
     return True
@@ -71,12 +83,32 @@ async def _broadcast_offline(device_id: str, last_seen: str) -> None:
         await _broadcast(frame)
 
 
+def _measurement_for(device_id: str) -> tuple[dict[str, Any] | None, dict[str, Any] | None]:
+    layout = wall["layout"]
+    if layout.get("kind") != "physical":
+        return None, None
+    slot = layout["slots"].get(device_id)
+    if slot is None:
+        return None, None
+    return (
+        displays.profile(device_id, int(slot["profile_revision"])),
+        displays.calibration(device_id, int(slot["calibration_revision"])),
+    )
+
+
 async def _send_wall_to_device(
     device_id: str, websocket: WebSocket, record: dict[str, Any]
 ) -> None:
-    """Send the current ``wall`` frame to one version-2 device socket."""
+    """Send the current wall or v3 render frame to one device socket."""
     try:
-        await websocket.send_json(_wall_frame(device_id, record))
+        if record.get("protocol") == 3:
+            profile, calibration = _measurement_for(device_id)
+            await _send(
+                websocket,
+                _render_frame(device_id, record, profile, calibration),
+            )
+        else:
+            await _send(websocket, _wall_frame(device_id, record))
     except Exception:
         # Drop *and* close (the pattern from ``_broadcast``), then report the
         # device offline: a failed send means the socket is gone, and dropping
@@ -100,10 +132,24 @@ async def _broadcast_wall() -> None:
     """
     wall_updated = {"type": "wall_updated", "wall": _wall_state()}
     for websocket in list(controller_sockets):
-        if controller_protocols.get(websocket, 1) != 2:
+        protocol = controller_protocols.get(websocket, 1)
+        if protocol == 3:
+            try:
+                await _send(websocket, {
+                    "type": "config_updated",
+                    "revision": wall["revision"],
+                    "generation": wall["generation"],
+                })
+            except Exception:
+                controller_sockets.discard(websocket)
+                controller_protocols.pop(websocket, None)
+                with contextlib.suppress(Exception):
+                    await websocket.close(code=WS_CLOSE_NORMAL)
+            continue
+        if protocol != 2:
             continue
         try:
-            await websocket.send_json(wall_updated)
+            await _send(websocket, wall_updated)
         except Exception:
             controller_sockets.discard(websocket)
             controller_protocols.pop(websocket, None)
@@ -112,7 +158,7 @@ async def _broadcast_wall() -> None:
 
     for device_id, websocket in list(device_sockets.items()):
         record = devices.get(device_id)
-        if record is None or record.get("protocol") != 2:
+        if record is None or record.get("protocol") not in (2, 3):
             continue
         await _send_wall_to_device(device_id, websocket, record)
 

@@ -665,6 +665,118 @@ A version-2 client that advertises `calibration` and/or `image` must:
   the original bytes reappear, retry the load on the device (or reconnect);
   the file returning alone does not push a new wall revision.
 
+## Version 3 — physical render plans
+
+Version 3 is the physical/timed contract. Version 1 and version 2 remain
+byte-compatible; a v3 device is never sent a v2 frame, and a v2 device on a
+physical wall receives the fixed neutral logical envelope described below.
+
+A v3 device reports its viewport on the socket query string:
+`w`, `h`, `dpr`, `orientation` (degrees) and `mode` (`tab`, `fullscreen` or
+`standalone`). It may repeat the report at any time:
+
+```json
+{ "type": "viewport", "viewport": { "width": 600, "height": 800,
+  "dpr": 1.25, "orientation": 0, "mode": "fullscreen" } }
+```
+
+The `welcome` for protocol 3 adds `"protocol": 3` and
+`"server_caps": ["calibration", "image", "physical"]`. The state frame is
+`render`:
+
+```json
+{
+  "type": "render", "mode": "logical" | "physical",
+  "render_seq": 4, "revision": 12, "generation": "a1b2c3d4",
+  "wall": { "width": 1200, "height": 800 },
+  "scene": { "content": { "type": "image", "asset": "sha256:…",
+    "fit": "cover", "intrinsicWidth": 2000, "intrinsicHeight": 1000,
+    "url": "/assets/sha256:…" } },
+  "slot": { "center_x_mm": 300, "center_y_mm": 400, "mount_angle": 90,
+    "nudge_x_mm": 5, "nudge_y_mm": -3, "profile_revision": 1,
+    "calibration_revision": 1, "participating": true },
+  "calibration": { "status": "valid", "revision": 1,
+    "viewport_width": 600, "viewport_height": 800, "quarter_turn": 1,
+    "panel_offset_mm": [10, 20], "mm_per_css": [0.1666…, 0.1666…],
+    "panel_width": 100, "panel_height": 60 },
+  "plan": {
+    "panel_from_source": [0, -1600, 800, 0, -350, 537],
+    "panel_to_wall": [0, 1, -1, 0, 337, 350],
+    "body": { "width": 120, "height": 90 },
+    "active": { "x": -47, "y": -32, "width": 100, "height": 60 },
+    "clip": { "x": 0, "y": 0, "width": 100, "height": 60 },
+    "source": { "width": 2000, "height": 1000 }
+  }
+}
+```
+
+`plan` is `null` when the server cannot make a physical claim. The
+`calibration.status` is then `needs_calibration` and `reason` names the
+missing or stale prerequisite. A v3 device whose wall is still logical
+receives `mode: "logical"` with the v2 `wall` fields and may draw with the
+legacy renderer.
+
+### Spaces and transform ownership
+
+Wall `W` is millimetres, X right, Y down. Body `B` is centred on the measured
+body in native orientation. Panel `P` starts at the active panel's top-left.
+`C` is CSS pixels in the stable render rectangle, `D` canvas backing pixels,
+and `N` normalized upright source pixels. Matrices are six-number Canvas
+arrays with column vectors, `x' = a*x + c*y + e`; multiplication applies the
+rightmost first; positive rotation is clockwise.
+
+The server owns `G_N_to_P = inverse(M_P_to_W) * F_N_to_W` and the panel clip.
+The client owns `U_C_to_P = translate(panel offset) * Q(q, wMm, hMm) *
+scale(mmPerCss)`, where `Q`'s dimensions are the usable viewport already in
+millimetres. The client composes:
+
+```text
+D = diag(backingW / rectW, backingH / rectH)
+  * inverse(U_C_to_P) * G_N_to_P
+  * diag(1 / renditionWidth, 1 / renditionHeight)
+```
+
+The panel clip is applied under `backingScale * inverse(U_C_to_P)` before the
+image is drawn under `D`. A plan is valid only while the reported viewport,
+DPR, orientation and mode match the calibration. Resize, quarter-turn or mode
+changes invalidate it immediately; the server sends a new `render` (with a new
+`render_seq`) or `plan: null`. The wall revision does not change for a
+viewport-only update.
+
+### Schema 2
+
+`schema 2` adds `display_profiles` and `calibrations`, both immutable by
+`(device_id, revision)`. Existing logical documents are adapted at read time
+and are never rewritten by the migration; new physical layouts are stored as
+`{"schema":2,"kind":"physical","bounds":…,"slots":…}`. The database version is
+`PRAGMA user_version`; a future version, a missing required table or a damaged
+active wall row refuses startup.
+
+### HTTP configuration API
+
+| Route | Meaning |
+| --- | --- |
+| `GET /api/v3/config` | schema, revision, generation, layout, displays, calibrations and an `ETag` |
+| `PUT /api/v3/displays/{device_id}` | append a display profile revision |
+| `PUT /api/v3/calibrations/{device_id}` | append a calibration for an existing profile revision |
+| `PUT /api/v3/layout` | atomically replace the active arrangement with a physical one |
+
+Every write requires `If-Match` with the current config ETag: `428` when it is
+absent, `412` when it is stale, `409` for a semantic conflict. The check runs
+after validation and immediately before the synchronous commit. While a
+physical layout is active, legacy layout/placement/auto/layout-save/layout-
+recall routes return `409 Upgrade controller`; legacy controllers are closed
+with `4426`. A cached logical device receives a neutral logical envelope with
+no placement, never physical millimetres.
+
+### Writers
+
+Each connection has one bounded FIFO writer (64 frames, 1 MiB of serialized
+frames, 5-second send timeout). Welcome and the initial snapshot are queued
+before the socket is published to broadcasts. Overflow or a sustained slow
+send closes that connection with `4429`; other connections are unaffected.
+R2 does not coalesce frames.
+
 ## Persistence
 
 The active layout, the active scene, the revision, and the generation are

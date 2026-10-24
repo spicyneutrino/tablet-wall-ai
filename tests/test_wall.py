@@ -98,7 +98,7 @@ class TestDeviceNegotiation:
         assert welcome["protocol"] == 2
         assert welcome["server_caps"] == ["calibration", "image"]
 
-    @pytest.mark.parametrize("bad", ["3", "0", "-1", "2.5", "garbage", ""])
+    @pytest.mark.parametrize("bad", ["4", "0", "-1", "2.5", "garbage", ""])
     def test_unsupported_device_protocol_closes_with_4426(
         self, client, device_payload, bad
     ):
@@ -111,7 +111,7 @@ class TestDeviceNegotiation:
 
         assert exc_info.value.code == 4426
 
-    @pytest.mark.parametrize("bad", ["3", "garbage"])
+    @pytest.mark.parametrize("bad", ["4", "garbage"])
     def test_unsupported_controller_protocol_closes_with_4426(self, client, bad):
         with client.websocket_connect(controller_url(bad)) as controller:
             with pytest.raises(WebSocketDisconnect) as exc_info:

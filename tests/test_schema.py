@@ -74,14 +74,15 @@ def _tables(path: Path) -> set[str]:
         connection.close()
 
 
-def test_a_new_database_reaches_schema_1(tmp_path, monkeypatch):
+def test_a_new_database_reaches_schema_2(tmp_path, monkeypatch):
     path = tmp_path / "new.db"
     monkeypatch.setenv("TABLET_WALL_DB", str(path))
 
-    assert persist.ensure_schema() == 1
-    assert _version(path) == 1
+    assert persist.ensure_schema() == 2
+    assert _version(path) == 2
     assert {"wall_state", "saved_layouts", "saved_scenes", "media_assets",
-            "media_objects", "media_renditions", "schema_meta"} <= _tables(path)
+            "media_objects", "media_renditions", "schema_meta",
+            "display_profiles", "calibrations"} <= _tables(path)
     assert not list(tmp_path.glob("*.bak"))
 
 
@@ -93,8 +94,8 @@ def test_an_existing_schema_0_database_is_backed_up_before_ddl_and_keeps_its_doc
     monkeypatch.setenv("TABLET_WALL_DB", str(path))
 
     assert persist.load_state() == WALL
-    assert _version(path) == 1
-    backups = list(tmp_path.glob("old.db.pre-schema-1.*.bak"))
+    assert _version(path) == 2
+    backups = list(tmp_path.glob("old.db.pre-schema-2.*.bak"))
     assert len(backups) == 1
     assert backups[0].stat().st_mode & 0o777 == 0o600
     # The backup is a real schema-0 copy, not an empty placeholder.
@@ -114,7 +115,7 @@ def test_a_future_schema_is_refused_without_writing(tmp_path, monkeypatch):
     path = tmp_path / "future.db"
     _legacy_database(path)
     connection = sqlite3.connect(path)
-    connection.execute("PRAGMA user_version = 2")
+    connection.execute("PRAGMA user_version = 3")
     connection.commit()
     connection.close()
     before = path.read_bytes()
@@ -122,7 +123,7 @@ def test_a_future_schema_is_refused_without_writing(tmp_path, monkeypatch):
 
     with pytest.raises(persist.SchemaError, match="newer"):
         persist.ensure_schema()
-    assert _version(path) == 2
+    assert _version(path) == 3
     assert path.read_bytes() == before
 
 
@@ -151,9 +152,9 @@ def test_a_pre_snapshot_database_gains_the_snapshot_and_media_tables(
     monkeypatch.setenv("TABLET_WALL_DB", str(path))
 
     assert persist.load_state() == WALL
-    assert _version(path) == 1
-    assert {"saved_layouts", "saved_scenes", "media_assets"} <= _tables(path)
-    assert len(list(tmp_path.glob("pre-snapshot.db.pre-schema-1.*.bak"))) == 1
+    assert _version(path) == 2
+    assert {"saved_layouts", "saved_scenes", "media_assets", "display_profiles"} <= _tables(path)
+    assert len(list(tmp_path.glob("pre-snapshot.db.pre-schema-2.*.bak"))) == 1
 
 
 def test_a_corrupt_wall_row_refuses_load(tmp_path, monkeypatch):
@@ -197,7 +198,7 @@ def test_a_failed_ddl_rolls_back_the_version_and_the_tables(tmp_path, monkeypatc
     assert _version(path) == 0
     assert "media_assets" not in _tables(path)
     # The rollback copy still exists and still opens as schema 0.
-    backups = list(tmp_path.glob("old.db.pre-schema-1.*.bak"))
+    backups = list(tmp_path.glob("old.db.pre-schema-2.*.bak"))
     assert len(backups) == 1
     assert _version(backups[0]) == 0
 
@@ -222,8 +223,8 @@ def test_two_concurrent_initializers_migrate_once(tmp_path, monkeypatch):
         thread.join()
 
     assert errors == []
-    assert results == [1, 1, 1, 1]
-    assert len(list(tmp_path.glob("race.db.pre-schema-1.*.bak"))) == 1
+    assert results == [2, 2, 2, 2]
+    assert len(list(tmp_path.glob("race.db.pre-schema-2.*.bak"))) == 1
     assert persist.load_state() == WALL
 
 
@@ -234,11 +235,11 @@ def test_a_direct_save_without_lifespan_migrates_first(tmp_path, monkeypatch):
     changed = {**WALL, "revision": WALL["revision"] + 1}
 
     persist.save_state(changed)
-    assert _version(path) == 1
+    assert _version(path) == 2
     assert persist.load_state() == changed
 
 
-def test_schema_1_missing_a_media_table_is_refused(tmp_path, monkeypatch):
+def test_schema_2_missing_a_media_table_is_refused(tmp_path, monkeypatch):
     path = tmp_path / "damaged.db"
     monkeypatch.setenv("TABLET_WALL_DB", str(path))
     persist.ensure_schema()
@@ -247,5 +248,97 @@ def test_schema_1_missing_a_media_table_is_refused(tmp_path, monkeypatch):
     connection.commit()
     connection.close()
 
+    with pytest.raises(persist.SchemaError, match="missing required tables"):
+        persist.ensure_schema()
+
+
+def _schema_1_database(path: Path, *, damaged_scene: str | None = None) -> None:
+    connection = sqlite3.connect(path)
+    try:
+        for statement in persist._MIGRATION[:7]:
+            connection.execute(statement)
+        connection.execute(
+            "INSERT INTO wall_state VALUES (1, ?, ?, ?, ?)",
+            (json.dumps(WALL["layout"]), json.dumps(WALL["scene"]),
+             WALL["revision"], WALL["generation"]),
+        )
+        if damaged_scene is not None:
+            connection.execute(
+                "INSERT INTO saved_scenes (name, content) VALUES ('broken', ?)",
+                (damaged_scene,),
+            )
+        connection.execute("PRAGMA user_version = 1")
+        connection.commit()
+    finally:
+        connection.close()
+
+
+def test_schema_1_to_2_is_additive_and_keeps_documents_byte_for_byte(
+    tmp_path, monkeypatch
+):
+    path = tmp_path / "schema1.db"
+    _schema_1_database(path, damaged_scene="{not valid json")
+    monkeypatch.setenv("TABLET_WALL_DB", str(path))
+    before_wall = sqlite3.connect(path).execute(
+        "SELECT layout, scene FROM wall_state"
+    ).fetchone()
+    before_scene = sqlite3.connect(path).execute(
+        "SELECT content FROM saved_scenes WHERE name = 'broken'"
+    ).fetchone()[0]
+
+    assert persist.ensure_schema() == 2
+    assert _version(path) == 2
+    assert {"display_profiles", "calibrations"} <= _tables(path)
+    assert len(list(tmp_path.glob("schema1.db.pre-schema-2.*.bak"))) == 1
+    after_wall = sqlite3.connect(path).execute(
+        "SELECT layout, scene FROM wall_state"
+    ).fetchone()
+    after_scene = sqlite3.connect(path).execute(
+        "SELECT content FROM saved_scenes WHERE name = 'broken'"
+    ).fetchone()[0]
+    assert after_wall == before_wall
+    assert after_scene == before_scene
+    assert persist.load_scenes() == [("broken", None)]
+
+
+def test_a_physical_layout_round_trips_and_is_stored_as_an_envelope(tmp_path, monkeypatch):
+    path = tmp_path / "physical.db"
+    monkeypatch.setenv("TABLET_WALL_DB", str(path))
+    physical = {
+        "layout": {
+            "kind": "physical",
+            "bounds": {"x": 0, "y": 0, "width": 1200, "height": 800},
+            "slots": {
+                "0f8fad5b-d9cb-469f-a165-70867728950e": {
+                    "center_x_mm": 300, "center_y_mm": 400, "mount_angle": 0,
+                    "nudge_x_mm": 0, "nudge_y_mm": 0,
+                    "profile_revision": 1, "calibration_revision": 1,
+                    "participating": True,
+                }
+            },
+        },
+        "scene": {"content": {"type": "color"}, "layout": "active"},
+        "revision": 3,
+        "generation": "physical",
+    }
+    persist.save_state(physical)
+    assert persist.load_state() == physical
+    connection = sqlite3.connect(path)
+    try:
+        stored = json.loads(connection.execute("SELECT layout FROM wall_state").fetchone()[0])
+    finally:
+        connection.close()
+    assert stored["schema"] == 2 and stored["kind"] == "physical"
+    assert "width" not in stored
+
+
+def test_schema_2_missing_calibrations_is_refused(tmp_path, monkeypatch):
+    path = tmp_path / "damaged2.db"
+    monkeypatch.setenv("TABLET_WALL_DB", str(path))
+    persist.ensure_schema()
+    connection = sqlite3.connect(path)
+    connection.execute("DROP TABLE calibrations")
+    connection.commit()
+    connection.close()
     with pytest.raises(persist.SchemaError, match="missing required tables"):
         persist.ensure_schema()

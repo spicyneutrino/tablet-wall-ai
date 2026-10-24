@@ -19,6 +19,7 @@ from typing import Any
 
 from fastapi import WebSocket
 
+from tabletwall import geometry
 from tabletwall.protocol import HEARTBEAT_TIMEOUT_S, _asset_url, _now_iso
 
 # Wall defaults (PROTOCOL.md "Wall state"): a 2x1 wall of landscape panels.
@@ -176,6 +177,15 @@ def _wall_state() -> dict[str, Any]:
     composed asset URL here while the live (and persisted) wall never does.
     """
     layout = wall["layout"]
+    if layout.get("kind") == "physical":
+        return {
+            "width": DEFAULT_WALL_WIDTH,
+            "height": DEFAULT_WALL_HEIGHT,
+            "revision": wall["revision"],
+            "generation": wall["generation"],
+            "placements": {},
+            "scene": {"content": {"type": "color"}, "layout": "active"},
+        }
     return {
         "width": layout["width"],
         "height": layout["height"],
@@ -202,6 +212,18 @@ def _wall_frame(device_id: str, record: dict[str, Any]) -> dict[str, Any]:
     no asset URL, while a capable device gets the full descriptor with its
     composed URL (PROTOCOL.md "Still images").
     """
+    if wall["layout"].get("kind") == "physical":
+        # A cached logical device never receives physical millimetres
+        # relabelled as logical dimensions: it gets a fixed neutral envelope
+        # with no placement, while its controller is told to upgrade.
+        return {
+            "type": "wall",
+            "revision": wall["revision"],
+            "generation": wall["generation"],
+            "wall": {"width": DEFAULT_WALL_WIDTH, "height": DEFAULT_WALL_HEIGHT},
+            "scene": {"content": {"type": "color"}, "layout": "active"},
+            "placement": None,
+        }
     scene = _project_scene(wall["scene"])
     caps = record.get("caps", ())
     content = scene["content"]
@@ -219,3 +241,99 @@ def _wall_frame(device_id: str, record: dict[str, Any]) -> dict[str, Any]:
         "scene": scene,
         "placement": _placement_for_client(layout["placements"].get(device_id)),
     }
+
+
+def _viewport_matches(calibration: dict[str, Any], viewport: dict[str, Any]) -> bool:
+    """A live viewport signature must be the one the calibration measured."""
+    try:
+        return (
+            abs(float(viewport["width"]) - calibration["viewport_width"]) <= 1
+            and abs(float(viewport["height"]) - calibration["viewport_height"]) <= 1
+            and abs(float(viewport["dpr"]) - calibration["dpr"]) <= 0.02
+            and int(viewport["orientation"]) == calibration["orientation"]
+            and str(viewport["mode"]) == calibration["mode"]
+        )
+    except (KeyError, TypeError, ValueError):
+        return False
+
+
+def _render_frame(
+    device_id: str,
+    record: dict[str, Any],
+    profile: dict[str, Any] | None = None,
+    calibration: dict[str, Any] | None = None,
+) -> dict[str, Any]:
+    """The version-3 frame: a logical fallback or a physical render plan.
+
+    The server owns ``G_N_to_P``; the client owns its calibrated
+    ``U_C_to_P``. A device without a matching, current viewport calibration
+    receives no plan and an explicit reason, never a guessed physical claim.
+    """
+    layout = wall["layout"]
+    scene = _project_scene(wall["scene"])
+    record["render_seq"] = int(record.get("render_seq", 0)) + 1
+    if layout.get("kind") != "physical":
+        frame = _wall_frame(device_id, record)
+        return {"type": "render", "mode": "logical", "render_seq": record["render_seq"], **frame}
+
+    bounds = layout["bounds"]
+    slot = layout["slots"].get(device_id)
+    frame: dict[str, Any] = {
+        "type": "render",
+        "mode": "physical",
+        "render_seq": record["render_seq"],
+        "revision": wall["revision"],
+        "generation": wall["generation"],
+        "wall": {"width": bounds["width"], "height": bounds["height"]},
+        "scene": {"content": scene["content"]},
+        "slot": slot,
+        "calibration": {"status": "needs_calibration", "revision": None},
+        "plan": None,
+    }
+    if slot is None:
+        frame["calibration"]["reason"] = "no physical slot"
+        return frame
+    if profile is None or calibration is None:
+        frame["calibration"]["reason"] = "no measured profile or calibration"
+        return frame
+    if calibration.get("profile_revision") != slot.get("profile_revision"):
+        frame["calibration"]["reason"] = "calibration does not match the slot profile"
+        return frame
+    if not _viewport_matches(calibration, record.get("viewport") or {}):
+        frame["calibration"]["reason"] = "viewport does not match the calibration"
+        return frame
+    content = scene["content"]
+    if content.get("type") != "image":
+        frame["calibration"]["reason"] = "physical plans currently require image content"
+        return frame
+    source_width = content.get("intrinsicWidth")
+    source_height = content.get("intrinsicHeight")
+    if not isinstance(source_width, int) or not isinstance(source_height, int):
+        frame["calibration"]["reason"] = "image dimensions are unknown"
+        return frame
+    plan = geometry.normalized_source_to_panel(
+        active_size=(profile["active_width_mm"], profile["active_height_mm"]),
+        bezels=profile["bezels"],
+        center_mm=(slot["center_x_mm"], slot["center_y_mm"]),
+        nudge_mm=(slot["nudge_x_mm"], slot["nudge_y_mm"]),
+        mount_angle=slot["mount_angle"],
+        bounds=(bounds["x"], bounds["y"], bounds["width"], bounds["height"]),
+        source_size=(source_width, source_height),
+        fit=content.get("fit", "cover"),
+    )
+    frame["plan"] = {
+        **plan,
+        "source": {"width": source_width, "height": source_height},
+    }
+    frame["calibration"] = {
+        "status": "valid",
+        "revision": calibration["revision"],
+        "viewport_width": calibration["viewport_width"],
+        "viewport_height": calibration["viewport_height"],
+        "quarter_turn": calibration["quarter_turn"],
+        "panel_offset_mm": calibration["panel_offset_mm"],
+        "mm_per_css": calibration["mm_per_css"],
+        "panel_width": profile["active_width_mm"],
+        "panel_height": profile["active_height_mm"],
+    }
+    return frame

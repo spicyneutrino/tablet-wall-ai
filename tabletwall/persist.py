@@ -30,7 +30,7 @@ DEFAULT_DB_FILENAME = "tablet-wall.db"
 # builds wrote implicitly; version 1 adds the managed-media index and pins the
 # version in ``PRAGMA user_version``. Anything newer is refused before a write,
 # because an older binary cannot know what it would be rewriting.
-SCHEMA_VERSION = 1
+SCHEMA_VERSION = 2
 
 # The whole persisted wall state lives in a single row (the CHECK pins id to
 # 1). ``layout`` and ``scene`` are JSON documents, so the schema does not need
@@ -58,6 +58,51 @@ _SAVED_SCENES_SCHEMA = """
 CREATE TABLE IF NOT EXISTS saved_scenes (
     name    TEXT PRIMARY KEY,
     content TEXT NOT NULL
+)
+"""
+
+# Schema 2: immutable physical measurements and calibrations. Both are keyed
+# by device and revision; an update appends a revision rather than mutating
+# the one a saved layout already references.
+_DISPLAY_PROFILES_SCHEMA = """
+CREATE TABLE IF NOT EXISTS display_profiles (
+    device_id        TEXT NOT NULL,
+    revision         INTEGER NOT NULL,
+    active_width_mm  REAL NOT NULL,
+    active_height_mm REAL NOT NULL,
+    bezel_left_mm    REAL NOT NULL,
+    bezel_top_mm     REAL NOT NULL,
+    bezel_right_mm   REAL NOT NULL,
+    bezel_bottom_mm  REAL NOT NULL,
+    panel_pixels_width  INTEGER,
+    panel_pixels_height INTEGER,
+    label            TEXT NOT NULL,
+    provenance       TEXT NOT NULL,
+    created_at       TEXT NOT NULL,
+    PRIMARY KEY (device_id, revision)
+)
+"""
+
+_CALIBRATIONS_SCHEMA = """
+CREATE TABLE IF NOT EXISTS calibrations (
+    device_id           TEXT NOT NULL,
+    revision            INTEGER NOT NULL,
+    profile_revision    INTEGER NOT NULL,
+    viewport_width      REAL NOT NULL,
+    viewport_height     REAL NOT NULL,
+    dpr                 REAL NOT NULL,
+    orientation         INTEGER NOT NULL,
+    mode                TEXT NOT NULL,
+    quarter_turn        INTEGER NOT NULL,
+    panel_offset_x_mm   REAL NOT NULL,
+    panel_offset_y_mm   REAL NOT NULL,
+    mm_per_css_x        REAL NOT NULL,
+    mm_per_css_y        REAL NOT NULL,
+    anchor_edge         TEXT NOT NULL,
+    uncertainty_mm      REAL NOT NULL,
+    method              TEXT NOT NULL,
+    created_at          TEXT NOT NULL,
+    PRIMARY KEY (device_id, revision)
 )
 """
 
@@ -125,6 +170,8 @@ _MIGRATION = (
     _MEDIA_ASSETS_SCHEMA,
     _MEDIA_RENDITIONS_SCHEMA,
     _SCHEMA_META_SCHEMA,
+    _DISPLAY_PROFILES_SCHEMA,
+    _CALIBRATIONS_SCHEMA,
 )
 
 # A schema-0 file is this application's database when it carries ``wall_state``.
@@ -135,6 +182,7 @@ _SCHEMA_1_TABLES = frozenset({
     "wall_state", "saved_layouts", "saved_scenes",
     "media_assets", "media_objects", "media_renditions", "schema_meta",
 })
+_SCHEMA_2_TABLES = _SCHEMA_1_TABLES | {"display_profiles", "calibrations"}
 
 
 class SchemaError(RuntimeError):
@@ -234,15 +282,30 @@ def _migration_lock() -> Iterator[None]:
         os.close(fd)
 
 
+def _require_tables(connection: sqlite3.Connection, version: int) -> None:
+    required = {1: _SCHEMA_1_TABLES, 2: _SCHEMA_2_TABLES}[version]
+    missing = required - _tables(connection)
+    if missing:
+        raise SchemaError(
+            f"database schema {version} is missing required tables: "
+            f"{', '.join(sorted(missing))}"
+        )
+
+
 def ensure_schema() -> int:
     """Bring the database to ``SCHEMA_VERSION``, or refuse it.
 
     Called by every persistence entry point, not only the lifespan, so a test
     or a direct caller cannot bypass the gate. A new empty file is migrated
-    without a backup. An existing schema-0 file is backed up first; a file
-    that is neither new nor this application's database is refused. The DDL
-    and the version bump commit together, so an interrupted attempt reopens as
-    schema 0 and can be retried with a fresh backup.
+    without a backup. An existing older file is backed up before any DDL; a
+    file that is neither new nor this application's database is refused. The
+    DDL and the version bump commit together, so an interrupted attempt
+    reopens at the previous version and can be retried with a fresh backup.
+
+    Schema 1 to 2 is additive: it creates the display/calibration tables and
+    bumps the version. It deliberately does not rewrite the active or saved
+    documents. Legacy logical documents are adapted at read time, which keeps
+    damaged saved rows byte-for-byte visible and deletable as they were.
     """
     path = db_path()
     directory = os.path.dirname(os.path.abspath(path))
@@ -259,16 +322,11 @@ def ensure_schema() -> int:
                 f"database schema {version} is newer than this build supports "
                 f"({SCHEMA_VERSION}); refusing to modify {path}"
             )
-        if version == 1:
-            missing = _SCHEMA_1_TABLES - _tables(connection)
-            if missing:
-                raise SchemaError(
-                    f"database schema 1 is missing required tables: "
-                    f"{', '.join(sorted(missing))}"
-                )
+        if version == SCHEMA_VERSION:
+            _require_tables(connection, version)
             connection.execute("PRAGMA foreign_keys = ON")
             return version
-        if version != 0:
+        if version not in (0, 1):
             raise SchemaError(f"unsupported database schema {version} in {path}")
 
         with _migration_lock():
@@ -281,33 +339,31 @@ def ensure_schema() -> int:
                     f"database schema {version} is newer than this build supports "
                     f"({SCHEMA_VERSION}); refusing to modify {path}"
                 )
-            if version == 1:
-                missing = _SCHEMA_1_TABLES - _tables(connection)
-                if missing:
-                    raise SchemaError(
-                        "database schema 1 is missing required tables: "
-                        + ", ".join(sorted(missing))
-                    )
+            if version == SCHEMA_VERSION:
+                _require_tables(connection, version)
                 return version
-
-            existing = _tables(connection)
-            size = os.path.getsize(path) if os.path.exists(path) else 0
-            if existing:
-                missing = _REQUIRED_TABLES - existing
-                if missing:
+            if version == 1:
+                _require_tables(connection, 1)
+            else:
+                existing = _tables(connection)
+                size = os.path.getsize(path) if os.path.exists(path) else 0
+                if existing:
+                    missing = _REQUIRED_TABLES - existing
+                    if missing:
+                        raise SchemaError(
+                            f"{path} exists but is not this application's database: "
+                            f"missing {', '.join(sorted(missing))}"
+                        )
+                elif size > 0:
                     raise SchemaError(
-                        f"{path} exists but is not this application's database: "
-                        f"missing {', '.join(sorted(missing))}"
+                        f"{path} is an existing non-empty file with no tables; "
+                        "refusing to overwrite it"
                     )
-                # An existing schema-0 file gets a durable rollback copy before
-                # the first DDL. A failed backup aborts the migration.
-                _write_migration_backup(connection)
-            elif size > 0:
-                raise SchemaError(
-                    f"{path} is an existing non-empty file with no tables; "
-                    "refusing to overwrite it"
-                )
 
+            if _tables(connection):
+                # A durable rollback copy before the first DDL. A failed
+                # backup aborts the migration.
+                _write_migration_backup(connection)
             try:
                 connection.execute("BEGIN IMMEDIATE")
                 for statement in _MIGRATION:
@@ -355,6 +411,47 @@ def _connection() -> Iterator[sqlite3.Connection]:
         connection.close()
 
 
+def _runtime_layout(document: Any) -> Any:
+    """Adapt a stored layout envelope to the runtime shape.
+
+    Legacy logical documents are returned unchanged; a physical envelope is
+    exposed with its bounds and slots; a logical envelope is unwrapped. This
+    is the read-time migration the advisor required: no saved row is
+    rewritten, and a damaged row keeps its bytes and its existing listing
+    behaviour.
+    """
+    if not isinstance(document, dict):
+        return document
+    if document.get("kind") == "physical":
+        bounds = document.get("bounds")
+        slots = document.get("slots")
+        if not isinstance(bounds, dict) or not isinstance(slots, dict):
+            return document
+        return {
+            "kind": "physical",
+            "bounds": {
+                "x": bounds.get("x", 0), "y": bounds.get("y", 0),
+                "width": bounds.get("width"), "height": bounds.get("height"),
+            },
+            "slots": slots,
+        }
+    if document.get("schema") == 2 and document.get("kind") == "logical":
+        data = document.get("data")
+        return data if isinstance(data, dict) else document
+    return document
+
+
+def _runtime_scene(document: Any) -> Any:
+    """Unwrap a schema-2 static scene envelope; legacy scenes pass through."""
+    if (
+        isinstance(document, dict)
+        and document.get("kind") == "static"
+        and isinstance(document.get("content"), dict)
+    ):
+        return {"content": document["content"], "layout": document.get("layout", "active")}
+    return document
+
+
 def _validate_wall_state(wall: Any, where: str) -> dict[str, Any]:
     """The persisted wall row must be a complete, usable document.
 
@@ -368,7 +465,36 @@ def _validate_wall_state(wall: Any, where: str) -> dict[str, Any]:
     scene = wall.get("scene")
     if not isinstance(layout, dict) or not isinstance(scene, dict):
         raise SchemaError(f"{where} is missing its layout or scene document")
-    if (
+    if layout.get("kind") == "physical":
+        bounds = layout.get("bounds")
+        if (
+            not isinstance(bounds, dict)
+            or not isinstance(bounds.get("x"), (int, float))
+            or not isinstance(bounds.get("y"), (int, float))
+            or not isinstance(bounds.get("width"), (int, float))
+            or not isinstance(bounds.get("height"), (int, float))
+            or bounds["width"] <= 0
+            or bounds["height"] <= 0
+            or not isinstance(layout.get("slots"), dict)
+        ):
+            raise SchemaError(f"{where} has an invalid physical layout document")
+        for device_id, slot in layout["slots"].items():
+            if not isinstance(device_id, str) or not isinstance(slot, dict):
+                raise SchemaError(f"{where} has an invalid physical slot")
+            if not all(
+                isinstance(slot.get(field), (int, float))
+                and not isinstance(slot.get(field), bool)
+                for field in ("center_x_mm", "center_y_mm", "mount_angle",
+                              "nudge_x_mm", "nudge_y_mm")
+            ):
+                raise SchemaError(f"{where} has a slot without a pose")
+            if not isinstance(slot.get("profile_revision"), int) or not isinstance(
+                slot.get("calibration_revision"), int
+            ):
+                raise SchemaError(f"{where} has a slot without a revision")
+            if not isinstance(slot.get("participating", True), bool):
+                raise SchemaError(f"{where} has an invalid participating flag")
+    elif (
         not isinstance(layout.get("width"), int)
         or isinstance(layout["width"], bool)
         or layout["width"] <= 0
@@ -413,8 +539,8 @@ def load_state() -> dict[str, Any] | None:
         raise SchemaError(f"wall_state row is not valid: {error}") from error
     return _validate_wall_state(
         {
-            "layout": layout,
-            "scene": scene,
+            "layout": _runtime_layout(layout),
+            "scene": _runtime_scene(scene),
             "revision": revision,
             "generation": str(row[3]),
         },
@@ -443,7 +569,17 @@ def save_state(wall: Mapping[str, Any]) -> None:
                 generation = excluded.generation
             """,
             (
-                json.dumps(wall["layout"], sort_keys=True),
+                json.dumps(
+                    {
+                        "schema": 2,
+                        "kind": "physical",
+                        "bounds": wall["layout"]["bounds"],
+                        "slots": wall["layout"]["slots"],
+                    }
+                    if wall["layout"].get("kind") == "physical"
+                    else wall["layout"],
+                    sort_keys=True,
+                ),
                 json.dumps(wall["scene"], sort_keys=True),
                 int(wall["revision"]),
                 str(wall["generation"]),

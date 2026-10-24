@@ -37,15 +37,18 @@ WS_CLOSE_NORMAL = 1000
 # so a browser can observe the code rather than a bare 1006 (PROTOCOL.md
 # "Protocol versions").
 WS_CLOSE_UNSUPPORTED_PROTOCOL = 4426
+# A connection whose bounded writer queue overflowed or timed out.
+WS_CLOSE_WRITER_OVERFLOW = 4429
 
 # Protocol negotiation (PROTOCOL.md "Protocol versions"). An absent ``protocol``
 # means version 1; only these majors are accepted.
-SUPPORTED_PROTOCOLS = (1, 2)
+SUPPORTED_PROTOCOLS = (1, 2, 3)
 
 # What this server can render/serve for version-2 clients. ``image`` joined
 # with the curated-asset endpoints (PROTOCOL.md "Still images"); a client only
 # sees image content after it advertises the matching cap.
 SERVER_CAPS = ["calibration", "image"]
+SERVER_CAPS_V3 = ["calibration", "image", "physical"]
 
 # Still images (PROTOCOL.md "Still images"): a content ID is ``sha256:`` plus
 # the lowercase SHA-256 of the file bytes, and the URL a descriptor carries is

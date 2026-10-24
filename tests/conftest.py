@@ -6,6 +6,7 @@ import pytest
 from fastapi.testclient import TestClient
 
 import main
+from tabletwall import writer
 
 
 def _clear_state() -> None:
@@ -13,6 +14,7 @@ def _clear_state() -> None:
     main.device_sockets.clear()
     main.controller_sockets.clear()
     main.controller_protocols.clear()
+    writer.clear()
     # The wall is module-level state too: reset it to the PROTOCOL.md defaults
     # (revision 0, no placements) so no test sees another test's mutations.
     main.wall.clear()
