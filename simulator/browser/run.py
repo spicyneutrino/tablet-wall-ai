@@ -23,12 +23,17 @@ import threading
 import time
 import traceback
 import uuid
-from dataclasses import asdict, dataclass, field
+from dataclasses import asdict, dataclass, field, replace
 from datetime import datetime, timezone
 from typing import Any
 
 import httpx
 from PIL import Image, ImageDraw
+
+if __package__:
+    from . import evidence
+else:  # script mode: this file's directory is sys.path[0]
+    import evidence
 
 REPO = Path(__file__).resolve().parents[2]
 
@@ -377,8 +382,539 @@ async def sample_render(page: Any, observation: Observation, artifacts: Path, la
     return result
 
 
+# ---------------------------------------------------------------------------
+# R3 software evidence: calibrated cohort, in-page onset hook, many hard cuts,
+# and a server-clock suspend step. Software, not optical.
+# ---------------------------------------------------------------------------
+
+# Viewports are exactly the calibrated panel (0.5 mm per CSS pixel), so the
+# canvas centre is always inside the panel clip and a solid still reads the
+# same at that pixel. The mount angle is only a different calibration per client.
+CUT_CLIENTS = (
+    (ClientSpec("cut-a", 240, 160, 1), 0),
+    (ClientSpec("cut-b", 200, 150, 1.25), 180),
+    (ClientSpec("cut-c", 220, 140, 1.5, True), 0),
+)
+CUT_COLOURS = {
+    "idle": (150, 40, 150), "red": (220, 30, 30), "green": (30, 200, 60),
+    "blue": (40, 70, 230), "yellow": (240, 220, 20),
+}
+CUT_ITEMS = ("red", "green", "blue", "yellow")
+# The validator's lower bound (tabletwall/playback.py MIN_DWELL_MS); the run
+# also proves it by having the server refuse 999.
+SHORTEST_DWELL_MS = 1000
+
+# Records, inside each renderer, the first drawImage of every new image element
+# on the client canvas and the timed-protocol frames it receives. Timestamps are
+# performance.timeOrigin + performance.now(): one host clock, comparable across
+# pages. The centre pixel is read from a copy after the timestamp is taken.
+ONSET_SCRIPT = """(() => {
+    const read = performance.now.bind(performance);
+    const origin = performance.timeOrigin;
+    const stamp = () => origin + read();
+    const log = window.__cutLog = {draws: [], frames: []};
+    const probe = document.createElement('canvas');
+    probe.width = probe.height = 1;
+    const original = CanvasRenderingContext2D.prototype.drawImage;
+    let last = null;
+    CanvasRenderingContext2D.prototype.drawImage = function (image, ...rest) {
+        const t = stamp();
+        const result = original.call(this, image, ...rest);
+        const canvas = this.canvas;
+        const element = image instanceof HTMLImageElement;
+        if ((element || image instanceof ImageBitmap) && canvas && canvas.id === 'surface' && image !== last) {
+            last = image;
+            const entry = {t, src: element ? image.src : 'bitmap', pixel: null};
+            log.draws.push(entry);
+            setTimeout(() => {
+                try {
+                    const ctx = probe.getContext('2d', {willReadFrequently: true});
+                    ctx.clearRect(0, 0, 1, 1);
+                    original.call(ctx, canvas, Math.floor(canvas.width / 2), Math.floor(canvas.height / 2), 1, 1, 0, 0, 1, 1);
+                    entry.pixel = Array.from(ctx.getImageData(0, 0, 1, 1).data);
+                } catch (error) {
+                    entry.error = String(error);
+                }
+            }, 0);
+        }
+        return result;
+    };
+    const kinds = new Set(['commit', 'prepare', 'cancel', 'playback', 'clock_bootstrap']);
+    window.WebSocket = new Proxy(window.WebSocket, {
+        construct(Target, args) {
+            const ws = Reflect.construct(Target, args);
+            ws.addEventListener('message', event => {
+                const t = stamp();
+                if (typeof event.data !== 'string') return;
+                let frame;
+                try { frame = JSON.parse(event.data); } catch (error) { return; }
+                if (!frame || !kinds.has(frame.type)) return;
+                log.frames.push({
+                    t, type: frame.type, version: frame.version, state: frame.state,
+                    reason: frame.reason, epoch: frame.epoch || frame.clock_epoch,
+                    preparation_id: frame.preparation_id, occurrence: frame.occurrence,
+                    asset: frame.asset ? {id: frame.asset.id, url: frame.asset.url} : null,
+                    effective_server_ms: frame.effective_server_ms, missed: frame.missed,
+                });
+            });
+            return ws;
+        }
+    });
+})();"""
+
+
+@dataclass
+class Rig:
+    base: str
+    http: httpx.Client
+    browser: Any
+    playwright: Any
+    browser_env: dict[str, str]
+    root: Path
+    artifacts: Path
+    observations: list[Observation]
+    captured_pages: list[Any]
+    resources: list[Any]
+    owned: dict[int, str]
+    check: Any
+
+
+def host_clock_mapping_ms() -> float:
+    """Add to a server monotonic stamp to get ``timeOrigin + now`` milliseconds."""
+    pairs = []
+    for _ in range(5):
+        wall = time.time_ns() / 1e6
+        mono = time.monotonic_ns() / 1e6
+        pairs.append(wall - mono)
+    return sorted(pairs)[len(pairs) // 2]
+
+
+async def open_cohort(rig: Rig, clients: tuple[tuple[ClientSpec, int], ...], tag: str) -> list[tuple[Any, Observation]]:
+    pages = []
+    for spec, _mount in clients:
+        options = {"viewport": {"width": spec.width, "height": spec.height}, "device_scale_factor": spec.dpr}
+        if spec.persistent:
+            profile = rig.root / f"profile-{tag}-{spec.name}"
+            profile.mkdir()
+            context = await rig.playwright.chromium.launch_persistent_context(
+                profile, env=rig.browser_env, **options)
+            rig.resources.append(context)
+            for blank in context.pages:
+                await blank.close()
+        else:
+            context = await rig.browser.new_context(**options)
+            rig.resources.append(context)
+        rig.owned.update(descendants(os.getpid()))
+        page, observation = await watch_page(context, spec, rig.observations)
+        await page.add_init_script(ONSET_SCRIPT)
+        rig.captured_pages.append((page, observation))
+        await page.goto(rig.base + "/client/")
+        observation.device_id = await connected(page)
+        pages.append((page, observation))
+    return pages
+
+
+async def calibrate_cohort(rig: Rig, pages: list[tuple[Any, Observation]],
+                           mounts: list[int], colours: dict[str, tuple[int, int, int]],
+                           tag: str) -> dict[str, str]:
+    """Upload solid stills, calibrate every client, place them, show ``idle``."""
+    http, check = rig.http, rig.check
+    assets: dict[str, str] = {}
+    for label, rgb in colours.items():
+        path = rig.root / f"{tag}-solid-{label}.png"
+        Image.new("RGB", (400, 240), rgb).save(path)
+        response = http.post(f"/uploads?name={tag}-{label}.png", content=path.read_bytes(),
+                             headers={"Content-Type": "image/png"})
+        if response.status_code != 201:
+            raise RuntimeError(f"{tag}: upload of {label} failed: {response.text[-300:]}")
+        assets[label] = response.json()["asset"]["id"]
+    etag = http.get("/api/v3/config").json()["etag"]
+    slots: dict[str, Any] = {}
+    for index, ((_, observation), mount) in enumerate(zip(pages, mounts, strict=True)):
+        spec, device = observation.spec, observation.device_id
+        display = http.put(f"/api/v3/displays/{device}", json={
+            "active_width_mm": spec.width * 0.5, "active_height_mm": spec.height * 0.5,
+            "bezels": {"left": 0, "top": 0, "right": 0, "bottom": 0},
+            "label": f"{tag} {spec.name}", "provenance": "hand-derived",
+        }, headers={"If-Match": etag})
+        if display.status_code != 200:
+            raise RuntimeError(f"{tag}: {spec.name} display {display.status_code} {display.text[-200:]}")
+        calibration = http.put(f"/api/v3/calibrations/{device}", json={
+            "profile_revision": 1, "viewport_width": spec.width, "viewport_height": spec.height,
+            "dpr": spec.dpr, "orientation": 0, "mode": "tab", "quarter_turn": 0,
+            "panel_offset_mm": [0, 0], "mm_per_css": [0.5, 0.5], "anchor_edge": "top-left",
+            "uncertainty_mm": 0, "method": "hand-derived",
+        }, headers={"If-Match": display.json()["etag"]})
+        if calibration.status_code != 200:
+            raise RuntimeError(f"{tag}: {spec.name} calibration {calibration.status_code} {calibration.text[-200:]}")
+        etag = calibration.json()["etag"]
+        slots[device] = {
+            "center_x_mm": 75 + 130 * index, "center_y_mm": 60, "mount_angle": mount,
+            "nudge_x_mm": 0, "nudge_y_mm": 0, "profile_revision": 1,
+            "calibration_revision": 1, "participating": True,
+        }
+    layout = http.put("/api/v3/layout", json={
+        "bounds": {"x": 0, "y": 0, "width": 130 * len(pages) + 10, "height": 120}, "slots": slots,
+    }, headers={"If-Match": etag})
+    scene = http.put("/scene", json={"content": {"type": "image", "asset": assets["idle"], "fit": "cover"}})
+    check(f"{tag}: {len(pages)} independent clients calibrated, placed and shown the idle still",
+          layout.status_code == 200 and scene.status_code == 200,
+          layout=layout.status_code, scene=scene.status_code)
+    for page, observation in pages:
+        if not await wait_for_centre(page, colours["idle"], 15):
+            raise RuntimeError(f"{tag}: {observation.spec.name} never painted the idle still")
+    return assets
+
+
+async def draw_log(page: Any) -> list[dict[str, Any]]:
+    return await page.evaluate("window.__cutLog.draws")
+
+
+async def frame_log(page: Any) -> list[dict[str, Any]]:
+    return await page.evaluate("window.__cutLog.frames")
+
+
+async def wait_for_draw(page: Any, digest: str, seconds: float, after: int = 0) -> bool:
+    """True once the page logged a verified draw of ``digest`` beyond ``after`` entries."""
+    deadline = time.monotonic() + seconds
+    while time.monotonic() < deadline:
+        draws = await draw_log(page)
+        if any(digest in draw["src"] and draw["pixel"] for draw in draws[after:]):
+            return True
+        await asyncio.sleep(.05)
+    return False
+
+
+async def wait_for_centre(page: Any, wanted: tuple[int, int, int], seconds: float) -> bool:
+    deadline = time.monotonic() + seconds
+    while time.monotonic() < deadline:
+        if pixel_close(await surface_centre(page), wanted):
+            return True
+        await asyncio.sleep(.1)
+    return False
+
+
+def pixel_close(seen: Any, wanted: Any, tolerance: int = evidence.PIXEL_TOLERANCE) -> bool:
+    return bool(seen) and max(abs(a - b) for a, b in zip(seen[:3], wanted[:3], strict=True)) <= tolerance
+
+
+async def surface_centre(page: Any) -> tuple[int, int, int]:
+    encoded = await page.locator("#surface").evaluate("c => c.toDataURL('image/png')")
+    image = Image.open(io.BytesIO(base64.b64decode(encoded.split(",", 1)[1]))).convert("RGB")
+    return image.getpixel((image.width // 2, image.height // 2))
+
+
+def save_playlist(http: httpx.Client, assets: dict[str, str], labels: tuple[str, ...], dwell_ms: int) -> httpx.Response:
+    etag = http.get("/api/v3/playlist").json()["etag"]
+    return http.put("/api/v3/playlist", json={
+        "items": [{"asset": assets[label], "dwell_ms": dwell_ms} for label in labels], "loop": True,
+    }, headers={"If-Match": etag})
+
+
+def stop_playback(http: httpx.Client) -> httpx.Response | None:
+    response = None
+    for _ in range(5):
+        current = http.get("/api/v3/playback").json()
+        if "version" not in current:
+            break
+        response = http.post("/api/v3/playback/stop", headers={"If-Match": str(current["version"])})
+        if response.status_code != 412:
+            break
+    return response
+
+
+async def run_cuts(rig: Rig, report: dict[str, Any], target: int) -> None:
+    """At least ``target`` committed hard cuts on three calibrated clients."""
+    http, check = rig.http, rig.check
+    pages = await open_cohort(rig, CUT_CLIENTS, "cuts")
+    names = [observation.spec.name for _, observation in pages]
+    ids = {observation.spec.name: observation.device_id for _, observation in pages}
+    check("cuts: cohort identities are distinct", len(set(ids.values())) == len(pages))
+    assets = await calibrate_cohort(rig, pages, [mount for _, mount in CUT_CLIENTS], CUT_COLOURS, "cuts")
+    refused = save_playlist(http, assets, CUT_ITEMS, SHORTEST_DWELL_MS - 1)
+    saved = save_playlist(http, assets, CUT_ITEMS, SHORTEST_DWELL_MS)
+    check("cuts: the server refuses a dwell below the shortest legal value and accepts it",
+          refused.status_code == 422 and saved.status_code == 200,
+          refused=refused.status_code, accepted=saved.status_code)
+    await asyncio.sleep(2)  # let the clock sampler finish its burst
+    mapping = host_clock_mapping_ms()
+    started = http.post("/api/v3/playback/start")
+    session = started.json()
+    check("cuts: playback starts and freezes the whole planned cohort",
+          started.status_code == 200 and sorted(session.get("cohort", [])) == sorted(ids.values()),
+          cohort=session.get("cohort"))
+    period = len(CUT_ITEMS)
+
+    def seq(current: dict[str, Any] | None) -> int:
+        return -1 if not current else evidence.sequence(current, period)
+
+    began = time.monotonic()
+    timeline: list[dict[str, Any]] = []
+    deadline = began + target * SHORTEST_DWELL_MS / 1000 * 2 + 60
+    reached = -1
+    while time.monotonic() < deadline:
+        status = http.get("/api/v3/playback").json()
+        reached = max(reached, seq(status.get("current")))
+        timeline.append({"t": round(time.monotonic() - began, 3), "state": status.get("state"),
+                         "committed_seq": reached, "held": status.get("held"),
+                         "missed": status.get("missed")})
+        if reached >= target or status.get("state") in ("stopped", "failed"):
+            break
+        await asyncio.sleep(.25)
+    await asyncio.sleep(1.5)  # the last counted cut paints at about its planned time
+    stopped = stop_playback(http)
+    duration = time.monotonic() - began
+
+    commits: dict[str, list[dict[str, Any]]] = {}
+    draws: dict[str, list[dict[str, Any]]] = {}
+    for (page, _), name in zip(pages, names, strict=True):
+        frames = await frame_log(page)
+        draws[name] = await draw_log(page)
+        commits[name] = [{key: frame[key] for key in ("t", "occurrence", "asset", "effective_server_ms")}
+                         | {"missed": frame.get("missed") or []}
+                         for frame in frames if frame["type"] == "commit"]
+    expected = {assets[label]: CUT_COLOURS[label] for label in CUT_ITEMS}
+    analysis = evidence.analyze_cuts(
+        cohort=names, ids=ids, period=period, target=target, dwell_ms=SHORTEST_DWELL_MS,
+        commits=commits, draws=draws, expected_colour=expected, server_to_epoch_ms=mapping)
+    committed_max = max((evidence.sequence(row["occurrence"], period)
+                         for rows in commits.values() for row in rows), default=-1)
+    analysis.update({
+        "mode": "software, not optical: in-page drawImage timestamps on one host clock",
+        "clients": [{"name": observation.spec.name, "viewport": [observation.spec.width, observation.spec.height],
+                     "dpr": observation.spec.dpr, "mount_angle": mount,
+                     "own_browser_process": observation.spec.persistent}
+                    for (_, observation), (_, mount) in zip(pages, CUT_CLIENTS, strict=True)],
+        "playlist": {"items": list(CUT_ITEMS), "dwell_ms": SHORTEST_DWELL_MS, "loop": True},
+        "duration_seconds": round(duration, 3),
+        "trailing_commits_not_counted": max(0, committed_max + 1 - target),
+        "holds_observed_by_polling": sum(1 for row in timeline if row["held"]),
+        "server_misses_by_member": {
+            name: (timeline[-1]["missed"] if timeline else []).count(device) for name, device in ids.items()
+        },
+        "optical_gate": {"status": "MISSING",
+                         "reason": "no camera or panel capture; the optical 100-cut p95/max gate is not claimed"},
+        "timeline": timeline,
+    })
+    report["r3_cuts"] = analysis
+    check(f"cuts: at least {target} hard cuts were committed", analysis["events_committed"] >= target,
+          committed=analysis["events_committed"])
+    check("cuts: every requested event is accounted as complete or failed",
+          analysis["events_complete"] + analysis["events_failed"] == target)
+    check("cuts: the run stopped cleanly", stopped is not None and stopped.status_code == 200,
+          status=getattr(stopped, "status_code", None))
+    check("cuts: evidence is labelled software and the optical gate stays MISSING",
+          analysis["label"] == "software, not optical"
+          and analysis["optical_gate"]["status"] == "MISSING"
+          and any(gap["experiment"] == "optical synchronization" and gap["status"] == "MISSING" for gap in GAPS))
+
+
+async def run_suspend(rig: Rig, report: dict[str, Any]) -> None:
+    """A host-suspend step on a second disposable server, seen by two real clients."""
+    check = rig.check
+    sub = rig.root / "suspend"
+    for name in ("assets", "media", "tmp"):
+        (sub / name).mkdir(parents=True)
+    step_file = sub / "boottime-step-ms"
+
+    def set_step(ms: float) -> None:
+        temporary = step_file.with_suffix(".tmp")
+        temporary.write_text(str(ms))
+        os.replace(temporary, step_file)
+
+    set_step(0)
+    listener = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+    listener.bind(("127.0.0.1", 0))
+    listener.listen(128)
+    base = f"http://127.0.0.1:{listener.getsockname()[1]}"
+    env = child_environment(sub)
+    env.update({"TABLET_WALL_UPLOAD_MODE": "loopback", "TABLET_WALL_OPERATOR_ORIGIN": base,
+                "SIM_BOOTTIME_STEP_FILE": str(step_file)})
+    log = (rig.artifacts / "suspend-server.log").open("x")
+    process = None
+    http = None
+    try:
+        process = subprocess.Popen(
+            [sys.executable, "-m", "uvicorn", "simulator.browser.clock_app:app", "--fd",
+             str(listener.fileno()), "--workers", "1", "--no-access-log"], cwd=REPO, env=env,
+            pass_fds=(listener.fileno(),), stdout=log, stderr=subprocess.STDOUT)
+        listener.close()
+        rig.owned.update(descendants(os.getpid()))
+        http = httpx.Client(base_url=base, headers={"Origin": base}, timeout=10)
+        deadline = time.monotonic() + 15
+        while True:
+            try:
+                if http.get("/wall").status_code == 200:
+                    break
+            except httpx.HTTPError:
+                pass
+            if process.poll() is not None or time.monotonic() >= deadline:
+                raise RuntimeError("suspend server did not become ready; see suspend-server.log")
+            await asyncio.sleep(.1)
+        sub_rig = replace(rig, base=base, http=http)
+        specs = tuple((replace(spec, name=spec.name.replace("cut", "suspend"), persistent=False), mount)
+                      for spec, mount in CUT_CLIENTS[:2])
+        pages = await open_cohort(sub_rig, specs, "suspend")
+        names = [observation.spec.name for _, observation in pages]
+        colours = {key: CUT_COLOURS[key] for key in ("idle", "red", "green")}
+        assets = await calibrate_cohort(sub_rig, pages, [mount for _, mount in specs], colours, "suspend")
+        dwell = 6000
+        saved = save_playlist(http, assets, ("red", "green"), dwell)
+        check("suspend: a two-item playlist with a 6 s dwell saves", saved.status_code == 200)
+        await asyncio.sleep(2)
+        session = http.post("/api/v3/playback/start").json()
+        red, green = (assets[key].rsplit(":", 1)[-1] for key in ("red", "green"))
+        for page, observation in pages:
+            if not await wait_for_draw(page, red, 15):
+                raise RuntimeError(f"{observation.spec.name} never painted the first cut")
+        pending = http.get("/api/v3/playback").json()["pending"]
+        preparation = pending["preparation_id"]
+        bootstrap = {name: [f["epoch"] for f in await frame_log(page) if f["type"] == "clock_bootstrap"]
+                     for (page, _), name in zip(pages, names, strict=True)}
+
+        def ready_times(observation: Observation) -> list[float]:
+            return [event["time"] for event in observation.events
+                    if event["kind"] == "ws_sent" and isinstance(event["frame"], dict)
+                    and event["frame"].get("type") == "ready"
+                    and event["frame"].get("preparation_id") == preparation]
+
+        deadline = time.monotonic() + 5
+        while time.monotonic() < deadline and not all(ready_times(obs) for _, obs in pages):
+            await asyncio.sleep(.05)
+        renewing = {obs.spec.name: len(ready_times(obs)) for _, obs in pages}
+        check("suspend: both clients hold a ready lease for the next cut before the step",
+              all(renewing.values()), ready_frames=renewing)
+
+        # Control: a BOOTTIME step under the 2 s threshold must change nothing.
+        set_step(1500)
+        control_start = time.monotonic()
+        await asyncio.sleep(1.2)
+        after_control = http.get("/api/v3/playback").json()
+        renewed = {obs.spec.name: sum(t > control_start for t in ready_times(obs)) for _, obs in pages}
+        control_frames = {name: [f for f in await frame_log(page) if f["type"] in ("playback", "cancel")]
+                          for (page, _), name in zip(pages, names, strict=True)}
+        check("suspend: a 1.5 s step stays under the threshold and changes nothing",
+              after_control.get("session_id") == session["session_id"]
+              and after_control.get("clock_epoch") == session["clock_epoch"]
+              and after_control.get("state") == "playing"
+              and all(count >= 1 for count in renewed.values())
+              and not any(control_frames.values()),
+              state=after_control.get("state"), renewals=renewed)
+
+        set_step(1500 + 5000)
+        injected = time.monotonic()
+        injected_epoch_ms = time.time_ns() / 1e6
+        stops: dict[str, dict[str, Any]] = {}
+        deadline = time.monotonic() + 5
+        while time.monotonic() < deadline and len(stops) < len(pages):
+            for (page, _), name in zip(pages, names, strict=True):
+                for frame in await frame_log(page):
+                    if frame["type"] == "playback" and frame.get("state") == "stopped":
+                        stops.setdefault(name, frame)
+            await asyncio.sleep(.05)
+        stop_seen = {obs.spec.name: [event["time"] for event in obs.events
+                                     if event["kind"] == "ws_received" and isinstance(event["frame"], dict)
+                                     and event["frame"].get("type") == "playback"
+                                     and event["frame"].get("state") == "stopped" and event["time"] >= injected]
+                     for _, obs in pages}
+        new_epochs = {name: stops[name].get("epoch") for name in stops}
+        old_epochs = {epoch for epochs in bootstrap.values() for epoch in epochs} | {session["clock_epoch"]}
+        check("suspend: the step stops every cohort client with reason host suspend and a new epoch",
+              len(stops) == len(pages)
+              and all(frame.get("reason") == "host suspend" for frame in stops.values())
+              and len(set(new_epochs.values())) == 1
+              and not (set(new_epochs.values()) & old_epochs),
+              new_epochs=new_epochs, old_epochs=sorted(old_epochs))
+        detection_ms = {name: round(stops[name]["t"] - injected_epoch_ms, 1) for name in stops}
+        centre_at_stop = [await surface_centre(page) for page, _ in pages]
+
+        # The cancelled preparation would have committed at its effective time.
+        effective_b = pending["effective_server_ms"] / 1000
+        await asyncio.sleep(max(0.0, effective_b + 1.5 - time.monotonic()))
+        window_end = time.monotonic()
+        first_stop = min((times[0] for times in stop_seen.values() if times), default=injected)
+        state_after = http.get("/api/v3/playback").json()
+        check("suspend: the server reports stopped with no surviving session",
+              state_after == {"state": "stopped"}, state=state_after)
+        leaked = {obs.spec.name: sum(t > first_stop + 0.3 for t in ready_times(obs)) for _, obs in pages}
+        check("suspend: readiness renewals for the cancelled preparation stop",
+              window_end - first_stop >= 2.0 and not any(leaked.values()),
+              observed_seconds=round(window_end - first_stop, 2), renewals_after_stop=leaked)
+        after_frames = {name: await frame_log(page) for (page, _), name in zip(pages, names, strict=True)}
+        after_draws = {name: await draw_log(page) for (page, _), name in zip(pages, names, strict=True)}
+        committed_after = {name: [f for f in frames if f["type"] == "commit" and f["t"] >= injected_epoch_ms]
+                           for name, frames in after_frames.items()}
+        painted_green = {name: [d for d in draws if green in d["src"]] for name, draws in after_draws.items()}
+        check("suspend: the cancelled preparation never commits and never paints",
+              not any(committed_after.values()) and not any(painted_green.values()),
+              commits_after_step={k: len(v) for k, v in committed_after.items()},
+              green_draws={k: len(v) for k, v in painted_green.items()})
+        centre_end = [await surface_centre(page) for page, _ in pages]
+        visible = ["last committed still" if pixel_close(end, CUT_COLOURS["red"])
+                   else "persisted scene" if pixel_close(end, CUT_COLOURS["idle"]) else "other"
+                   for end in centre_end]
+        check("suspend: the wall shows the last committed still or the persisted scene after the cancel, "
+              "never the cancelled cut", "other" not in visible and not any(
+                  pixel_close(end, CUT_COLOURS["green"]) for end in centre_end),
+              at_stop=centre_at_stop, at_end=centre_end, visible=visible)
+
+        # The persisted static scene is not exposed over HTTP while the layout
+        # is physical, so prove it survived by reloading one client: the fresh
+        # connection paints the persisted scene (idle), not the cancelled cut.
+        reload_page = pages[1][0]
+        await reload_page.reload()
+        await connected(reload_page)
+        scene_back = await wait_for_centre(reload_page, CUT_COLOURS["idle"], 15)
+        check("suspend: the persisted static scene survives the cancel (a reload paints it)", scene_back)
+        await asyncio.sleep(1.5)  # fresh clock burst
+
+        # A fresh session after the epoch change works and carries the new epoch.
+        draws_before = {name: len(await draw_log(page)) for (page, _), name in zip(pages, names, strict=True)}
+        restart = http.post("/api/v3/playback/start")
+        restarted = restart.json()
+        repainted = [await wait_for_draw(page, red, 15, after=draws_before[name])
+                     for (page, _), name in zip(pages, names, strict=True)]
+        new_epoch = next(iter(new_epochs.values()), None)
+        check("suspend: a fresh session after the epoch change carries it and paints again",
+              restart.status_code == 200 and restarted.get("clock_epoch") == new_epoch
+              and restarted.get("session_id") != session["session_id"] and all(repainted),
+              epoch=restarted.get("clock_epoch"), repainted=repainted)
+        stop_playback(http)
+        report["suspend"] = {
+            "label": "software, not optical, not a physical suspend",
+            "method": "second disposable server; the ServerClock sample adapter returns BOOTTIME plus a "
+                      "file-controlled step with MONOTONIC untouched (simulator/browser/clock_app.py)",
+            "client_page_hook": "IMPOSSIBLE: the epoch is server-only. The client sets clockEpoch only from "
+                                "clock_bootstrap and stops playback only on cancel/playback frames "
+                                "(frontend/client/client.js), so a page-level performance.now step cannot "
+                                "change it. The adapter step is the only path that exercises the epoch.",
+            "dwell_ms": dwell,
+            "control_step_ms": 1500, "suspend_step_ms": 5000,
+            "bootstrap_epochs": bootstrap, "epoch_after_step": new_epochs,
+            "detection_latency_ms": detection_ms,
+            "preparation_id": preparation,
+            "ready_frames_before_step": renewing,
+            "renewals_after_stop": leaked,
+            "visible_at_stop": centre_at_stop, "visible_at_end": centre_end,
+            "visible_state": visible,
+            "product_note": "_abort_playback sends only a playback-stopped frame and the client's stopPlayback "
+                            "only clears timers, so a screen keeps its last committed still until a reload or "
+                            "a new wall/render frame; the persisted scene is not re-sent on abort",
+            "reload_paints_persisted_scene": scene_back,
+            "restart_session_epoch": restarted.get("clock_epoch"),
+            "physical_suspend": {"status": "MISSING", "reason": "no real tablet or host suspend was performed"},
+        }
+    finally:
+        if http is not None:
+            http.close()
+        stop_server(process)
+        log.close()
+        listener.close()
+
+
 async def exercise(artifacts: Path, report: dict[str, Any], observation_seconds: float,
-                   fail_after_server: bool = False) -> None:
+                   fail_after_server: bool = False,
+                   cuts: int = 0, suspend: bool = False) -> None:
     from playwright.async_api import async_playwright
 
     observations: list[Observation] = []
@@ -1376,6 +1912,20 @@ async def exercise(artifacts: Path, report: dict[str, Any], observation_seconds:
         finally:
             physical_http.close()
 
+        if cuts or suspend:
+            rig = Rig(base=base, http=None, browser=browser, playwright=playwright,
+                      browser_env=browser_env, root=root, artifacts=artifacts,
+                      observations=observations, captured_pages=captured_pages,
+                      resources=resources, owned=owned_processes, check=check)
+            rig_http = httpx.Client(base_url=base, headers={"Origin": base}, timeout=10)
+            try:
+                rig.http = rig_http
+                if cuts:
+                    await run_cuts(rig, report, cuts)
+                if suspend:
+                    await run_suspend(rig, report)
+            finally:
+                rig_http.close()
 
         for observation in observations:
             errors = [event for event in observation.events if (
@@ -1549,7 +2099,7 @@ GAPS = [
 ]
 
 
-async def run_with_signals(artifacts: Path, report: dict[str, Any]) -> None:
+async def run_with_signals(artifacts: Path, report: dict[str, Any], cuts: int = 0, suspend: bool = False) -> None:
     loop = asyncio.get_running_loop()
     task = asyncio.current_task()
 
@@ -1560,7 +2110,12 @@ async def run_with_signals(artifacts: Path, report: dict[str, Any]) -> None:
     for signum in (signal.SIGINT, signal.SIGTERM):
         loop.add_signal_handler(signum, cancel, signum)
     try:
-        await exercise(artifacts, report, 6)
+        extra: dict[str, Any] = {}
+        if cuts:
+            extra["cuts"] = cuts
+        if suspend:
+            extra["suspend"] = True
+        await exercise(artifacts, report, 6, **extra)
     finally:
         for signum in (signal.SIGINT, signal.SIGTERM):
             loop.remove_signal_handler(signum)
@@ -1569,7 +2124,14 @@ async def run_with_signals(artifacts: Path, report: dict[str, Any]) -> None:
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--artifacts", type=Path, help="new directory outside the repository; default new directory in /tmp")
+    parser.add_argument("--cuts", type=int, default=0, metavar="N",
+                        help="also run N committed hard cuts (software, not optical) on three calibrated "
+                             "clients at the shortest legal dwell; 0 (default) keeps the small run")
+    parser.add_argument("--suspend", action="store_true",
+                        help="also run the server-clock suspend step on a second disposable server")
     args = parser.parse_args()
+    if args.cuts < 0 or args.cuts == 1 or args.cuts > 1000:
+        parser.error("--cuts must be 0 or between 2 and 1000")
     try:
         artifacts = artifact_directory(args.artifacts)
     except (ValueError, OSError) as error:
@@ -1591,11 +2153,13 @@ def main() -> int:
         "python": sys.version,
         "platform": sys.platform,
         "shared_resources": ["host scheduler", "GPU", "host clock", "NIC"],
-        "mode": "unmodified-clock direct TCP Chromium, tab mode, logical stills"}
+        "mode": "unmodified-clock direct TCP Chromium, tab mode, logical stills"
+                + (f"; plus {args.cuts} software hard cuts (not optical)" if args.cuts else "")
+                + ("; plus a second disposable server with an injected BOOTTIME step" if args.suspend else "")}
 
     try:
         report["playwright"] = importlib.metadata.version("playwright")
-        asyncio.run(run_with_signals(artifacts, report))
+        asyncio.run(run_with_signals(artifacts, report, args.cuts, args.suspend))
     except BaseException as error:
         report["failure"] = {"type": type(error).__name__, "message": str(error), "traceback": traceback.format_exc()}
     report["duration_seconds"] = time.monotonic() - started
@@ -1604,6 +2168,13 @@ def main() -> int:
     with (artifacts / "report.json").open("x") as output:
         json.dump(report, output, indent=2)
     print(f"browser T1: {sum(check['passed'] for check in report['checks'])}/{len(report['checks'])} checks passed; report {artifacts / 'report.json'}")
+    cut_report = report.get("r3_cuts")
+    if cut_report:
+        healthy, whole = cut_report["healthy_subset"], cut_report["whole_show"]
+        print(f"cuts ({cut_report['label']}): {cut_report['events_complete']}/{cut_report['events_requested']} "
+              f"complete, {cut_report['events_failed']} failed; healthy p50/p95/max "
+              f"{healthy['p50']}/{healthy['p95']}/{healthy['max']} ms; whole-show p95/max "
+              f"{whole['p95']}/{whole['max']} ms (None = unbounded); optical gate MISSING")
     if "failure" in report:
         print(report["failure"]["message"], file=sys.stderr)
     return report["exit_code"]
