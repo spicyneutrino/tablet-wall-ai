@@ -135,6 +135,7 @@ _upload_waiting = 0
 _server_clock: clock.ServerClock | None = None
 _playback_session: playback.Session | None = None
 _playback_task: asyncio.Task | None = None
+_last_sample_broadcast_ms = 0.0
 
 
 def _restore_wall_state() -> None:
@@ -2104,6 +2105,9 @@ async def _send_to(websocket: WebSocket, frame: dict[str, Any], stamp: Any = Non
 
 
 def _asset_descriptor(asset_id: str) -> dict[str, Any] | None:
+    video = media.video_descriptor(asset_id)
+    if video is not None:
+        return video
     managed = media.find_object(asset_id)
     if managed is not None:
         return {
@@ -2159,10 +2163,23 @@ def _physical_plan_for(
     )
 
 
+def _video_durations(items: Any) -> dict[str, int]:
+    """Duration in ms of every ready video among raw playlist ``items``."""
+    durations: dict[str, int] = {}
+    for item in items if isinstance(items, list) else []:
+        asset = item.get("asset") if isinstance(item, dict) else None
+        if isinstance(asset, str) and asset not in durations:
+            duration = media.video_duration_ms(asset)
+            if duration is not None:
+                durations[asset] = duration
+    return durations
+
+
 def _playback_status() -> dict[str, Any]:
     session = _playback_session
     if session is None:
         return {"state": "stopped"}
+    playback.refresh_display(session, _now_ms())
     return {
         "session_id": session.id,
         "version": session.version,
@@ -2170,6 +2187,8 @@ def _playback_status() -> dict[str, Any]:
         "clock_epoch": session.clock_epoch,
         "state": session.state,
         "current": session.current.as_dict() if session.current else None,
+        "displayed": session.displayed.as_dict() if session.displayed else None,
+        "current_effective_ms": session.current_effective_ms,
         "pending": session.pending.as_frame() if session.pending else None,
         "cohort": session.cohort,
         "missed": session.missed,
@@ -2177,6 +2196,16 @@ def _playback_status() -> dict[str, Any]:
         "hold_deadline_ms": session.hold_deadline_ms,
         "policy": session.policy,
         "blocked_reason": session.blocked_reason,
+        "final": session.final,
+        "paused_at_ms": session.paused_at_ms,
+        "video": playback.video_status(session, _now_ms()),
+        "members": {
+            device_id: {
+                "ready": lease.ready,
+                "video": lease.video,
+            }
+            for device_id, lease in (session.pending.leases.items() if session.pending else [])
+        },
     }
 
 
@@ -2192,35 +2221,54 @@ async def _broadcast_playback() -> None:
             controller_protocols.pop(socket, None)
 
 
+async def _send_prepare(
+    session: playback.Session, pending: playback.Preparation, device_id: str
+) -> bool:
+    record = devices.get(device_id)
+    socket = device_sockets.get(device_id)
+    if record is None or socket is None:
+        return False
+    descriptor = _asset_descriptor(pending.asset)
+    if descriptor is None:
+        return False
+    plan, calibration = _physical_plan_for(
+        device_id, record, descriptor["intrinsicWidth"], descriptor["intrinsicHeight"]
+    )
+    if plan is None or calibration is None:
+        return False
+    lease = pending.leases.get(device_id)
+    connection_id = record.get("connection_id", "")
+    if lease is not None:
+        lease.connection_id = connection_id
+        lease.mapping_revision = int(calibration["revision"])
+        lease.ready = False
+        lease.evidence_seq = 0
+        lease.lease_expires_ms = 0
+        lease.clock_ok = False
+    frame = {
+        "type": "prepare", **session.lineage(),
+        "preparation_id": pending.id,
+        "occurrence": pending.occurrence.as_dict(),
+        "asset": descriptor,
+        "plan": plan,
+        "calibration": calibration,
+        "prepare_deadline_ms": pending.deadline_ms,
+        "effective_server_ms": pending.effective_ms,
+        "connection_id": connection_id,
+        "cohort": session.cohort,
+    }
+    if pending.media is not None:
+        frame["media"] = pending.media
+    await _send_to(socket, frame)
+    return True
+
+
 async def _prepare_playback(session: playback.Session) -> None:
     pending = session.pending
     if pending is None:
         return
-    descriptor = _asset_descriptor(pending.asset)
-    if descriptor is None:
-        return
     for device_id in session.cohort:
-        record = devices.get(device_id)
-        socket = device_sockets.get(device_id)
-        if record is None or socket is None:
-            continue
-        plan, calibration = _physical_plan_for(
-            device_id, record, descriptor["intrinsicWidth"], descriptor["intrinsicHeight"]
-        )
-        if plan is None or calibration is None:
-            continue
-        await _send_to(socket, {
-            "type": "prepare", **session.lineage(),
-            "preparation_id": pending.id,
-            "occurrence": pending.occurrence.as_dict(),
-            "asset": descriptor,
-            "plan": plan,
-            "calibration": calibration,
-            "prepare_deadline_ms": pending.deadline_ms,
-            "effective_server_ms": pending.effective_ms,
-            "connection_id": record.get("connection_id", ""),
-            "cohort": session.cohort,
-        })
+        await _send_prepare(session, pending, device_id)
 
 
 async def _send_commit(session: playback.Session, action: dict[str, Any]) -> None:
@@ -2230,7 +2278,7 @@ async def _send_commit(session: playback.Session, action: dict[str, Any]) -> Non
         socket = device_sockets.get(device_id)
         if record is None or socket is None:
             continue
-        await _send_to(socket, {
+        frame = {
             "type": "commit", **session.lineage(),
             "version": action["version"],
             "prepared_at_version": action["prepared_at_version"],
@@ -2240,7 +2288,10 @@ async def _send_commit(session: playback.Session, action: dict[str, Any]) -> Non
             "effective_server_ms": action["effective_server_ms"],
             "connection_id": record.get("connection_id", ""),
             "missed": action.get("missed", []),
-        })
+        }
+        if "start_media_ms" in action:
+            frame["start_media_ms"] = action["start_media_ms"]
+        await _send_to(socket, frame)
 
 
 async def _abort_playback(reason: str) -> None:
@@ -2251,6 +2302,7 @@ async def _abort_playback(reason: str) -> None:
     playback.stop(session, _now_ms())
     for device_id in session.cohort:
         socket = device_sockets.get(device_id)
+        record = devices.get(device_id)
         if socket is None:
             continue
         with contextlib.suppress(Exception):
@@ -2258,6 +2310,9 @@ async def _abort_playback(reason: str) -> None:
                 "type": "playback", "state": "stopped", "reason": reason,
                 "epoch": _server_clock.epoch if _server_clock else None,
             })
+        if record is not None:
+            with contextlib.suppress(Exception):
+                await _send_wall_to_device(device_id, socket, record)
     _playback_session = None
     await _broadcast_playback()
 
@@ -2276,7 +2331,7 @@ async def _playback_loop() -> None:
                 if action["type"] == "commit":
                     await _send_commit(session, action)
                     await _prepare_playback(session)
-                if action["type"] in ("commit", "hold", "failed", "blocked"):
+                if action["type"] in ("commit", "hold", "failed", "blocked", "reanchor"):
                     await _broadcast_playback()
         except asyncio.CancelledError:
             raise
@@ -2304,7 +2359,8 @@ async def get_playlist_v3():
 @app.put("/api/v3/playlist")
 async def put_playlist_v3(command: PlaylistCommand, request: Request):
     try:
-        items = playback.validate_playlist(command.items, loop=command.loop)
+        videos = _video_durations(command.items)
+        items = playback.validate_playlist(command.items, loop=command.loop, videos=videos)
     except playback.PlaybackError as error:
         raise HTTPException(status_code=422, detail=str(error)) from error
     for item in items:
@@ -2339,40 +2395,65 @@ async def get_playback_v3():
 
 
 class PlaybackStartCommand(BaseModel):
-    policy: str = "online"
+    policy: str | None = None
+
+
+def _playback_connections(cohort: list[str]) -> dict[str, str]:
+    return {
+        device_id: devices[device_id].get("connection_id", "")
+        for device_id in cohort
+        if device_id in devices and _is_online(device_id)
+    }
 
 
 @app.post("/api/v3/playback/start")
 async def start_playback_v3(command: PlaybackStartCommand | None = None):
     global _playback_session
-    policy = command.policy if command is not None else "online"
-    if policy not in playback.POLICIES:
+    supplied = command is not None and "policy" in command.model_fields_set
+    explicit = command.policy if supplied else None
+    if supplied and explicit not in playback.POLICIES:
         raise HTTPException(status_code=422, detail='policy must be "online" or "strict"')
-    if _playback_session is not None and _playback_session.state not in ("stopped", "failed"):
-        raise HTTPException(status_code=409, detail="playback is already active")
     document = persist.load_meta("playlist")
     if not isinstance(document, dict):
         raise HTTPException(status_code=409, detail="save a playlist first")
     layout = wall["layout"]
     if layout.get("kind") != "physical":
         raise HTTPException(status_code=409, detail="a physical layout is required")
-    cohort = []
-    connections = {}
-    for device_id, record in list(devices.items()):
-        if record.get("protocol") != 3 or not _is_online(device_id):
-            continue
-        if device_id not in layout["slots"]:
-            continue
-        cohort.append(device_id)
-        connections[device_id] = record.get("connection_id", "")
+    videos = _video_durations(document["items"])
+    policy = explicit or ("strict" if videos else "online")
+    required = sorted(
+        device_id for device_id, slot in layout["slots"].items()
+        if slot.get("participating", True) is not False
+    )
+
+    session = _playback_session
+    if session is not None and session.state == "paused":
+        playback.resume(session, _now_ms(), _playback_connections(session.cohort))
+        await _prepare_playback(session)
+        await _broadcast_playback()
+        return _playback_status()
+    if session is not None and session.state not in ("stopped", "failed"):
+        raise HTTPException(status_code=409, detail="playback is already active")
+
+    if policy == "strict":
+        cohort = required
+    else:
+        cohort = [
+            device_id for device_id in required
+            if device_id in devices
+            and devices[device_id].get("protocol") == 3
+            and _is_online(device_id)
+        ]
     if not cohort:
         raise HTTPException(status_code=409, detail="no eligible physical endpoints")
+    connections = _playback_connections(cohort)
     _playback_session = playback.start(
         document["items"], bool(document.get("loop", False)), cohort, _now_ms(),
         generation=wall["generation"],
         clock_epoch=_server_clock.epoch if _server_clock else "",
         connections=connections,
         policy=policy,
+        videos=videos,
     )
     await _prepare_playback(_playback_session)
     await _broadcast_playback()
@@ -2400,10 +2481,14 @@ async def stop_playback_v3(request: Request):
     playback.stop(session, _now_ms())
     for device_id in session.cohort:
         socket = device_sockets.get(device_id)
+        record = devices.get(device_id)
         if socket is not None:
             with contextlib.suppress(Exception):
                 await _send_to(socket, {"type": "playback", "state": "stopped",
                                         **session.lineage()})
+            if record is not None:
+                with contextlib.suppress(Exception):
+                    await _send_wall_to_device(device_id, socket, record)
     _playback_session = None
     await _broadcast_playback()
     return {"state": "stopped"}
@@ -2412,7 +2497,9 @@ async def stop_playback_v3(request: Request):
 async def _step_playback(request: Request, delta: int) -> dict[str, Any]:
     session = _require_session_version(request)
     try:
-        playback.step(session, delta, _now_ms())
+        playback.step(
+            session, delta, _now_ms(), _playback_connections(session.cohort)
+        )
     except playback.PlaybackError as error:
         raise HTTPException(status_code=409, detail=str(error)) from error
     for device_id in session.cohort:
@@ -2541,6 +2628,16 @@ async def _device_loop(websocket: WebSocket, device_id: str) -> None:
                 and record is not None
                 and device_sockets.get(device_id) is websocket
             ):
+                best = clock.best_sample(record.get("clock_samples", []), _now_ms())
+                clock_ok = bool(
+                    best is not None
+                    and best["uncertainty_ms"] <= clock.MAX_UNCERTAINTY_MS
+                )
+                pending = session.pending
+                expected = (
+                    pending.leases[device_id].mapping_revision
+                    if pending is not None and device_id in pending.leases else None
+                )
                 try:
                     accepted = playback.accept_ready(
                         session,
@@ -2550,13 +2647,30 @@ async def _device_loop(websocket: WebSocket, device_id: str) -> None:
                         version=int(payload["version"]),
                         evidence_seq=int(payload.get("evidence_seq", 0)),
                         mapping_revision=int(payload.get("mapping_revision", 0)),
-                        clock_ok=bool(record.get("clock_ok")),
+                        clock_ok=clock_ok,
                         lease_ms=2000,
                         now_ms=_now_ms(),
+                        decoded=payload.get("decoded") is True,
+                        occurrence=payload.get("occurrence"),
+                        expected_mapping=expected,
+                        video=payload.get("video"),
                     )
                 except (KeyError, TypeError, ValueError):
                     accepted = False
                 if accepted:
+                    await _broadcast_playback()
+        elif isinstance(payload, dict) and payload.get("type") == "video_sample":
+            global _last_sample_broadcast_ms
+            session = _playback_session
+            if (
+                session is not None
+                and device_sockets.get(device_id) is websocket
+                and playback.accept_sample(
+                    session, device_id=device_id, payload=payload, now_ms=_now_ms()
+                )
+            ):
+                if _now_ms() - _last_sample_broadcast_ms >= 1000:
+                    _last_sample_broadcast_ms = _now_ms()
                     await _broadcast_playback()
         elif isinstance(payload, dict) and payload.get("type") == "heartbeat":
             # A replaced socket must not keep the new one alive.
@@ -2678,6 +2792,19 @@ async def ws_device(
             # Replay the wall or render plan right after welcome so a
             # reconnecting tablet restores the current state.
             await _send_wall_to_device(key, websocket, record)
+
+        session = _playback_session
+        if session is not None and key in session.cohort:
+            pending = session.pending
+            if pending is not None and key in pending.leases:
+                lease = pending.leases[key]
+                lease.connection_id = record.get("connection_id", "")
+                lease.ready = False
+                lease.evidence_seq = 0
+                lease.lease_expires_ms = 0
+                lease.clock_ok = False
+            if pending is not None:
+                await _send_prepare(session, pending, key)
 
         color = record.get("color")
         if color:

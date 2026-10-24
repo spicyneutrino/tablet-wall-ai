@@ -28,7 +28,7 @@ def ready(s, device, now, *, lease=2000, seq=1, prep=None, version=None, connect
         preparation_id=prep or pending.id,
         version=version if version is not None else pending.version,
         evidence_seq=seq, mapping_revision=1, clock_ok=True,
-        lease_ms=lease, now_ms=now,
+        lease_ms=lease, now_ms=now, decoded=True,
     )
 
 
@@ -42,11 +42,13 @@ def test_the_default_policy_is_online_and_unknown_policies_are_refused():
 
 def test_online_still_holds_then_commits_a_partial_cohort():
     s = make("online")
-    assert ready(s, "dev-1", 1500)
+    assert ready(s, "dev-1", 2000)
     assert playback.tick(s, 2000)[0]["type"] == "hold"
     assert s.state == "armed"
-    commit = playback.tick(s, 7000)[0]
+    assert ready(s, "dev-1", 4400, seq=2)
+    commit = playback.tick(s, 4500)[0]
     assert commit["type"] == "commit" and commit["missed"] == ["dev-2"]
+    assert commit["effective_server_ms"] == 5500
     assert s.state == "playing" and s.blocked_reason is None
 
 
@@ -67,7 +69,8 @@ def test_strict_never_commits_without_a_member_and_blocks_at_the_deadline():
     for now in range(1500, int(deadline), 500):
         seq += 1
         ready(s, "dev-1", now, seq=seq)
-        assert playback.tick(s, now) == [], now
+        actions = playback.tick(s, now)
+        assert all(action["type"] == "reanchor" for action in actions), (now, actions)
         assert s.state == "preparing"
     actions = playback.tick(s, deadline)
     assert [action["type"] for action in actions] == ["blocked"]
@@ -82,7 +85,7 @@ def test_strict_never_commits_without_a_member_and_blocks_at_the_deadline():
 def test_strict_slides_the_cut_so_a_late_member_can_still_join():
     s = make("strict")
     assert ready(s, "dev-1", 1500)
-    assert playback.tick(s, 2000) == []
+    assert playback.tick(s, 2000)[0]["type"] == "reanchor"
     assert s.pending.effective_ms == 3000
     assert ready(s, "dev-1", 2100, seq=2)
     assert ready(s, "dev-2", 2200)
@@ -93,7 +96,7 @@ def test_strict_slides_the_cut_so_a_late_member_can_still_join():
 def test_a_stale_lease_cannot_commit_in_strict():
     s = make("strict")
     assert ready(s, "dev-1", 1100, lease=1000)  # expires 2100, covers the 2000 cut
-    assert playback.tick(s, 2000) == []  # the cut slides to 3000
+    assert playback.tick(s, 2000)[0]["type"] == "reanchor"  # the cut slides to 3000
     assert ready(s, "dev-2", 2500)
     assert s.pending.leases["dev-1"].lease_expires_ms == 2100
     assert playback.tick(s, 2500) == []
