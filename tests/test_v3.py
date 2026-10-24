@@ -101,6 +101,7 @@ def test_v3_render_plan_matches_the_hand_derived_matrix():
             welcome = socket.receive_json()
             assert welcome["protocol"] == 3
             assert "physical" in welcome["server_caps"]
+            assert socket.receive_json()["type"] == "clock_bootstrap"
             frame = socket.receive_json()
         assert frame["type"] == "render" and frame["mode"] == "physical"
         assert frame["calibration"]["status"] == "valid"
@@ -137,6 +138,7 @@ def test_a_stale_viewport_gets_no_physical_claim():
             w=700, h=800, dpr=1.25, orientation=0, mode="fullscreen"
         )) as socket:
             socket.receive_json()
+            socket.receive_json()  # clock_bootstrap
             frame = socket.receive_json()
         assert frame["plan"] is None
         assert frame["calibration"]["status"] == "needs_calibration"
@@ -248,3 +250,44 @@ def test_physical_layouts_save_recall_and_delete():
         )
         assert deleted.status_code == 200
         assert client.get("/api/v3/layouts").json() == {"layouts": []}
+
+
+def test_playlist_save_requires_a_valid_asset_and_current_etag():
+    with TestClient(main.app) as client:
+        setup_measurement()
+        entry = setup_scene(client)
+        empty = client.get("/api/v3/playlist").json()
+        unknown = client.put(
+            "/api/v3/playlist",
+            json={"items": [{"asset": "sha256:" + "0" * 64, "dwell_ms": 1500}],
+                  "loop": False},
+            headers={"If-Match": empty["etag"]},
+        )
+        assert unknown.status_code == 422
+        missing = client.put(
+            "/api/v3/playlist",
+            json={"items": [{"asset": entry["id"], "dwell_ms": 1500}], "loop": False},
+        )
+        assert missing.status_code == 428
+        saved = client.put(
+            "/api/v3/playlist",
+            json={"items": [{"asset": entry["id"], "dwell_ms": 1500}], "loop": False},
+            headers={"If-Match": empty["etag"]},
+        )
+        assert saved.status_code == 200, saved.text
+        stale = client.put(
+            "/api/v3/playlist",
+            json={"items": [{"asset": entry["id"], "dwell_ms": 1500}], "loop": False},
+            headers={"If-Match": empty["etag"]},
+        )
+        assert stale.status_code == 412
+        assert client.get("/api/v3/playlist").json()["playlist"]["items"][0]["asset"] == entry["id"]
+
+
+def test_playback_start_needs_a_playlist_and_actions_need_a_session():
+    with TestClient(main.app) as client:
+        assert client.get("/api/v3/playback").json() == {"state": "stopped"}
+        no_playlist = client.post("/api/v3/playback/start")
+        assert no_playlist.status_code == 409
+        assert client.post("/api/v3/playback/pause").status_code == 404
+        assert client.post("/api/v3/playback/stop").status_code == 404

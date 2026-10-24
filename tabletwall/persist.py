@@ -722,3 +722,27 @@ def save_scene(
 def delete_scene(name: str) -> bool:
     """Delete the scene snapshot ``name``; False when there was nothing to delete."""
     return _delete_one("scene", name)
+
+
+def load_meta(key: str) -> Any | None:
+    """One JSON metadata value, or None when the key was never written."""
+    with _connection() as connection:
+        row = connection.execute(
+            "SELECT value FROM schema_meta WHERE key = ?", (key,)
+        ).fetchone()
+    if row is None:
+        return None
+    try:
+        return json.loads(row[0])
+    except json.JSONDecodeError as error:
+        raise SchemaError(f"schema_meta {key!r} is not valid JSON: {error}") from error
+
+
+def save_meta(key: str, value: Any) -> None:
+    document = json.dumps(value, sort_keys=True)
+    with _connection() as connection:
+        connection.execute(
+            "INSERT INTO schema_meta (key, value) VALUES (?, ?) "
+            "ON CONFLICT(key) DO UPDATE SET value = excluded.value",
+            (key, document),
+        )

@@ -2050,6 +2050,205 @@
         document.documentElement.style.setProperty("--surface-color", color);
     }
 
+    /* ------------------------------------------------------------------ */
+    /* R3 clock and hard-cut playback                                     */
+    /* ------------------------------------------------------------------ */
+
+    var clockOffset = null;
+    var clockEpoch = null;
+    var clockSamples = [];
+    var clockSeq = 0;
+    var clockPending = {};
+    var clockBurstTimers = [];
+    var clockRefreshTimer = null;
+    var playbackToken = 0;
+    var playbackPrepared = null;
+    var playbackTimer = null;
+    var playbackEvidence = 0;
+    var playbackRenewTimer = null;
+    var playbackCommitSeq = 0;
+
+    function sendClockSample() {
+        if (!activeSocket || activeSocket.readyState !== 1) return;
+        var id = "c" + (++clockSeq);
+        var c0 = performance.now();
+        clockPending[id] = { c0: c0 };
+        try {
+            activeSocket.send(JSON.stringify({ type: "clock_sample", id: id, c0: c0 }));
+        } catch (err) {
+            warn("could not send a clock sample", err);
+        }
+    }
+
+    function startClockSampling() {
+        clockBurstTimers.forEach(clearTimeout);
+        clockBurstTimers = [];
+        if (clockRefreshTimer !== null) clearInterval(clockRefreshTimer);
+        for (var index = 0; index < 8; index++) {
+            clockBurstTimers.push(setTimeout(sendClockSample, index * 100));
+        }
+        clockRefreshTimer = setInterval(sendClockSample, 5000);
+    }
+
+    function acceptClockSample(frame) {
+        var pending = clockPending[frame.id];
+        if (!pending) return;
+        delete clockPending[frame.id];
+        var c3 = performance.now();
+        var s1 = Number(frame.s1);
+        var s2 = Number(frame.s2);
+        if (!Number.isFinite(s1) || !Number.isFinite(s2) || s2 < s1) return;
+        var rtt = (c3 - pending.c0) - (s2 - s1);
+        if (!Number.isFinite(rtt) || rtt < 0 || rtt > 60000) return;
+        var offset = ((s1 - pending.c0) + (s2 - c3)) / 2;
+        clockSamples.push({ offset: offset, rtt: rtt, server_ms: s2 });
+        if (clockSamples.length > 16) clockSamples.shift();
+        var best = null;
+        clockSamples.forEach(function (sample) {
+            if (best === null || sample.rtt < best.rtt) best = sample;
+        });
+        if (best !== null) clockOffset = best.offset;
+        if (!activeSocket || activeSocket.readyState !== 1) return;
+        try {
+            activeSocket.send(JSON.stringify({
+                type: "clock_result", id: frame.id, c3: c3,
+            }));
+        } catch (err) {
+            warn("could not return a clock sample", err);
+        }
+    }
+
+    function preparedContent(asset) {
+        if (!asset || typeof asset !== "object") return null;
+        var analysis = analyzeImageContent({
+            asset: asset.id,
+            url: asset.url,
+            fit: "cover",
+            intrinsicWidth: asset.intrinsicWidth,
+            intrinsicHeight: asset.intrinsicHeight,
+        });
+        return analysis.desc;
+    }
+
+    function handlePrepare(frame) {
+        var content = preparedContent(frame.asset);
+        if (!content) return;
+        var token = ++playbackToken;
+        var prepared = {
+            token: token,
+            content: content,
+            plan: frame.plan,
+            calibration: frame.calibration,
+            occurrence: frame.occurrence,
+            version: frame.version,
+            preparation_id: frame.preparation_id,
+            connection_id: frame.connection_id,
+            image: null,
+        };
+        var image = new Image();
+        image.decoding = "async";
+        image.onload = function () {
+            if (token !== playbackToken) return;
+            prepared.image = image;
+            playbackPrepared = prepared;
+            sendReady(prepared);
+            if (playbackRenewTimer !== null) clearInterval(playbackRenewTimer);
+            playbackRenewTimer = setInterval(function () {
+                if (playbackPrepared === prepared) sendReady(prepared);
+            }, 500);
+        };
+        image.onerror = function () {
+            if (token !== playbackToken) return;
+            warn("prepared image failed to decode");
+        };
+        image.src = content.url;
+    }
+
+    function sendReady(prepared) {
+        if (!activeSocket || activeSocket.readyState !== 1) return;
+        playbackEvidence += 1;
+        try {
+            activeSocket.send(JSON.stringify({
+                type: "ready",
+                preparation_id: prepared.preparation_id,
+                version: prepared.version,
+                connection_id: prepared.connection_id,
+                occurrence: prepared.occurrence,
+                evidence_seq: playbackEvidence,
+                mapping_revision: prepared.calibration ? prepared.calibration.revision : 0,
+                decoded: true,
+            }));
+        } catch (err) {
+            warn("could not report readiness", err);
+        }
+    }
+
+    function applyPrepared(prepared) {
+        if (!wallState || !prepared.image) return;
+        releaseImageCache();
+        imageCache = {
+            key: prepared.content.key,
+            source: prepared.image,
+            iw: prepared.content.iw || prepared.image.naturalWidth,
+            ih: prepared.content.ih || prepared.image.naturalHeight,
+            handle: null,
+        };
+        imageAttempt = null;
+        imageStatus = "ready";
+        imageFailure = null;
+        wallState.contentType = "image";
+        wallState.image = prepared.content;
+        wallState.imageError = null;
+        if (wallState.physical) {
+            wallState.physical.plan = prepared.plan;
+            wallState.physical.calibration = prepared.calibration;
+            wallState.visible = {
+                x: 0, y: 0, w: wallState.width, h: wallState.height,
+            };
+        }
+        render();
+    }
+
+    function handleCommit(frame) {
+        var prepared = playbackPrepared;
+        if (
+            !prepared ||
+            prepared.preparation_id !== frame.preparation_id ||
+            prepared.version !== frame.prepared_at_version
+        ) {
+            return;
+        }
+        var target = Number(frame.effective_server_ms);
+        if (!Number.isFinite(target)) return;
+        var offset = clockOffset === null ? 0 : clockOffset;
+        if (playbackRenewTimer !== null) clearInterval(playbackRenewTimer);
+        playbackRenewTimer = null;
+        var delay = target - (performance.now() + offset);
+        var commitSeq = ++playbackCommitSeq;
+        if (playbackTimer !== null) clearTimeout(playbackTimer);
+        playbackTimer = setTimeout(function () {
+            requestAnimationFrame(function () {
+                if (commitSeq !== playbackCommitSeq) return;
+                var now = performance.now() + offset;
+                if (now + 50 < target) {
+                    handleCommit(frame);
+                    return;
+                }
+                applyPrepared(prepared);
+            });
+        }, Math.max(0, delay - 40));
+    }
+
+    function stopPlayback() {
+        playbackToken += 1;
+        playbackCommitSeq += 1;
+        playbackPrepared = null;
+        if (playbackTimer !== null) clearTimeout(playbackTimer);
+        playbackTimer = null;
+        if (playbackRenewTimer !== null) clearInterval(playbackRenewTimer);
+        playbackRenewTimer = null;
+    }
+
     function handleFrame(socket, raw, onWelcome) {
         var frame;
         try {
@@ -2071,6 +2270,19 @@
             applyWallFrame(frame);
         } else if (frame.type === "render") {
             applyRenderFrame(frame);
+        } else if (frame.type === "clock_bootstrap") {
+            clockEpoch = frame.epoch;
+            clockSamples = [];
+            clockOffset = null;
+            startClockSampling();
+        } else if (frame.type === "clock_sample") {
+            acceptClockSample(frame);
+        } else if (frame.type === "prepare") {
+            handlePrepare(frame);
+        } else if (frame.type === "commit") {
+            handleCommit(frame);
+        } else if (frame.type === "cancel" || frame.type === "playback") {
+            stopPlayback();
         }
     }
 

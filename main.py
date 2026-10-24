@@ -17,6 +17,8 @@ import json
 import os
 import re
 import shutil
+import time
+import uuid
 from collections.abc import Callable
 from contextlib import asynccontextmanager
 from copy import deepcopy
@@ -74,7 +76,8 @@ from tabletwall.protocol import (
 )
 # Curated still-image assets (PROTOCOL.md "Still images"): the directory scan,
 # content IDs, and byte-verified serving behind ``GET /assets``.
-from tabletwall import assets, displays, media
+from tabletwall import assets, clock, displays, geometry, media, playback
+from tabletwall import persist
 from tabletwall import writer as writers
 from tabletwall.media_limits import (
     MAX_SOURCE_BYTES,
@@ -106,6 +109,7 @@ from tabletwall.state import (
     _is_online,
     _new_generation,
     _touch_device,
+    _viewport_matches,
     _wall_state,
     controller_protocols,
     controller_sockets,
@@ -120,6 +124,12 @@ _sweeper_task: asyncio.Task[Any] | None = None
 # the lifespan so each app start gets a primitive bound to its own loop.
 _upload_semaphore: asyncio.Semaphore | None = None
 _upload_waiting = 0
+
+# R3 process-local clock and playback session. A restart creates a new epoch
+# and no session; the static wall content remains.
+_server_clock: clock.ServerClock | None = None
+_playback_session: playback.Session | None = None
+_playback_task: asyncio.Task | None = None
 
 
 def _restore_wall_state() -> None:
@@ -142,7 +152,7 @@ def _restore_wall_state() -> None:
 
 @asynccontextmanager
 async def lifespan(_: FastAPI):
-    global _sweeper_task, _upload_semaphore
+    global _sweeper_task, _upload_semaphore, _server_clock, _playback_task
     # Before the first yield: no socket may be accepted against state that
     # has not been loaded from the database.
     _restore_wall_state()
@@ -157,7 +167,9 @@ async def lifespan(_: FastAPI):
     media.ensure_dirs()
     media.cleanup_staging()
     _upload_semaphore = asyncio.Semaphore(1)
+    _server_clock = clock.ServerClock()
     _sweeper_task = asyncio.create_task(_sweep_loop())
+    _playback_task = asyncio.create_task(_playback_loop())
     try:
         yield
     finally:
@@ -167,6 +179,11 @@ async def lifespan(_: FastAPI):
             task.cancel()
             with contextlib.suppress(asyncio.CancelledError):
                 await task
+        playback_task = _playback_task
+        if playback_task is not None:
+            playback_task.cancel()
+            with contextlib.suppress(asyncio.CancelledError):
+                await playback_task
 
 
 # ---------------------------------------------------------------------------
@@ -815,7 +832,7 @@ async def device_register(device: DeviceRegistration):
     # the assigned colour, any open socket, and the protocol negotiated by that
     # socket (the client re-registers before every connection attempt, so the
     # record would otherwise flap back to "no protocol" while still online).
-    devices[device_id] = {
+    record: dict[str, Any] = {
         "device_id": device_id,
         "width": device.width,
         "height": device.height,
@@ -825,6 +842,15 @@ async def device_register(device: DeviceRegistration):
         "caps": list(existing.get("caps") or []) if existing is not None else [],
         "last_seen": _now_iso(),
     }
+    if existing is not None:
+        # Re-registration keeps the live socket's ephemeral facts: a resize
+        # re-registers while the same socket stays connected, and dropping
+        # the viewport would silently invalidate a physical plan.
+        for key in ("viewport", "connection_id", "clock", "clock_ok",
+                    "clock_samples", "clock_pending", "render_seq"):
+            if key in existing:
+                record[key] = existing[key]
+    devices[device_id] = record
     # Stamp the monotonic contact reading too; presence expiry uses it.
     _touch_device(device_id)
     record = _device_record(device_id)
@@ -1794,6 +1820,346 @@ async def delete_physical_layout_v3(name: str, request: Request):
 
 
 # ---------------------------------------------------------------------------
+# R3 clock, preparation and hard-cut playback
+# ---------------------------------------------------------------------------
+
+
+def _now_ms() -> float:
+    return _server_clock.now_ms() if _server_clock is not None else time.monotonic_ns() / 1e6
+
+
+async def _send_to(websocket: WebSocket, frame: dict[str, Any], stamp: Any = None) -> None:
+    connection = writers.get(websocket)
+    if connection is not None:
+        await connection.send(frame, stamp=stamp)
+    else:
+        await websocket.send_json(frame)
+
+
+def _asset_descriptor(asset_id: str) -> dict[str, Any] | None:
+    managed = media.find_object(asset_id)
+    if managed is not None:
+        return {
+            "id": managed["id"], "name": "playlist", "mime": managed["mime"],
+            "intrinsicWidth": managed["width"], "intrinsicHeight": managed["height"],
+            "bytes": managed["bytes"], "url": f"/assets/{managed['id']}",
+        }
+    curated = assets.find(asset_id)
+    return curated.entry() if curated is not None else None
+
+
+def _physical_plan_for(
+    device_id: str, record: dict[str, Any], source_width: int, source_height: int
+) -> tuple[dict[str, Any] | None, dict[str, Any] | None]:
+    layout = wall["layout"]
+    if layout.get("kind") != "physical":
+        return None, None
+    slot = layout["slots"].get(device_id)
+    if slot is None:
+        return None, None
+    profile = displays.profile(device_id, int(slot["profile_revision"]))
+    calibration = displays.calibration(device_id, int(slot["calibration_revision"]))
+    if (
+        profile is None
+        or calibration is None
+        or calibration["profile_revision"] != slot["profile_revision"]
+        or not _viewport_matches(calibration, record.get("viewport") or {})
+    ):
+        return None, None
+    bounds = layout["bounds"]
+    plan = geometry.normalized_source_to_panel(
+        active_size=(profile["active_width_mm"], profile["active_height_mm"]),
+        bezels=profile["bezels"],
+        center_mm=(slot["center_x_mm"], slot["center_y_mm"]),
+        nudge_mm=(slot["nudge_x_mm"], slot["nudge_y_mm"]),
+        mount_angle=slot["mount_angle"],
+        bounds=(bounds["x"], bounds["y"], bounds["width"], bounds["height"]),
+        source_size=(source_width, source_height),
+        fit="cover",
+    )
+    return (
+        {**plan, "source": {"width": source_width, "height": source_height}},
+        {
+            "status": "valid", "revision": calibration["revision"],
+            "viewport_width": calibration["viewport_width"],
+            "viewport_height": calibration["viewport_height"],
+            "quarter_turn": calibration["quarter_turn"],
+            "panel_offset_mm": calibration["panel_offset_mm"],
+            "mm_per_css": calibration["mm_per_css"],
+            "panel_width": profile["active_width_mm"],
+            "panel_height": profile["active_height_mm"],
+        },
+    )
+
+
+def _playback_status() -> dict[str, Any]:
+    session = _playback_session
+    if session is None:
+        return {"state": "stopped"}
+    return {
+        "session_id": session.id,
+        "version": session.version,
+        "generation": session.generation,
+        "clock_epoch": session.clock_epoch,
+        "state": session.state,
+        "current": session.current.as_dict() if session.current else None,
+        "pending": session.pending.as_frame() if session.pending else None,
+        "cohort": session.cohort,
+        "missed": session.missed,
+        "held": session.held,
+        "hold_deadline_ms": session.hold_deadline_ms,
+    }
+
+
+async def _broadcast_playback() -> None:
+    frame = {"type": "playback_status", **_playback_status()}
+    for socket, protocol in list(controller_protocols.items()):
+        if protocol != 3:
+            continue
+        try:
+            await _send_to(socket, frame)
+        except Exception:
+            controller_sockets.discard(socket)
+            controller_protocols.pop(socket, None)
+
+
+async def _prepare_playback(session: playback.Session) -> None:
+    pending = session.pending
+    if pending is None:
+        return
+    descriptor = _asset_descriptor(pending.asset)
+    if descriptor is None:
+        return
+    for device_id in session.cohort:
+        record = devices.get(device_id)
+        socket = device_sockets.get(device_id)
+        if record is None or socket is None:
+            continue
+        plan, calibration = _physical_plan_for(
+            device_id, record, descriptor["intrinsicWidth"], descriptor["intrinsicHeight"]
+        )
+        if plan is None or calibration is None:
+            continue
+        await _send_to(socket, {
+            "type": "prepare", **session.lineage(),
+            "preparation_id": pending.id,
+            "occurrence": pending.occurrence.as_dict(),
+            "asset": descriptor,
+            "plan": plan,
+            "calibration": calibration,
+            "prepare_deadline_ms": pending.deadline_ms,
+            "effective_server_ms": pending.effective_ms,
+            "connection_id": record.get("connection_id", ""),
+            "cohort": session.cohort,
+        })
+
+
+async def _send_commit(session: playback.Session, action: dict[str, Any]) -> None:
+    descriptor = _asset_descriptor(action["asset"])
+    for device_id in action["devices"]:
+        record = devices.get(device_id)
+        socket = device_sockets.get(device_id)
+        if record is None or socket is None:
+            continue
+        await _send_to(socket, {
+            "type": "commit", **session.lineage(),
+            "version": action["version"],
+            "prepared_at_version": action["prepared_at_version"],
+            "preparation_id": action["preparation_id"],
+            "occurrence": action["occurrence"],
+            "asset": descriptor,
+            "effective_server_ms": action["effective_server_ms"],
+            "connection_id": record.get("connection_id", ""),
+            "missed": action.get("missed", []),
+        })
+
+
+async def _abort_playback(reason: str) -> None:
+    global _playback_session
+    session = _playback_session
+    if session is None:
+        return
+    playback.stop(session, _now_ms())
+    for device_id in session.cohort:
+        socket = device_sockets.get(device_id)
+        if socket is None:
+            continue
+        with contextlib.suppress(Exception):
+            await _send_to(socket, {
+                "type": "playback", "state": "stopped", "reason": reason,
+                "epoch": _server_clock.epoch if _server_clock else None,
+            })
+    _playback_session = None
+    await _broadcast_playback()
+
+
+async def _playback_loop() -> None:
+    while True:
+        await asyncio.sleep(0.1)
+        try:
+            if _server_clock is not None and _server_clock.check_suspend():
+                await _abort_playback("host suspend")
+            session = _playback_session
+            if session is None:
+                continue
+            actions = playback.tick(session, _now_ms())
+            for action in actions:
+                if action["type"] == "commit":
+                    await _send_commit(session, action)
+                    await _prepare_playback(session)
+                if action["type"] in ("commit", "hold", "failed"):
+                    await _broadcast_playback()
+        except asyncio.CancelledError:
+            raise
+        except Exception:
+            continue
+
+
+class PlaylistCommand(BaseModel):
+    items: list[dict[str, Any]]
+    loop: bool = False
+
+
+def _playlist_etag(document: dict[str, Any] | None) -> str:
+    return hashlib.sha256(
+        json.dumps(document, sort_keys=True, separators=(",", ":")).encode()
+    ).hexdigest()[:32]
+
+
+@app.get("/api/v3/playlist")
+async def get_playlist_v3():
+    document = persist.load_meta("playlist")
+    return {"playlist": document, "etag": _playlist_etag(document)}
+
+
+@app.put("/api/v3/playlist")
+async def put_playlist_v3(command: PlaylistCommand, request: Request):
+    try:
+        items = playback.validate_playlist(command.items, loop=command.loop)
+    except playback.PlaybackError as error:
+        raise HTTPException(status_code=422, detail=str(error)) from error
+    for item in items:
+        if _asset_descriptor(item["asset"]) is None:
+            raise HTTPException(status_code=422, detail="playlist asset is unknown")
+    document = {"items": items, "loop": command.loop, "revision": 1}
+    supplied = request.headers.get("if-match")
+    current = persist.load_meta("playlist")
+    if not supplied:
+        raise HTTPException(status_code=428, detail="If-Match is required")
+    if supplied.strip().strip('"') != _playlist_etag(current):
+        raise HTTPException(status_code=412, detail="playlist changed; reload")
+    persist.save_meta("playlist", document)
+    return {"playlist": document, "etag": _playlist_etag(document)}
+
+
+def _require_session_version(request: Request) -> playback.Session:
+    session = _playback_session
+    if session is None:
+        raise HTTPException(status_code=404, detail="no playback session")
+    supplied = request.headers.get("if-match")
+    if not supplied:
+        raise HTTPException(status_code=428, detail="If-Match is required")
+    if supplied.strip().strip('"') != str(session.version):
+        raise HTTPException(status_code=412, detail="playback version is stale")
+    return session
+
+
+@app.get("/api/v3/playback")
+async def get_playback_v3():
+    return _playback_status()
+
+
+@app.post("/api/v3/playback/start")
+async def start_playback_v3():
+    global _playback_session
+    if _playback_session is not None and _playback_session.state not in ("stopped", "failed"):
+        raise HTTPException(status_code=409, detail="playback is already active")
+    document = persist.load_meta("playlist")
+    if not isinstance(document, dict):
+        raise HTTPException(status_code=409, detail="save a playlist first")
+    layout = wall["layout"]
+    if layout.get("kind") != "physical":
+        raise HTTPException(status_code=409, detail="a physical layout is required")
+    cohort = []
+    connections = {}
+    for device_id, record in list(devices.items()):
+        if record.get("protocol") != 3 or not _is_online(device_id):
+            continue
+        if device_id not in layout["slots"]:
+            continue
+        cohort.append(device_id)
+        connections[device_id] = record.get("connection_id", "")
+    if not cohort:
+        raise HTTPException(status_code=409, detail="no eligible physical endpoints")
+    _playback_session = playback.start(
+        document["items"], bool(document.get("loop", False)), cohort, _now_ms(),
+        generation=wall["generation"],
+        clock_epoch=_server_clock.epoch if _server_clock else "",
+        connections=connections,
+    )
+    await _prepare_playback(_playback_session)
+    await _broadcast_playback()
+    return _playback_status()
+
+
+@app.post("/api/v3/playback/pause")
+async def pause_playback_v3(request: Request):
+    session = _require_session_version(request)
+    playback.pause(session, _now_ms())
+    for device_id in session.cohort:
+        socket = device_sockets.get(device_id)
+        if socket is not None:
+            with contextlib.suppress(Exception):
+                await _send_to(socket, {"type": "playback", "state": "paused",
+                                        **session.lineage()})
+    await _broadcast_playback()
+    return _playback_status()
+
+
+@app.post("/api/v3/playback/stop")
+async def stop_playback_v3(request: Request):
+    global _playback_session
+    session = _require_session_version(request)
+    playback.stop(session, _now_ms())
+    for device_id in session.cohort:
+        socket = device_sockets.get(device_id)
+        if socket is not None:
+            with contextlib.suppress(Exception):
+                await _send_to(socket, {"type": "playback", "state": "stopped",
+                                        **session.lineage()})
+    _playback_session = None
+    await _broadcast_playback()
+    return {"state": "stopped"}
+
+
+async def _step_playback(request: Request, delta: int) -> dict[str, Any]:
+    session = _require_session_version(request)
+    try:
+        playback.step(session, delta, _now_ms())
+    except playback.PlaybackError as error:
+        raise HTTPException(status_code=409, detail=str(error)) from error
+    for device_id in session.cohort:
+        socket = device_sockets.get(device_id)
+        if socket is not None:
+            with contextlib.suppress(Exception):
+                await _send_to(socket, {"type": "cancel", **session.lineage(),
+                                        "reason": "superseded"})
+    await _prepare_playback(session)
+    await _broadcast_playback()
+    return _playback_status()
+
+
+@app.post("/api/v3/playback/next")
+async def next_playback_v3(request: Request):
+    return await _step_playback(request, 1)
+
+
+@app.post("/api/v3/playback/previous")
+async def previous_playback_v3(request: Request):
+    return await _step_playback(request, -1)
+
+
+# ---------------------------------------------------------------------------
 # WebSockets
 # ---------------------------------------------------------------------------
 
@@ -1813,7 +2179,87 @@ async def _device_loop(websocket: WebSocket, device_id: str) -> None:
         except ValueError:
             continue  # unrecognised frames are ignored, not fatal
 
-        if isinstance(payload, dict) and payload.get("type") == "heartbeat":
+        if isinstance(payload, dict) and payload.get("type") == "clock_sample":
+            sample_id = payload.get("id")
+            c0 = payload.get("c0")
+            if (
+                isinstance(sample_id, str)
+                and isinstance(c0, (int, float))
+                and not isinstance(c0, bool)
+                and device_sockets.get(device_id) is websocket
+                and device_id in devices
+            ):
+                pending = {"c0": float(c0), "s1": _now_ms(), "s2": None}
+                exchanges = devices[device_id].setdefault("clock_pending", {})
+                exchanges[sample_id] = pending
+                while len(exchanges) > 16:
+                    exchanges.pop(next(iter(exchanges)))
+                frame = {
+                    "type": "clock_sample", "id": sample_id,
+                    "c0": pending["c0"], "s1": pending["s1"],
+                }
+                def stamp(target: dict[str, Any], state: dict[str, Any] = pending) -> None:
+                    state["s2"] = _now_ms()
+                    target["s2"] = state["s2"]
+                connection = writers.get(websocket)
+                if connection is not None:
+                    await connection.send(frame, stamp=stamp)
+        elif isinstance(payload, dict) and payload.get("type") == "clock_result":
+            sample_id = payload.get("id")
+            c3 = payload.get("c3")
+            record = devices.get(device_id)
+            if (
+                record is not None
+                and isinstance(sample_id, str)
+                and isinstance(c3, (int, float))
+                and not isinstance(c3, bool)
+            ):
+                pending = record.get("clock_pending", {}).pop(sample_id, None)
+                if pending is not None and pending.get("s2") is not None:
+                    estimate = clock.estimate(
+                        pending["c0"], pending["s1"], pending["s2"], float(c3)
+                    )
+                    if estimate is not None:
+                        samples = record.setdefault("clock_samples", [])
+                        samples.append({
+                            "server_ms": pending["s2"],
+                            "offset_ms": estimate.offset_ms,
+                            "rtt_ms": estimate.rtt_ms,
+                            "uncertainty_ms": estimate.uncertainty_ms,
+                        })
+                        del samples[:-16]
+                        best = clock.best_sample(samples, _now_ms())
+                        record["clock"] = best
+                        record["clock_ok"] = bool(
+                            best is not None
+                            and best["uncertainty_ms"] <= clock.MAX_UNCERTAINTY_MS
+                        )
+        elif isinstance(payload, dict) and payload.get("type") == "ready":
+            session = _playback_session
+            record = devices.get(device_id)
+            if (
+                session is not None
+                and record is not None
+                and device_sockets.get(device_id) is websocket
+            ):
+                try:
+                    accepted = playback.accept_ready(
+                        session,
+                        device_id=device_id,
+                        connection_id=record.get("connection_id", ""),
+                        preparation_id=str(payload["preparation_id"]),
+                        version=int(payload["version"]),
+                        evidence_seq=int(payload.get("evidence_seq", 0)),
+                        mapping_revision=int(payload.get("mapping_revision", 0)),
+                        clock_ok=bool(record.get("clock_ok")),
+                        lease_ms=2000,
+                        now_ms=_now_ms(),
+                    )
+                except (KeyError, TypeError, ValueError):
+                    accepted = False
+                if accepted:
+                    await _broadcast_playback()
+        elif isinstance(payload, dict) and payload.get("type") == "heartbeat":
             # A replaced socket must not keep the new one alive.
             if device_sockets.get(device_id) is websocket and device_id in devices:
                 _touch_device(device_id)
@@ -1880,6 +2326,7 @@ async def ws_device(
     _touch_device(key)
     record["protocol"] = negotiated
     record["caps"] = _parse_caps(caps)
+    record["connection_id"] = uuid.uuid4().hex
     if None not in (w, h, dpr, orientation, mode):
         try:
             record["viewport"] = {
@@ -1909,6 +2356,12 @@ async def ws_device(
             welcome["protocol"] = 3
             welcome["server_caps"] = list(SERVER_CAPS_V3)
         await connection.send(welcome)
+        if negotiated == 3 and _server_clock is not None:
+            await connection.send({
+                "type": "clock_bootstrap",
+                "epoch": _server_clock.epoch,
+                "server_ms": _now_ms(),
+            })
 
         if negotiated in (2, 3):
             # Replay the wall or render plan right after welcome so a

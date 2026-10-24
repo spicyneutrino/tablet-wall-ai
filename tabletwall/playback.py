@@ -198,7 +198,7 @@ def accept_ready(
 ) -> bool:
     """Accept one readiness lease only when it covers the planned cut."""
     pending = session.pending
-    if pending is None or session.state not in ("preparing", "armed"):
+    if pending is None or session.state not in ("preparing", "armed", "playing"):
         return False
     if pending.id != preparation_id or pending.version != version:
         return False

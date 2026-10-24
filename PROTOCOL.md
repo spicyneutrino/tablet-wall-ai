@@ -777,6 +777,78 @@ before the socket is published to broadcasts. Overflow or a sustained slow
 send closes that connection with `4429`; other connections are unaffected.
 R2 does not coalesce frames.
 
+### Clock and hard-cut playback (R3)
+
+A v3 device receives `clock_bootstrap` immediately after `welcome`:
+
+```json
+{ "type": "clock_bootstrap", "epoch": "a1b2c3d4", "server_ms": 123456.7 }
+```
+
+The client then sends bounded samples and returns the receive time:
+
+```json
+{ "type": "clock_sample", "id": "c1", "c0": 1234.5 }
+{ "type": "clock_sample", "id": "c1", "c0": 1234.5, "s1": 501111.0, "s2": 501111.2 }
+{ "type": "clock_result", "id": "c1", "c3": 1235.2 }
+```
+
+`c0`/`c3` are the client's `performance.now()`, `s1` is the server receive time
+and `s2` is stamped by the writer immediately before the frame leaves. The
+server validates the exchange and keeps the lowest-delay fresh sample;
+uncertainty above 25 ms or a sample older than 15 s is not sufficient for
+timed readiness. A host suspend changes the epoch, cancels every preparation
+and sends `{ "type": "playback", "state": "stopped", "reason": "host suspend" }`.
+
+A saved playlist is one ordered list of published display-object IDs with a
+dwell and a loop flag:
+
+```json
+GET  /api/v3/playlist        -> { "playlist": {...} | null, "etag": "..." }
+PUT  /api/v3/playlist        -> requires If-Match; 1..64 items, 1000..600000 ms
+```
+
+Playback commands are `POST /api/v3/playback/{start,pause,stop,next,previous}`.
+`start` needs a saved playlist and at least one online, placed v3 endpoint;
+pause/stop/next/previous require `If-Match` with the current session version
+(`428` missing, `412` stale, `404` no session).
+
+A preparation is one occurrence `{playlist_revision, item_index, loop}` with a
+preparation ID, its own version, the exact asset and physical plan, a deadline
+and a per-device lease. Frames:
+
+```json
+{ "type": "prepare", "session_id": "…", "version": 3, "clock_epoch": "…",
+  "preparation_id": "…", "occurrence": {...}, "asset": {...},
+  "plan": {...}, "calibration": {...},
+  "prepare_deadline_ms": 123, "effective_server_ms": 456,
+  "connection_id": "…", "cohort": ["<uuid>"] }
+
+{ "type": "ready", "preparation_id": "…", "version": 3,
+  "connection_id": "…", "occurrence": {...}, "evidence_seq": 1,
+  "mapping_revision": 1, "decoded": true }
+
+{ "type": "commit", "session_id": "…", "version": 4,
+  "prepared_at_version": 3, "preparation_id": "…", "occurrence": {...},
+  "asset": {...}, "effective_server_ms": 789, "connection_id": "…",
+  "missed": ["<uuid>"] }
+
+{ "type": "cancel", "session_id": "…", "version": 5, "reason": "superseded" }
+```
+
+A ready lease is renewed every 500 ms and expires after 2 s; it must cover the
+effective time. A full cohort commits early at its effective time. A partial
+cohort holds the current still for at most `min(dwell/2, 5 s)`, then commits a
+future cut for the ready members and records every miss. A higher version
+supersedes every different pending preparation; a stale or mismatched
+ready/commit never paints. The displayed still is not changed by preparation.
+Restart leaves no session and restores static content.
+
+Controller diagnostics use `playback_status` with the lineage, state, current
+and pending occurrence, cohort, ready/missed members and hold deadline. The
+browser evidence measures software canvas onset only; optical onset, physical
+sleep and mixed-model timing remain unverified.
+
 ## Persistence
 
 The active layout, the active scene, the revision, and the generation are

@@ -48,7 +48,7 @@ class Writer:
         self.frame_budget = frame_budget
         self.byte_budget = byte_budget
         self.timeout = timeout
-        self.queue: asyncio.Queue[dict[str, Any]] = asyncio.Queue()
+        self.queue: asyncio.Queue[tuple[dict[str, Any], Any]] = asyncio.Queue()
         self.queued_bytes = 0
         self.task: asyncio.Task[None] | None = None
         self.closed = False
@@ -57,7 +57,7 @@ class Writer:
         if self.task is None:
             self.task = asyncio.create_task(self._run())
 
-    async def send(self, frame: dict[str, Any]) -> None:
+    async def send(self, frame: dict[str, Any], stamp: Any = None) -> None:
         if self.closed:
             raise ConnectionError("writer is closed")
         size = len(json.dumps(frame, separators=(",", ":")))
@@ -66,7 +66,7 @@ class Writer:
         if self.queued_bytes + size > self.byte_budget:
             await self._overflow("byte budget is exhausted")
         self.queued_bytes += size
-        await self.queue.put(frame)
+        await self.queue.put((frame, stamp))
 
     async def _overflow(self, reason: str) -> None:
         self.closed = True
@@ -76,10 +76,12 @@ class Writer:
 
     async def _run(self) -> None:
         while True:
-            frame = await self.queue.get()
+            frame, stamp = await self.queue.get()
             size = len(json.dumps(frame, separators=(",", ":")))
             self.queued_bytes = max(0, self.queued_bytes - size)
             try:
+                if stamp is not None:
+                    stamp(frame)
                 await asyncio.wait_for(self.websocket.send_json(frame), timeout=self.timeout)
             except Exception:
                 self.closed = True
