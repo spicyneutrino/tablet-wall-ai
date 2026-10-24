@@ -900,6 +900,182 @@ code,
 }
 
 /* ---------------------------------------------------------------- *
+ * Managed uploads and library
+ * ---------------------------------------------------------------- */
+
+.upload-block {
+    margin-top: 14px;
+    padding-top: 14px;
+    border-top: 1px solid var(--line);
+}
+
+.upload-row {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 8px;
+}
+
+.upload-file {
+    flex: 1 1 170px;
+    min-width: 0;
+    min-height: 40px;
+    padding: 5px 8px;
+    border: 1px solid var(--line-2);
+    border-radius: var(--radius-sm);
+    background: var(--raised);
+    color: var(--ink);
+    font: inherit;
+    font-size: 0.82rem;
+}
+
+.upload-file:hover:not(:disabled) {
+    border-color: var(--ink-3);
+}
+
+.upload-file:focus-visible {
+    outline-offset: 0;
+    border-color: var(--accent);
+}
+
+.upload-file:disabled {
+    background: #eef0f3;
+    color: var(--ink-3);
+    cursor: not-allowed;
+}
+
+.upload-file-name {
+    margin-top: 6px;
+    font-size: 0.8rem;
+    color: var(--ink-3);
+    overflow-wrap: anywhere;
+}
+
+.upload-progress {
+    display: block;
+    width: 100%;
+    height: 10px;
+    margin-top: 10px;
+    accent-color: var(--accent);
+}
+
+.upload-status {
+    margin-top: 0;
+    font-size: 0.85rem;
+    color: var(--ink-2);
+    overflow-wrap: anywhere;
+}
+
+.upload-status:not(:empty) {
+    margin-top: 8px;
+}
+
+.upload-status[data-kind="ok"] {
+    color: var(--ok);
+    font-weight: 600;
+}
+
+.upload-status[data-kind="err"] {
+    color: var(--bad);
+    font-weight: 600;
+}
+
+.media-library {
+    margin-top: 14px;
+    padding-top: 14px;
+    border-top: 1px solid var(--line);
+}
+
+.media-head {
+    display: flex;
+    align-items: baseline;
+    justify-content: space-between;
+    gap: 8px;
+}
+
+.media-head .label {
+    margin-bottom: 0;
+}
+
+.media-count {
+    font-size: 0.78rem;
+    color: var(--ink-3);
+}
+
+.media-list {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+    margin-top: 8px;
+    max-height: 220px;
+    overflow-y: auto;
+}
+
+.media-row {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    width: 100%;
+    min-height: 48px;
+    padding: 6px 10px;
+    border: 1px solid var(--line);
+    border-radius: var(--radius-sm);
+    background: var(--raised);
+    color: var(--ink);
+    font: inherit;
+    text-align: left;
+    cursor: pointer;
+    transition: border-color 0.15s ease, background-color 0.15s ease;
+}
+
+.media-row:hover {
+    border-color: var(--ink-3);
+}
+
+.media-row[aria-pressed="true"] {
+    border-color: var(--accent);
+    background: var(--accent-soft);
+    box-shadow: inset 0 0 0 1px var(--accent);
+}
+
+.media-thumb {
+    flex: none;
+    width: 44px;
+    height: 34px;
+    object-fit: cover;
+    border-radius: 5px;
+    background: #dde1e7;
+}
+
+.media-thumb-none {
+    display: block;
+}
+
+.media-name {
+    flex: 1 1 auto;
+    min-width: 0;
+    font-size: 0.88rem;
+    font-weight: 600;
+    overflow-wrap: anywhere;
+}
+
+.media-size {
+    flex: none;
+    font-size: 0.78rem;
+    color: var(--ink-3);
+}
+
+.media-note {
+    margin-top: 8px;
+    font-size: 0.82rem;
+    color: var(--ink-3);
+}
+
+.media-note[data-kind="err"] {
+    color: var(--bad);
+}
+
+/* ---------------------------------------------------------------- *
  * Wall map (the one dark object)
  * ---------------------------------------------------------------- */
 

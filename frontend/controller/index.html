@@ -7,7 +7,7 @@
     <meta name="description" content="Control panel for a wall of tablets: choose what the wall shows and where each tablet sits.">
     <title>Wall control · tablet-wall-ai</title>
     <link rel="icon" href="favicon.svg" type="image/svg+xml">
-    <link rel="stylesheet" href="controller.css?v=6">
+    <link rel="stylesheet" href="controller.css?v=7">
 </head>
 <body>
 <a class="skip" href="#tablets">Skip to tablets</a>
@@ -124,6 +124,32 @@
                         <span class="image-sel" id="image-sel">No image selected</span>
                         <button type="button" class="btn btn-primary" id="btn-image-apply" disabled>Show on wall</button>
                     </div>
+                </div>
+
+                <!-- Managed uploads are a second source beside the curated
+                     inventory. Selection and "Show on wall" stay the same:
+                     both stores hand back the same descriptor fields. -->
+                <div class="upload-block" id="upload-block" hidden>
+                    <label class="label" for="upload-file">Upload an image (JPEG or PNG)</label>
+                    <div class="upload-row">
+                        <input class="upload-file" id="upload-file" type="file"
+                               accept="image/jpeg,image/png">
+                        <button type="button" class="btn" id="btn-upload" disabled>Upload</button>
+                    </div>
+                    <p class="upload-file-name" id="upload-file-name">No file chosen</p>
+                    <progress class="upload-progress" id="upload-progress" max="100" value="0"
+                              aria-label="Upload progress" hidden></progress>
+                    <p class="upload-status" id="upload-status" role="status"
+                       aria-live="polite" aria-atomic="true"></p>
+                </div>
+
+                <div class="media-library" id="media-library" hidden>
+                    <div class="media-head">
+                        <span class="label" id="media-title">Uploaded images</span>
+                        <span class="media-count" id="media-count"></span>
+                    </div>
+                    <ul class="media-list" id="media-list" aria-labelledby="media-title" hidden></ul>
+                    <p class="media-note" id="media-note" hidden></p>
                 </div>
             </div>
         </section>
@@ -452,6 +478,6 @@
     </article>
 </template>
 
-<script src="controller.js?v=6"></script>
+<script src="controller.js?v=7"></script>
 </body>
 </html>

@@ -16,6 +16,9 @@
      *     curated inventory — on demand plus one read at boot, never
      *     polled. An image only reaches PUT /scene after the operator has
      *     selected an asset and pressed "Show on wall".
+     *   - Managed images (R1): GET /media lists the upload library and
+     *     POST /uploads streams one file. Neither adds the image to the
+     *     wall by itself; selection and "Show on wall" stay the same.
      *
      * There is NO polling. The only timer is a 1 Hz UI tick that redraws
      * relative timestamps and the reconnect countdown; it never touches
@@ -128,6 +131,16 @@
         imagePreview: document.getElementById("image-preview"),
         imagePreviewImg: document.getElementById("image-preview-img"),
         imagePreviewNote: document.getElementById("image-preview-note"),
+        uploadBlock: document.getElementById("upload-block"),
+        uploadFile: document.getElementById("upload-file"),
+        btnUpload: document.getElementById("btn-upload"),
+        uploadFileName: document.getElementById("upload-file-name"),
+        uploadProgress: document.getElementById("upload-progress"),
+        uploadStatus: document.getElementById("upload-status"),
+        mediaLibrary: document.getElementById("media-library"),
+        mediaList: document.getElementById("media-list"),
+        mediaCount: document.getElementById("media-count"),
+        mediaNote: document.getElementById("media-note"),
         grid: document.getElementById("grid"),
         empty: document.getElementById("empty"),
         emptyConn: document.getElementById("empty-conn"),
@@ -226,6 +239,22 @@
     /** Asset picked in the list but not yet sent. null means no selection,
      *  and no image scene is ever sent without one. */
     let selectedAsset = null;
+
+    /* Managed uploads (GET /media) are a separate store from the curated
+     * inventory, so they keep their own list. `mediaState` is "pending" |
+     * "ready" | "forbidden" | "error": 403 means uploads are disabled, which
+     * hides the upload controls and leaves the curated flow as it was. */
+    let mediaAssets = [];
+    let mediaState = "pending";
+    let mediaError = null;
+    let mediaLoading = false;
+
+    /* One upload at a time. `uploadStage` is null | "uploading" |
+     * "processing"; progress events drive the first, the upload `load`
+     * event the second. */
+    let uploadXhr = null;
+    let uploadBusy = false;
+    let uploadStage = null;
 
     /* Tablet URL (GET /operator-config, read once at boot). `tabletUrl` is
      * the validated address to show and copy, or null while none is known
@@ -1089,6 +1118,9 @@
         for (const asset of assets) {
             if (asset.id === id) return asset;
         }
+        for (const asset of mediaAssets) {
+            if (asset.id === id) return asset;
+        }
         return null;
     }
 
@@ -1104,7 +1136,11 @@
         // A failed refresh leaves a stale list for browsing, not evidence
         // that a currently active asset is missing from the server now.
         if (!id || !assetsLoaded || assetsError) return false;
-        return assetById(id) === null;
+        if (assetById(id) !== null) return false;
+        // With uploads disabled there is no managed list to consult, so the
+        // curated inventory is the only evidence this page can use.
+        if (mediaState === "forbidden") return true;
+        return mediaState === "ready" && !mediaError;
     }
 
     /** Asset ids are `sha256:<64 hex>` — the prefix is constant, so the
@@ -1164,6 +1200,10 @@
         const width = pickNumber(raw, ["width", "intrinsicWidth", "intrinsic_width"]);
         const height = pickNumber(raw, ["height", "intrinsicHeight", "intrinsic_height"]);
         const bytes = pickNumber(raw, ["bytes", "byteSize", "byte_size", "size"]);
+        const thumbRaw = raw.thumbnail;
+        const thumbnail = thumbRaw && typeof thumbRaw === "object" && !Array.isArray(thumbRaw)
+            ? pickString(thumbRaw, ["url", "href"])
+            : null;
 
         return {
             id: id,
@@ -1174,7 +1214,8 @@
             width: width !== null && width > 0 ? Math.round(width) : null,
             height: height !== null && height > 0 ? Math.round(height) : null,
             bytes: bytes !== null && bytes >= 0 ? bytes : null,
-            url: pickString(raw, ["url", "href"])
+            url: pickString(raw, ["url", "href"]),
+            thumbnail: thumbnail
         };
     }
 
@@ -1290,10 +1331,301 @@
         }
     }
 
+    /* ------------------------------------------------------------------ *
+     * Managed library (GET /media) and uploads (POST /uploads)
+     *
+     * Uploads land in the same descriptor shape as the curated inventory,
+     * so selection, preview and "Show on wall" are shared. The library is
+     * kept apart only so the curated list keeps its own read and wording.
+     * ------------------------------------------------------------------ */
+
+    async function refreshMedia(quiet) {
+        if (mediaLoading) return false;
+        mediaLoading = true;
+        mediaError = null;
+
+        let ok = false;
+        try {
+            const data = await requestJson("GET", "/media");
+            const list = normalizeAssets(data);
+            if (list === null) {
+                throw new Error("the answer was not an image library");
+            }
+            mediaAssets = list;
+            mediaState = "ready";
+            ok = true;
+            if (selectedAsset && assetById(selectedAsset) === null) {
+                selectedAsset = null;
+            }
+            if (!quiet) {
+                logStatus(
+                    "Uploaded library — " + list.length +
+                        (list.length === 1 ? " image." : " images."),
+                    "ok"
+                );
+            }
+        } catch (err) {
+            if (err.status === 403) {
+                mediaState = "forbidden";
+                if (!quiet) logStatus("Uploads are disabled on this server.", "info");
+            } else {
+                mediaState = "error";
+                mediaError = err.message;
+                if (!quiet) logStatus("Uploaded library unavailable: " + err.message, "err");
+            }
+        } finally {
+            mediaLoading = false;
+            renderImagePanel();
+        }
+        return ok;
+    }
+
+    function renderMediaPanel() {
+        renderUploadControls();
+        renderMediaLibrary();
+    }
+
+    function renderMediaLibrary() {
+        const wrap = el.mediaLibrary;
+        const list = el.mediaList;
+        if (!wrap || !list) return;
+
+        wrap.hidden = mediaState === "forbidden";
+        if (mediaState === "forbidden") return;
+
+        if (el.mediaCount) {
+            el.mediaCount.textContent = mediaState === "pending"
+                ? ""
+                : mediaAssets.length + (mediaAssets.length === 1 ? " image" : " images");
+        }
+
+        list.textContent = "";
+        for (const asset of mediaAssets) {
+            list.appendChild(buildMediaRow(asset));
+        }
+        list.hidden = mediaAssets.length === 0;
+
+        let note = "";
+        let kind = "info";
+        if (mediaState === "pending") {
+            note = "Reading the uploaded library…";
+        } else if (mediaState === "error") {
+            kind = "err";
+            note = "Uploaded library unavailable: " + (mediaError || "unknown error") +
+                (mediaAssets.length > 0 ? " — showing the images read earlier." : "");
+        } else if (mediaAssets.length === 0) {
+            note = "No uploaded images yet.";
+        }
+        if (el.mediaNote) {
+            el.mediaNote.hidden = note === "";
+            el.mediaNote.dataset.kind = kind;
+            el.mediaNote.textContent = note;
+        }
+    }
+
+    function buildMediaRow(asset) {
+        const item = document.createElement("li");
+        item.className = "media-item";
+
+        const row = document.createElement("button");
+        row.type = "button";
+        row.className = "media-row";
+        row.dataset.media = asset.id;
+        row.setAttribute("aria-pressed", String(selectedAsset === asset.id));
+        row.title = asset.id + (asset.mime ? " · " + asset.mime : "");
+
+        let thumb;
+        if (asset.thumbnail) {
+            thumb = document.createElement("img");
+            thumb.className = "media-thumb";
+            thumb.src = asset.thumbnail;
+            thumb.alt = "";
+            thumb.loading = "lazy";
+        } else {
+            thumb = document.createElement("span");
+            thumb.className = "media-thumb media-thumb-none";
+            thumb.setAttribute("aria-hidden", "true");
+        }
+
+        const name = document.createElement("span");
+        name.className = "media-name";
+        name.textContent = asset.name;
+
+        const size = document.createElement("span");
+        size.className = "media-size";
+        size.textContent = fmtBytes(asset.bytes);
+
+        row.append(thumb, name, size);
+        item.appendChild(row);
+        return item;
+    }
+
+    function renderUploadControls() {
+        if (!el.uploadBlock) return;
+        el.uploadBlock.hidden = mediaState === "forbidden";
+        if (!el.uploadFile || !el.btnUpload) return;
+        el.uploadFile.disabled = uploadBusy;
+        el.btnUpload.disabled = uploadBusy || selectedUploadFile() === null;
+        el.btnUpload.textContent = !uploadBusy
+            ? "Upload"
+            : uploadStage === "processing" ? "Processing…" : "Uploading…";
+    }
+
+    function selectedUploadFile() {
+        if (!el.uploadFile || !el.uploadFile.files) return null;
+        return el.uploadFile.files.length > 0 ? el.uploadFile.files[0] : null;
+    }
+
+    function setUploadStatus(text, kind) {
+        const node = el.uploadStatus;
+        if (!node) return;
+        node.dataset.kind = kind || "info";
+        node.textContent = text || "";
+    }
+
+    function setUploadProgress(percent) {
+        const node = el.uploadProgress;
+        if (!node) return;
+        node.hidden = false;
+        if (percent === null) {
+            node.removeAttribute("value");
+            node.setAttribute("aria-valuetext", "Processing");
+            return;
+        }
+        node.max = 100;
+        node.value = percent;
+        node.setAttribute("aria-valuetext", percent + "%");
+    }
+
+    function hideUploadProgress() {
+        const node = el.uploadProgress;
+        if (!node) return;
+        node.hidden = true;
+        node.removeAttribute("aria-valuetext");
+        node.value = 0;
+    }
+
+    function startUpload() {
+        if (uploadBusy) return;
+        const file = selectedUploadFile();
+        if (!file) {
+            setUploadStatus("Choose an image file first.", "err");
+            return;
+        }
+
+        uploadBusy = true;
+        uploadStage = "uploading";
+        setUploadStatus("Uploading… 0%", "busy");
+        setUploadProgress(0);
+        renderUploadControls();
+
+        const xhr = new XMLHttpRequest();
+        uploadXhr = xhr;
+        xhr.open("POST", "/uploads?name=" + encodeURIComponent(file.name));
+        xhr.setRequestHeader("Content-Type", file.type);
+
+        xhr.upload.addEventListener("progress", function (event) {
+            if (uploadXhr !== xhr || uploadStage !== "uploading") return;
+            if (!event.lengthComputable || !(event.total > 0)) {
+                setUploadStatus("Uploading…", "busy");
+                return;
+            }
+            const percent = Math.min(100, Math.max(0,
+                Math.round((event.loaded / event.total) * 100)));
+            setUploadProgress(percent);
+            setUploadStatus("Uploading… " + percent + "%", "busy");
+        });
+
+        xhr.upload.addEventListener("load", function () {
+            if (uploadXhr !== xhr || uploadStage !== "uploading") return;
+            uploadStage = "processing";
+            setUploadProgress(null);
+            setUploadStatus("Processing…", "busy");
+            renderUploadControls();
+        });
+
+        xhr.addEventListener("load", function () {
+            if (uploadXhr !== xhr) return;
+            let asset = null;
+            let failure = null;
+            if (xhr.status === 201) {
+                asset = normalizeAsset(uploadAssetPayload(xhr));
+                if (!asset) failure = "the server returned no usable image";
+            } else {
+                failure = uploadFailureText(xhr);
+            }
+            finishUpload();
+            if (failure !== null) {
+                setUploadStatus("Upload failed: " + failure, "err");
+                logStatus("Upload failed: " + failure, "err");
+                return;
+            }
+            uploadedAsset(asset);
+        });
+
+        xhr.addEventListener("error", function () {
+            if (uploadXhr !== xhr) return;
+            finishUpload();
+            setUploadStatus("Upload failed: the server could not be reached.", "err");
+            logStatus("Upload failed: the server could not be reached.", "err");
+        });
+
+        xhr.addEventListener("abort", function () {
+            if (uploadXhr !== xhr) return;
+            finishUpload();
+            setUploadStatus("Upload cancelled.", "info");
+        });
+
+        xhr.send(file);
+    }
+
+    function finishUpload() {
+        uploadXhr = null;
+        uploadBusy = false;
+        uploadStage = null;
+        hideUploadProgress();
+        renderUploadControls();
+    }
+
+    function uploadAssetPayload(xhr) {
+        try {
+            const data = JSON.parse(xhr.responseText);
+            return data && typeof data === "object" ? data.asset : null;
+        } catch (_err) {
+            return null;
+        }
+    }
+
+    function uploadFailureText(xhr) {
+        let detail = "";
+        try {
+            const data = JSON.parse(xhr.responseText);
+            if (data && typeof data.detail === "string") detail = data.detail;
+        } catch (_err) {
+            /* non-JSON body: fall through to the status line */
+        }
+        return detail !== "" ? detail : "HTTP " + xhr.status;
+    }
+
+    function uploadedAsset(asset) {
+        mediaAssets = mediaAssets.filter(function (item) { return item.id !== asset.id; });
+        mediaAssets.push(asset);
+        mediaState = "ready";
+        mediaError = null;
+        selectedAsset = asset.id;
+        if (el.uploadFile) el.uploadFile.value = "";
+        if (el.uploadFileName) el.uploadFileName.textContent = "No file chosen";
+        renderImagePanel();
+        setUploadStatus("Ready: " + asset.name, "ok");
+        logStatus("Uploaded " + asset.name + ". Press Show on wall to display it.", "ok");
+        refreshMedia(true);
+    }
+
     function renderImagePanel() {
         if (!el.imagePanel) return;
         renderActiveImage();
         renderAssetList();
+        renderMediaPanel();
         renderMissingAsset();
         updateImageControls();
     }
@@ -1346,8 +1678,8 @@
 
         const missing = activeAssetMissing();
         if (missing) bits.push("not in the image list");
-        else if (assetsError) bits.push("image list may be out of date");
-        else if (!assetsLoaded) bits.push("image list not loaded yet");
+        else if (assetsError || mediaError) bits.push("image list may be out of date");
+        else if (!assetsLoaded || mediaState === "pending") bits.push("image list not loaded yet");
 
         node.dataset.state = missing ? "missing" : "image";
         node.title = id;
@@ -1469,6 +1801,7 @@
             );
         }
         renderAssetList();
+        renderMediaLibrary();
         updateImageControls();
     }
 
@@ -1502,7 +1835,8 @@
             el.imageMissingText.title = id;
         }
         if (el.btnMissingPick) {
-            const hasAssets = assets.length > 0;
+            const hasAssets = assets.length > 0 ||
+                (mediaState === "ready" && mediaAssets.length > 0);
             el.btnMissingPick.textContent =
                 hasAssets ? "Pick a replacement" : "Refresh the image list";
             el.btnMissingPick.dataset.mode = hasAssets ? "pick" : "refresh";
@@ -1625,7 +1959,8 @@
     /** Recovery from a missing asset: put the inventory under the cursor so
      *  the replacement is one click away. */
     function focusAssetPicker() {
-        if (assets.length === 0) {
+        const hasManaged = mediaState === "ready" && mediaAssets.length > 0;
+        if (assets.length === 0 && !hasManaged) {
             refreshAssets(false).then(focusFirstAsset);
             return;
         }
@@ -1635,7 +1970,8 @@
 
     function focusFirstAsset() {
         const first =
-            el.assetList && el.assetList.querySelector("button[data-asset]");
+            (el.assetList && el.assetList.querySelector("button[data-asset]")) ||
+            (el.mediaList && el.mediaList.querySelector("button[data-media]"));
         if (!first) return;
         if (typeof first.scrollIntoView === "function") {
             first.scrollIntoView({ block: "nearest" });
@@ -3701,6 +4037,29 @@
             });
         }
 
+        if (el.mediaList) {
+            el.mediaList.addEventListener("click", function (event) {
+                const row = event.target.closest("button[data-media]");
+                if (!row || row.disabled) return;
+                selectAsset(row.dataset.media);
+            });
+        }
+
+        if (el.uploadFile) {
+            el.uploadFile.addEventListener("change", function () {
+                const file = selectedUploadFile();
+                if (el.uploadFileName) {
+                    el.uploadFileName.textContent = file ? file.name : "No file chosen";
+                }
+                if (!uploadBusy) setUploadStatus(null);
+                renderUploadControls();
+            });
+        }
+
+        if (el.btnUpload) {
+            el.btnUpload.addEventListener("click", startUpload);
+        }
+
         if (el.btnImageApply) {
             el.btnImageApply.addEventListener("click", function () {
                 applyImageScene();
@@ -4092,6 +4451,9 @@
         // Quiet: a server without GET /assets (or with an empty directory) is
         // a fact to note, not a failure to shout about at startup.
         refreshAssets(true);
+        // GET /media is the managed library; a 403 means uploads are off, so
+        // the upload controls stay hidden and the curated flow is unchanged.
+        refreshMedia(true);
         // Same for the named snapshots: a server that has not grown the
         // /layouts and /scenes routes yet says so inside each panel instead
         // of shouting over the connection status at boot.
