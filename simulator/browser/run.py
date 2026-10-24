@@ -505,6 +505,7 @@ async def exercise(artifacts: Path, report: dict[str, Any], observation_seconds:
             await controller.get_by_role("button", name="Calibration", exact=True).click()
         check("controller calibration response", (await changed.value).ok)
         await controller.wait_for_function("document.querySelector('[data-content=calibration]').getAttribute('aria-pressed') === 'true'")
+        await controller.click('#wall-content button[data-content="image"]')
         await controller.locator(f"button[data-asset='{asset}']").click()
         async with controller.expect_response(lambda response: response.url == base + "/scene" and response.request.method == "PUT") as changed:
             await controller.locator("#btn-image-apply").click()

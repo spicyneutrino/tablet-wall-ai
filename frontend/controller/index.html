@@ -7,7 +7,7 @@
     <meta name="description" content="Control panel for a wall of tablets: choose what the wall shows and where each tablet sits.">
     <title>Wall control · tablet-wall-ai</title>
     <link rel="icon" href="favicon.svg" type="image/svg+xml">
-    <link rel="stylesheet" href="controller.css?v=7">
+    <link rel="stylesheet" href="controller.css?v=8">
 </head>
 <body>
 <a class="skip" href="#tablets">Skip to tablets</a>
@@ -20,17 +20,15 @@
             <span class="conn-glyph" aria-hidden="true"></span>
             <span class="conn-label" id="conn-label">Connecting</span>
         </p>
-        <button type="button" class="btn btn-ghost btn-sm" id="btn-reconnect" hidden>Reconnect now</button>
-        <p class="tally">
-            <span class="tally-on" id="tally-online">0</span>
-            of
-            <span class="tally-total" id="tally-total">0</span>
-            tablets online
+        <button type="button" class="btn btn-ghost btn-sm" id="btn-reconnect" hidden>Reconnect</button>
+        <p class="tally" title="Tablets currently connected">
+            <span class="tally-on" id="tally-online">0</span><span class="tally-slash">/</span><span class="tally-total" id="tally-total">0</span>
+            <span class="tally-label">online</span>
         </p>
     </div>
 
     <div class="tablet-link">
-        <span class="tablet-link-label">Open on each tablet</span>
+        <span class="tablet-link-label">Tablet address</span>
         <!-- The address and Copy state are driven by GET /operator-config;
              an unverified address is never copied. -->
         <code id="client-url" role="status" aria-atomic="true">/client/</code>
@@ -38,21 +36,24 @@
                 aria-label="Copy the tablet URL" aria-describedby="client-url" disabled>Copy</button>
     </div>
 
-    <a class="btn btn-sm" href="physical.html">Physical setup</a>
+    <a class="btn btn-sm btn-quiet" href="physical.html">Physical setup</a>
 </header>
 
 <div class="layout">
 
-    <aside class="side" aria-label="Wall controls">
+    <aside class="side" aria-label="Content controls">
 
-        <section class="card show" id="show" aria-labelledby="show-title">
-            <h2 id="show-title">On the wall</h2>
+        <section class="card content-panel" id="show" aria-labelledby="show-title">
+            <div class="content-head">
+                <h2 id="show-title">Content</h2>
+                <p class="content-now">
+                    <span class="content-now-label">On the wall</span>
+                    <strong id="content-now">Waiting</strong>
+                </p>
+            </div>
 
             <div class="field">
-                <span class="label" id="wall-content-label">Show</span>
-                <!-- Colour and calibration are sent straight away. Image only
-                     moves you to the list below: it needs a file chosen first. -->
-                <div class="seg" id="wall-content" role="group" aria-labelledby="wall-content-label">
+                <div class="seg" id="wall-content" role="group" aria-label="Wall content">
                     <button type="button" class="seg-opt" data-content="color"
                             aria-pressed="true" disabled>Colour</button>
                     <button type="button" class="seg-opt" data-content="calibration"
@@ -61,11 +62,13 @@
                             aria-pressed="false" disabled>Image</button>
                 </div>
                 <p class="content-state" id="wall-content-state" hidden></p>
-                <p class="hint">Calibration draws one shared coordinate grid across every tablet, so you can check that the layout lines up.</p>
             </div>
 
             <div class="show-block" id="colour-block">
-                <h3>Colour for every tablet</h3>
+                <div class="block-head">
+                    <h3>Palette</h3>
+                    <span class="block-note">All tablets</span>
+                </div>
                 <div class="palette palette-lg" id="global-palette" role="group" aria-label="Preset colours for all tablets"></div>
                 <div class="apply-row">
                     <label class="custom-colour">
@@ -75,21 +78,29 @@
                     <span class="global-sel" id="global-sel">None chosen</span>
                     <button type="button" class="btn btn-primary" id="btn-apply-all" disabled>Apply to all</button>
                 </div>
-                <p class="hint">Applies to every tablet. It shows while the wall is set to Colour.</p>
+                <p class="hint">Sets every tablet to the same colour.</p>
+            </div>
+
+            <div class="show-block" id="calibration-block" hidden>
+                <div class="block-head">
+                    <h3>Calibration</h3>
+                </div>
+                <p class="hint">A shared grid across every tablet. Use it to check that adjacent edges and bezels line up.</p>
+                <p class="calibration-state" id="calibration-state">Choose Calibration to show the shared grid.</p>
             </div>
 
             <!-- Still image: the curated inventory and the scene action that
                  puts one asset across the whole wall. Picking and applying are
                  separate on purpose: nothing is sent until an asset is
                  selected and "Show on wall" is pressed. -->
-            <div class="show-block imagepanel" id="image-panel" role="group" aria-labelledby="image-title">
+            <div class="show-block imagepanel" id="image-panel" role="group" aria-labelledby="image-title" hidden>
                 <div class="image-head">
-                    <h3 id="image-title">Image</h3>
-                    <button type="button" class="btn btn-ghost btn-sm" id="btn-assets-refresh">Refresh list</button>
+                    <h3 id="image-title">Image library</h3>
+                    <button type="button" class="btn btn-ghost btn-sm" id="btn-assets-refresh">Refresh</button>
                 </div>
 
                 <p class="image-active" id="image-active" data-state="none">
-                    <span class="image-active-label">Now showing</span>
+                    <span class="image-active-label">Wall image</span>
                     <span class="image-active-text" id="image-active-text">Nothing yet</span>
                 </p>
 
@@ -132,10 +143,13 @@
                      inventory. Selection and "Show on wall" stay the same:
                      both stores hand back the same descriptor fields. -->
                 <div class="upload-block" id="upload-block" hidden>
-                    <label class="label" for="upload-file">Upload an image (JPEG or PNG)</label>
+                    <div class="block-head">
+                        <h3>Add an image</h3>
+                        <span class="block-note">JPEG or PNG</span>
+                    </div>
                     <div class="upload-row">
                         <input class="upload-file" id="upload-file" type="file"
-                               accept="image/jpeg,image/png">
+                               accept="image/jpeg,image/png" aria-label="Choose an image to upload">
                         <button type="button" class="btn" id="btn-upload" disabled>Upload</button>
                     </div>
                     <p class="upload-file-name" id="upload-file-name">No file chosen</p>
@@ -147,48 +161,12 @@
 
                 <div class="media-library" id="media-library" hidden>
                     <div class="media-head">
-                        <span class="label" id="media-title">Uploaded images</span>
+                        <span class="label" id="media-title">Your uploads</span>
                         <span class="media-count" id="media-count"></span>
                     </div>
                     <ul class="media-list" id="media-list" aria-labelledby="media-title" hidden></ul>
                     <p class="media-note" id="media-note" hidden></p>
                 </div>
-            </div>
-        </section>
-
-        <section class="card" aria-labelledby="size-title">
-            <h2 id="size-title">Wall size and layout</h2>
-
-            <form class="wall-form" id="wall-form" novalidate>
-                <div class="pair">
-                    <div class="field">
-                        <label class="label" for="wall-width">Width</label>
-                        <input class="inp" id="wall-width" type="number" min="1" step="1"
-                               inputmode="numeric" autocomplete="off" disabled>
-                    </div>
-                    <div class="field">
-                        <label class="label" for="wall-height">Height</label>
-                        <input class="inp" id="wall-height" type="number" min="1" step="1"
-                               inputmode="numeric" autocomplete="off" disabled>
-                    </div>
-                    <button type="submit" class="btn" id="btn-wall-save" disabled>Save size</button>
-                </div>
-                <p class="hint">Any unit works. Tablet positions use the same unit.</p>
-            </form>
-
-            <div class="wall-arrange">
-                <div class="pair">
-                    <div class="field">
-                        <label class="label" for="auto-columns">Columns</label>
-                        <input class="inp" id="auto-columns" type="number" min="1" step="1"
-                               inputmode="numeric" autocomplete="off" placeholder="Auto" disabled>
-                    </div>
-                    <button type="button" class="btn" id="btn-auto" disabled>Arrange online tablets</button>
-                </div>
-                <p class="hint">
-                    Puts every online tablet on an even grid and replaces its position.
-                    Offline tablets keep their position. Leave columns empty to let the server choose.
-                </p>
             </div>
         </section>
     </aside>
@@ -197,13 +175,38 @@
 
         <section class="card wall" aria-labelledby="wall-title">
             <div class="wall-head">
-                <h2 id="wall-title">Wall</h2>
+                <h2 id="wall-title">Wall stage</h2>
                 <p class="wall-meta">
-                    <span class="wall-rev">Revision <span id="wall-rev">–</span></span>
-                    <span class="wall-gen" title="Changes when the server restarts or restores a backup. The revision number can then go back to a lower value.">Session <span id="wall-gen">–</span></span>
+                    <span class="meta-stat"><span class="meta-k">Revision</span><span id="wall-rev">-</span></span>
+                    <span class="meta-stat" title="Changes when the server restarts or restores a backup. The revision can then go back to a lower value."><span class="meta-k">Session</span><span id="wall-gen">-</span></span>
                 </p>
             </div>
             <p class="wall-note" id="wall-note">Waiting for the server</p>
+
+            <div class="wall-tools">
+                <form class="wall-form" id="wall-form" novalidate>
+                    <div class="compact-field">
+                        <label class="label" for="wall-width">Width</label>
+                        <input class="inp" id="wall-width" type="number" min="1" step="1"
+                               inputmode="numeric" autocomplete="off" disabled>
+                    </div>
+                    <div class="compact-field">
+                        <label class="label" for="wall-height">Height</label>
+                        <input class="inp" id="wall-height" type="number" min="1" step="1"
+                               inputmode="numeric" autocomplete="off" disabled>
+                    </div>
+                    <button type="submit" class="btn btn-sm" id="btn-wall-save" disabled>Save size</button>
+                </form>
+                <div class="wall-arrange">
+                    <div class="compact-field">
+                        <label class="label" for="auto-columns">Columns</label>
+                        <input class="inp" id="auto-columns" type="number" min="1" step="1"
+                               inputmode="numeric" autocomplete="off" placeholder="Auto" disabled>
+                    </div>
+                    <button type="button" class="btn btn-sm" id="btn-auto" disabled>Arrange online</button>
+                </div>
+            </div>
+            <p class="wall-hint">All sizes use the same unit. Arrange replaces positions for online tablets only.</p>
 
             <!-- Image coverage. Two blocks, kept apart on purpose: a tablet
                  that is present but cannot render the image is a partial wall
@@ -221,7 +224,7 @@
                 <div class="alert" id="alert-unverified" data-kind="dim" hidden>
                     <span class="alert-mark" aria-hidden="true">?</span>
                     <div class="alert-body">
-                        <p class="alert-title">Placed but not confirmed</p>
+                        <p class="alert-title">Placed, not confirmed</p>
                         <p class="alert-text" id="alert-unverified-text"></p>
                     </div>
                 </div>
@@ -236,9 +239,9 @@
                 <div class="map-legend" aria-label="Diagram legend">
                     <span class="lg"><span class="lg-box lg-online" aria-hidden="true"></span>Online</span>
                     <span class="lg"><span class="lg-box lg-offline" aria-hidden="true"></span>Offline</span>
-                    <span class="lg"><span class="lg-box lg-vacant" aria-hidden="true"></span>Saved spot, tablet missing</span>
-                    <span class="lg"><span class="lg-box lg-hatch" aria-hidden="true"></span>Hidden by frame</span>
-                    <span class="lg"><span class="lg-tri" aria-hidden="true"></span>Shape differs from screen</span>
+                    <span class="lg"><span class="lg-box lg-vacant" aria-hidden="true"></span>Missing tablet</span>
+                    <span class="lg"><span class="lg-box lg-hatch" aria-hidden="true"></span>Behind frame</span>
+                    <span class="lg"><span class="lg-tri" aria-hidden="true"></span>Shape mismatch</span>
                 </div>
             </div>
 
@@ -249,28 +252,29 @@
             <div class="reservations" id="reservations" hidden>
                 <h3>Saved spots with no tablet</h3>
                 <p class="res-hint">
-                    These positions belong to tablets that are not connected. A tablet that
-                    comes back takes its own spot again. Release a spot only if that tablet is gone for good.
+                    A returning tablet reclaims its spot. Release one only if that tablet is gone for good.
                 </p>
                 <ul class="res-list" id="res-list"></ul>
             </div>
         </section>
 
         <section class="tablets" id="tablets" aria-labelledby="tablets-title" tabindex="-1">
-            <h2 id="tablets-title">Tablets</h2>
+            <div class="section-head">
+                <h2 id="tablets-title">Tablets</h2>
+                <p class="section-meta" id="roster-count">None known</p>
+            </div>
             <div class="grid" id="grid" aria-label="Registered tablets"></div>
 
             <section class="empty" id="empty" hidden>
                 <p class="empty-conn" id="empty-conn"></p>
                 <h3 class="empty-title">No tablets yet</h3>
                 <p class="empty-lead">
-                    A tablet appears here a second or two after it opens the tablet address.
+                    Open the tablet address on each device. It appears here within a few seconds.
                 </p>
                 <ol class="empty-steps">
-                    <li>Connect the tablet to the hotspot or network that serves the address at the top of this page.</li>
-                    <li>Open that exact address in the tablet's browser. If it says <code>localhost</code>
-                        or <code>127.0.0.1</code>, set up tablet access first. That address only works on this computer.</li>
-                    <li>Leave the page open. Reloading is safe, because each tablet remembers its id.</li>
+                    <li>Connect the tablet to the same network as this computer.</li>
+                    <li>Open the exact tablet address shown at the top of this page. If it says <code>localhost</code> or <code>127.0.0.1</code>, that address only works on this computer.</li>
+                    <li>Leave the page open. Reloading keeps the same tablet identity.</li>
                 </ol>
             </section>
         </section>
@@ -278,20 +282,19 @@
         <!-- Named snapshots: two independent panels with separate name
              spaces. A saved layout is the arrangement only and a saved scene
              is the content only, so recalling one can never drag the other
-             along with it. Saving asks the server to snapshot its own active
-             wall, so no body is sent from here. -->
+             along with it. -->
         <section class="snapshots" aria-labelledby="saved-title">
-            <h2 id="saved-title">Saved setups</h2>
+            <div class="section-head">
+                <h2 id="saved-title">Saved setups</h2>
+                <p class="section-meta">Layouts store positions. Scenes store content.</p>
+            </div>
             <div class="snap-cols">
                 <section class="snap-panel" aria-labelledby="layouts-title">
                     <div class="snap-head">
                         <h3 id="layouts-title">Layouts</h3>
                         <button type="button" class="btn btn-ghost btn-sm" data-snap-refresh="layout">Refresh</button>
                     </div>
-                    <p class="hint">
-                        Wall size and where each tablet sits. Recalling a layout moves the tablets
-                        and leaves what the wall shows unchanged.
-                    </p>
+                    <p class="hint">Wall size and tablet positions.</p>
 
                     <form class="snap-save" id="layout-save-form" novalidate>
                         <div class="field">
@@ -314,7 +317,7 @@
                         <p class="snap-overwrite-text" id="layout-overwrite-text"></p>
                         <div class="snap-overwrite-actions">
                             <button type="button" class="btn btn-danger btn-sm"
-                                    id="btn-layout-overwrite">Replace it</button>
+                                    id="btn-layout-overwrite">Replace</button>
                             <button type="button" class="btn btn-ghost btn-sm"
                                     id="btn-layout-overwrite-cancel">Cancel</button>
                         </div>
@@ -329,10 +332,7 @@
                         <h3 id="scenes-title">Scenes</h3>
                         <button type="button" class="btn btn-ghost btn-sm" data-snap-refresh="scene">Refresh</button>
                     </div>
-                    <p class="hint">
-                        What the wall shows. Recalling a scene shows that content on the current
-                        layout and leaves tablet positions unchanged.
-                    </p>
+                    <p class="hint">Content only, on the current arrangement.</p>
 
                     <form class="snap-save" id="scene-save-form" novalidate>
                         <div class="field">
@@ -351,7 +351,7 @@
                         <p class="snap-overwrite-text" id="scene-overwrite-text"></p>
                         <div class="snap-overwrite-actions">
                             <button type="button" class="btn btn-danger btn-sm"
-                                    id="btn-scene-overwrite">Replace it</button>
+                                    id="btn-scene-overwrite">Replace</button>
                             <button type="button" class="btn btn-ghost btn-sm"
                                     id="btn-scene-overwrite-cancel">Cancel</button>
                         </div>
@@ -378,7 +378,7 @@
     <article class="tile" data-state="offline" data-busy="false">
         <div class="screen" aria-hidden="true">
             <span class="screen-fill"></span>
-            <span class="screen-note">No colour set</span>
+            <span class="screen-note">No colour</span>
         </div>
 
         <header class="tile-top">
@@ -400,7 +400,7 @@
         </p>
 
         <dl class="tile-facts">
-            <dt>Last seen</dt>
+            <dt>Seen</dt>
             <dd class="fact-seen"></dd>
             <dt>Colour</dt>
             <dd class="fact-colour">
@@ -416,7 +416,7 @@
         <div class="place">
             <details class="place-edit">
                 <summary>
-                    <span class="place-title">Position on the wall</span>
+                    <span class="place-title">Placement</span>
                     <span class="place-state" data-state="unplaced">Not placed</span>
                 </summary>
 
@@ -480,6 +480,6 @@
     </article>
 </template>
 
-<script src="controller.js?v=7"></script>
+<script src="controller.js?v=8"></script>
 </body>
 </html>

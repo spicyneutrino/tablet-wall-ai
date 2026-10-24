@@ -99,6 +99,12 @@
         wallHeight: document.getElementById("wall-height"),
         wallContent: document.getElementById("wall-content"),
         wallContentState: document.getElementById("wall-content-state"),
+        contentNow: document.getElementById("content-now"),
+        colourBlock: document.getElementById("colour-block"),
+        calibrationBlock: document.getElementById("calibration-block"),
+        calibrationState: document.getElementById("calibration-state"),
+        imagePanel: document.getElementById("image-panel"),
+        rosterCount: document.getElementById("roster-count"),
         btnWallSave: document.getElementById("btn-wall-save"),
         autoColumns: document.getElementById("auto-columns"),
         btnAuto: document.getElementById("btn-auto"),
@@ -114,7 +120,6 @@
         alertNoCapText: document.getElementById("alert-nocap-text"),
         alertUnverified: document.getElementById("alert-unverified"),
         alertUnverifiedText: document.getElementById("alert-unverified-text"),
-        imagePanel: document.getElementById("image-panel"),
         imageActive: document.getElementById("image-active"),
         imageActiveText: document.getElementById("image-active-text"),
         imageMissing: document.getElementById("image-missing"),
@@ -225,6 +230,12 @@
      *  server's PUT /scene response (or its `wall_updated` echo). */
     let pendingContent = null;
 
+    /* Which content panel is open in the operator's control. This is a view
+     * state, not the wall: an operator can browse the image library while the
+     * wall still shows colour, and the summary keeps the actual wall state
+     * separate. */
+    let contentView = null;
+
     /* Curated asset inventory (GET /assets). Read once at boot and again only
      * when the operator asks — never polled. A failed refresh keeps the last
      * good list (`assetsError` says why it is stale); `assetsLoaded` gates
@@ -274,7 +285,7 @@
     /** Generation is an opaque lineage token; the first 8 characters are
      *  enough to spot a change on the wall panel. */
     function shortGeneration(generation) {
-        if (generation == null || generation === "") return "—";
+        if (generation == null || generation === "") return "-";
         return String(generation).slice(0, 8);
     }
 
@@ -289,7 +300,7 @@
     /** "3s ago" / "4m ago" ... — DOM-only, no network. */
     function relTime(iso) {
         const t = Date.parse(iso);
-        if (Number.isNaN(t)) return "—";
+        if (Number.isNaN(t)) return "-";
         const seconds = Math.max(0, (Date.now() - t) / 1000);
         if (seconds < 5) return "just now";
         if (seconds < 60) return Math.floor(seconds) + "s ago";
@@ -373,11 +384,11 @@
     }
 
     function fmtAspect(ratio) {
-        return ratio === null ? "—" : ratio.toFixed(3);
+        return ratio === null ? "-" : ratio.toFixed(3);
     }
 
     function fmtDelta(delta) {
-        return delta === null ? "—" : (delta * 100).toFixed(1) + "%";
+        return delta === null ? "-" : (delta * 100).toFixed(1) + "%";
     }
 
     /** The device's reported viewport as a ratio, or null if not reported. */
@@ -451,13 +462,21 @@
         return content;
     }
 
+    /** Short label for the wall-state summary in the content header. */
+    function contentSummaryLabel(type) {
+        if (type === "color") return "Colour";
+        if (type === "calibration") return "Calibration grid";
+        if (type === "image") return "Image";
+        if (type === null || type === undefined) return "Waiting";
+        return "Unsupported type";
+    }
+
     /**
      * Honest, operator-facing name for a scene content type.
      *
-     * `"color"` and `"calibration"` read as themselves — the two the segment
-     * control offers. `"image"` is named as what it is: it is set from the
-     * still-image panel, not from the segment control. Anything else is
-     * flagged as unsupported rather than shown as colour.
+     * `"color"` and `"calibration"` read as themselves. `"image"` is named as
+     * what it is: it is set from the still-image panel, not from the tabs.
+     * Anything else is flagged as unsupported rather than shown as colour.
      */
     function contentLabel(type) {
         if (type === null) return "No content reported";
@@ -896,7 +915,7 @@
         const online = !!device && device.online === true;
         button.disabled = online;
         button.title = online
-            ? "Connected — forgetting it would not stick. Close the tablet first."
+            ? "Connected. Forgetting it would not stick. Close the tablet first."
             : "Remove this tablet from the roster";
     }
 
@@ -914,9 +933,9 @@
         tile.res.textContent =
             Number.isFinite(w) && Number.isFinite(h) && device.width != null && device.height != null
                 ? w + "×" + h
-                : "—";
+                : "-";
         tile.type.textContent = typeof device.type === "string" && device.type
-            ? (DEVICE_TYPE_NAMES[device.type.toLowerCase()] || device.type) : "—";
+            ? (DEVICE_TYPE_NAMES[device.type.toLowerCase()] || device.type) : "-";
 
         const color = normalizeColor(device.color);
         if (color) {
@@ -966,6 +985,11 @@
         }
         el.tallyOnline.textContent = String(online);
         el.tallyTotal.textContent = String(devices.size);
+        if (el.rosterCount) {
+            el.rosterCount.textContent = devices.size === 0
+                ? "None known"
+                : devices.size + " known, " + online + " online";
+        }
     }
 
     /* Empty state: shown only when no device has registered (yet). */
@@ -992,9 +1016,9 @@
      * ------------------------------------------------------------------ */
 
     function renderWall() {
-        el.wallRev.textContent = wall ? String(wall.revision) : "–";
+        el.wallRev.textContent = wall ? String(wall.revision) : "-";
         if (el.wallGen) {
-            el.wallGen.textContent = wall ? shortGeneration(wall.generation) : "–";
+            el.wallGen.textContent = wall ? shortGeneration(wall.generation) : "-";
         }
 
         if (wallReady()) {
@@ -1049,15 +1073,27 @@
      * the server actually reported in that case.
      */
     function renderWallContent(type) {
+        if (contentView === null && (type === "image" || isSettableContent(type))) {
+            contentView = type;
+        }
+        const view = contentView || "color";
         if (el.wallContent) {
-            const pressed = isSettableContent(type) || type === "image" ? type : null;
             for (const button of el.wallContent.querySelectorAll(".seg-opt")) {
                 button.setAttribute(
                     "aria-pressed",
-                    String(button.dataset.content === pressed)
+                    String(button.dataset.content === view)
                 );
             }
         }
+        if (el.colourBlock) el.colourBlock.hidden = view !== "color";
+        if (el.imagePanel) el.imagePanel.hidden = view !== "image";
+        if (el.calibrationBlock) el.calibrationBlock.hidden = view !== "calibration";
+        if (el.calibrationState) {
+            el.calibrationState.textContent = type === "calibration"
+                ? "Calibration grid is on the wall. Choose Colour or Image to replace it."
+                : "Choose Calibration to show the shared grid.";
+        }
+        if (el.contentNow) el.contentNow.textContent = contentSummaryLabel(type);
         renderContentState(type);
     }
 
@@ -1066,7 +1102,11 @@
     function renderContentState(type) {
         const node = el.wallContentState;
         if (!node) return;
-        const hint = contentHint(type);
+        let hint = contentHint(type);
+        if (hint === null && contentView !== null && type !== null && contentView !== type) {
+            hint = "Editing " + contentSummaryLabel(contentView).toLowerCase() +
+                ". The wall still shows " + contentSummaryLabel(type).toLowerCase() + ".";
+        }
         if (hint === null) {
             node.hidden = true;
             node.textContent = "";
@@ -1152,7 +1192,7 @@
     }
 
     function fmtBytes(n) {
-        if (n === null || !Number.isFinite(n) || n < 0) return "—";
+        if (n === null || !Number.isFinite(n) || n < 0) return "-";
         if (n >= 1024 * 1024) return (n / (1024 * 1024)).toFixed(1) + " MiB";
         if (n >= 1024) return (n / 1024).toFixed(1) + " KiB";
         return n + " B";
@@ -1300,7 +1340,7 @@
             }
             if (!quiet) {
                 logStatus(
-                    "Asset inventory — " + assets.length + " file(s), read " +
+                    "Asset inventory: " + assets.length + " file(s), read " +
                         assetsStamp + (cleared
                             ? " · the selected asset is no longer in it, selection cleared"
                             : ""),
@@ -1317,7 +1357,7 @@
             logStatus(
                 quiet
                     ? "No asset inventory from this server (" + err.message +
-                        ") — press Refresh inventory if still images are enabled."
+                        "). Press Refresh inventory if still images are enabled."
                     : "Asset inventory unavailable: " + err.message,
                 quiet ? "info" : "err"
             );
@@ -1359,7 +1399,7 @@
             }
             if (!quiet) {
                 logStatus(
-                    "Uploaded library — " + list.length +
+                    "Uploaded library: " + list.length +
                         (list.length === 1 ? " image." : " images."),
                     "ok"
                 );
@@ -1412,7 +1452,7 @@
         } else if (mediaState === "error") {
             kind = "err";
             note = "Uploaded library unavailable: " + (mediaError || "unknown error") +
-                (mediaAssets.length > 0 ? " — showing the images read earlier." : "");
+                (mediaAssets.length > 0 ? ". Showing the images read earlier." : "");
         } else if (mediaAssets.length === 0) {
             note = "No uploaded images yet.";
         }
@@ -1683,6 +1723,7 @@
 
         node.dataset.state = missing ? "missing" : "image";
         node.title = id;
+        if (el.contentNow) el.contentNow.textContent = bits[0];
         text.textContent = bits.join(", ");
     }
 
@@ -1702,7 +1743,7 @@
                 kind = "err";
                 note = "Inventory unavailable: " + assetsError +
                     (assetsLoaded
-                        ? " — showing the list read at " + assetsStamp + "."
+                        ? ". Showing the list read at " + assetsStamp + "."
                         : ".");
             }
             el.imageNote.hidden = note === "";
@@ -1759,14 +1800,14 @@
         dims.textContent =
             asset.width !== null && asset.height !== null
                 ? asset.width + "×" + asset.height
-                : "—";
+                : "-";
 
         const ar = document.createElement("span");
         ar.className = "asset-ar mono";
         ar.textContent =
             asset.width !== null && asset.height !== null
                 ? "ar " + fmtAspect(aspectOf(asset.width, asset.height))
-                : "ar —";
+                : "ar -";
 
         const size = document.createElement("span");
         size.className = "asset-bytes mono";
@@ -1938,12 +1979,13 @@
             const next = normalizeWall(data);
             if (!next || next.width <= 0 || next.height <= 0) {
                 logStatus(
-                    "Image request returned no usable wall state — waiting for a wall update to confirm it.",
+                    "Image request returned no usable wall state. Waiting for a wall update to confirm it.",
                     "err"
                 );
                 return;
             }
             wall = next;
+            contentView = "image";
             logStatus(
                 "Showing the image on the wall (revision " + wall.revision + ").",
                 "ok"
@@ -1959,6 +2001,8 @@
     /** Recovery from a missing asset: put the inventory under the cursor so
      *  the replacement is one click away. */
     function focusAssetPicker() {
+        contentView = "image";
+        if (wall) renderWallContent(wall.contentType);
         const hasManaged = mediaState === "ready" && mediaAssets.length > 0;
         if (assets.length === 0 && !hasManaged) {
             refreshAssets(false).then(focusFirstAsset);
@@ -2260,7 +2304,7 @@
             "device " + shortId(id) +
             " · position " + placement.x + "," + placement.y +
             " " + placement.w + "×" + placement.h +
-            (device ? "" : " · vacant · reserved — not in the roster") +
+            (device ? "" : " · vacant · reserved. Not in the roster") +
             (mismatch
                 ? " · aspect mismatch: visible " + fmtAspect(visAspect) +
                   " vs viewport " + fmtAspect(devAspect) +
@@ -2460,7 +2504,7 @@
             release.dataset.action = "release";
             release.textContent = "Release";
             release.title =
-                "Give this reserved slot back (DELETE the placement) — " +
+                "Give this reserved slot back (DELETE the placement). " +
                 "the tablet that returns will have to be placed again";
             row.appendChild(release);
         }
@@ -2517,7 +2561,7 @@
         tile.placeState.title = saved
             ? "Footprint at " + saved.x + "," + saved.y + " · " +
               saved.w + "×" + saved.h + " wall units"
-            : "No placement yet — this tablet draws its id and a note.";
+            : "No placement yet. This tablet draws its id and a note.";
         if (tile.placeClear) tile.placeClear.disabled = !saved;
 
         updatePlacementReadout(tile, device);
@@ -2894,6 +2938,7 @@
      */
     async function saveSceneContent(type) {
         if (!wall) return;
+        contentView = type;
         pendingContent = type;
         renderWallContent(type);
         updateImageControls(); // the image action waits its turn too
@@ -3191,7 +3236,7 @@
             return { error: "Give the snapshot a name first." };
         }
         if (name.length > 64) {
-            return { error: "Names are at most 64 characters — this one is " + name.length + "." };
+            return { error: "Names are at most 64 characters. This one is " + name.length + "." };
         }
         if (!SNAPSHOT_NAME_RE.test(name)) {
             return {
@@ -3402,7 +3447,7 @@
         del.textContent = "Delete";
         del.disabled = busy;
         del.title = 'Remove the saved ' + snap.label + ' "' + item.name +
-            '" — the active wall keeps everything it has.';
+            '. The active wall keeps everything it has.';
 
         row.append(recall, del);
         return row;
@@ -3435,7 +3480,7 @@
             if (snap.loading) {
                 text = "Reading the saved " + snap.label + "s…";
             } else if (!snap.loaded) {
-                text = "Saved " + snap.label + "s not read yet — press Refresh.";
+                text = "Saved " + snap.label + "s not read yet. Press Refresh.";
             } else if (snap.items.length === 0) {
                 text = "Nothing saved yet. Name the " +
                     (kind === "layout" ? "current arrangement" : "current content") +
@@ -3456,8 +3501,8 @@
         button.title = available
             ? "Snapshot the server's current " + snap.label + " under the name you type"
             : kind === "layout"
-                ? "No wall state from the server yet — there is nothing to save."
-                : "No scene content from the server yet — there is nothing to save.";
+                ? "No wall state from the server yet. There is nothing to save."
+                : "No scene content from the server yet. There is nothing to save.";
     }
 
     /** Called from `renderWall` on every wall change: it only refreshes the
@@ -3484,7 +3529,7 @@
             refs.overwrite.hidden = !snap.overwrite;
             if (snap.overwrite && refs.overwriteText) {
                 refs.overwriteText.textContent =
-                    'A ' + snap.label + ' named "' + snap.overwrite + '" already exists — ' +
+                    'A ' + snap.label + ' named "' + snap.overwrite + '" already exists. ' +
                     "replace it? Nothing has been overwritten yet.";
             }
             if (refs.overwriteYes) refs.overwriteYes.disabled = busy;
@@ -3519,7 +3564,7 @@
             setSnapMsg(kind, null);
             if (!quiet) {
                 logStatus(
-                    capLabel(snap) + " — " + items.length + " saved " +
+                    capLabel(snap) + ": " + items.length + " saved " +
                         (items.length === 1 ? snap.label : snap.label + "s") + ".",
                     "ok"
                 );
@@ -3528,7 +3573,7 @@
             setSnapMsg(
                 kind,
                 "Could not read the saved " + snap.label + "s: " + err.message +
-                    (snap.loaded ? " — showing the list read earlier." : ""),
+                    (snap.loaded ? ". Showing the list read earlier." : ""),
                 "err"
             );
             if (!quiet) logStatus("Saved " + snap.label + "s unavailable: " + err.message, "err");
@@ -3613,7 +3658,7 @@
             if (snap.overwrite !== name) return;
             const hadFocus = snapRefs(kind).overwrite.contains(document.activeElement);
             snap.overwrite = null;
-            setSnapMsg(kind, 'Not replaced — "' + name + '" is still the saved one. ' +
+            setSnapMsg(kind, 'Not replaced. "' + name + '" is still the saved one. ' +
                 "Press Save again and confirm to overwrite it.", "info");
             renderSnapshotPanel(kind);
             if (hadFocus && document.activeElement === document.body) {
@@ -3635,7 +3680,7 @@
         if (!snap.overwrite) return;
         const name = snap.overwrite;
         endSnapshotOverwrite(kind);
-        setSnapMsg(kind, 'Kept the existing "' + name + '" — nothing was overwritten.', "info");
+        setSnapMsg(kind, 'Kept the existing "' + name + '". Nothing was overwritten.', "info");
         renderSnapshotPanel(kind);
         const input = snapRefs(kind).name;
         if (input) input.focus();
@@ -3782,7 +3827,7 @@
                 if (refreshed) {
                     setSnapMsg(
                         kind,
-                        'The ' + snap.label + ' "' + name + '" is no longer saved — ' +
+                        'The ' + snap.label + ' "' + name + '" is no longer saved. ' +
                             "someone else removed it. The list was refreshed.",
                         "err"
                     );
@@ -3791,7 +3836,7 @@
                 restoreSnapshotFocus(kind, name, "recall", hadFocus);
                 logStatus(
                     snap.title + ' "' + name + '" is no longer saved' +
-                        (refreshed ? " — the list was refreshed." : "; list refresh failed."),
+                        (refreshed ? ". The list was refreshed." : "; list refresh failed."),
                     "err"
                 );
                 return;
@@ -3831,9 +3876,9 @@
         restoreSnapshotFocus(kind, name, "recall", hadFocus);
         logStatus(
             took
-                ? snap.title + ' "' + name + '" recalled — revision ' +
-                      (wall ? wall.revision : "—") + "."
-                : snap.title + ' "' + name + '" recalled — waiting for the wall update.',
+                ? snap.title + ' "' + name + '" recalled. Revision ' +
+                      (wall ? wall.revision : "-") + "."
+                : snap.title + ' "' + name + '" recalled. Waiting for the wall update.',
             took ? "ok" : "info"
         );
     }
@@ -3879,7 +3924,7 @@
         renderSnapshotPanel(kind);
         logStatus(
             snap.title + ' "' + name + '" deleted' +
-                (gone ? " (it was already gone)" : "") + " — the wall is unchanged.",
+                (gone ? " (it was already gone)" : "") + ". The wall is unchanged.",
             gone ? "info" : "ok"
         );
         // Re-read before reporting: a successful refresh clears this panel's
@@ -4007,12 +4052,16 @@
                 if (!button || button.disabled) return;
                 const type = button.dataset.content;
                 // An image needs a choice of file first, so this option only
-                // takes you to the list; "Show on wall" is what sends it.
+                // opens the library; "Show on wall" is what sends it.
                 if (type === "image") {
-                    if (!wall || wall.contentType !== "image") focusAssetPicker();
+                    contentView = "image";
+                    if (wall) renderWallContent(wall.contentType);
+                    focusAssetPicker();
                     return;
                 }
                 if (!isSettableContent(type)) return; // only what the server accepts
+                contentView = type;
+                if (wall) renderWallContent(wall.contentType);
                 if (pendingContent !== null) return; // one save at a time
                 if (wall && wall.contentType === type) return; // already there
                 saveSceneContent(type);
