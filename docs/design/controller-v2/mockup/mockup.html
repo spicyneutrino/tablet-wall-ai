@@ -1,0 +1,965 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><meta name="color-scheme" content="light"><link rel="icon" href="data:,"><title>Tablet wall | Final design</title><style>
+:root {
+  color-scheme: light;
+  --surface: #f6f8f5;
+  --rail: #edf1ec;
+  --field: #fcfdfa;
+  --hover: #e4eae3;
+  --ink: #25312b;
+  --muted: #59675d;
+  --rule: #d0d8d0;
+  --control-edge: #7a887d;
+  --accent: #23684f;
+  --accent-hover: #19533e;
+  --accent-wash: #dfede3;
+  --wall: #232e29;
+  --wall-grid: #354139;
+  --wall-text: #f0f5ed;
+  --wall-muted: #c4d0c4;
+  --wall-accent: #a5e3bb;
+  --bezel: #576057;
+  --bezel-hatch: #707b70;
+  --warning: #654d22;
+  --warning-wash: #f1ead9;
+  --error: #893d32;
+  --error-wash: #f5e7e2;
+  --disabled: #657269;
+  --sans: -apple-system, BlinkMacSystemFont, "Segoe UI", "Noto Sans", Arial, sans-serif;
+  --mono: ui-monospace, "SFMono-Regular", Consolas, "Liberation Mono", monospace;
+  --type-product: 600 16px/24px var(--sans);
+  --type-title: 600 24px/30px var(--sans);
+  --type-selection: 600 21px/28px var(--sans);
+  --type-section: 600 13px/20px var(--sans);
+  --type-body: 400 13px/20px var(--sans);
+  --type-control: 500 13px/20px var(--sans);
+  --type-meta: 400 12px/18px var(--sans);
+  --type-coordinate: 400 11px/16px var(--mono);
+  --tracking-title: -0.025em;
+  --tracking-body: 0;
+  --space-1: 4px;
+  --space-2: 8px;
+  --space-3: 12px;
+  --space-4: 16px;
+  --space-5: 20px;
+  --space-6: 24px;
+  --space-8: 32px;
+  --radius-small: 3px;
+  --radius-control: 6px;
+  --radius-dialog: 10px;
+  --topbar-height: 54px;
+  --status-height: 34px;
+  --roster-width: 204px;
+  --context-width: 308px;
+  --control-height: 34px;
+  --touch-target: 44px;
+  --field-padding: 8px 10px;
+  --focus-width: 2px;
+  --focus-offset: 3px;
+  --motion-duration: 120ms;
+  --layer-selection: 4;
+  --layer-ghost: 6;
+  --layer-dialog: 20;
+}
+*, *::before, *::after { box-sizing: border-box; }
+[hidden] { display: none !important; }
+body { margin: 0; color: var(--ink); background: var(--surface); font: var(--type-body); font-variant-numeric: tabular-nums; }
+button, input, select { font: var(--type-control); color: inherit; }
+button, .button { min-height: var(--control-height); border: 1px solid var(--control-edge); border-radius: var(--radius-control); background: var(--field); padding: 5px 11px; cursor: pointer; }
+button:hover, .button:hover { background: var(--hover); }
+button.primary { background: var(--accent); border-color: var(--accent); color: var(--field); }
+button.primary:hover { background: var(--accent-hover); }
+button.quiet { background: transparent; border-color: transparent; }
+button:disabled { background: var(--rail); border-color: var(--rule); color: var(--disabled); cursor: default; }
+input:not([type=checkbox]):not([type=file]):not([type=color]), select { min-width: 0; width: 100%; min-height: var(--control-height); padding: var(--field-padding); background: var(--field); border: 1px solid var(--control-edge); border-radius: var(--radius-control); }
+input[type=checkbox] { width: 15px; height: 15px; accent-color: var(--accent); }
+input[aria-invalid=true] { border: 2px solid var(--error); }
+:focus-visible { outline: var(--focus-width) solid var(--accent); outline-offset: var(--focus-offset); }
+a { color: var(--accent); text-underline-offset: 3px; }
+label { font: var(--type-meta); color: var(--muted); }
+@media (max-width: 900px) {
+  :root { --control-height: 44px; }
+  input:not([type=checkbox]):not([type=file]):not([type=color]), select { font-size: 16px; }
+  button, .button, summary { min-height: var(--touch-target); }
+}
+@media (prefers-reduced-motion: reduce) {
+  :root { --motion-duration: 0ms; }
+  *, *::before, *::after { scroll-behavior: auto !important; animation: none !important; transition: none !important; }
+}
+
+h1,h2,h3,p,ul,dl,dd { margin: 0; }
+h1 { font: var(--type-product); letter-spacing: -0.02em; white-space: nowrap; }
+h2 { font: var(--type-title); letter-spacing: var(--tracking-title); }
+h3 { font: var(--type-section); }
+small, .meta { font: var(--type-meta); color: var(--muted); }
+code, .coordinate { font-family: var(--mono); }
+button, input, select { touch-action: manipulation; }
+.app { display:grid; grid-template-columns:var(--roster-width) minmax(0,1fr) var(--context-width); grid-template-rows:54px minmax(0,1fr) 34px; height:1000px; }
+.skip { position:absolute; z-index:30; top:-70px; left:12px; padding:12px; background:var(--field); }
+.skip:focus { top:8px; }
+.topbar { grid-column:1/-1; display:flex; align-items:center; gap:24px; padding:0 22px; border-bottom:1px solid var(--rule); background:var(--surface); }
+.brand { display:flex; gap:9px; align-items:center; }
+.brand-mark { display:grid; grid-template-columns:7px 7px; gap:3px; }
+.brand-mark i { width:7px; height:6px; border:1px solid var(--ink); }
+.brand-mark i:nth-child(2) { background:var(--accent); border-color:var(--accent); }
+.connection { display:flex; align-items:center; gap:14px; }
+.connection button { padding:2px 4px; }
+.connection .check { color:var(--accent); margin-right:5px; }
+.tablet-address { display:flex; align-items:center; gap:10px; margin-left:auto; min-width:0; }
+.tablet-address code { font-size:12px; white-space:nowrap; }
+.physical { white-space:nowrap; }
+.mobile-nav { display:none; }
+.roster { grid-column:1; background:var(--rail); border-right:1px solid var(--rule); padding:22px 12px 16px; min-height:0; overflow:auto; display:flex; flex-direction:column; }
+.rail-heading { display:flex; justify-content:space-between; align-items:center; padding:0 6px; margin-bottom:24px; }
+.group-heading { display:flex; justify-content:space-between; color:var(--muted); font-size:12px; margin:20px 6px 8px; }
+.group-heading:first-child { margin-top:0; }
+.device-row { display:flex; align-items:center; gap:10px; width:100%; text-align:left; padding:10px 8px; border:1px solid transparent; background:transparent; min-height:65px; margin-bottom:3px; }
+.device-row:hover { background:var(--hover); }
+.device-row[aria-pressed=true] { background:var(--accent-wash); border-color:#9cb7a3; }
+.device-row strong { display:block; font-size:13px; font-weight:600; }
+.device-row small { display:block; font-size:11px; }
+.device-row .row-end { margin-left:auto; color:var(--accent); font-size:14px; }
+.mini-screen { flex:0 0 36px; width:36px; height:26px; border:3px solid var(--bezel); border-radius:3px; overflow:hidden; background:var(--wall); position:relative; }
+.mini-screen.offline { border:1px dashed var(--control-edge); background:var(--hover); }
+.mini-screen.vacant { border:1px dotted var(--control-edge); background:repeating-linear-gradient(135deg,transparent 0 3px,var(--rule) 3px 4px); }
+.roster-help { margin:15px 6px 16px; color:var(--muted); font-size:12px; line-height:19px; }
+.shortcut-group { margin-top:auto; padding:24px 6px 0; }
+.shortcut-group h3 { margin-bottom:8px; }
+.layout-shortcut { display:flex; align-items:center; gap:8px; padding:10px 0; background:transparent; border:0; width:100%; text-align:left; }
+.layout-mini { display:grid; grid-template-columns:1fr 1fr; gap:2px; width:36px; height:24px; padding:3px; border:1px solid var(--control-edge); border-radius:3px; }
+.layout-mini i { background:#8d9c86; }
+.center { min-width:0; padding:24px 16px 20px; background:var(--surface); }
+.wall-heading { display:flex; justify-content:space-between; align-items:center; padding:0 2px; }
+.wall-heading .heading-with-meta { display:flex; align-items:baseline; gap:12px; }
+.wall-heading button { white-space:nowrap; }
+.actual-content { margin:24px 2px 0; display:flex; flex-direction:column; gap:5px; }
+.actual-line { display:flex; gap:9px; align-items:baseline; flex-wrap:wrap; }
+.actual-line strong { font-size:16px; font-weight:600; letter-spacing:-.015em; }
+.actual-content .meta { font-size:12px; }
+.wall-tools { display:flex; align-items:center; justify-content:space-between; gap:8px; margin:23px 2px 17px; }
+.snap-controls { display:flex; align-items:center; gap:10px; }
+.check-label { display:flex; align-items:center; gap:6px; color:var(--ink); font-size:12px; }
+.snap-controls select { width:64px; padding:3px 7px; }
+.wall-tools .tools-end { display:flex; align-items:center; gap:5px; }
+.wall-tools button { font-size:12px; }
+.wall-scroll { overflow:auto; padding:7px 5px 7px 17px; overscroll-behavior:contain; }
+.wall-shell { width:100%; position:relative; padding-top:20px; }
+.ruler-x { display:flex; justify-content:space-between; position:absolute; top:0; left:0; right:0; font:var(--type-coordinate); color:var(--muted); }
+.ruler-x span:last-child { transform:translateX(-3px); }
+.ruler-y { position:absolute; top:20px; bottom:0; left:-15px; display:flex; flex-direction:column; justify-content:space-between; font:var(--type-coordinate); color:var(--muted); }
+.ruler-y span { writing-mode:vertical-rl; transform:rotate(180deg); }
+.wall { position:relative; aspect-ratio:2/1; isolation:isolate; border:1px solid #17221b; border-radius:4px; background-color:var(--wall); background-image:linear-gradient(var(--wall-grid) 1px,transparent 1px),linear-gradient(90deg,var(--wall-grid) 1px,transparent 1px); background-size:5% 10%; box-shadow:0 8px 16px #25312b10; overflow:hidden; touch-action:pan-x pan-y; }
+.panel { position:absolute; display:block; min-height:0; padding:0; border:1px solid #899487; border-radius:7px; background:repeating-linear-gradient(135deg,var(--bezel) 0 3px,var(--bezel-hatch) 3px 4px); cursor:grab; touch-action:none; }
+.panel:hover { background:repeating-linear-gradient(135deg,var(--bezel) 0 3px,var(--bezel-hatch) 3px 4px); }
+.panel.offline { border:1px dashed var(--wall-muted); background:var(--wall-grid); }
+.panel.vacant { border:1px dotted var(--wall-muted); border-radius:4px; background:repeating-linear-gradient(135deg,transparent 0 6px,#83908022 6px 7px); cursor:pointer; }
+.panel.selected { outline:2px solid var(--wall-accent); outline-offset:3px; z-index:var(--layer-selection); }
+.panel:focus-visible, .tile-ghost:focus-visible { outline:3px solid var(--wall-text); outline-offset:4px; z-index:5; }
+.screen-slice { position:absolute; overflow:hidden; border-radius:2px; background:#39483e; pointer-events:none; }
+.slice-art { position:absolute; max-width:none; height:auto; display:block; pointer-events:none; }
+.panel-label { position:absolute; left:10px; top:9px; background:var(--wall-text); color:var(--ink); padding:1px 5px; border-radius:2px; font-size:11px; font-weight:600; pointer-events:none; }
+.panel-state { position:absolute; left:10px; bottom:10px; background:var(--wall); color:var(--wall-text); font-size:11px; padding:2px 5px; border-radius:2px; max-width:calc(100% - 20px); pointer-events:none; }
+.panel.offline .panel-state,.panel.vacant .panel-state { background:transparent; bottom:50%; transform:translateY(50%); left:5px; right:5px; max-width:none; text-align:center; }
+.panel.offline .panel-label { background:var(--wall-grid); color:var(--wall-text); }
+.panel.vacant .panel-label { display:none; }
+.panel-state small { color:var(--wall-muted); display:block; font-size:10px; }
+.shape-mark { position:absolute; right:7px; top:7px; width:17px; height:17px; background:var(--wall-text); color:var(--ink); border-radius:3px; font:600 11px/17px var(--sans); pointer-events:none; }
+.resize-handle { position:absolute; width:9px; height:9px; border:1px solid var(--wall); background:var(--wall-accent); z-index:7; }
+.resize-handle[data-corner=nw] { left:-6px; top:-6px; cursor:nwse-resize; }
+.resize-handle[data-corner=ne] { right:-6px; top:-6px; cursor:nesw-resize; }
+.resize-handle[data-corner=sw] { left:-6px; bottom:-6px; cursor:nesw-resize; }
+.resize-handle[data-corner=se] { right:-6px; bottom:-6px; cursor:nwse-resize; }
+.placement-ghost,.tile-ghost { position:absolute; border:2px dashed var(--wall-accent); background:#a5e3bb24; color:var(--wall-text); border-radius:4px; z-index:6; }
+.placement-ghost { display:grid; place-content:center; pointer-events:none; font-size:13px; }
+.tile-ghost { padding:8px; text-align:left; min-height:0; }
+.tile-ghost:hover,.tile-ghost[aria-pressed=true] { background:#a5e3bb45; }
+.tile-ghost .cell-number { background:var(--wall-accent); color:var(--wall); font-weight:700; padding:2px 5px; border-radius:2px; }
+.tile-ghost .cell-id { position:absolute; bottom:8px; left:8px; font-size:11px; background:var(--wall); color:var(--wall-text); padding:1px 4px; }
+.wall.previewing .panel { opacity:.3; pointer-events:none; }
+.wall-legend { display:flex; gap:15px; flex-wrap:wrap; font-size:11px; color:var(--muted); margin:13px 2px 0 18px; }
+.legend-item { display:flex; align-items:center; gap:5px; }
+.legend-key { width:13px; height:10px; border:1px solid var(--control-edge); display:inline-block; }
+.legend-key.offline { border-style:dashed; }
+.legend-key.vacant { border-style:dotted; }
+.legend-key.hatch { background:repeating-linear-gradient(135deg,transparent 0 2px,var(--control-edge) 2px 3px); }
+.coordinate-readout { display:flex; justify-content:space-between; gap:8px; margin:17px 2px 0 18px; font:var(--type-coordinate); color:var(--muted); min-height:20px; }
+.wall-warnings { margin:18px 2px 0 18px; border-top:1px solid var(--rule); padding-top:14px; }
+.wall-warnings p { color:var(--muted); font-size:12px; margin-bottom:9px; }
+.wall-warnings button { padding:0; min-height:24px; border:0; text-decoration:underline; text-underline-offset:3px; background:transparent; color:var(--accent); font-size:12px; }
+.canvas-help { margin:25px 2px 0 18px; font-size:12px; color:var(--muted); }
+.context { border-left:1px solid var(--rule); background:var(--rail); min-width:0; min-height:0; overflow:auto; }
+.context-tabs { display:flex; gap:3px; padding:11px 12px; border-bottom:1px solid var(--rule); position:sticky; top:0; background:var(--rail); z-index:8; }
+.context-tabs button { flex:1; border-color:transparent; background:transparent; padding:4px; }
+.context-tabs button[aria-pressed=true] { background:var(--field); border-color:var(--control-edge); }
+.context-body { padding:20px 18px; }
+.selection-title { font:var(--type-selection); letter-spacing:var(--tracking-title); margin-bottom:4px; }
+.selection-state { display:flex; justify-content:space-between; margin-top:10px; color:var(--muted); font-size:12px; }
+.inspector-section { padding:19px 0; border-top:1px solid var(--rule); margin-top:19px; }
+.inspector-section+.inspector-section { margin-top:0; }
+.section-label { display:flex; justify-content:space-between; align-items:center; margin-bottom:12px; }
+.section-label small { font-size:11px; }
+.fields { display:grid; grid-template-columns:1fr 1fr; gap:12px; }
+.field { display:flex; flex-direction:column; gap:5px; }
+.fields+.fields { margin-top:12px; }
+.form-actions { display:flex; gap:8px; margin-top:14px; }
+.form-actions button { flex:1; }
+.aspect-check { margin-top:13px; }
+.shape-readout { font-size:12px; color:var(--muted); margin-top:13px; line-height:19px; }
+.shape-warning { margin-top:12px; padding:11px; background:var(--warning-wash); color:var(--warning); border-radius:6px; font-size:12px; line-height:18px; }
+.shape-warning strong { font-weight:600; display:block; margin-bottom:4px; }
+.shape-warning button { margin-top:9px; font-size:12px; }
+.shape-warning .result { display:block; margin-top:5px; font-size:11px; }
+.nudge-row { display:flex; gap:5px; }
+.nudge-row button { flex:1; font-size:17px; padding:0; }
+.nudge-row select { width:66px; margin-left:5px; }
+.nudge-help { margin-top:9px; font-size:11px; color:var(--muted); }
+.mobile-move { display:none; }
+.details-list { margin-top:4px; }
+details { border-top:1px solid var(--rule); }
+summary { cursor:pointer; display:flex; align-items:center; justify-content:space-between; gap:8px; min-height:48px; font-size:12px; font-weight:600; list-style:none; }
+summary::after { content:'+'; font-size:17px; color:var(--muted); margin-left:auto; }
+details[open]>summary::after { content:'−'; }
+.details-body { padding:0 0 18px; }
+.facts { display:grid; grid-template-columns:1fr auto; gap:8px; font-size:12px; }
+.facts dt { color:var(--muted); }
+.facts dd { text-align:right; }
+.remove-area { border-top:1px solid var(--rule); padding-top:19px; margin-top:4px; }
+.wide { width:100%; }
+.remove-area small { display:block; margin-top:8px; font-size:11px; }
+.swatches { display:flex; flex-wrap:wrap; gap:8px; margin:12px 0; }
+.swatch { min-height:28px; width:28px; padding:0; border:1px solid var(--control-edge); background:var(--swatch); position:relative; }
+.swatch:hover { background:var(--swatch); }
+.swatch[aria-pressed=true] { outline:2px solid var(--accent); outline-offset:2px; }
+.swatch[aria-pressed=true]::after { content:'✓'; position:absolute; inset:3px; background:var(--field); color:var(--accent); font-size:12px; line-height:20px; border-radius:2px; }
+.colour-row { display:flex; align-items:center; gap:8px; margin:12px 0; }
+.colour-row input[type=color] { width:42px; height:34px; padding:2px; border:1px solid var(--control-edge); border-radius:5px; background:var(--field); }
+.content-tabs { display:flex; gap:0; border-bottom:1px solid var(--rule); margin:18px 0; }
+.content-tabs button { border:0; border-radius:0; background:transparent; font-size:12px; padding:7px 9px; }
+.content-tabs button[aria-pressed=true] { box-shadow:inset 0 -2px var(--accent); color:var(--accent); font-weight:600; }
+.asset-button { display:flex; width:100%; align-items:center; gap:10px; background:transparent; border:1px solid transparent; text-align:left; padding:9px 6px; margin-bottom:3px; }
+.asset-button[aria-pressed=true] { background:var(--accent-wash); border-color:#9cb7a3; }
+.asset-thumb { width:55px; height:34px; object-fit:cover; border:1px solid var(--rule); border-radius:3px; }
+.asset-button strong { display:block; font-size:12px; }
+.asset-button small { font-size:11px; }
+.image-preview { width:100%; aspect-ratio:2/1; object-fit:contain; border:1px solid var(--rule); border-radius:4px; background:var(--hover); margin-top:12px; }
+.browse-note { color:var(--muted); font-size:12px; margin:10px 0 13px; }
+.error-box { background:var(--error-wash); color:var(--error); border-left:3px solid var(--error); border-radius:4px; padding:12px; margin:14px 0; font-size:12px; line-height:19px; }
+.error-box strong { display:block; margin-bottom:4px; }
+.recovery-actions { display:flex; flex-wrap:wrap; gap:7px; margin-top:10px; }
+.recovery-actions button { font-size:12px; }
+.file-input { width:100%; margin:12px 0; font-size:12px; }
+.file-input::file-selector-button { min-height:34px; background:var(--field); border:1px solid var(--control-edge); border-radius:5px; color:var(--ink); margin-right:8px; }
+progress { width:100%; height:10px; accent-color:var(--accent); margin:10px 0 3px; }
+.upload-status { margin-top:9px; font-size:12px; color:var(--muted); }
+.saved-section { margin-top:22px; border-top:1px solid var(--rule); padding-top:18px; }
+.saved-row { display:flex; align-items:center; gap:8px; padding:12px 0; }
+.saved-info { flex:1; min-width:0; }
+.saved-info strong { display:block; font-size:12px; overflow-wrap:anywhere; }
+.saved-info small { font-size:11px; }
+.saved-row button { font-size:11px; padding:4px 7px; }
+.saved-actions { display:flex; gap:7px; }
+.saved-save { display:flex; gap:7px; margin-top:10px; }
+.saved-save input { flex:1; min-width:0; }
+.saved-save button { font-size:12px; }
+.preview-note { background:var(--accent-wash); border-left:3px solid var(--accent); border-radius:3px; padding:12px; margin-top:16px; font-size:12px; }
+.preview-banner { margin:12px 2px 0 18px; background:var(--accent-wash); border-left:3px solid var(--accent); padding:10px 12px; font-size:12px; display:flex; align-items:center; justify-content:space-between; gap:8px; }
+.tile-fields { display:grid; grid-template-columns:1fr 1fr; gap:12px; margin-top:15px; }
+.tile-fields .span2 { grid-column:1/-1; }
+.tile-order-list { font-size:12px; line-height:21px; margin:12px 0; color:var(--muted); }
+.tile-state { margin:14px 0; font-size:12px; line-height:19px; }
+.tile-state.blocked { background:var(--warning-wash); color:var(--warning); padding:11px; border-radius:5px; }
+.tile-footer { border-top:1px solid var(--rule); padding-top:15px; margin-top:15px; }
+.statusbar { grid-column:1/-1; display:flex; gap:9px; align-items:center; border-top:1px solid var(--rule); padding:0 20px; font-size:11px; background:var(--surface); min-width:0; }
+.statusbar .status-message { overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+.statusbar .status-session { margin-left:auto; white-space:nowrap; font-size:10px; color:var(--muted); }
+.statusbar button { padding:0 6px; min-height:25px; font-size:11px; color:var(--accent); }
+.status-icon { color:var(--accent); }
+dialog { width:420px; max-width:calc(100% - 32px); max-height:760px; padding:22px; border:1px solid var(--control-edge); border-radius:var(--radius-dialog); background:var(--surface); color:var(--ink); box-shadow:0 14px 45px #25312b22; }
+dialog::backdrop { background:#25312b55; }
+dialog h2 { font-size:21px; margin-bottom:10px; }
+dialog p { margin:10px 0; }
+dialog .dialog-actions { display:flex; justify-content:flex-end; gap:8px; margin-top:20px; }
+.sr-only { position:absolute; width:1px; height:1px; padding:0; margin:-1px; overflow:hidden; clip-path:inset(50%); white-space:nowrap; }
+.demo-note { color:var(--muted); font-size:11px; margin-top:15px; }
+.prototype-options { border-top:1px solid var(--rule); margin-top:23px; padding-top:3px; }
+.prototype-options button { display:block; margin-top:8px; width:100%; text-align:left; font-size:12px; }
+.empty-wall { color:var(--wall-text); position:absolute; inset:0; display:grid; place-content:center; text-align:center; gap:9px; padding:20px; }
+.rail-drop { box-shadow:inset 0 0 0 3px var(--accent); background:var(--accent-wash); }
+@media (min-width:901px) and (max-width:1200px) {
+  :root { --roster-width:190px; --context-width:292px; }
+  .topbar { gap:12px; padding:0 14px; }
+  .tablet-address>span { display:none; }
+  .tablet-address code { font-size:11px; }
+  .center { padding-left:12px; padding-right:12px; }
+  .wall-heading .heading-with-meta { gap:8px; }
+}
+@media (max-width:900px) {
+  .app { display:flex; flex-direction:column; height:auto; min-height:844px; padding-bottom:44px; }
+  .topbar { display:grid; grid-template-columns:1fr auto auto; grid-template-rows:50px 46px; gap:0 7px; padding:0 12px 4px; }
+  .brand { gap:7px; }
+  h1 { font-size:15px; }
+  .connection { gap:0; font-size:11px; }
+  .connection button { font-size:11px; }
+  .connection .conn-word,.connection .check { display:none; }
+  .physical { font-size:11px; padding:4px 5px; }
+  .tablet-address { grid-column:1/-1; grid-row:2; width:100%; margin:0; gap:8px; }
+  .tablet-address>span { display:none; }
+  .tablet-address code { font-size:11px; background:var(--rail); border-radius:4px; padding:8px; flex:1; min-width:0; overflow:hidden; text-overflow:ellipsis; }
+  .tablet-address button { padding:4px 9px; }
+  .mobile-nav { display:flex; padding:0 12px; gap:2px; border-bottom:1px solid var(--rule); background:var(--surface); }
+  .mobile-nav button { flex:1; min-width:0; background:transparent; border:0; border-radius:0; font-size:12px; padding:8px 5px; min-height:47px; }
+  .mobile-nav button[aria-pressed=true] { color:var(--accent); box-shadow:inset 0 -2px var(--accent); font-weight:600; }
+  .center { padding:17px 12px 17px; }
+  .wall-heading { padding:0 4px; }
+  h2 { font-size:22px; }
+  .wall-heading .heading-with-meta { display:block; }
+  .wall-heading .meta { font-size:11px; }
+  .wall-heading button { padding:5px 10px; font-size:12px; }
+  .actual-content { margin:14px 4px 0; gap:4px; }
+  .actual-line { gap:7px; }
+  .actual-line strong { font-size:13px; }
+  .actual-line .meta,.actual-content>.meta { font-size:11px; }
+  .wall-tools { margin:12px 4px 7px; }
+  .snap-controls { gap:6px; }
+  .snap-controls select { width:58px; }
+  .snap-controls .grid-label { font-size:11px; }
+  .wall-tools .tools-end { gap:2px; }
+  .wall-tools button { padding:4px 7px; }
+  .wall-scroll { padding:5px 3px 6px 14px; }
+  .wall-shell { min-width:0; }
+  .wall-scroll.zoomed { max-height:385px; }
+  .wall-scroll.zoomed .wall-shell { width:200%; }
+  .wall { touch-action:pan-x pan-y; }
+  .panel { touch-action:pan-x pan-y; border-radius:4px; }
+  .panel-label { font-size:8px; line-height:13px; left:4px; top:4px; padding:0 3px; }
+  .panel-state { font-size:8px; line-height:12px; bottom:4px; left:4px; max-width:calc(100% - 8px); padding:0 3px; }
+  .panel-state small { display:none; }
+  .shape-mark { top:4px; right:4px; width:12px; height:12px; line-height:12px; font-size:9px; }
+  .resize-handle { display:none; }
+  .wall-legend { margin:9px 4px 0 14px; gap:11px; font-size:10px; }
+  .wall-legend .legend-shape { display:none; }
+  .coordinate-readout { font-size:10px; margin:9px 4px 0 14px; min-height:16px; }
+  .coordinate-readout .coordinate-hint { display:none; }
+  .wall-warnings { margin:9px 4px 0 14px; padding-top:8px; }
+  .wall-warnings p { font-size:11px; margin-bottom:0; }
+  .wall-warnings .desktop-warning { display:none; }
+  .wall-warnings button { min-height:44px; font-size:11px; }
+  .canvas-help { display:none; }
+  .roster { display:none; border:0; padding:20px 12px; overflow:visible; }
+  .context { border:0; border-top:1px solid var(--rule); overflow:visible; }
+  .context-tabs { display:none; }
+  .context-body { padding:19px 16px 24px; }
+  .selection-title { font-size:21px; }
+  .selection-state { margin-top:7px; }
+  .mobile-move { display:block; margin-top:17px; border-top:1px solid var(--rule); padding-top:15px; }
+  .desktop-move { display:none; }
+  .nudge-row { gap:7px; }
+  .nudge-row button { min-width:44px; min-height:44px; }
+  .nudge-row select { width:88px; }
+  .nudge-help { display:none; }
+  .inspector-section { margin-top:16px; padding-top:16px; }
+  .shape-warning { padding:12px; }
+  .shape-warning button { font-size:13px; }
+  .swatch { min-width:44px; min-height:44px; }
+  .swatch[aria-pressed=true]::after { inset:10px; }
+  .colour-row input[type=color] { height:44px; width:44px; }
+  .shortcuts-group { margin-top:20px; }
+  .statusbar { position:fixed; bottom:0; left:0; right:0; min-height:38px; z-index:10; padding:0 10px; gap:5px; }
+  .statusbar .status-session { font-size:9px; }
+  .statusbar button { min-height:44px; }
+  .status-icon { display:none; }
+  .app[data-task=tablets] .center,.app[data-task=tablets] .context { display:none; }
+  .app[data-task=tablets] .roster { display:flex; }
+  .app[data-task=content] .center,.app[data-task=saved] .center { display:none; }
+  .app[data-task=content] .context,.app[data-task=saved] .context { border:0; background:var(--surface); }
+  .app[data-task=wall] .context[data-mode=layout] { background:var(--rail); }
+  .shortcut-group { display:none; }
+  .demo-note { font-size:11px; }
+  .tile-ghost { padding:3px; }
+  .tile-ghost .cell-number { font-size:10px; padding:0 3px; }
+  .tile-ghost .cell-id { font-size:8px; bottom:2px; left:2px; }
+  .preview-banner { margin:10px 3px 0 14px; }
+  .saved-row button { font-size:12px; }
+  .saved-save button { font-size:13px; }
+  .asset-button { min-height:70px; }
+  .file-input::file-selector-button { min-height:44px; }
+}
+
+.selection-action { min-height:30px; padding:3px 6px; font-size:12px; }
+.selection-state { align-items:center; }
+.actual-line>button { min-height:26px; }
+.actual-content { margin-top:18px; }
+.wall-tools { margin-top:16px; margin-bottom:12px; }
+.shape-warning button { display:block; }
+@media (max-width:900px) {
+  .center { padding-top:12px; padding-bottom:8px; }
+  .wall-heading .heading-with-meta h2 { line-height:26px; }
+  .wall-heading .heading-with-meta .meta { display:block; line-height:16px; }
+  .actual-content { margin-top:8px; position:relative; }
+  .actual-line { padding-right:60px; min-height:20px; }
+  .actual-line>button { position:absolute; right:0; top:-4px; min-height:44px; }
+  .wall-tools { margin-top:8px; margin-bottom:3px; }
+  .coordinate-readout { display:none; }
+  .wall-warnings { margin-top:4px; padding-top:0; border-top:0; }
+  .wall-warnings p { font-size:10px; }
+  .wall-warnings button { font-size:10px; }
+  .selection-action { min-height:44px; font-size:12px; }
+  .selection-state { margin-top:2px; }
+  .mobile-move { margin-top:10px; padding-top:10px; }
+  .context-body { padding-top:16px; }
+}
+@media (max-width:900px) {
+  .wall-warnings p { display:flex; align-items:center; gap:5px; line-height:14px; }
+  .wall-warnings button { flex:none; }
+  .context-body { padding-top:12px; }
+  .mobile-move .section-label { margin-bottom:8px; }
+  .mobile-move { padding-top:8px; }
+}
+
+.connection button { display:flex; align-items:center; gap:12px; }
+@media (max-width:900px) {
+  button { min-width:44px; }
+  .connection button { gap:0; min-width:64px; }
+  .check-label { min-height:44px; }
+}
+
+.tile-active { margin-top:10px; }
+.tile-active>.section-label { display:none; }
+.tile-numbers { display:grid; grid-template-columns:1fr 1fr 1fr; gap:8px; }
+@media (min-width:901px) { .tile-fields select { font-size:12px; padding-left:7px; } }
+
+</style></head><body>
+
+<a class="skip" href="#workspace">Skip to wall</a>
+<div class="app" id="app" data-task="wall">
+<header class="topbar">
+  <div class="brand"><span class="brand-mark" aria-hidden="true"><i></i><i></i><i></i><i></i></span><h1>Tablet wall</h1></div>
+  <div class="connection"><button class="quiet" data-action="connection" aria-label="Connection details, 4 of 6 tablets online"><span class="check" aria-hidden="true">✓</span><span class="conn-word">Connected</span><span><b id="tally-online">4</b> / <span id="tally-total">6</span> online</span></button></div>
+  <div class="tablet-address"><span class="meta">Tablet address</span><code id="client-url">192.168.1.40:8000/client/</code><button data-action="copy" id="btn-copy-url" aria-label="Copy tablet address">Copy</button></div>
+  <button class="quiet physical" data-action="physical">Physical setup</button>
+</header>
+<nav class="mobile-nav" aria-label="Controller tasks"><button data-task="wall" aria-pressed="true">Wall</button><button data-task="tablets" aria-pressed="false">Tablets</button><button data-task="content" aria-pressed="false">Content</button><button data-task="saved" aria-pressed="false">Saved</button></nav>
+<aside class="roster" id="roster" aria-label="Tablets"><div class="rail-heading"><h3>Tablets</h3><small id="roster-count">6 devices</small></div><div id="device-list"></div><p class="roster-help">Drag a tablet onto the wall.<br>Drag it back here to remove it.</p><div class="shortcut-group"><h3>Saved layouts</h3><div id="layout-shortcuts"></div><button class="quiet" data-action="open-layouts">Manage layouts</button></div></aside>
+<main class="center" id="workspace" tabindex="-1">
+  <div class="wall-heading"><div class="heading-with-meta"><h2>Wall</h2><span class="meta" id="wall-dimensions">2,000 × 1,000 units</span></div><button data-action="tile-open">Tile tablets</button></div>
+  <div class="actual-content"><div class="actual-line"><span class="meta">On the wall</span><strong id="content-now">Mineral coast.png</strong><button class="quiet" data-action="open-content" style="padding:0 4px;font-size:12px">Change</button></div><p class="meta" id="actual-coverage"></p></div>
+  <div class="wall-tools"><div class="snap-controls"><label class="check-label"><input type="checkbox" id="snap" checked>Snap</label><label class="grid-label" for="grid-size">Grid</label><select id="grid-size"><option>10</option><option selected>20</option><option>50</option></select></div><div class="tools-end"><button class="quiet" data-action="undo" id="toolbar-undo" disabled>Undo</button><button class="quiet" data-action="zoom" id="zoom-wall">2× zoom</button><button class="quiet" data-action="keys" aria-label="Keyboard shortcuts">Keys</button></div></div>
+  <div class="wall-scroll" id="wall-scroll" tabindex="-1"><div class="wall-shell"><div class="ruler-x" id="ruler-x"></div><div class="ruler-y" id="ruler-y"></div><div class="wall" id="map-frame" aria-label="Wall placements, use Tab to select a tablet"></div></div></div>
+  <div class="preview-banner" id="preview-banner" hidden><span>Preview only. Live positions are unchanged.</span><button data-action="tile-cancel" class="quiet">Cancel</button></div>
+  <div class="wall-legend" aria-label="Wall legend"><span class="legend-item"><i class="legend-key" aria-hidden="true"></i>Online</span><span class="legend-item"><i class="legend-key offline" aria-hidden="true"></i>Offline</span><span class="legend-item"><i class="legend-key vacant" aria-hidden="true"></i>Saved spot</span><span class="legend-item"><i class="legend-key hatch" aria-hidden="true"></i>Bezel</span><span class="legend-item legend-shape">! Shape differs</span></div>
+  <div class="coordinate-readout"><span id="coordinate-readout"></span><span class="coordinate-hint">Wall units</span></div>
+  <div class="wall-warnings" id="wall-warnings"></div>
+  <p class="canvas-help">Drag to move. Corner handles resize. Alt disables snap. Arrow keys move 1 unit, Shift moves 10.</p>
+</main>
+<aside class="context" id="context" data-mode="tablet" aria-label="Context controls"><nav class="context-tabs" aria-label="Inspector mode"><button data-mode="tablet" aria-pressed="true">Tablet</button><button data-mode="content" aria-pressed="false">Content</button><button data-mode="layout" aria-pressed="false">Layout</button></nav><div class="context-body" id="context-body"></div></aside>
+<footer class="statusbar"><span class="status-icon" aria-hidden="true">✓</span><span class="status-message" id="status-text" role="status" aria-live="polite" aria-atomic="true">Wall is up to date.</span><button class="quiet" data-action="undo" id="status-undo" hidden>Undo</button><span class="status-session">Revision <span id="wall-rev">42</span> &nbsp; Session <span id="wall-gen">5c1f9a2e</span></span></footer>
+</div>
+<dialog id="dialog" aria-labelledby="dialog-title"><div id="dialog-body"></div></dialog>
+<noscript>This interactive design prototype needs JavaScript. It does not connect to a server.</noscript>
+
+<script>
+'use strict';
+const $ = s => document.querySelector(s);
+const $$ = s => [...document.querySelectorAll(s)];
+const clone = v => JSON.parse(JSON.stringify(v));
+const escapeHTML = v => String(v).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+const round = n => Math.round(n * 100) / 100;
+const fmt = n => Number.isFinite(n) ? String(round(n)) : '?';
+const mobile = () => matchMedia('(max-width:900px)').matches;
+const p = (x,y,w=640,h=410.5,b=14) => ({x,y,w,h,bezel:{top:b,right:b,bottom:b,left:b}});
+const devices = [
+ {id:'8a3c624d',type:'Android',online:true,vw:1280,vh:800,image:true,calibration:true,color:'#87987e',seen:'Connected now'},
+ {id:'c9ff6826',type:'iPad',online:true,vw:1024,vh:768,image:true,calibration:true,color:'#b1bea5',seen:'Connected now'},
+ {id:'cad58331',type:'Android',online:false,vw:1280,vh:800,image:true,calibration:true,color:'#9aa98f',seen:'12 minutes ago'},
+ {id:'f6e71ee9',type:'Android',online:true,vw:1280,vh:800,image:false,calibration:true,color:'#92a182',seen:'Connected now'},
+ {id:'b15addd1',type:'Android',online:true,vw:1280,vh:800,image:null,calibration:null,color:'#a6af9d',seen:'Connected now'},
+ {id:'33532d7d',type:'iPad',online:false,vw:768,vh:1024,image:true,calibration:true,color:'#b6bdae',seen:'Yesterday at 18:42'}
+];
+const initialPlacements = {'8a3c624d':p(70,60),'c9ff6826':p(730,60,640,440),'cad58331':p(70,520),'f6e71ee9':p(730,520),'4f19ab07':p(1510,520,390,440,12)};
+function svgURL(body) { return 'data:image/svg+xml;charset=utf-8,'+encodeURIComponent(body); }
+const coast = svgURL(`<svg xmlns="http://www.w3.org/2000/svg" width="2000" height="1000" viewBox="0 0 2000 1000"><rect width="2000" height="1000" fill="#dce0cc"/><circle cx="1390" cy="185" r="79" fill="#f6eed4"/><path d="M0 445C215 345 386 447 607 357S976 188 1207 277s465 33 793-104v827H0Z" fill="#b2bea1"/><path d="M0 653c282-171 456-105 683-256s415-38 610-62 409 100 707 86v579H0Z" fill="#859a7a"/><path d="M0 848c271-122 386-237 612-287s410 15 640-92 447 21 748 43v488H0Z" fill="#4f725e"/><path d="M0 1000V888c217-35 368-250 583-270s399 7 663-91 478 49 754 33v440Z" fill="#365749"/><path d="M0 895c223-34 363-256 585-273s398 3 662-91 475 48 753 33" fill="none" stroke="#ecedde" stroke-width="3"/><path d="M0 923c224-33 375-252 589-274s393 7 664-89 468 39 747 27" fill="none" stroke="#b2c1a5" stroke-width="2"/></svg>`);
+const tide = svgURL(`<svg xmlns="http://www.w3.org/2000/svg" width="2400" height="1200" viewBox="0 0 2400 1200"><rect width="2400" height="1200" fill="#dddcc9"/><path d="M0 240c360-180 720 300 1140 60s790-260 1260-90v990H0" fill="#adbaa6"/><path d="M0 500c420-300 730 270 1160 0s850-170 1240-110v810H0" fill="#7e9588"/><path d="M0 780c380-340 760 160 1230-110s780-180 1170-120v650H0" fill="#4d7067"/><path d="M0 900c510-290 760 210 1270-90s820-150 1130-120" fill="none" stroke="#e4e2cb" stroke-width="4"/></svg>`);
+const fold = svgURL(`<svg xmlns="http://www.w3.org/2000/svg" width="1600" height="1200" viewBox="0 0 1600 1200"><rect width="1600" height="1200" fill="#dadccb"/><path d="M0 1200 850 0h350L350 1200Z" fill="#a2ad98"/><path d="m350 1200 850-1200h400L750 1200Z" fill="#c3c7b0"/><path d="m750 1200 850-1200v1200Z" fill="#7f9480"/></svg>`);
+const assets = [
+ {id:'coast',name:'Mineral coast.png',w:2000,h:1000,url:coast,store:'Curated'},
+ {id:'tide',name:'Tidal study.png',w:2400,h:1200,url:tide,store:'Curated'},
+ {id:'fold',name:'Fold study.jpg',w:1600,h:1200,url:fold,store:'Uploaded'}
+];
+const layouts = [
+ {name:'Four landscape',width:2000,height:1000,placements:clone(initialPlacements),meta:'4 tablets, 1 saved spot'},
+ {name:'Offset study',width:2000,height:1000,placements:{...clone(initialPlacements),'cad58331':p(260,520),'f6e71ee9':p(920,520)},meta:'Staggered lower row'}
+];
+const scenes = [{name:'Mineral coast',content:{type:'image',asset:'coast'}},{name:'Alignment',content:{type:'calibration'}},{name:'Assigned colours',content:{type:'color'}}];
+const state = {
+ width:2000,height:1000,placements:clone(initialPlacements),selected:'c9ff6826',mode:'tablet',task:'wall',
+ content:{type:'image',asset:'coast'},contentView:'image',asset:'coast',color:'#92a182',
+ snap:true,grid:20,step:20,zoom:1,lock:true,lockRatio:null,draft:null,dirty:false,
+ revision:42,generation:'5c1f9a2e',history:[],gesture:null,preview:null,
+ tile:{transport:'custom',scope:'online',order:'wall',columns:3,rows:2,gap:20,shape:'keep',ids:[],swap:null,phase:'idle',message:''},
+ upload:{file:null,stage:'idle',progress:0,message:''},failAt:Number(new URLSearchParams(location.search).get('failAt')||0),
+ status:'Wall is up to date.',statusKind:'ok',busy:false
+};
+const device = id => devices.find(d=>d.id===id);
+const selectedDevice = () => device(state.selected);
+const asset = id => assets.find(a=>a.id===id);
+const visible = r => ({x:r.x+r.bezel.left,y:r.y+r.bezel.top,w:r.w-r.bezel.left-r.bezel.right,h:r.h-r.bezel.top-r.bezel.bottom});
+const ratio = r => visible(r).w/visible(r).h;
+const overlap = (a,b) => a.x < b.x+b.w && a.x+a.w>b.x && a.y<b.y+b.h && a.y+a.h>b.y;
+const shapeDelta = (d,r) => d ? Math.abs(ratio(r)/(d.vw/d.vh)-1) : null;
+const outside = r => r.x<0||r.y<0||r.x+r.w>state.width||r.y+r.h>state.height;
+function valid(r) { return [r.x,r.y,r.w,r.h,...Object.values(r.bezel)].every(Number.isFinite)&&r.w>0&&r.h>0&&Object.values(r.bezel).every(v=>v>=0)&&visible(r).w>0&&visible(r).h>0; }
+function defaultPlacement(d) { const h=260; return p(0,0,round((h-28)*d.vw/d.vh+28),h); }
+function resetDraft() { const d=selectedDevice(); state.draft=clone(state.placements[state.selected]||(d?defaultPlacement(d):null));state.dirty=false;state.lockRatio=state.draft?ratio(state.draft):null; }
+function focusKey(key) { const el=document.getElementById(key)||$$('[data-focus]').find(el=>el.dataset.focus===key);if(el&&!el.closest('[hidden]'))el.focus({preventScroll:true}); }
+function notify(message,kind='ok') { state.status=message;state.statusKind=kind;renderStatus(); }
+function renderStatus() {
+ $('#status-text').textContent=state.status;
+ $('#status-text').style.color=state.statusKind==='error'?'var(--error)':'';
+ $('#wall-rev').textContent=state.revision;
+ $('#wall-gen').textContent=state.generation;
+ $('#status-undo').hidden=!state.history.length;
+ $('#toolbar-undo').disabled=!state.history.length||state.busy;
+ $('#status-undo').disabled=state.busy;
+}
+function historyEntry(before,label,bumpRevision=true) { if(JSON.stringify(before)===JSON.stringify(state.placements))return;state.history.push({generation:state.generation,before:clone(before),after:clone(state.placements),label});if(state.history.length>30)state.history.shift();if(bumpRevision)state.revision++; }
+function commit(next,label) {
+ if(state.busy||state.preview)return;
+ const before=clone(state.placements);state.placements=clone(next);historyEntry(before,label);resetDraft();renderAll();notify(label);
+}
+function commitSelected(r,label) { if(!valid(r))return formError('Use finite values and a positive visible area inside the bezel.');commit({...state.placements,[state.selected]:r},label); }
+function undo() {
+ if(state.gesture)return cancelGesture();
+ if(state.preview) {cancelPreview();notify('Preview cancelled. Press Undo again to restore the last placement.');return;}
+ if(state.busy||!state.history.length)return;
+ const h=state.history.pop();if(h.generation!==state.generation){state.history=[];return notify('Session changed. Placement history cleared.');}
+ state.placements=clone(h.before);state.revision++;resetDraft();renderAll();notify('Undone. '+h.label);
+ if(!state.placements[state.selected])focusKey('place-selected');
+}
+function select(id,source='wall') {
+ if(state.busy||state.gesture)return;
+ if(state.preview)cancelPreview();
+ state.selected=id;state.mode='tablet';if(mobile())state.task='wall';resetDraft();renderAll();
+ focusKey((state.placements[id]?'wall-':'rail-')+id);
+ if(source==='rail'&&mobile()) { $('#context').scrollIntoView({block:'nearest',behavior:'auto'});if(!state.placements[id])focusKey('place-selected'); }
+ else if(source==='rail'&&!mobile())focusKey('rail-'+id);
+}
+function placementStyle(r) { return `left:${r.x/state.width*100}%;top:${r.y/state.height*100}%;width:${r.w/state.width*100}%;height:${r.h/state.height*100}%;`; }
+function sliceMarkup(d,r,mini=false) {
+ const v=visible(r),active=asset(state.content.asset);
+ if(!d||!d.online)return '';
+ let style=`left:${r.bezel.left/r.w*100}%;top:${r.bezel.top/r.h*100}%;width:${v.w/r.w*100}%;height:${v.h/r.h*100}%;`;
+ if(state.content.type==='image'&&d.image===true) {
+  if(!active)return `<span class="screen-slice" style="${style}background:var(--error-wash)"></span>`;
+  const scale=Math.max(state.width/active.w,state.height/active.h),iw=active.w*scale,ih=active.h*scale;
+  const left=((state.width-iw)/2-v.x)/v.w*100,top=((state.height-ih)/2-v.y)/v.h*100;
+  return `<span class="screen-slice" style="${style}"><img alt="" draggable="false" class="slice-art" src="${active.url}" style="width:${iw/v.w*100}%;height:${ih/v.h*100}%;left:${left}%;top:${top}%"></span>`;
+ }
+ if(state.content.type==='calibration'&&d.calibration===true) {
+  return `<span class="screen-slice" style="${style}background-color:#526957;background-image:linear-gradient(#d7e5cd 1px,transparent 1px),linear-gradient(90deg,#d7e5cd 1px,transparent 1px);background-size:${100/v.w*100}% ${100/v.h*100}%;background-position:${-v.x/v.w*100}% ${-v.y/v.h*100}%"></span>`;
+ }
+ return `<span class="screen-slice" style="${style}background:${d.color}"></span>`;
+}
+function rowMarkup(d) {
+ const r=state.placements[d.id],selected=state.selected===d.id;
+ const thumb=r?sliceMarkup(d,r,true):`<span style="position:absolute;inset:0;background:${d.online?d.color:'var(--hover)'}"></span>`;
+ return `<button class="device-row" data-device="${d.id}" data-source="rail" data-focus="rail-${d.id}" aria-pressed="${selected}" aria-label="${d.id}, ${d.online?'online':'offline'}, ${r?'on the wall':'not placed'}"><span class="mini-screen ${d.online?'':'offline'}" aria-hidden="true">${thumb}</span><span><strong>${d.id}</strong><small>${d.online?'Online':d.id==='cad58331'?'Offline, 12 min':'Offline, yesterday'}${d.image===false?' · Colour only':''}</small></span><span class="row-end" aria-hidden="true">${selected?'✓':!r?'+':''}</span></button>`;
+}
+function renderRoster() {
+ const placed=devices.filter(d=>state.placements[d.id]),free=devices.filter(d=>!state.placements[d.id]),reservations=Object.keys(state.placements).filter(id=>!device(id));
+ $('#device-list').innerHTML=`<div class="group-heading"><span>On the wall</span><span>${placed.length}</span></div>${placed.map(rowMarkup).join('')}<div class="group-heading"><span>Not placed</span><span>${free.length}</span></div>${free.map(rowMarkup).join('')||'<p class="roster-help">Every registered tablet is placed.</p>'}${reservations.length?`<div class="group-heading"><span>Saved spots</span><span>${reservations.length}</span></div>${reservations.map(id=>`<button class="device-row" data-device="${id}" data-source="rail" data-focus="rail-${id}" aria-pressed="${state.selected===id}"><span class="mini-screen vacant" aria-hidden="true"></span><span><strong>${id}</strong><small>No tablet registered</small></span></button>`).join('')}`:''}`;
+ $('#roster-count').textContent=devices.length+' devices';$('#tally-online').textContent=devices.filter(d=>d.online).length;$('#tally-total').textContent=devices.length;
+ $('#layout-shortcuts').innerHTML=layouts.slice(0,2).map((l,i)=>`<button class="layout-shortcut" data-action="layout-preview" data-index="${i}" data-focus="layout-short-${i}"><span class="layout-mini" aria-hidden="true"><i></i><i></i><i></i><i></i></span><span><strong style="font-size:12px">${escapeHTML(l.name)}</strong><small style="display:block;font-size:11px">${escapeHTML(l.meta)}</small></span></button>`).join('');
+}
+function currentSummary() {
+ if(state.content.type==='calibration')return 'Calibration grid';
+ if(state.content.type==='color')return 'Assigned colours';
+ return asset(state.content.asset)?.name||'Archived coast.png (missing)';
+}
+function renderWall() {
+ const positions=state.preview?.placements||state.placements;
+ const wall=$('#map-frame');
+ wall.classList.toggle('previewing',!!state.preview);
+ wall.style.aspectRatio=state.width+'/'+state.height;
+ wall.innerHTML=Object.entries(positions).map(([id,r])=>{
+  const d=device(id),selected=id===state.selected&&!state.preview;
+  const mismatch=d&&shapeDelta(d,r)>.01;
+  const conflicts=Object.entries(positions).filter(([other,q])=>id!==other&&overlap(r,q));
+  let note=!d?'Saved spot':!d.online?'Offline':state.content.type==='image'&&d.image===false?'Colour only':state.content.type==='image'&&d.image===null?'Image support unknown':state.content.type==='image'&&!asset(state.content.asset)?'Image unavailable':'';
+  return `<button class="panel ${!d?'vacant':!d.online?'offline':''} ${selected?'selected':''}" data-device="${id}" data-source="wall" data-focus="wall-${id}" aria-pressed="${selected}" ${state.preview?'tabindex="-1"':''} aria-label="${id}, ${note||'online'}, X ${fmt(r.x)}, Y ${fmt(r.y)}, width ${fmt(r.w)}, height ${fmt(r.h)}${mismatch?', screen shape differs':''}${conflicts.length?', overlaps '+conflicts.map(([k])=>k).join(', '):''}" style="${placementStyle(r)}">${sliceMarkup(d,r)}<span class="panel-label">${id}</span>${note?`<span class="panel-state">${note}${!d?'<small>'+id+'</small>':!d.online?'<small>Spot retained</small>':''}</span>`:''}${mismatch?'<span class="shape-mark" aria-hidden="true">!</span>':''}${conflicts.length?'<span class="panel-state" style="bottom:auto;top:35px">Overlap</span>':''}${selected&&d?['nw','ne','sw','se'].map(c=>`<span class="resize-handle" data-corner="${c}" aria-hidden="true"></span>`).join(''):''}</button>`;
+ }).join('');
+ if(!Object.keys(positions).length)wall.innerHTML='<div class="empty-wall"><strong>Place your first tablet</strong><span>Select a tablet, then choose Place on wall.</span></div>';
+ if(state.preview?.kind==='tile')state.preview.cells.forEach((cell,i)=>{
+  const el=document.createElement('button');el.className='tile-ghost';el.dataset.action='tile-swap';el.dataset.index=i;el.dataset.focus='cell-'+i;el.setAttribute('aria-label',`Cell ${i+1}, ${cell.id}. Select two cells to swap tablets.`);el.setAttribute('aria-pressed',String(state.tile.swap===i));el.style.cssText=placementStyle(cell.rect);el.innerHTML=`<span class="cell-number">${i+1}</span><span class="cell-id">${cell.id}</span>`;wall.append(el);
+ });
+ $('#ruler-x').innerHTML=[0,.25,.5,.75,1].map(n=>`<span>${Math.round(state.width*n)}</span>`).join('');
+ $('#ruler-y').innerHTML=[0,.5,1].map(n=>`<span>${Math.round(state.height*n)}</span>`).join('');
+ $('#wall-dimensions').textContent=state.width.toLocaleString()+' × '+state.height.toLocaleString()+' units';
+ $('#content-now').textContent=currentSummary();
+ const placed=devices.filter(d=>state.placements[d.id]),reserved=Object.keys(state.placements).filter(id=>!device(id)).length;
+ const supported=placed.filter(d=>d.online&&d.image===true).length,unsupported=placed.filter(d=>d.online&&d.image===false).length,unknown=placed.filter(d=>d.online&&d.image===null).length,offline=placed.filter(d=>!d.online).length;
+ const coverage=state.content.type==='image'?`${supported} image capable${unsupported?' · '+unsupported+' colour only':''}${unknown?' · '+unknown+' support unknown':''}${offline?' · '+offline+' offline':''}`:`${placed.length} tablets placed${offline?' · '+offline+' offline':''}`;
+ $('#actual-coverage').textContent=coverage+(reserved?' · '+reserved+' saved spot':'');
+ const r=state.gesture?.next||state.placements[state.selected];
+ $('#coordinate-readout').textContent=r?`${state.selected}   X ${fmt(r.x)}   Y ${fmt(r.y)}   W ${fmt(r.w)}   H ${fmt(r.h)}`:'Select a tablet to place it on the wall.';
+ $('#preview-banner').hidden=!state.preview;if(state.preview?.kind!=='layout')$('#preview-banner').innerHTML='<span>Preview only. Live positions are unchanged.</span><button data-action="tile-cancel" class="quiet">Cancel</button>';
+ const mismatches=placed.filter(d=>shapeDelta(d,state.placements[d.id])>.01);
+ const overlaps=Object.entries(state.placements).filter(([id,r])=>Object.entries(state.placements).some(([other,q])=>other!==id&&overlap(r,q))).length;
+ const outsideCount=Object.values(state.placements).filter(outside).length;
+ $('#wall-warnings').innerHTML=`<p>${mismatches.length?mismatches.length+' screen shape'+(mismatches.length===1?' differs':'s differ')+'. ':''}${overlaps?overlaps+' footprints overlap. ':''}${outsideCount?outsideCount+' footprints extend outside the wall. ':''}${reserved?reserved+' saved spot is retained.':''} <button data-action="wall-checks">Review wall checks</button></p><p class="desktop-warning">${state.content.type==='image'&&unsupported?'f6e71ee9 shows its assigned colour. ':''}${state.content.type==='image'&&unknown?'Image support is unknown for '+placed.filter(d=>d.online&&d.image===null).map(d=>d.id).join(', ')+'. ':''}${offline?'Offline tablets keep their saved positions.':''}</p>`;
+}
+function field(id,label,value,extra='') { return `<label class="field" for="${id}">${label}<input id="${id}" data-field="${id}" type="number" step="any" inputmode="decimal" value="${fmt(value)}" ${extra}></label>`; }
+function moveControls(which) { return `<div class="${which==='mobile'?'mobile-move':'inspector-section desktop-move'}"><div class="section-label"><h3>Move</h3><small>Step in units</small></div><div class="nudge-row">${[['left','←'],['up','↑'],['down','↓'],['right','→']].map(([dir,icon])=>`<button data-action="nudge" data-dir="${dir}" data-focus="${which}-nudge-${dir}" aria-label="Move ${dir}" ${!state.placements[state.selected]||state.preview?'disabled':''}>${icon}</button>`).join('')}<select id="${which}-step" aria-label="Movement step">${[1,10,20,50].map(n=>`<option value="${n}" ${n===state.step?'selected':''}>${n}</option>`).join('')}</select></div><p class="nudge-help">Arrow keys move 1 unit. Shift moves 10.</p></div>`; }
+function shapeMarkup(d,r) {
+ const v=visible(r),a=ratio(r),screen=d.vw/d.vh,delta=Math.abs(a/screen-1),crop=(1-Math.min(a/screen,screen/a))*100,matchH=round(v.w/screen+r.bezel.top+r.bezel.bottom);
+ const side=a>screen?'left and right':'top and bottom',screenName=Math.abs(screen-4/3)<.001?'4:3':Math.abs(screen-1.6)<.001?'16:10':screen.toFixed(3)+':1';
+ return `<p class="shape-readout" id="shape-readout">Visible rect &nbsp; ${fmt(v.x)}, ${fmt(v.y)} · ${fmt(v.w)} × ${fmt(v.h)}<br>Visible shape ${a.toFixed(3)} · Screen ${screen.toFixed(3)}<br>Screen-shape delta ${(delta*100).toFixed(1)}%</p>${delta>.01?`<div class="shape-warning" id="shape-warning"><strong>The screen shape does not match</strong>This area is ${a.toFixed(3)}:1 but the screen is ${screenName}. The tablet crops ${crop.toFixed(1)}% of the ${a>screen?'width':'height'}, split across the ${side} edges of its slice, so its edges will not line up with its neighbours.<button data-action="match-shape" data-focus="match-shape">Match screen shape</button><span class="result">Sets size to ${fmt(r.w)} × ${fmt(matchH)}.</span></div>`:'<p class="shape-readout">✓ Visible shape matches the screen.</p>'}`;
+}
+function renderTablet() {
+ const d=selectedDevice(),r=state.draft;
+ if(!state.selected)return '<h2 class="selection-title">Select a tablet</h2><p class="browse-note">Choose a footprint on the wall or a tablet in the list.</p>';
+ if(!d)return `<h2 class="selection-title" tabindex="-1" id="selection-heading">Saved spot</h2><p class="meta">${state.selected}</p><div class="shape-warning"><strong>No tablet is registered</strong>A returning tablet reclaims this spot. Release it only if that tablet is gone for good.</div><div class="inspector-section"><h3>Reserved footprint</h3><p class="shape-readout">X ${fmt(r.x)} · Y ${fmt(r.y)}<br>${fmt(r.w)} × ${fmt(r.h)} units</p></div><button class="wide" data-action="release" data-focus="release">Release saved spot</button><p class="browse-note">Release requires a second confirmation.</p>`;
+ return `<h2 class="selection-title" tabindex="-1" id="selection-heading">${d.id}</h2><p class="meta">${d.type}, ${d.vw} × ${d.vh} px</p><div class="selection-state"><span>${d.online?'Online':'Offline'} · ${state.placements[d.id]?'On wall':'Not placed'}</span>${state.placements[d.id]?'<button type="button" class="quiet selection-action" data-action="remove" data-focus="remove-selected">Remove from wall</button>':'<button type="button" class="primary selection-action" data-action="place" id="place-selected">Place on wall</button>'}</div>${moveControls('mobile')}<form id="placement-form" novalidate><div class="inspector-section"><div class="section-label"><h3>${state.placements[d.id]?'Position and size':'Size to place'}</h3><small>Wall units</small></div><div class="fields">${field('position-x','Left, X',r.x)}${field('position-y','Top, Y',r.y)}</div><div class="fields">${field('position-w','Width',r.w,'min="1"')}${field('position-h','Height',r.h,'min="1"')}</div><label class="check-label aspect-check"><input type="checkbox" id="aspect-lock" ${state.lock?'checked':''}>Lock visible aspect</label><div class="form-actions"><button type="submit" class="${state.dirty?'primary':''}" id="save-position">${state.placements[d.id]?'Save position':'Place at these coordinates'}</button></div><p id="placement-error" class="error-box" role="alert" tabindex="-1" hidden></p><div id="shape-info">${shapeMarkup(d,r)}</div></div>${moveControls('desktop')}<div class="details-list"><details id="bezel-details"><summary>Bezel and visible area <small>${fmt(r.bezel.top)} / ${fmt(r.bezel.right)} / ${fmt(r.bezel.bottom)} / ${fmt(r.bezel.left)}</small></summary><div class="details-body"><div class="fields">${field('bezel-top','Top',r.bezel.top,'min="0"')}${field('bezel-right','Right',r.bezel.right,'min="0"')}${field('bezel-bottom','Bottom',r.bezel.bottom,'min="0"')}${field('bezel-left','Left',r.bezel.left,'min="0"')}</div><p class="browse-note">Offsets hide content behind the frame. They do not change the tablet orientation.</p></div></details><details id="tablet-colour-details"><summary>Tablet colour <small>${d.color}</small></summary><div class="details-body">${paletteHTML('device',d.color)}<div class="colour-row"><label for="device-color">Custom</label><input id="device-color" type="color" value="${d.color}"></div><p class="meta">Used in Colour mode and as the image fallback.</p></div></details><details id="device-details"><summary>Device details</summary><div class="details-body"><dl class="facts"><dt>Device ID</dt><dd>${d.id}</dd><dt>Type</dt><dd>${d.type}</dd><dt>Screen</dt><dd>${d.vw} × ${d.vh} px</dd><dt>Image capability</dt><dd>${d.image===true?'Supported':d.image===false?'Unsupported':'Unknown'}</dd><dt>Last seen</dt><dd>${d.seen}</dd></dl><button class="wide" data-action="forget" data-focus="forget" style="margin-top:14px" ${d.online?'disabled':''}>Forget tablet</button><p class="browse-note">${d.online?'Disconnect the tablet before forgetting it.':'Removes this device and its saved position.'}</p></div></details></div><div class="remove-area"><small>${state.placements[d.id]?'Remove from wall keeps the tablet registered. You can undo.':'Place on wall finds the first free position, including saved spots.'}</small></div></form>`;
+}
+function paletteHTML(target,value) { return `<div class="swatches" aria-label="${target==='global'?'Wall':'Tablet'} colour presets">${['#92a182','#b1bea5','#365749','#e4e4d1','#b18b73','#7e9696'].map(c=>`<button type="button" class="swatch" style="--swatch:${c}" data-action="${target}-colour" data-color="${c}" data-focus="${target}-${c.slice(1)}" aria-label="${target==='global'?'Choose wall':'Set tablet'} colour ${c}" aria-pressed="${value===c}"></button>`).join('')}</div>`; }
+function savedHTML(kind) {
+ const list=kind==='layout'?layouts:scenes,title=kind==='layout'?'Saved layouts':'Saved scenes';
+ return `<section class="saved-section"><div class="section-label"><h3>${title}</h3><button class="quiet" data-action="refresh-saved" data-kind="${kind}" data-focus="refresh-${kind}">Refresh</button></div><p class="meta">${kind==='layout'?'Wall size and positions only.':'Wall content only. Positions stay in place.'}</p><div>${list.map((s,i)=>`<div class="saved-row">${kind==='layout'?'<span class="layout-mini" aria-hidden="true"><i></i><i></i><i></i><i></i></span>':''}<div class="saved-info"><strong>${escapeHTML(s.name)}</strong><small>${kind==='layout'?s.width+' × '+s.height: s.content.type==='image'?'Image':s.content.type==='color'?'Colour':'Calibration'}</small></div><div class="saved-actions"><button data-action="recall-saved" data-kind="${kind}" data-index="${i}" data-focus="recall-${kind}-${i}">Recall</button><button data-action="delete-saved" data-kind="${kind}" data-index="${i}" data-focus="delete-${kind}-${i}" aria-label="Delete ${escapeHTML(s.name)} ${kind}">Delete</button></div></div>`).join('')||'<p class="browse-note">Nothing saved yet. Name this '+kind+' to keep it.</p>'}</div><form data-save-kind="${kind}"><label for="${kind}-name">Name</label><div class="saved-save"><input id="${kind}-name" maxlength="64" autocomplete="off" placeholder="${kind==='layout'?'Lobby, 4 screens':'Opening image'}" required><button type="submit">Save ${kind}</button></div></form></section>`;
+}
+function renderContent() {
+ let body='';
+ if(state.contentView==='image') {
+  const picked=asset(state.asset),missing=state.content.type==='image'&&!asset(state.content.asset),already=state.asset===state.content.asset&&state.content.type==='image';
+  body=`${missing?'<div class="error-box" id="image-missing" role="alert"><strong>The active image is missing</strong>Archived coast.png is no longer in the image library. Image-capable tablets show an error.<div class="recovery-actions"><button data-action="pick-replacement">Pick replacement</button><button data-action="recover-colour">Show colour</button><button data-action="recover-calibration">Show calibration</button></div></div>':''}<div class="section-label"><h3>Image library</h3><button class="quiet" data-action="refresh-assets" id="btn-assets-refresh">Refresh</button></div><div id="asset-list">${assets.filter(a=>a.store==='Curated').map(assetMarkup).join('')}</div>${picked?`<img class="image-preview" src="${picked.url}" alt="Preview of ${escapeHTML(picked.name)}"><p class="browse-note">${picked.w} × ${picked.h} px. Centred cover across the whole wall. Browsing does not change the wall.</p>`:'<p class="browse-note">Pick an image to preview it.</p>'}<button class="primary wide" id="btn-image-apply" data-action="apply-image" ${!picked||already?'disabled':''}>${already?'On the wall':'Show on wall'}</button><p class="browse-note" id="image-active-text">Actual scene: ${escapeHTML(currentSummary())}.</p><section class="saved-section"><h3>Your uploads</h3><div id="media-list">${assets.filter(a=>a.store==='Uploaded').map(assetMarkup).join('')}</div><h3 style="margin-top:16px">Add an image</h3><p class="meta">JPEG or PNG. Stored on this server.</p><input class="file-input" type="file" id="upload-file" accept="image/jpeg,image/png" aria-label="Choose an image to upload"><button class="wide" id="btn-upload" data-action="upload" ${!state.upload.file||state.upload.stage==='uploading'?'disabled':''}>${state.upload.stage==='uploading'?'Uploading':'Upload'}</button><progress id="upload-progress" max="100" value="${state.upload.progress}" ${state.upload.stage==='idle'?'hidden':''} aria-label="Upload progress"></progress><p class="upload-status" role="status" id="upload-status">${escapeHTML(state.upload.message||'No file chosen.')}</p></section>`;
+ } else if(state.contentView==='color')body=`<h3>Wall colour</h3><p class="browse-note">Choose a colour, then apply it to every registered tablet.</p>${paletteHTML('global',state.color)}<div class="colour-row"><label for="global-color">Custom</label><input type="color" id="global-color" value="${state.color}"><span class="meta">${state.color}</span></div><button class="primary wide" data-action="apply-colour" id="btn-apply-all">Apply to all tablets</button><p class="browse-note">Show the assigned tablet colours without changing them.</p><button class="wide" data-action="recover-colour">Show assigned colours</button>`;
+ else body='<h3>Calibration grid</h3><p class="browse-note">One shared grid across the wall. Check the seams and measure content hidden behind each bezel.</p><button class="primary wide" data-action="recover-calibration" id="show-calibration">Show calibration grid</button>';
+ return `<h2 class="selection-title">Content</h2><p class="meta">Actual scene: ${escapeHTML(currentSummary())}</p><div class="content-tabs" id="wall-content" role="group" aria-label="Browse content">${[['color','Colour'],['calibration','Calibration'],['image','Image']].map(([v,name])=>`<button data-content="${v}" data-focus="content-${v}" aria-pressed="${state.contentView===v}">${name}</button>`).join('')}</div>${body}${savedHTML('scene')}`;
+}
+function assetMarkup(a) { return `<button class="asset-button" data-asset="${a.id}" data-focus="asset-${a.id}" aria-pressed="${a.id===state.asset}"><img class="asset-thumb" src="${a.url}" alt=""><span><strong>${escapeHTML(a.name)}</strong><small>${a.w} × ${a.h}${a.id===state.content.asset&&state.content.type==='image'?' · On wall':''}</small></span></button>`; }
+function tileMembers() {
+ let ds=devices.filter(d=>state.tile.scope==='all'||(state.tile.scope==='online'?d.online:!!state.placements[d.id]));
+ return ds.sort((a,b)=>state.tile.order==='id'?a.id.localeCompare(b.id):((state.placements[a.id]?.y??100000)-(state.placements[b.id]?.y??100000)|| (state.placements[a.id]?.x??100000)-(state.placements[b.id]?.x??100000)||a.id.localeCompare(b.id))).map(d=>d.id);
+}
+function tilePlan() {
+ const t=state.tile,ids=t.ids.length?t.ids:tileMembers(),c=Number(t.columns),rows=Number(t.rows),gap=Number(t.gap);
+ const errors=[],cells=[],proposal={};
+ if(!Number.isInteger(c)||!Number.isInteger(rows)||c<1||rows<1||!Number.isFinite(gap)||gap<0)errors.push('Use positive whole numbers for rows and columns, and a gap of zero or more.');
+ if(!ids.length)errors.push('No tablets are included in this scope.');
+ if(c*rows<ids.length)errors.push(`${c*rows} cells cannot hold ${ids.length} tablets. Add ${ids.length-c*rows} cells.`);
+ const cw=(state.width-(c-1)*gap)/c,ch=(state.height-(rows-1)*gap)/rows;
+ if(!(cw>0&&ch>0))errors.push('The gap leaves no room for the tablet cells.');
+ if(!errors.length)ids.forEach((id,i)=>{
+  const d=device(id),b=clone(state.placements[id]?.bezel||{top:14,right:14,bottom:14,left:14});
+  let w=cw,h=ch;
+  if(t.shape==='keep') {
+   const maxW=cw-b.left-b.right,maxH=ch-b.top-b.bottom,s=d.vw/d.vh;
+   const vw=Math.min(maxW,maxH*s);w=vw+b.left+b.right;h=vw/s+b.top+b.bottom;
+  }
+  const r={x:round((i%c)*(cw+gap)+(cw-w)/2),y:round(Math.floor(i/c)*(ch+gap)+(ch-h)/2),w:round(w),h:round(h),bezel:b};
+  if(!valid(r))errors.push(id+' has no visible area at this cell size.');
+  proposal[id]=r;cells.push({id,rect:r});
+ });
+ const retained=Object.entries(state.placements).filter(([id])=>!ids.includes(id));
+ const conflicts=[];
+ Object.entries(proposal).forEach(([id,r])=>retained.forEach(([spot,q])=>{if(overlap(r,q))conflicts.push({id,spot});}));
+ const spots=[...new Set(conflicts.map(c=>c.spot))];
+ spots.forEach(id=>errors.push((device(id)?'Offline spot ':'Saved spot ')+id+' intersects the preview. '+(device(id)?'Move it or include Placed tablets.':'Release it before applying.')));
+ return {ids,cells,proposal,errors,conflicts,spots,cw,ch,mismatches:Object.entries(proposal).filter(([id,r])=>shapeDelta(device(id),r)>.01).length};
+}
+function updateTilePreview(resetOrder=false) {
+ if(resetOrder||!state.tile.ids.length)state.tile.ids=tileMembers();
+ const plan=tilePlan();state.preview={kind:'tile',placements:{...clone(state.placements),...plan.proposal},cells:plan.cells,plan};
+ state.tile.phase='preview';state.tile.message='';
+}
+function tileHTML() {
+ const t=state.tile,plan=state.preview?.kind==='tile'?state.preview.plan:tilePlan();
+ const opts=(list,value)=>list.map(([v,label])=>`<option value="${v}" ${String(v)===String(value)?'selected':''}>${label}</option>`).join('');
+ return `<section class="saved-section"><div class="section-label"><h3>Tile tablets</h3>${state.preview?'<button class="quiet" data-action="tile-cancel">Cancel preview</button>':''}</div><p class="meta">Preview on the wall. Live positions change only when you apply.</p><div class="tile-fields"><label class="field" for="tile-scope">Scope<select id="tile-scope">${opts([['online','Online tablets'],['placed','Placed tablets'],['all','All registered tablets']],t.scope)}</select></label><label class="field" for="tile-order">Order<select id="tile-order">${opts([['wall','Wall order'],['id','Tablet ID']],t.order)}</select></label><div class="tile-numbers span2"><label class="field" for="tile-columns">Columns<input id="tile-columns" type="number" min="1" step="1" value="${t.columns}"></label><label class="field" for="tile-rows">Rows<input id="tile-rows" type="number" min="1" step="1" value="${t.rows}"></label><label class="field" for="tile-gap">Gap, units<input id="tile-gap" type="number" min="0" step="any" value="${t.gap}"></label></div><label class="field span2" for="tile-shape">Screen shape<select id="tile-shape">${opts([['keep','Keep screen shape'],['fill','Fill cells']],t.shape)}</select></label></div><p class="browse-note">${t.shape==='keep'?'Each footprint fits inside its cell. Visible shape matches its screen.':'Each footprint fills its cell. Bezels stay fixed; shapes may differ.'}</p>${state.preview?`<p class="tile-order-list">Select two numbered cells to swap tablets. Use Tab and Enter with the keyboard.</p><p class="tile-state ${plan.errors.length?'blocked':''}" id="tile-result" role="status">${plan.errors.length?'<strong>Apply blocked.</strong><br>'+plan.errors.map(escapeHTML).join('<br>'):`${plan.ids.length} tablets in ${t.columns} × ${t.rows} cells. ${fmt(plan.cw)} × ${fmt(plan.ch)} units per cell. ${plan.mismatches} screen shapes differ.`}</p><div class="tile-footer"><p class="meta">${t.transport==='auto'?'1 arrangement request. Retained spots are checked before applying.':plan.ids.length+' placement requests, one after another. If one fails, earlier updates stay applied.'}</p><button class="primary wide" data-action="tile-apply" id="apply-tiling" style="margin-top:12px" ${plan.errors.length||state.busy?'disabled':''}>${state.busy?'Applying tiling':'Apply tiling'}</button></div>`:`<button class="wide" data-action="tile-open" style="margin-top:12px">Preview tiling</button>`}${t.message?`<div class="${t.phase==='failed'?'error-box':'preview-note'}" role="status">${escapeHTML(t.message)}${t.phase==='failed'?'<button data-action="undo" style="margin-top:9px">Undo completed updates</button>':''}</div>`:''}</section>`;
+}
+function renderLayout() {
+ if(state.preview?.kind==='tile'||state.tile.phase==='failed')return '<h2 class="selection-title">Tile tablets</h2>'+tileHTML().replace('class="saved-section"','class="tile-active"');
+ return `<h2 class="selection-title">Layout</h2><p class="meta">Positions and wall size. Content stays separate.</p><form id="wall-form" class="inspector-section" novalidate><div class="section-label"><h3>Wall size</h3><small>Wall units</small></div><div class="fields">${field('wall-width','Width',state.width,'step="1" min="1"')}${field('wall-height','Height',state.height,'step="1" min="1"')}</div><button type="submit" class="wide" id="btn-wall-save" style="margin-top:12px">Save size</button><p class="browse-note">Size changes keep each footprint at its current coordinates.</p></form>${tileHTML()}<section class="saved-section"><div class="section-label"><h3>Quick arrange</h3></div><p class="meta">Arrange online with the existing columns-only action.</p><label class="field" style="margin-top:10px" for="auto-columns">Columns, leave empty for auto<input id="auto-columns" type="number" min="1" step="1" placeholder="Auto"></label><button class="wide" id="btn-auto" data-action="quick-arrange" style="margin-top:10px">Arrange online</button></section>${savedHTML('layout')}`;
+}
+function renderContext() {
+ $('#context').dataset.mode=state.mode;
+ $('#context-body').innerHTML=mobile()&&state.task==='saved'?`<h2 class="selection-title">Saved</h2><p class="meta">Layouts and scenes have separate names and recall actions.</p>${savedHTML('layout')}${savedHTML('scene')}`:state.mode==='tablet'?renderTablet():state.mode==='content'?renderContent():renderLayout();
+ $$('[data-mode]').forEach(el=>el.setAttribute('aria-pressed',String(el.dataset.mode===state.mode)));
+ $('#context').setAttribute('aria-busy',String(state.busy));
+ if(state.busy)$$('#context-body button,#context-body input,#context-body select').forEach(el=>el.disabled=true);
+}
+function renderAll() {
+ const active=document.activeElement,key=active?.id||active?.dataset.focus;
+ const start=active?.selectionStart,end=active?.selectionEnd;
+ const openDetails=$$('details[open]').map(el=>el.id);
+ const contextScroll=$('#context').scrollTop,rosterScroll=$('#roster').scrollTop;
+ $('#app').dataset.task=state.task;
+ renderRoster();renderWall();renderContext();renderStatus();
+ openDetails.forEach(id=>{const el=document.getElementById(id);if(el)el.open=true;});
+ $('#context').scrollTop=contextScroll;$('#roster').scrollTop=rosterScroll;
+ $$('.mobile-nav button').forEach(el=>el.setAttribute('aria-pressed',String(el.dataset.task===state.task)));
+ if(key){focusKey(key);try{document.activeElement.setSelectionRange(start,end);}catch{}}
+}
+function formError(message) { const el=$('#placement-error');if(el){el.hidden=false;el.textContent=message;el.focus();}else notify(message,'error'); }
+function firstFree(rect) {
+ const used=Object.values(state.placements),xs=[...new Set([0,...used.map(r=>r.x+r.w)])].sort((a,b)=>a-b),ys=[...new Set([0,...used.map(r=>r.y+r.h)])].sort((a,b)=>a-b);
+ for(const y of ys)for(const x of xs){const r={...clone(rect),x,y};if(x>=0&&y>=0&&x+r.w<=state.width&&y+r.h<=state.height&&!used.some(q=>overlap(r,q)))return r;}
+ return null;
+}
+function placeSelected() { const d=selectedDevice();if(!d||state.placements[d.id])return;const r=firstFree(state.draft||defaultPlacement(d));if(!r)return formError('No free spot fits this size. Reduce it or preview a different tiling.');commitSelected(r,d.id+' placed on the wall.');focusKey('wall-'+d.id); }
+function removeSelected() { if(!selectedDevice()||!state.placements[state.selected])return;const next=clone(state.placements);delete next[state.selected];commit(next,state.selected+' removed from the wall.');focusKey('place-selected'); }
+function nudge(dir,amount) { if(!selectedDevice()||!state.placements[state.selected]||state.preview||state.busy)return;const r=clone(state.placements[state.selected]);if(dir==='left')r.x-=amount;if(dir==='right')r.x+=amount;if(dir==='up')r.y-=amount;if(dir==='down')r.y+=amount;commitSelected(r,state.selected+' moved '+amount+' units '+dir+'.'); }
+function matchShape() { const d=selectedDevice();if(!d||!state.draft)return;const r=clone(state.draft);r.h=round(visible(r).w/(d.vw/d.vh)+r.bezel.top+r.bezel.bottom);state.lockRatio=d.vw/d.vh;commitSelected(r,'Screen shape matched for '+d.id+'.'); }
+function setContent(content) { if(state.busy)return;state.content=clone(content);state.revision++;renderAll();notify('The wall now shows '+currentSummary()+'.'); }
+function cancelPreview() { state.preview=null;state.tile.swap=null;state.tile.phase='idle';renderAll(); }
+function openTile(transport='custom') { if(state.busy)return;state.tile.transport=transport;state.mode='layout';state.task='wall';state.tile.ids=[];updateTilePreview(true);$('#context').scrollTop=0;renderAll();if(mobile())$('#context').scrollIntoView({block:'start'});focusKey('tile-scope'); }
+function previewLayout(index) {
+ const l=layouts[index];if(!l)return;
+ if(l.width!==state.width||l.height!==state.height){return confirmAction('Recall '+l.name+'?', 'This layout changes the wall size to '+l.width+' × '+l.height+' and restores its positions. Content stays in place.','Recall layout',()=>recallSaved('layout',index));}
+ state.mode='layout';state.task='wall';state.preview={kind:'layout',index,placements:clone(l.placements)};renderAll();
+ $('#preview-banner').innerHTML=`<span>Preview of ${escapeHTML(l.name)}. Live positions are unchanged.</span><span><button data-action="layout-apply" data-index="${index}">Recall layout</button> <button class="quiet" data-action="tile-cancel">Cancel</button></span>`;
+}
+async function applyTile() {
+ if(state.busy||state.preview?.kind!=='tile')return;
+ const plan=state.preview.plan;if(plan.errors.length)return;
+ const before=clone(state.placements),ids=[...plan.ids];state.busy=true;state.tile.phase='applying';
+ let completed=0,failed=null;
+ if(state.tile.transport==='auto'){state.tile.message='Applying one arrangement request.';renderContext();await new Promise(resolve=>setTimeout(resolve,350));state.placements={...state.placements,...clone(plan.proposal)};state.revision++;completed=ids.length;}
+ for(let i=0;state.tile.transport!=='auto'&&i<ids.length;i++) {
+  state.tile.message=`Applying ${i+1} of ${ids.length}. ${ids[i]}.`;renderContext();notify(state.tile.message);
+  await new Promise(resolve=>setTimeout(resolve,230));
+  if(state.failAt===i+1){failed=ids[i];break;}
+  state.placements[ids[i]]=clone(plan.proposal[ids[i]]);state.revision++;completed++;
+ }
+ state.busy=false;state.preview=null;historyEntry(before,'Tiling '+completed+' tablet'+(completed===1?'':'s')+'.',false);
+ state.tile.phase=failed?'failed':'complete';
+ state.tile.message=failed?`${completed} of ${ids.length} tablets updated. ${failed} failed. Earlier updates remain applied. Undo restores the ${completed} completed updates.`:`${completed} tablets tiled. ${state.tile.transport==='auto'?'1 request':completed+' requests'} completed. Undo restores this arrangement as one action.`;
+ resetDraft();$('#context').scrollTop=0;renderAll();notify(state.tile.message,failed?'error':'ok');
+}
+let dialogAction=null,dialogReturn=null;
+function showDialog(title,body,actionLabel='Close',action=null) {
+ dialogReturn=document.activeElement?.id||document.activeElement?.dataset.focus;
+ dialogAction=action;
+ $('#dialog-body').innerHTML=`<h2 id="dialog-title">${escapeHTML(title)}</h2>${body}<div class="dialog-actions">${action?'<button type="button" data-action="dialog-cancel">Cancel</button>':''}<button type="button" class="${action?'primary':''}" data-action="dialog-confirm">${escapeHTML(actionLabel)}</button></div>`;
+ if(!$('#dialog').open)$('#dialog').showModal();
+}
+function confirmAction(title,text,label,fn) { showDialog(title,'<p>'+escapeHTML(text)+'</p>',label,fn); }
+function closeDialog() { $('#dialog').close();if(dialogReturn)focusKey(dialogReturn); }
+function savedNameProblem(name) { return !/^[A-Za-z0-9][A-Za-z0-9 ._-]{0,63}$/.test(name); }
+function saveSnapshot(kind,name,replace=false) {
+ if(savedNameProblem(name))return notify('Use 1 to 64 characters. Start with a letter or number. Use letters, numbers, spaces, dots, underscores, or hyphens.','error');
+ const list=kind==='layout'?layouts:scenes,index=list.findIndex(s=>s.name===name);
+ if(index!==-1&&!replace)return confirmAction('Replace '+name+'?', 'A '+kind+' with this name already exists. Its saved '+(kind==='layout'?'positions':'content')+' will be replaced.','Replace '+kind,()=>saveSnapshot(kind,name,true));
+ const record=kind==='layout'?{name,width:state.width,height:state.height,placements:clone(state.placements),meta:devices.filter(d=>state.placements[d.id]).length+' tablets'}:{name,content:clone(state.content)};
+ if(index===-1)list.push(record);else list[index]=record;
+ renderAll();notify((replace?'Replaced ':'Saved ')+kind+' '+name+'.');
+}
+function recallSaved(kind,index) {
+ const record=(kind==='layout'?layouts:scenes)[index];if(!record)return;
+ state.preview=null;
+ if(kind==='scene'){setContent(record.content);return;}
+ state.width=record.width;state.height=record.height;state.placements=clone(record.placements);state.history=[];state.revision++;resetDraft();renderAll();notify('Recalled layout '+record.name+'. Placement history cleared.');
+}
+function requestRecall(kind,index) {
+ const record=(kind==='layout'?layouts:scenes)[index];
+ confirmAction('Recall '+record.name+'?',kind==='layout'?'Replace the current wall size and positions? The scene stays in place.':'Replace the current scene? Positions stay in place.','Recall '+kind,()=>recallSaved(kind,index));
+}
+function deleteSnapshot(kind,index) { const list=kind==='layout'?layouts:scenes,record=list[index];confirmAction('Delete '+record.name+'?', 'Delete this saved '+kind+'? The active wall stays in place.','Delete '+kind,()=>{list.splice(index,1);renderAll();notify('Deleted '+kind+' '+record.name+'.');}); }
+function releaseSpot() {
+ const id=state.selected;if(device(id))return;
+ confirmAction('Release saved spot '+id+'?', 'A returning tablet reclaims this spot. Release it only if that tablet is gone for good. This action cannot be undone.','Release saved spot',()=>{delete state.placements[id];state.history=[];state.revision++;state.selected=null;resetDraft();renderAll();notify('Saved spot '+id+' released.');focusKey('workspace');});
+}
+function forgetDevice() {
+ const d=selectedDevice();if(!d||d.online)return;
+ confirmAction('Forget '+d.id+'?', 'Forget this offline tablet and remove its saved position? This action cannot be undone.','Forget tablet',()=>{devices.splice(devices.indexOf(d),1);delete state.placements[d.id];state.history=[];state.selected=null;state.revision++;resetDraft();renderAll();notify('Forgot '+d.id+'.');focusKey('workspace');});
+}
+async function upload() {
+ const file=state.upload.file;if(!file||state.upload.stage==='uploading')return;
+ state.upload.stage='uploading';state.upload.progress=0;state.upload.message='Uploading '+file.name+'.';renderAll();
+ for(const percent of [10,35,65,100]) {await new Promise(resolve=>setTimeout(resolve,150));state.upload.progress=percent;state.upload.message=percent===100?'Processing '+file.name+'.':'Uploading '+file.name+', '+percent+'%.';renderContext();}
+ if(!['image/jpeg','image/png'].includes(file.type)||file.size===0||file.size>20*1024*1024){state.upload.stage='error';state.upload.message='Upload failed: choose a JPEG or PNG under the prototype limit of 20 MB.';renderAll();return;}
+ try {
+  const url=await new Promise((resolve,reject)=>{const reader=new FileReader();reader.onload=()=>resolve(reader.result);reader.onerror=reject;reader.readAsDataURL(file);});
+  const dimensions=await new Promise((resolve,reject)=>{const img=new Image();img.onload=()=>resolve({w:img.naturalWidth,h:img.naturalHeight});img.onerror=reject;img.src=url;});
+  const id='upload-'+assets.length;assets.push({id,name:file.name,...dimensions,url,store:'Uploaded'});state.asset=id;state.upload.stage='ready';state.upload.message='Ready: '+file.name;
+ }catch{state.upload.stage='error';state.upload.message='Upload failed: this image could not be decoded. Choose another file.';}
+ renderAll();notify(state.upload.message,state.upload.stage==='error'?'error':'ok');
+}
+function snapCoordinate(value,axis,size,event) {
+ if(!state.snap||event.altKey)return round(value);
+ const candidates=[0,(axis==='x'?state.width:state.height)-size];
+ Object.entries(state.placements).forEach(([id,r])=>{if(id===state.selected)return;const a=r[axis],s=r[axis==='x'?'w':'h'];candidates.push(a,a+s,a-size,a+s-size);});
+ candidates.push(Math.round(value/state.grid)*state.grid);
+ const threshold=6/($('#map-frame').getBoundingClientRect().width/state.width),nearest=candidates.sort((a,b)=>Math.abs(a-value)-Math.abs(b-value))[0];
+ return Math.abs(nearest-value)<=threshold?round(nearest):round(value);
+}
+function cancelGesture() {
+ const g=state.gesture;if(!g)return;
+ state.placements=clone(g.before);state.gesture=null;$('#roster').classList.remove('rail-drop');resetDraft();renderAll();notify('Movement cancelled.');focusKey('wall-'+state.selected);
+}
+function pointerDown(event) {
+ if(event.button!==0||state.preview||state.busy||mobile()||event.pointerType==='touch')return;
+ const el=event.target.closest('[data-device]');if(!el)return;
+ const id=el.dataset.device,d=device(id),source=el.dataset.source;if(!d)return;
+ if(source==='rail'&&state.placements[id])return;
+ const initial=clone(state.placements[id]||defaultPlacement(d)),before=clone(state.placements);
+ select(id,source);
+ state.gesture={id,source,kind:event.target.dataset.corner?'resize':state.placements[id]?'move':'place',corner:event.target.dataset.corner,initial,before,startX:event.clientX,startY:event.clientY,moved:false,next:initial,ratio:ratio(initial),overRail:false};
+ $('#map-frame').setPointerCapture(event.pointerId);
+ event.preventDefault();
+}
+function pointerMove(event) {
+ const g=state.gesture;if(!g)return;
+ const dx=event.clientX-g.startX,dy=event.clientY-g.startY;if(!g.moved&&Math.hypot(dx,dy)<4)return;g.moved=true;
+ const box=$('#map-frame').getBoundingClientRect(),scale=box.width/state.width,rail=$('#roster').getBoundingClientRect();
+ g.overRail=g.kind==='move'&&event.clientX>=rail.left&&event.clientX<=rail.right&&event.clientY>=rail.top&&event.clientY<=rail.bottom;
+ $('#roster').classList.toggle('rail-drop',g.overRail);
+ let r=clone(g.initial);
+ if(g.kind==='resize') {
+  const west=g.corner.includes('w'),north=g.corner.includes('n'),anchorX=west?g.initial.x+g.initial.w:g.initial.x,anchorY=north?g.initial.y+g.initial.h:g.initial.y;
+  const ex=snapCoordinate((west?g.initial.x:g.initial.x+g.initial.w)+dx/scale,'x',0,event),ey=snapCoordinate((north?g.initial.y:g.initial.y+g.initial.h)+dy/scale,'y',0,event);
+  r.w=Math.max(r.bezel.left+r.bezel.right+1,Math.abs(ex-anchorX));r.h=Math.max(r.bezel.top+r.bezel.bottom+1,Math.abs(ey-anchorY));
+  if(state.lock){if(Math.abs(dx)>=Math.abs(dy))r.h=(r.w-r.bezel.left-r.bezel.right)/g.ratio+r.bezel.top+r.bezel.bottom;else r.w=(r.h-r.bezel.top-r.bezel.bottom)*g.ratio+r.bezel.left+r.bezel.right;}
+  r.x=west?anchorX-r.w:anchorX;r.y=north?anchorY-r.h:anchorY;
+ }else if(g.kind==='place') {r.x=snapCoordinate((event.clientX-box.left)/scale-r.w/2,'x',r.w,event);r.y=snapCoordinate((event.clientY-box.top)/scale-r.h/2,'y',r.h,event);}
+ else {r.x=snapCoordinate(g.initial.x+dx/scale,'x',r.w,event);r.y=snapCoordinate(g.initial.y+dy/scale,'y',r.h,event);}
+ ['x','y','w','h'].forEach(k=>r[k]=round(r[k]));g.next=r;
+ if(g.kind!=='place'){state.placements[g.id]=clone(r);renderWall();}
+ else {let ghost=$('#placement-ghost');if(!ghost){ghost=document.createElement('div');ghost.id='placement-ghost';ghost.className='placement-ghost';$('#map-frame').append(ghost);}ghost.style.cssText=placementStyle(r);ghost.textContent='Place '+g.id;$('#coordinate-readout').textContent=`${g.id}   X ${fmt(r.x)}   Y ${fmt(r.y)}   W ${fmt(r.w)}   H ${fmt(r.h)}`;}
+ if(g.overRail)$('#coordinate-readout').textContent='Release in Tablets to remove '+g.id+'. You can undo.';
+ event.preventDefault();
+}
+function pointerUp(event) {
+ const g=state.gesture;if(!g)return;
+ state.gesture=null;state.placements=clone(g.before);$('#placement-ghost')?.remove();$('#roster').classList.remove('rail-drop');
+ if(!g.moved)return;
+ if(g.overRail) {const next=clone(state.placements);delete next[g.id];commit(next,g.id+' removed from the wall.');focusKey('place-selected');return;}
+ const box=$('#map-frame').getBoundingClientRect(),inside=event.clientX>=box.left&&event.clientX<=box.right&&event.clientY>=box.top&&event.clientY<=box.bottom;
+ if(g.kind==='place'&&!inside){resetDraft();renderAll();notify('Placement cancelled. Drop inside the wall.');return;}
+ commitSelected(g.next,g.id+(g.kind==='place'?' placed on the wall.':g.kind==='resize'?' resized.':' moved.'));
+ focusKey('wall-'+g.id);
+}
+function setTask(task) {
+ if(state.busy)return;
+ state.task=task;
+ if(task==='wall')state.mode=state.preview?'layout':'tablet';
+ if(task==='content')state.mode='content';
+ if(task==='saved')state.mode='layout';
+ renderAll();
+}
+function wallChecks() {
+ const missing=Object.keys(state.placements).filter(id=>!device(id)),off=devices.filter(d=>!d.online&&state.placements[d.id]),unknown=devices.filter(d=>d.online&&state.placements[d.id]&&d.image===null),no=devices.filter(d=>d.online&&state.placements[d.id]&&d.image===false),shapes=devices.filter(d=>state.placements[d.id]&&shapeDelta(d,state.placements[d.id])>.01),colliding=Object.keys(state.placements).filter(id=>Object.entries(state.placements).some(([other,r])=>other!==id&&overlap(state.placements[id],r)));
+ showDialog('Wall checks',`<p>${shapes.length} screen shapes differ. ${shapes.map(d=>d.id).join(', ')}.</p><p>${colliding.length?colliding.length+' overlapping footprints. '+colliding.join(', ')+'.':'No footprints overlap.'}</p><p>${no.length?no.map(d=>d.id).join(', ')+' cannot show images and uses its assigned colour.':'No placed online tablets report images as unsupported.'}</p><p>${unknown.length?'Image capability unknown for '+unknown.map(d=>d.id).join(', ')+'.':'No placed online tablets have unknown image capability.'}</p><p>${off.length} offline tablet. ${off.map(d=>d.id).join(', ')}. Its last display is not confirmed.</p><p>${missing.length} saved spot with no registered tablet. ${missing.join(', ')}. Select it to release it.</p>`);
+}
+async function copyAddress() {
+ try{await navigator.clipboard.writeText('http://192.168.1.40:8000/client/');notify('Tablet address copied.');}
+ catch{showDialog('Tablet address','<p>Select and copy this address.</p><p><code>http://192.168.1.40:8000/client/</code></p>');}
+}
+document.addEventListener('click',event=>{
+ const task=event.target.closest('button[data-task]');if(task){setTask(task.dataset.task);return;}
+ const mode=event.target.closest('button[data-mode]');if(mode){state.mode=mode.dataset.mode;renderAll();return;}
+ const dev=event.target.closest('[data-device]');if(dev){if(!state.gesture)select(dev.dataset.device,dev.dataset.source);return;}
+ const tab=event.target.closest('[data-content]');if(tab){state.contentView=tab.dataset.content;renderAll();return;}
+ const picked=event.target.closest('[data-asset]');if(picked){state.asset=picked.dataset.asset;renderAll();return;}
+ const button=event.target.closest('[data-action]');if(!button||button.disabled)return;event.preventDefault();
+ const a=button.dataset.action;
+ if(state.busy&&!a.startsWith('dialog'))return;
+ if(a==='undo')undo();
+ else if(a==='nudge')nudge(button.dataset.dir,Number($('#'+(mobile()?'mobile':'desktop')+'-step').value));
+ else if(a==='remove')removeSelected();
+ else if(a==='place')placeSelected();
+ else if(a==='match-shape')matchShape();
+ else if(a==='tile-open')openTile();
+ else if(a==='tile-cancel'){cancelPreview();notify('Preview cancelled. Live positions stayed in place.');}
+ else if(a==='tile-apply')applyTile();
+ else if(a==='tile-swap') {const i=Number(button.dataset.index);if(state.tile.swap===null)state.tile.swap=i;else{const j=state.tile.swap;[state.tile.ids[i],state.tile.ids[j]]=[state.tile.ids[j],state.tile.ids[i]];state.tile.swap=null;}updateTilePreview();renderAll();focusKey('cell-'+i);}
+ else if(a==='open-content'){state.mode='content';if(mobile())state.task='content';renderAll();}
+ else if(a==='open-layouts'){state.mode='layout';if(mobile())state.task='saved';renderAll();}
+ else if(a==='apply-image'&&state.asset)setContent({type:'image',asset:state.asset});
+ else if(a==='global-colour'){state.color=button.dataset.color;renderAll();}
+ else if(a==='device-colour'){selectedDevice().color=button.dataset.color;renderAll();notify('Tablet colour updated.');}
+ else if(a==='apply-colour'){devices.forEach(d=>d.color=state.color);setContent({type:'color'});}
+ else if(a==='recover-colour')setContent({type:'color'});
+ else if(a==='recover-calibration')setContent({type:'calibration'});
+ else if(a==='pick-replacement'){state.contentView='image';state.asset=null;renderAll();focusKey('asset-'+assets[0].id);}
+ else if(a==='refresh-assets')notify('Image library refreshed. '+assets.length+' images available.');
+ else if(a==='refresh-saved')notify('Saved '+button.dataset.kind+' list refreshed.');
+ else if(a==='recall-saved')requestRecall(button.dataset.kind,Number(button.dataset.index));
+ else if(a==='delete-saved')deleteSnapshot(button.dataset.kind,Number(button.dataset.index));
+ else if(a==='layout-preview')previewLayout(Number(button.dataset.index));
+ else if(a==='layout-apply')requestRecall('layout',Number(button.dataset.index));
+ else if(a==='release')releaseSpot();
+ else if(a==='forget')forgetDevice();
+ else if(a==='upload')upload();
+ else if(a==='copy')copyAddress();
+ else if(a==='zoom'){state.zoom=state.zoom===1?2:1;$('#wall-scroll').classList.toggle('zoomed',state.zoom===2);if(!mobile())$('.wall-shell').style.width=state.zoom===2?'200%':'100%';$('#zoom-wall').textContent=state.zoom===2?'Fit wall':'2× zoom';}
+ else if(a==='wall-checks')wallChecks();
+ else if(a==='keys')showDialog('Keyboard shortcuts','<p>Tab selects controls and tablets. Enter or Space selects a tablet.</p><p>Arrow keys move 1 unit. Shift and an arrow move 10 units. Exact fields resize. The step control changes the visible arrow buttons.</p><p>Delete removes a selected placed tablet. Ctrl or Command and Z undo a placement change. Text fields keep their native editing shortcuts.</p><p>Alt disables snapping while dragging. Escape cancels a gesture or preview. Use Place on wall for the keyboard equivalent of dragging from the rail.</p><p>In a tiling preview, focus two numbered cells and press Enter to swap them.</p>');
+ else if(a==='connection')showDialog('Connection','<p>Connected to the local server. '+devices.filter(d=>d.online).length+' of '+devices.length+' tablets are online.</p><p>Revision '+state.revision+'. Session '+state.generation+'.</p><p>The tablet address is verified in the production controller. This prototype uses sample data.</p><button data-action="reconnect">Reconnect</button>');
+ else if(a==='reconnect'){closeDialog();notify('Prototype connection restored. No server request was sent.');}
+ else if(a==='physical')showDialog('Physical setup','<p>In the controller, this opens the existing physical.html tool for display profiles, calibration, and physical layouts.</p><p>The prototype keeps this navigation local so it cannot change the running app.</p>');
+ else if(a==='quick-arrange') {const value=$('#auto-columns').value;state.tile.scope='online';state.tile.order='id';state.tile.columns=value?Number(value):Math.max(1,Math.round(Math.sqrt(devices.filter(d=>d.online).length)));state.tile.rows=Math.ceil(devices.filter(d=>d.online).length/state.tile.columns);state.tile.gap=0;state.tile.shape='fill';openTile('auto');notify('Preview of Arrange online. Check retained spots before applying.');}
+ else if(a==='dialog-cancel')closeDialog();
+ else if(a==='dialog-confirm'){const fn=dialogAction;closeDialog();if(fn)fn();}
+});
+document.addEventListener('submit',event=>{
+ event.preventDefault();
+ if(state.busy||state.preview)return;
+ if(event.target.id==='placement-form')commitSelected(clone(state.draft),state.selected+' position saved.');
+ else if(event.target.id==='wall-form') {
+  const w=Number($('#wall-width').value),h=Number($('#wall-height').value);
+  if(!Number.isInteger(w)||!Number.isInteger(h)||w<1||h<1)return notify('Wall dimensions must be positive whole numbers.','error');
+  state.width=w;state.height=h;state.revision++;state.history=[];renderAll();notify('Wall size saved. Placement history cleared.');
+ }else if(event.target.dataset.saveKind){const kind=event.target.dataset.saveKind;saveSnapshot(kind,$('#'+kind+'-name').value.trim());}
+});
+document.addEventListener('input',event=>{
+ const el=event.target,id=el.id;
+ if(['position-x','position-y','position-w','position-h','bezel-top','bezel-right','bezel-bottom','bezel-left'].includes(id)) {
+  const value=el.value===''?NaN:Number(el.value),r=state.draft;
+  if(id.startsWith('position-'))r[id.slice(9)]=value;else r.bezel[id.slice(6)]=value;
+  if(state.lock&&['position-w','position-h'].includes(id)&&Number.isFinite(value)) {
+   if(id==='position-w'){r.h=round((r.w-r.bezel.left-r.bezel.right)/state.lockRatio+r.bezel.top+r.bezel.bottom);$('#position-h').value=r.h;}
+   else {r.w=round((r.h-r.bezel.top-r.bezel.bottom)*state.lockRatio+r.bezel.left+r.bezel.right);$('#position-w').value=r.w;}
+  }
+  state.dirty=true;$('#save-position').classList.add('primary');if(valid(r))$('#shape-info').innerHTML=shapeMarkup(selectedDevice(),r);
+ }
+});
+document.addEventListener('change',event=>{
+ const el=event.target,id=el.id;
+ if(id==='snap')state.snap=el.checked;
+ if(id==='grid-size')state.grid=Number(el.value);
+ if(id==='mobile-step'||id==='desktop-step')state.step=Number(el.value);
+ if(id==='aspect-lock'){state.lock=el.checked;state.lockRatio=ratio(state.draft);}
+ if(id==='global-color'){state.color=el.value;renderAll();}
+ if(id==='device-color'){selectedDevice().color=el.value;renderAll();notify('Tablet colour updated.');}
+ if(id==='upload-file'){state.upload.file=el.files[0]||null;state.upload.message=state.upload.file?state.upload.file.name:'No file chosen.';$('#btn-upload').disabled=!state.upload.file;$('#upload-status').textContent=state.upload.message;}
+ if(id.startsWith('tile-')) {
+  state.tile.transport='custom';
+  const key=id.slice(5);state.tile[key]=['columns','rows','gap'].includes(key)?Number(el.value):el.value;
+  state.tile.swap=null;updateTilePreview(key==='scope'||key==='order');renderAll();
+ }
+});
+document.addEventListener('keydown',event=>{
+ const text=event.target.matches('input,textarea,select');
+ if(event.key==='Escape') {if(state.gesture){event.preventDefault();cancelGesture();}else if(state.preview&&!$('#dialog').open){event.preventDefault();cancelPreview();notify('Preview cancelled.');}return;}
+ if(text||$('#dialog').open)return;
+ if((event.metaKey||event.ctrlKey)&&event.key.toLowerCase()==='z'){event.preventDefault();undo();return;}
+ const footprint=event.target.closest('[data-source=wall]');if(!footprint)return;
+ if(['ArrowLeft','ArrowUp','ArrowDown','ArrowRight'].includes(event.key)){event.preventDefault();nudge({ArrowLeft:'left',ArrowUp:'up',ArrowDown:'down',ArrowRight:'right'}[event.key],event.shiftKey?10:1);}
+ if(event.key==='Delete'||event.key==='Backspace'){event.preventDefault();removeSelected();}
+});
+document.addEventListener('pointerdown',pointerDown);
+document.addEventListener('pointermove',pointerMove);
+document.addEventListener('pointerup',pointerUp);
+document.addEventListener('pointercancel',()=>{if(state.gesture)cancelGesture();});
+$('#dialog').addEventListener('close',()=>{if(dialogReturn)focusKey(dialogReturn);});
+matchMedia('(max-width:900px)').addEventListener('change',()=>{state.zoom=1;$('#wall-scroll').classList.remove('zoomed');$('.wall-shell').style.width='';$('#zoom-wall').textContent='2× zoom';renderAll();});
+window.wallMockup={
+ snapshot:()=>clone({width:state.width,height:state.height,placements:state.placements,selected:state.selected,content:state.content,mode:state.mode,task:state.task,historyLength:state.history.length,revision:state.revision,busy:state.busy,preview:state.preview,tile:state.tile}),
+ externalChange:(generation='new-session')=>{if(state.gesture)cancelGesture();state.preview=null;state.history=[];state.generation=generation;state.revision=1;resetDraft();renderAll();notify('External wall change. Placement history cleared.');},
+ missingImage:()=>{state.content={type:'image',asset:'missing'};state.mode='content';state.contentView='image';renderAll();},
+ failAt:n=>state.failAt=n
+};
+resetDraft();
+if(new URLSearchParams(location.search).get('state')==='missing'){state.content={type:'image',asset:'missing'};state.mode='content';state.contentView='image';}
+renderAll();
+
+</script></body></html>

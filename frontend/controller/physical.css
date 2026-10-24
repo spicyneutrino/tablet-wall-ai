@@ -1,6 +1,7 @@
 /*
  * Physical calibration and layout editor.
- * Loaded after controller.css: paper, ink and cobalt are inherited; this file
+ * Loaded after physical-legacy.css: paper, ink and the old accent are inherited;
+ * this file
  * only adds the stage, measurement forms and the selected-slot inspector.
  */
 

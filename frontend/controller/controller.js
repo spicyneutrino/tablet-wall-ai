@@ -72,9 +72,9 @@
 
     /* Preview map frame, in CSS pixels. The wall rectangle keeps its aspect
      * ratio inside these bounds; extreme walls scroll in the viewport. */
-    const MAP_MAX_H = 420;
+    const MAP_MAX_H = 560;
     const DEVICE_TYPE_NAMES = { ipad: "iPad", iphone: "iPhone", android: "Android" };
-    const MAP_MIN_H = 92;
+    const MAP_MIN_H = 120;
     const FOCUS_FLASH_MS = 1600;
 
     /* ------------------------------------------------------------------ *
@@ -156,6 +156,97 @@
         tileTpl: document.getElementById("tile-tpl")
     };
 
+    /* Stage controls: the wall-first editor around the existing data layer. */
+    const stage = {
+        app: document.getElementById("app"),
+        context: document.getElementById("context"),
+        paneTablet: document.getElementById("pane-tablet"),
+        paneContent: document.getElementById("pane-content"),
+        paneLayout: document.getElementById("pane-layout"),
+        contextTabs: Array.from(document.querySelectorAll("[data-context-tab]")),
+        mobileTabs: Array.from(document.querySelectorAll(".mobile-nav [data-task]")),
+        inspectorEmpty: document.getElementById("inspector-empty"),
+        inspector: document.getElementById("inspector"),
+        inspId: document.getElementById("insp-id"),
+        inspEyebrow: document.getElementById("insp-eyebrow"),
+        inspMeta: document.getElementById("insp-meta"),
+        inspStateOnline: document.getElementById("insp-state-online"),
+        inspStatePlacement: document.getElementById("insp-state-placement"),
+        inspRemove: document.getElementById("insp-remove"),
+        inspRemoveBottom: document.getElementById("insp-remove-bottom"),
+        inspPlace: document.getElementById("insp-place"),
+        inspX: document.getElementById("insp-x"),
+        inspY: document.getElementById("insp-y"),
+        inspW: document.getElementById("insp-w"),
+        inspH: document.getElementById("insp-h"),
+        inspLock: document.getElementById("insp-lock"),
+        inspSave: document.getElementById("insp-save"),
+        inspError: document.getElementById("insp-error"),
+        inspShape: document.getElementById("insp-shape"),
+        inspWarning: document.getElementById("insp-warning"),
+        inspWarningText: document.getElementById("insp-warning-text"),
+        inspMatch: document.getElementById("insp-match"),
+        inspStep: document.getElementById("insp-step"),
+        inspStepDesktop: document.getElementById("insp-step-desktop"),
+        inspBezelTop: document.getElementById("insp-bezel-top"),
+        inspBezelRight: document.getElementById("insp-bezel-right"),
+        inspBezelBottom: document.getElementById("insp-bezel-bottom"),
+        inspBezelLeft: document.getElementById("insp-bezel-left"),
+        inspBezelSummary: document.getElementById("insp-bezel-summary"),
+        inspPalette: document.getElementById("insp-palette"),
+        inspColor: document.getElementById("insp-color"),
+        inspColorText: document.getElementById("insp-color-text"),
+        inspColourSummary: document.getElementById("insp-colour-summary"),
+        inspDetailId: document.getElementById("insp-detail-id"),
+        inspDetailType: document.getElementById("insp-detail-type"),
+        inspDetailScreen: document.getElementById("insp-detail-screen"),
+        inspDetailImage: document.getElementById("insp-detail-image"),
+        inspDetailSeen: document.getElementById("insp-detail-seen"),
+        inspDetailPlacement: document.getElementById("insp-detail-placement"),
+        inspForget: document.getElementById("insp-forget"),
+        inspForgetHint: document.getElementById("insp-forget-hint"),
+        inspRemoveArea: document.getElementById("insp-remove-area"),
+        wallDimensions: document.getElementById("wall-dimensions"),
+        actualCoverage: document.getElementById("actual-coverage"),
+        wallWarnings: document.getElementById("wall-warnings"),
+        wallWarningText: document.getElementById("wall-warning-text"),
+        btnReviewChecks: document.getElementById("btn-review-checks"),
+        stageReadout: document.getElementById("stage-readout"),
+        rulerX: document.getElementById("ruler-x"),
+        rulerY: document.getElementById("ruler-y"),
+        wallScroll: document.getElementById("wall-scroll"),
+        wallShell: document.getElementById("wall-shell"),
+        mapViewport: document.getElementById("map-viewport"),
+        mapFrame: document.getElementById("map-frame"),
+        tileLayer: document.getElementById("tile-layer"),
+        snapToggle: document.getElementById("snap-toggle"),
+        snapStep: document.getElementById("snap-step"),
+        btnUndoStage: document.getElementById("btn-undo-stage"),
+        btnRedoStage: document.getElementById("btn-redo-stage"),
+        btnZoomWall: document.getElementById("btn-zoom-wall"),
+        btnKeys: document.getElementById("btn-keys"),
+        keysDialog: document.getElementById("keys-dialog"),
+        keysClose: document.getElementById("keys-close"),
+        btnTile: document.getElementById("btn-tile"),
+        tileSection: document.getElementById("tile-section"),
+        tileScope: document.getElementById("tile-scope"),
+        tileColumns: document.getElementById("tile-columns"),
+        tileRows: document.getElementById("tile-rows"),
+        tileGap: document.getElementById("tile-gap"),
+        tileOrder: document.getElementById("tile-order"),
+        tileShape: document.getElementById("tile-shape"),
+        tileHelp: document.getElementById("tile-help"),
+        tileResult: document.getElementById("tile-result"),
+        tilePreviewBtn: document.getElementById("tile-preview-btn"),
+        tileApply: document.getElementById("tile-apply"),
+        tileWriteNote: document.getElementById("tile-write-note"),
+        tileCancel: document.getElementById("tile-cancel"),
+        btnChangeContent: document.getElementById("btn-change-content"),
+        btnManageLayouts: document.getElementById("btn-manage-layouts"),
+        layoutShortcuts: document.getElementById("layout-shortcuts"),
+        statusUndo: document.getElementById("status-undo")
+    };
+
     /** Per-panel nodes for the saved layouts / scenes panels (Phase 2c).
      *  Kept beside `el` because both panels are driven by the same code with
      *  a `kind` argument — two copies of the same wiring, one namespace. */
@@ -235,6 +326,27 @@
      * wall still shows colour, and the summary keeps the actual wall state
      * separate. */
     let contentView = null;
+
+    /* Stage state: one selected device, one local placement history, and the
+     * tiling preview. These are view/editor state, never a second source of
+     * truth for the wall. */
+    let selectedId = null;
+    let contextMode = "tablet";
+    let mobileTask = "wall";
+    let stageUndo = [];
+    let stageRedo = [];
+    let stageDrag = null;
+    let stageNudgeTimer = null;
+    let pendingNudge = null;
+    let stageJustDragged = false;
+    let stageHistoryGeneration = null;
+    let inspForgetPending = false;
+    let inspForgetTimer = null;
+    let tilePreviewPlan = null;
+    let tilePreviewSelected = [];
+    let tileApplying = false;
+
+    const SNAP_THRESHOLD_PX = 9;
 
     /* Curated asset inventory (GET /assets). Read once at boot and again only
      * when the operator asks — never polled. A failed refresh keeps the last
@@ -395,6 +507,25 @@
     function viewportAspect(device) {
         if (!device || device.width == null || device.height == null) return null;
         return aspectOf(device.width, device.height);
+    }
+
+    /** Advertised render capabilities, with "not reported" kept distinct from
+     *  "reported and unsupported". */
+    function deviceCaps(device) {
+        const known = !!device && Array.isArray(device.caps);
+        const caps = known ? device.caps : [];
+        return {
+            known: known,
+            caps: caps,
+            image: known ? caps.indexOf("image") !== -1 : null
+        };
+    }
+
+    function placementShapeMismatch(placement, device) {
+        if (!placement || !device) return false;
+        const visible = visibleRect(placement);
+        const delta = aspectDelta(aspectOf(visible.w, visible.h), viewportAspect(device));
+        return isAspectMismatch(delta);
     }
 
     function normalizePlacement(raw) {
@@ -822,6 +953,10 @@
         renderWallMap();
         // …and change what the roster can confirm about a placed slot.
         renderCoverage();
+        renderSelection();
+        renderWallSummary();
+        renderLayoutShortcuts();
+        renderStageHistory();
     }
 
     function createTile(id) {
@@ -844,6 +979,7 @@
             palette: node.querySelector(".palette-sm"),
             colourInput: node.querySelector(".tile-colour-input"),
             foot: node.querySelector(".tile-foot"),
+            location: node.querySelector(".tile-location"),
             // Placement editor (v2).
             placeState: node.querySelector(".place-state"),
             placeReadout: node.querySelector(".place-readout"),
@@ -869,6 +1005,35 @@
         }
 
         buildTileFoot(tile, id);
+
+        node.draggable = true;
+        node.addEventListener("click", function (event) {
+            if (event.target.closest("button, input, summary, details, a")) return;
+            selectDevice(id, { focusTile: false });
+        });
+        node.addEventListener("keydown", function (event) {
+            if (event.key === "Enter" || event.key === " ") {
+                event.preventDefault();
+                selectDevice(id, { focusTile: false });
+                return;
+            }
+            if (event.key === "Delete" || event.key === "Backspace") {
+                if (!savedPlacement(id)) return;
+                event.preventDefault();
+                removeSelected();
+            }
+        });
+        node.addEventListener("dragstart", function (event) {
+            if (!event.dataTransfer) return;
+            event.dataTransfer.effectAllowed = "move";
+            event.dataTransfer.setData("text/plain", id);
+            node.dataset.dragging = "true";
+        });
+        node.addEventListener("dragend", function () {
+            node.dataset.dragging = "false";
+            if (stage.mapFrame) stage.mapFrame.classList.remove("drop-ready");
+        });
+
         return tile;
     }
 
@@ -960,6 +1125,7 @@
 
         renderPlacement(tile, device);
         renderCapChip(tile, device);
+        paintTileScreen(tile, device);
     }
 
     function removeTile(id) {
@@ -1020,6 +1186,19 @@
         if (el.wallGen) {
             el.wallGen.textContent = wall ? shortGeneration(wall.generation) : "-";
         }
+        if (wall && stageHistoryGeneration !== null &&
+                wall.generation !== stageHistoryGeneration) {
+            stageUndo = [];
+            stageRedo = [];
+            stageHistoryGeneration = null;
+            renderStageHistory();
+        }
+
+        if (stage.wallDimensions) {
+            stage.wallDimensions.textContent = wall
+                ? wall.width + " × " + wall.height + " units"
+                : "Waiting for the server";
+        }
 
         if (wallReady()) {
             el.wallNote.hidden = true;
@@ -1061,7 +1240,79 @@
             if (device) {
                 renderPlacement(tile, device);
                 renderCapChip(tile, device);
+                paintTileScreen(tile, device);
             }
+        }
+
+        renderSelection();
+        renderWallSummary();
+        renderLayoutShortcuts();
+        renderStageHistory();
+    }
+
+    /** Counts that explain the wall without repeating every alert. */
+    function renderWallSummary() {
+        if (!stage.actualCoverage) return;
+        if (!wallReady()) {
+            stage.actualCoverage.textContent = wall
+                ? "Set a wall width and height to arrange tablets."
+                : "Waiting for the wall state.";
+            if (stage.wallWarnings) stage.wallWarnings.hidden = true;
+            return;
+        }
+
+        let placed = 0;
+        let offline = 0;
+        let imageUnknown = 0;
+        let imageUnsupported = 0;
+        let shapeMismatch = 0;
+        for (const id of Object.keys(wall.placements)) {
+            const placement = wall.placements[id];
+            const device = devices.get(id);
+            if (!device) continue;
+            placed += 1;
+            if (device.online !== true) offline += 1;
+            const caps = deviceCaps(device);
+            if (caps.image === false) imageUnsupported += 1;
+            else if (caps.image !== true) imageUnknown += 1;
+            if (placementShapeMismatch(placement, device)) shapeMismatch += 1;
+        }
+        const unplaced = Math.max(0, devices.size - placed);
+        const vacant = vacantIds().length;
+
+        const bits = [];
+        if (placed > 0) bits.push(placed + " placed");
+        if (unplaced > 0) bits.push(unplaced + " not placed");
+        if (offline > 0) bits.push(offline + " offline");
+        if (vacant > 0) bits.push(vacant + (vacant === 1 ? " saved spot" : " saved spots"));
+        stage.actualCoverage.textContent = bits.length
+            ? bits.join(" · ")
+            : "No tablets are placed yet.";
+
+        const warnBits = [];
+        if (shapeMismatch > 0) {
+            warnBits.push(shapeMismatch + (shapeMismatch === 1 ? " screen shape differs" : " screen shapes differ"));
+        }
+        if (imageUnsupported > 0 && wall.contentType === "image") {
+            warnBits.push(imageUnsupported + (imageUnsupported === 1
+                ? " tablet cannot show the image" : " tablets cannot show the image"));
+        }
+        if (imageUnknown > 0 && wall.contentType === "image") {
+            warnBits.push(imageUnknown + (imageUnknown === 1
+                ? " tablet cannot confirm the image" : " tablets cannot confirm the image"));
+        }
+        if (vacant > 0) {
+            warnBits.push(vacant + (vacant === 1 ? " saved spot is retained" : " saved spots are retained"));
+        }
+        if (warnBits.length && stage.wallWarnings && stage.wallWarningText) {
+            stage.wallWarnings.hidden = false;
+            stage.wallWarningText.textContent = warnBits.join(". ") + ".";
+            const hasAlerts = !!(el.alerts &&
+                el.alerts.querySelector(".alert:not([hidden])"));
+            if (stage.btnReviewChecks) stage.btnReviewChecks.hidden = !hasAlerts;
+        } else if (stage.wallWarnings) {
+            stage.wallWarnings.hidden = true;
+            if (stage.btnReviewChecks) stage.btnReviewChecks.hidden = true;
         }
     }
 
@@ -1368,6 +1619,7 @@
                 el.btnAssetsRefresh.textContent = "Refresh list";
             }
             renderImagePanel();
+            if (wall) renderWallMap();
         }
     }
 
@@ -1416,6 +1668,7 @@
         } finally {
             mediaLoading = false;
             renderImagePanel();
+            if (wall) renderWallMap();
         }
         return ok;
     }
@@ -1892,7 +2145,7 @@
 
         if (el.imageSel) {
             if (!selectedAsset) {
-                el.imageSel.textContent = "No image selected";
+                el.imageSel.textContent = active ? "No replacement selected" : "No image selected";
                 el.imageSel.title = "";
             } else {
                 const asset = assetById(selectedAsset);
@@ -1926,8 +2179,11 @@
         // image is the wall's business, and an asset with no URL in the
         // inventory gets no guessed one.
         if (el.imagePreview && el.imagePreviewImg && el.imagePreviewNote) {
-            const asset = selectedAsset ? assetById(selectedAsset) : null;
+            const active = activeImageId();
+            const asset = selectedAsset ? assetById(selectedAsset) :
+                (active ? assetById(active) : null);
             const url = asset ? asset.url : null;
+            const onWallPreview = !selectedAsset && !!active && !!asset;
             if (asset && url) {
                 if (el.imagePreviewImg.getAttribute("src") !== url) {
                     el.imagePreview.dataset.failed = "false";
@@ -1936,10 +2192,12 @@
                 }
                 const failed = el.imagePreview.dataset.failed === "true";
                 el.imagePreview.hidden = failed;
-                el.imagePreviewNote.hidden = !failed;
+                el.imagePreviewNote.hidden = !failed && !onWallPreview;
                 el.imagePreviewNote.textContent = failed
                     ? "The preview did not load. Refresh the list to try again."
-                    : "";
+                    : onWallPreview
+                        ? "This is the image on the wall. Pick another to replace it."
+                        : "";
             } else {
                 if (el.imagePreviewImg.getAttribute("src")) {
                     el.imagePreviewImg.removeAttribute("src");
@@ -2199,7 +2457,13 @@
         renderReservations();
 
         const frame = el.mapFrame;
-        frame.textContent = "";
+        const focusedId = document.activeElement &&
+            document.activeElement.classList &&
+            document.activeElement.classList.contains("map-pl")
+            ? document.activeElement.dataset.id : null;
+        for (const node of Array.from(frame.querySelectorAll(".map-pl, .map-none"))) {
+            node.remove();
+        }
 
         if (!wallReady()) {
             frame.hidden = true;
@@ -2266,6 +2530,60 @@
         if (vacant > 0) bits.push(vacant + (vacant === 1 ? " saved spot" : " saved spots") + " with no tablet");
         if (warns > 0) bits.push(warns + (warns === 1 ? " tablet" : " tablets") + " with a different screen shape");
         el.mapCaption.textContent = bits.join(", ");
+
+        renderRulers(wallW, wallH);
+        updateStageReadout();
+
+        if (focusedId) {
+            const again = frame.querySelector('.map-pl[data-id="' + cssEscape(focusedId) + '"]');
+            if (again) again.focus({ preventScroll: true });
+        }
+        if (tilePreviewPlan) renderTilePreviewOnWall();
+        for (const tile of tiles.values()) {
+            const device = devices.get(tile.el.dataset.id);
+            if (device) paintTileScreen(tile, device);
+        }
+    }
+
+    function cssEscape(value) {
+        if (window.CSS && typeof window.CSS.escape === "function") return window.CSS.escape(value);
+        return String(value).replace(/["\\]/g, "\\$&");
+    }
+
+    function renderRulers(wallW, wallH) {
+        if (!stage.rulerX || !stage.rulerY) return;
+        stage.rulerX.textContent = "";
+        stage.rulerY.textContent = "";
+        for (let i = 0; i <= 4; i += 1) {
+            const x = document.createElement("span");
+            x.textContent = String(Math.round(wallW * i / 4));
+            stage.rulerX.appendChild(x);
+            const y = document.createElement("span");
+            y.textContent = String(Math.round(wallH * i / 4));
+            stage.rulerY.appendChild(y);
+        }
+    }
+
+    function updateStageReadout() {
+        if (!stage.stageReadout) return;
+        if (!wallReady()) {
+            stage.stageReadout.textContent = "Waiting for the wall state.";
+            return;
+        }
+        if (!selectedId || !wall.placements[selectedId]) {
+            stage.stageReadout.textContent = selectedId
+                ? shortId(selectedId) + " is not on the wall."
+                : "Select a tablet to see its footprint.";
+            return;
+        }
+        const p = wall.placements[selectedId];
+        stage.stageReadout.textContent =
+            shortId(selectedId) + "  X " + fmtNumber(p.x) + "  Y " + fmtNumber(p.y) +
+            "  W " + fmtNumber(p.w) + "  H " + fmtNumber(p.h);
+    }
+
+    function fmtNumber(n) {
+        return Number.isFinite(Number(n)) ? String(Math.round(Number(n) * 100) / 100) : "-";
     }
 
     /** True when black text reads better than white on this colour. */
@@ -2288,6 +2606,8 @@
         const box = document.createElement("button");
         box.type = "button";
         box.className = "map-pl";
+        box.dataset.id = id;
+        box.dataset.selected = selectedId === id ? "true" : "false";
         box.style.left = pct(placement.x, wallW);
         box.style.top = pct(placement.y, wallH);
         box.style.width = pct(placement.w, wallW);
@@ -2315,7 +2635,40 @@
 
         if (device) {
             box.addEventListener("click", function () {
-                focusTile(id);
+                if (stageJustDragged) {
+                    stageJustDragged = false;
+                    return;
+                }
+                selectDevice(id, { focusTile: true });
+            });
+            box.addEventListener("pointerdown", function (event) {
+                startStageDrag(event, id, box, "move");
+            });
+            box.addEventListener("keydown", function (event) {
+                if (event.key === "Delete" || event.key === "Backspace") {
+                    event.preventDefault();
+                    event.stopPropagation();
+                    selectDevice(id, { focusTile: false });
+                    removeSelected();
+                    return;
+                }
+                if (event.key === "Escape" && stageDrag) {
+                    event.preventDefault();
+                    event.stopPropagation();
+                    cancelStageDrag();
+                    return;
+                }
+                if (event.key === "ArrowLeft" || event.key === "ArrowRight" ||
+                        event.key === "ArrowUp" || event.key === "ArrowDown") {
+                    event.preventDefault();
+                    event.stopPropagation();
+                    const step = event.shiftKey ? 10 : 1;
+                    const dx = event.key === "ArrowLeft" ? -step :
+                        event.key === "ArrowRight" ? step : 0;
+                    const dy = event.key === "ArrowUp" ? -step :
+                        event.key === "ArrowDown" ? step : 0;
+                    nudgeSelected(dx, dy);
+                }
             });
         } else {
             // No tile to jump to — hand focus to its Release control instead.
@@ -2368,10 +2721,82 @@
             inset.dataset.shown = "true";
             inset.dataset.tone = isLightColor(shown) ? "light" : "dark";
             inset.style.setProperty("--shown", shown);
+        } else if (device && wall && wall.contentType === "image") {
+            paintMapSlice(inset, visible, wallW, wallH, pxW, pxH);
         }
 
         box.appendChild(inset);
+
+        if (device && selectedId === id) {
+            for (const corner of ["nw", "ne", "sw", "se"]) {
+                const handle = document.createElement("span");
+                handle.className = "map-handle";
+                handle.dataset.handle = corner;
+                handle.setAttribute("aria-hidden", "true");
+                handle.addEventListener("pointerdown", function (event) {
+                    event.stopPropagation();
+                    startStageDrag(event, id, box, "resize", corner);
+                });
+                box.appendChild(handle);
+            }
+        }
         return box;
+    }
+
+    /** Paint the logical wall image through one visible rectangle. */
+    function paintMapSlice(inset, visible, wallW, wallH, pxW, pxH) {
+        const id = activeImageId();
+        const asset = id ? assetById(id) : null;
+        if (!asset || !asset.url) return;
+        const imgW = Number(asset.width);
+        const imgH = Number(asset.height);
+        if (!(imgW > 0) || !(imgH > 0)) return;
+        const scale = Math.max(pxW / imgW, pxH / imgH);
+        const drawW = imgW * scale;
+        const drawH = imgH * scale;
+        const offX = (pxW - drawW) / 2;
+        const offY = (pxH - drawH) / 2;
+        inset.style.backgroundImage = 'url("' + asset.url.replace(/"/g, '\\"') + '")';
+        inset.style.backgroundRepeat = "no-repeat";
+        inset.style.backgroundSize = drawW + "px " + drawH + "px";
+        inset.style.backgroundPosition =
+            (-offX - (visible.x / wallW) * pxW) + "px " +
+            (-offY - (visible.y / wallH) * pxH) + "px";
+    }
+
+    /** Paint a roster thumbnail from the same wall image and placement. */
+    function paintTileScreen(tile, device) {
+        if (!tile || !tile.screenFill) return;
+        tile.screenFill.style.backgroundImage = "";
+        tile.screenFill.style.backgroundRepeat = "";
+        tile.screenFill.style.backgroundSize = "";
+        tile.screenFill.style.backgroundPosition = "";
+        if (!wall || wall.contentType !== "image") return;
+        const id = activeImageId();
+        const asset = id ? assetById(id) : null;
+        const placement = savedPlacement(device.device_id);
+        if (!asset || !asset.url || !placement) return;
+        const imgW = Number(asset.width);
+        const imgH = Number(asset.height);
+        const box = tile.screenFill.parentElement;
+        const boxW = box && box.clientWidth > 0 ? box.clientWidth : 32;
+        const boxH = box && box.clientHeight > 0 ? box.clientHeight : 22;
+        if (!(imgW > 0) || !(imgH > 0)) return;
+        const visible = visibleRect(placement);
+        if (!(wall.width > 0) || !(wall.height > 0)) return;
+        const scale = Math.max(boxW / imgW, boxH / imgH);
+        const drawW = imgW * scale;
+        const drawH = imgH * scale;
+        const offX = (boxW - drawW) / 2;
+        const offY = (boxH - drawH) / 2;
+        tile.screenFill.style.background = "transparent";
+        tile.screenFill.style.backgroundImage = 'url("' + asset.url.replace(/"/g, '\\"') + '")';
+        tile.screenFill.style.backgroundRepeat = "no-repeat";
+        tile.screenFill.style.backgroundSize = drawW + "px " + drawH + "px";
+        tile.screenFill.style.backgroundPosition =
+            (-offX - (visible.x / wall.width) * boxW) + "px " +
+            (-offY - (visible.y / wall.height) * boxH) + "px";
+        tile.screenNote.hidden = true;
     }
 
     /**
@@ -2558,6 +2983,8 @@
         // "Unplaced" is a state, not a fault — dashed and quiet, never red.
         tile.placeState.textContent = saved ? "Placed" : "Not placed";
         tile.placeState.dataset.state = saved ? "placed" : "unplaced";
+        tile.el.dataset.placement = saved ? "placed" : "unplaced";
+        if (tile.location) tile.location.textContent = saved ? "On the wall" : "Not placed";
         tile.placeState.title = saved
             ? "Footprint at " + saved.x + "," + saved.y + " · " +
               saved.w + "×" + saved.h + " wall units"
@@ -3035,6 +3462,7 @@
             tile.placeDirty = false;
             renderWall();
             logStatus("Position saved for tablet " + shortId(deviceId) + ".", "ok");
+            return true;
         } catch (err) {
             if (err.status === 404) {
                 // Unknown device: the roster lost it while we were editing.
@@ -3046,6 +3474,7 @@
                     "err"
                 );
             }
+            return false;
         } finally {
             if (tiles.get(deviceId) === tile) tile.el.dataset.busy = "false";
         }
@@ -3069,6 +3498,7 @@
             tile.placeDirty = false;
             renderWall();
             logStatus("Tablet " + shortId(deviceId) + " removed from the wall.", "ok");
+            return true;
         } catch (err) {
             if (err.status === 404) {
                 dropDevice(deviceId);
@@ -3079,6 +3509,7 @@
                     "err"
                 );
             }
+            return false;
         } finally {
             if (tiles.get(deviceId) === tile) tile.el.dataset.busy = "false";
         }
@@ -3537,6 +3968,7 @@
         }
 
         renderSnapshotList(kind);
+        if (kind === "layout") renderLayoutShortcuts();
     }
 
     /* ------------------------------------------------------------------ *
@@ -4481,9 +4913,1457 @@
             });
     }
 
+    /* ------------------------------------------------------------------ *
+     * Stage: selection, direct placement, tiling, undo, mobile tasks
+     *
+     * This layer extends the existing controller rather than replacing its
+     * data path. The tile template stays the hidden source of exact fields,
+     * so savePlacement() and the protocol handling keep working unchanged.
+     * ------------------------------------------------------------------ */
+
+    function isMobile() {
+        return typeof window.matchMedia === "function" &&
+            window.matchMedia("(max-width: 900px)").matches;
+    }
+
+    function clonePlacement(placement) {
+        return placement ? JSON.parse(JSON.stringify(placement)) : null;
+    }
+
+    function clonePlacements() {
+        return JSON.parse(JSON.stringify((wall && wall.placements) || {}));
+    }
+
+    function samePlacementMap(a, b) {
+        return JSON.stringify(a || {}) === JSON.stringify(b || {});
+    }
+
+    /** The wire model uses whole wall units, even though the UI may compute
+     *  fractions while fitting a grid. Round once, at the boundary. */
+    function roundPlacement(placement) {
+        if (!placement) return null;
+        const bezel = placement.bezel || {};
+        return {
+            x: Math.round(Number(placement.x) || 0),
+            y: Math.round(Number(placement.y) || 0),
+            w: Math.max(1, Math.round(Number(placement.w) || 1)),
+            h: Math.max(1, Math.round(Number(placement.h) || 1)),
+            bezel: {
+                top: Math.max(0, Math.round(Number(bezel.top) || 0)),
+                right: Math.max(0, Math.round(Number(bezel.right) || 0)),
+                bottom: Math.max(0, Math.round(Number(bezel.bottom) || 0)),
+                left: Math.max(0, Math.round(Number(bezel.left) || 0))
+            }
+        };
+    }
+
+    function intersects(a, b) {
+        return a.x < b.x + b.w && a.x + a.w > b.x &&
+            a.y < b.y + b.h && a.y + a.h > b.y;
+    }
+
+    function setContextMode(mode, options) {
+        if (!["tablet", "content", "layout"].includes(mode)) return;
+        contextMode = mode;
+        if (stage.context) stage.context.dataset.mode = mode;
+        for (const tab of stage.contextTabs) {
+            tab.setAttribute("aria-pressed", String(tab.dataset.contextTab === mode));
+        }
+        applyPaneVisibility();
+        if (mode === "tablet") renderSelection();
+        if (mode === "layout") renderLayoutShortcuts();
+        if (options && options.focus) {
+            const target = mode === "tablet" ? stage.paneTablet :
+                mode === "content" ? stage.paneContent : stage.paneLayout;
+            if (target && target.scrollIntoView) target.scrollIntoView({ block: "nearest" });
+        }
+    }
+
+    function setMobileTask(task) {
+        if (!["wall", "tablets", "content", "saved"].includes(task)) return;
+        mobileTask = task;
+        if (stage.app) stage.app.dataset.task = task;
+        for (const tab of stage.mobileTabs) {
+            tab.setAttribute("aria-pressed", String(tab.dataset.task === task));
+        }
+        if (task === "wall") contextMode = "tablet";
+        if (task === "content") contextMode = "content";
+        if (task === "saved") contextMode = "layout";
+        if (stage.context) stage.context.dataset.mode = contextMode;
+        for (const tab of stage.contextTabs) {
+            tab.setAttribute("aria-pressed", String(tab.dataset.contextTab === contextMode));
+        }
+        applyPaneVisibility();
+        if (task === "wall") {
+            renderSelection();
+            setTimeout(renderWallMap, 0);
+        }
+        if (task === "content") setContextMode("content");
+        if (task === "saved") {
+            renderLayoutShortcuts();
+            if (tilePreviewPlan) setTimeout(renderWallMap, 0);
+        }
+        if (task === "tablets") {
+            for (const tile of tiles.values()) {
+                const device = devices.get(tile.el.dataset.id);
+                if (device) paintTileScreen(tile, device);
+            }
+        }
+    }
+
+    function applyPaneVisibility() {
+        if (!stage.paneTablet || !stage.paneContent || !stage.paneLayout) return;
+        if (isMobile()) {
+            stage.paneTablet.hidden = mobileTask !== "wall";
+            stage.paneContent.hidden = mobileTask !== "content";
+            stage.paneLayout.hidden = mobileTask !== "saved";
+            return;
+        }
+        stage.paneTablet.hidden = contextMode !== "tablet";
+        stage.paneContent.hidden = contextMode !== "content";
+        stage.paneLayout.hidden = contextMode !== "layout";
+    }
+
+    function renderTilesSelection() {
+        for (const [id, tile] of tiles) {
+            const selected = id === selectedId;
+            tile.el.dataset.selected = String(selected);
+            tile.el.setAttribute("aria-selected", String(selected));
+        }
+    }
+
+    function selectDevice(id, options) {
+        const opts = options || {};
+        if (!devices.has(id)) {
+            selectedId = null;
+            renderTilesSelection();
+            renderSelection();
+            return;
+        }
+        if (selectedId !== id) {
+            inspForgetPending = false;
+            if (inspForgetTimer) clearTimeout(inspForgetTimer);
+        }
+        selectedId = id;
+        if (isMobile() && mobileTask !== "wall" && !opts.keepTask) {
+            setMobileTask("wall");
+        }
+        if (!opts.keepContext) setContextMode("tablet");
+        renderTilesSelection();
+        if (opts.rebuildMap !== false) {
+            renderWallMap();
+        } else if (stage.mapFrame) {
+            for (const node of stage.mapFrame.querySelectorAll(".map-pl")) {
+                node.dataset.selected = String(node.dataset.id === id);
+            }
+        }
+        renderSelection();
+        if (opts.focusTile !== false && !isMobile()) {
+            const tile = tiles.get(id);
+            if (tile && tile.el.scrollIntoView) {
+                tile.el.scrollIntoView({ block: "nearest" });
+            }
+        }
+        if (isMobile() && opts.revealInspector !== false && stage.inspector) {
+            setTimeout(function () {
+                stage.inspector.scrollIntoView({ block: "start", behavior: "smooth" });
+            }, 0);
+        }
+    }
+
+    function defaultPlacementFor(device) {
+        const wallW = wall && wall.width > 0 ? wall.width : 1000;
+        const wallH = wall && wall.height > 0 ? wall.height : 500;
+        const aspect = viewportAspect(device) || 1;
+        let w = Math.max(80, Math.round(wallW / 3));
+        w = Math.min(w, wallW);
+        const visibleW = Math.max(20, w);
+        let h = Math.round(visibleW / aspect);
+        h = Math.min(Math.max(20, h), wallH);
+        return {
+            x: 0,
+            y: 0,
+            w: w,
+            h: h,
+            bezel: { top: 0, right: 0, bottom: 0, left: 0 }
+        };
+    }
+
+    function readInspectorPlacement() {
+        const values = {
+            x: Number(stage.inspX.value),
+            y: Number(stage.inspY.value),
+            w: Number(stage.inspW.value),
+            h: Number(stage.inspH.value),
+            "bezel-top": Number(stage.inspBezelTop.value),
+            "bezel-right": Number(stage.inspBezelRight.value),
+            "bezel-bottom": Number(stage.inspBezelBottom.value),
+            "bezel-left": Number(stage.inspBezelLeft.value)
+        };
+        for (const key of Object.keys(values)) {
+            if (!Number.isFinite(values[key])) {
+                return { error: "Every position field needs a number." };
+            }
+        }
+        if (values["bezel-top"] < 0 || values["bezel-right"] < 0 ||
+                values["bezel-bottom"] < 0 || values["bezel-left"] < 0) {
+            return { error: "Bezel offsets cannot be negative." };
+        }
+        const placement = {
+            x: values.x,
+            y: values.y,
+            w: values.w,
+            h: values.h,
+            bezel: {
+                top: values["bezel-top"],
+                right: values["bezel-right"],
+                bottom: values["bezel-bottom"],
+                left: values["bezel-left"]
+            }
+        };
+        const rounded = roundPlacement(placement);
+        const problem = placementProblem(rounded);
+        if (problem) return { error: problem.charAt(0).toUpperCase() + problem.slice(1) + "." };
+        return { placement: rounded };
+    }
+
+    function setInspectorFields(placement, includeBezel) {
+        if (!placement) return;
+        stage.inspX.value = fmtNumber(placement.x);
+        stage.inspY.value = fmtNumber(placement.y);
+        stage.inspW.value = fmtNumber(placement.w);
+        stage.inspH.value = fmtNumber(placement.h);
+        if (includeBezel !== false) {
+            stage.inspBezelTop.value = fmtNumber(placement.bezel.top);
+            stage.inspBezelRight.value = fmtNumber(placement.bezel.right);
+            stage.inspBezelBottom.value = fmtNumber(placement.bezel.bottom);
+            stage.inspBezelLeft.value = fmtNumber(placement.bezel.left);
+            stage.inspBezelSummary.textContent =
+                fmtNumber(placement.bezel.top) + " / " +
+                fmtNumber(placement.bezel.right) + " / " +
+                fmtNumber(placement.bezel.bottom) + " / " +
+                fmtNumber(placement.bezel.left);
+        }
+        updateInspectorShape();
+    }
+
+    function updateInspectorShape() {
+        if (!stage.inspShape) return;
+        const device = selectedId ? devices.get(selectedId) : null;
+        if (!device) {
+            stage.inspShape.textContent = "";
+            stage.inspWarning.hidden = true;
+            return;
+        }
+        const read = readInspectorPlacement();
+        if (read.error) {
+            stage.inspShape.textContent = read.error;
+            stage.inspWarning.hidden = true;
+            return;
+        }
+        const placement = read.placement;
+        const visible = visibleRect(placement);
+        const visAspect = aspectOf(visible.w, visible.h);
+        const devAspect = viewportAspect(device);
+        const delta = aspectDelta(visAspect, devAspect);
+        stage.inspShape.textContent =
+            "Visible " + fmtNumber(visible.w) + " × " + fmtNumber(visible.h) +
+            ". Screen shape " + (devAspect === null ? "-" : fmtAspect(devAspect)) +
+            ". Visible shape " + fmtAspect(visAspect) +
+            ". " + (delta === null ? "" : fmtDelta(delta) + " off.");
+        const mismatch = isAspectMismatch(delta);
+        stage.inspWarning.hidden = !mismatch;
+        if (mismatch) {
+            stage.inspWarningText.textContent =
+                "The visible area is " + fmtAspect(visAspect) +
+                " but the screen is " + fmtAspect(devAspect) +
+                ". The picture will crop.";
+            const target = matchHeightFor(placement, device);
+            stage.inspMatch.title = target === null
+                ? "Match the visible area to the screen shape"
+                : "Set height to " + fmtNumber(target) + " wall units";
+        }
+        if (stage.inspMatch) {
+            stage.inspMatch.disabled = devAspect === null;
+        }
+    }
+
+    function matchHeightFor(placement, device) {
+        const aspect = viewportAspect(device);
+        if (!aspect) return null;
+        const visibleW = placement.w - placement.bezel.left - placement.bezel.right;
+        if (!(visibleW > 0)) return null;
+        return Math.round((visibleW / aspect + placement.bezel.top + placement.bezel.bottom) * 100) / 100;
+    }
+
+    function renderSelection() {
+        if (!stage.inspector || !stage.inspectorEmpty) return;
+        if (!selectedId || !devices.has(selectedId)) {
+            selectedId = selectedId && devices.has(selectedId) ? selectedId : null;
+            stage.inspectorEmpty.hidden = false;
+            stage.inspector.hidden = true;
+            updateStageReadout();
+            return;
+        }
+        const device = devices.get(selectedId);
+        const saved = savedPlacement(selectedId);
+        const placement = saved || defaultPlacementFor(device);
+        const editing = stage.inspector.contains(document.activeElement) &&
+            document.activeElement &&
+            document.activeElement.matches &&
+            document.activeElement.matches("input, select");
+
+        stage.inspectorEmpty.hidden = true;
+        stage.inspector.hidden = false;
+        stage.inspId.textContent = shortId(selectedId);
+        stage.inspEyebrow.textContent = "Tablet";
+        stage.inspMeta.textContent =
+            (DEVICE_TYPE_NAMES[(device.type || "").toLowerCase()] || device.type || "Tablet") +
+            (device.width != null && device.height != null
+                ? ", " + device.width + " × " + device.height + " px"
+                : ", screen size not reported");
+        stage.inspStateOnline.textContent = device.online === true ? "Online" : "Offline";
+        stage.inspStatePlacement.textContent = saved ? "On the wall" : "Not placed";
+
+        if (!editing) setInspectorFields(placement);
+        stage.inspRemove.hidden = !saved;
+        stage.inspRemoveBottom.hidden = !saved;
+        if (stage.inspRemoveArea) stage.inspRemoveArea.hidden = !saved;
+        stage.inspPlace.hidden = !!saved;
+        for (const button of document.querySelectorAll("[data-nudge]")) {
+            button.disabled = !saved || !wallReady();
+        }
+        stage.inspSave.textContent = saved ? "Save position" : "Place at these coordinates";
+        stage.inspSave.disabled = !wallReady();
+        stage.inspPlace.disabled = !wallReady();
+        stage.inspRemove.disabled = !saved;
+        stage.inspRemoveBottom.disabled = !saved;
+        for (const input of [stage.inspX, stage.inspY, stage.inspW, stage.inspH,
+            stage.inspBezelTop, stage.inspBezelRight, stage.inspBezelBottom,
+            stage.inspBezelLeft]) {
+            if (input) input.disabled = !wallReady();
+        }
+
+        const color = normalizeColor(device.color);
+        stage.inspColor.value = color || "#000000";
+        stage.inspColorText.textContent = color || "Not set";
+        stage.inspColourSummary.textContent = color || "Not set";
+        for (const button of stage.inspPalette.querySelectorAll("[data-insp-color]")) {
+            button.setAttribute("aria-pressed", String(button.dataset.inspColor === color));
+        }
+
+        stage.inspDetailId.textContent = selectedId;
+        stage.inspDetailType.textContent = DEVICE_TYPE_NAMES[(device.type || "").toLowerCase()] || device.type || "-";
+        stage.inspDetailScreen.textContent =
+            device.width != null && device.height != null
+                ? device.width + " × " + device.height + " px" : "-";
+        const caps = deviceCaps(device);
+        stage.inspDetailImage.textContent = caps.known
+            ? (caps.image ? "Supported" : "Unsupported") : "Unknown";
+        stage.inspDetailSeen.textContent = seenLabel(device);
+        stage.inspDetailPlacement.textContent = saved
+            ? fmtNumber(saved.x) + ", " + fmtNumber(saved.y) + " · " +
+              fmtNumber(saved.w) + " × " + fmtNumber(saved.h)
+            : "Not placed";
+
+        stage.inspForget.disabled = device.online === true;
+        stage.inspForget.textContent = inspForgetPending ? "Confirm forget" : "Forget tablet";
+        stage.inspForgetHint.textContent = device.online === true
+            ? "Disconnect the tablet before forgetting it."
+            : "Removes the device and its saved position.";
+        if (!inspForgetPending) stage.inspForget.dataset.pending = "false";
+
+        updateInspectorShape();
+        updateStageReadout();
+    }
+
+    function setTilePlacementInputs(deviceId, placement) {
+        const tile = tiles.get(deviceId);
+        if (!tile) return;
+        if (tile.placeInputs.x) tile.placeInputs.x.value = String(placement.x);
+        if (tile.placeInputs.y) tile.placeInputs.y.value = String(placement.y);
+        if (tile.placeInputs.w) tile.placeInputs.w.value = String(placement.w);
+        if (tile.placeInputs.h) tile.placeInputs.h.value = String(placement.h);
+        if (tile.placeInputs["bezel-top"]) tile.placeInputs["bezel-top"].value = String(placement.bezel.top);
+        if (tile.placeInputs["bezel-right"]) tile.placeInputs["bezel-right"].value = String(placement.bezel.right);
+        if (tile.placeInputs["bezel-bottom"]) tile.placeInputs["bezel-bottom"].value = String(placement.bezel.bottom);
+        if (tile.placeInputs["bezel-left"]) tile.placeInputs["bezel-left"].value = String(placement.bezel.left);
+        tile.placeDirty = false;
+    }
+
+    async function commitPlacement(deviceId, placement, label) {
+        if (!wall || !devices.has(deviceId)) return false;
+        const before = clonePlacements();
+        const rounded = roundPlacement(placement);
+        setTilePlacementInputs(deviceId, rounded);
+        const ok = await savePlacement(deviceId);
+        if (!ok) {
+            renderSelection();
+            renderWallMap();
+            return false;
+        }
+        const after = clonePlacements();
+        pushStageHistory(before, after, label || "Moved " + shortId(deviceId));
+        renderSelection();
+        renderStageHistory();
+        if (isMobile()) setMobileTask("wall");
+        return true;
+    }
+
+    async function removeSelected() {
+        if (!selectedId || !savedPlacement(selectedId) || !wall) return;
+        const id = selectedId;
+        const before = clonePlacements();
+        const ok = await clearPlacement(id);
+        if (!ok) return;
+        pushStageHistory(before, clonePlacements(), "Removed " + shortId(id) + " from the wall");
+        renderSelection();
+        renderStageHistory();
+        if (stage.inspPlace && stage.inspPlace.focus) stage.inspPlace.focus();
+    }
+
+    function firstFreePlacement(device) {
+        if (!wallReady()) return null;
+        const p = defaultPlacementFor(device);
+        if (p.w > wall.width || p.h > wall.height) return null;
+        const step = Math.max(10, Math.round(Math.min(p.w, p.h) / 24));
+        for (let y = 0; y <= wall.height - p.h + 0.001; y += step) {
+            for (let x = 0; x <= wall.width - p.w + 0.001; x += step) {
+                const candidate = {
+                    x: Math.round(x * 100) / 100,
+                    y: Math.round(y * 100) / 100,
+                    w: p.w,
+                    h: p.h,
+                    bezel: { top: 0, right: 0, bottom: 0, left: 0 }
+                };
+                let clash = false;
+                for (const other of Object.values(wall.placements)) {
+                    if (intersects(candidate, other)) {
+                        clash = true;
+                        break;
+                    }
+                }
+                if (!clash) return candidate;
+            }
+        }
+        return null;
+    }
+
+    async function placeSelectedFirstFree() {
+        if (!selectedId || !devices.has(selectedId)) return;
+        if (savedPlacement(selectedId)) {
+            selectDevice(selectedId);
+            return;
+        }
+        const placement = firstFreePlacement(devices.get(selectedId));
+        if (!placement) {
+            stage.inspError.hidden = false;
+            stage.inspError.textContent = "No free area is large enough. Drag the tablet onto the wall or enter its position.";
+            stage.inspError.focus();
+            return;
+        }
+        const ok = await commitPlacement(selectedId, placement, "Placed " + shortId(selectedId));
+        if (ok && stage.inspRemove) stage.inspRemove.focus();
+    }
+
+    async function saveInspector() {
+        if (!selectedId || !wallReady()) return;
+        const read = readInspectorPlacement();
+        if (read.error) {
+            stage.inspError.hidden = false;
+            stage.inspError.textContent = read.error;
+            stage.inspError.focus();
+            return;
+        }
+        stage.inspError.hidden = true;
+        const placement = read.placement;
+        await commitPlacement(
+            selectedId,
+            placement,
+            (savedPlacement(selectedId) ? "Moved " : "Placed ") + shortId(selectedId)
+        );
+    }
+
+    function matchSelectedShape() {
+        if (!selectedId) return;
+        const device = devices.get(selectedId);
+        const read = readInspectorPlacement();
+        if (read.error) return;
+        const target = matchHeightFor(read.placement, device);
+        if (target === null) return;
+        stage.inspH.value = fmtNumber(target);
+        updateInspectorShape();
+        if (savedPlacement(selectedId)) {
+            saveInspector();
+        } else {
+            stage.inspH.focus();
+        }
+    }
+
+    function onInspectorDimensionInput(event) {
+        if (!stage.inspLock.checked || !selectedId) return;
+        const device = devices.get(selectedId);
+        const aspect = viewportAspect(device);
+        if (!aspect) return;
+        const bezel = {
+            top: Number(stage.inspBezelTop.value) || 0,
+            right: Number(stage.inspBezelRight.value) || 0,
+            bottom: Number(stage.inspBezelBottom.value) || 0,
+            left: Number(stage.inspBezelLeft.value) || 0
+        };
+        if (event.target === stage.inspW) {
+            const w = Number(stage.inspW.value);
+            const visibleW = w - bezel.left - bezel.right;
+            if (visibleW > 0) {
+                stage.inspH.value = fmtNumber(visibleW / aspect + bezel.top + bezel.bottom);
+            }
+        } else if (event.target === stage.inspH) {
+            const h = Number(stage.inspH.value);
+            const visibleH = h - bezel.top - bezel.bottom;
+            if (visibleH > 0) {
+                stage.inspW.value = fmtNumber(visibleH * aspect + bezel.left + bezel.right);
+            }
+        }
+        updateInspectorShape();
+    }
+
+    function pendingNudgePlacement() {
+        if (!selectedId || !wall || !wall.placements[selectedId]) return null;
+        if (pendingNudge && pendingNudge.id === selectedId) return clonePlacement(pendingNudge.placement);
+        return clonePlacement(wall.placements[selectedId]);
+    }
+
+    function nudgeSelected(dx, dy) {
+        const placement = pendingNudgePlacement();
+        if (!placement || !wall) return;
+        const step = Number(stage.inspStep && stage.inspStep.value) || 20;
+        placement.x = placement.x + dx * step;
+        placement.y = placement.y + dy * step;
+        placement.x = Math.max(0, Math.min(wall.width - placement.w, placement.x));
+        placement.y = Math.max(0, Math.min(wall.height - placement.h, placement.y));
+        pendingNudge = { id: selectedId, placement: clonePlacement(placement) };
+        setInspectorFields(placement, false);
+        stage.inspShape.textContent = "Moving " + shortId(selectedId) + " to " + fmtNumber(placement.x) + ", " + fmtNumber(placement.y) + ".";
+        updateStageReadout();
+        const box = stage.mapFrame && stage.mapFrame.querySelector('.map-pl[data-id="' + cssEscape(selectedId) + '"]');
+        if (box) {
+            box.style.left = pct(placement.x, wall.width);
+            box.style.top = pct(placement.y, wall.height);
+        }
+        if (stageNudgeTimer) clearTimeout(stageNudgeTimer);
+        stageNudgeTimer = setTimeout(flushNudge, 320);
+    }
+
+    async function flushNudge() {
+        if (!pendingNudge) return;
+        const pending = pendingNudge;
+        pendingNudge = null;
+        const before = clonePlacements();
+        setTilePlacementInputs(pending.id, pending.placement);
+        const ok = await savePlacement(pending.id);
+        if (ok) {
+            pushStageHistory(before, clonePlacements(), "Moved " + shortId(pending.id));
+            if (selectedId === pending.id) renderSelection();
+            renderStageHistory();
+        } else {
+            renderSelection();
+        }
+    }
+
+    function renderStageHistory() {
+        if (!stage.btnUndoStage) return;
+        stage.btnUndoStage.disabled = stageUndo.length === 0;
+        stage.btnRedoStage.disabled = stageRedo.length === 0;
+        if (stage.statusUndo) stage.statusUndo.hidden = stageUndo.length === 0;
+    }
+
+    function pushStageHistory(before, after, label) {
+        if (samePlacementMap(before, after)) return;
+        stageUndo.push({ before: before, after: after, label: label });
+        if (stageUndo.length > 40) stageUndo.shift();
+        stageRedo = [];
+        stageHistoryGeneration = wall ? wall.generation : null;
+        renderStageHistory();
+    }
+
+    async function applyPlacementMap(target) {
+        if (!wall) return false;
+        const current = clonePlacements();
+        const ids = new Set(Object.keys(current).concat(Object.keys(target || {})));
+        try {
+            for (const id of ids) {
+                const desired = target ? target[id] : null;
+                const existing = current[id];
+                if (desired && JSON.stringify(desired) === JSON.stringify(existing)) continue;
+                if (desired) {
+                    await requestJson("PUT", "/devices/" + encodeURIComponent(id) + "/placement", desired);
+                    wall.placements[id] = clonePlacement(desired);
+                } else if (existing) {
+                    await requestJson("DELETE", "/devices/" + encodeURIComponent(id) + "/placement");
+                    delete wall.placements[id];
+                }
+            }
+            renderWall();
+            return true;
+        } catch (err) {
+            logStatus("Could not restore the placement: " + err.message, "err");
+            renderWall();
+            return false;
+        }
+    }
+
+    async function undoStage() {
+        if (!stageUndo.length || tileApplying) return;
+        const entry = stageUndo.pop();
+        const ok = await applyPlacementMap(entry.before);
+        if (ok) {
+            stageRedo.push(entry);
+            logStatus("Undone: " + entry.label + ".", "info");
+        } else {
+            stageUndo.push(entry);
+        }
+        renderStageHistory();
+        renderSelection();
+    }
+
+    async function redoStage() {
+        if (!stageRedo.length || tileApplying) return;
+        const entry = stageRedo.pop();
+        const ok = await applyPlacementMap(entry.after);
+        if (ok) {
+            stageUndo.push(entry);
+            logStatus("Redone: " + entry.label + ".", "info");
+        } else {
+            stageRedo.push(entry);
+        }
+        renderStageHistory();
+        renderSelection();
+    }
+
+    function renderLayoutShortcuts() {
+        if (!stage.layoutShortcuts) return;
+        stage.layoutShortcuts.textContent = "";
+        const items = SNAPSHOTS.layout.items || [];
+        if (!SNAPSHOTS.layout.loaded) {
+            const p = document.createElement("p");
+            p.className = "meta";
+            p.textContent = "Open Layout to read saved layouts.";
+            stage.layoutShortcuts.appendChild(p);
+            return;
+        }
+        if (items.length === 0) {
+            const p = document.createElement("p");
+            p.className = "meta";
+            p.textContent = "Nothing saved yet.";
+            stage.layoutShortcuts.appendChild(p);
+            return;
+        }
+        for (const item of items.slice(0, 4)) {
+            const button = document.createElement("button");
+            button.type = "button";
+            button.className = "layout-shortcut";
+            const mini = document.createElement("span");
+            mini.className = "layout-mini";
+            mini.setAttribute("aria-hidden", "true");
+            for (let i = 0; i < 4; i += 1) mini.appendChild(document.createElement("i"));
+            const info = document.createElement("span");
+            const name = document.createElement("strong");
+            name.textContent = item.name;
+            const meta = document.createElement("small");
+            meta.textContent = "Recalls wall size and positions";
+            info.appendChild(name);
+            info.appendChild(meta);
+            button.appendChild(mini);
+            button.appendChild(info);
+            button.addEventListener("click", function () {
+                setContextMode("layout");
+                if (isMobile()) setMobileTask("saved");
+                beginSnapshotRecall("layout", item.name);
+            });
+            stage.layoutShortcuts.appendChild(button);
+        }
+    }
+
+    /* -------------------------- tiling -------------------------- */
+
+    function tileScopeIds(scope) {
+        if (scope === "placed") {
+            return Object.keys(wall.placements).filter(function (id) { return devices.has(id); });
+        }
+        if (scope === "all") {
+            return Array.from(devices.keys());
+        }
+        return Array.from(devices.values())
+            .filter(function (device) { return device.online === true; })
+            .map(function (device) { return device.device_id; });
+    }
+
+    function orderedTileIds(ids, order) {
+        if (order === "id") return ids.slice().sort(compareIds);
+        const rank = new Map(tileOrder.map(function (id, i) { return [id, i]; }));
+        return ids.slice().sort(function (a, b) {
+            const ra = rank.has(a) ? rank.get(a) : 9999;
+            const rb = rank.has(b) ? rank.get(b) : 9999;
+            return ra === rb ? compareIds(a, b) : ra - rb;
+        });
+    }
+
+    function fitPlacementInCell(device, cellX, cellY, cellW, cellH, bezel) {
+        const b = bezel || { top: 0, right: 0, bottom: 0, left: 0 };
+        const aspect = viewportAspect(device);
+        if (!aspect) {
+            return roundPlacement({ x: cellX, y: cellY, w: cellW, h: cellH, bezel: b });
+        }
+        const availW = cellW - b.left - b.right;
+        const availH = cellH - b.top - b.bottom;
+        if (!(availW > 0) || !(availH > 0)) {
+            return roundPlacement({ x: cellX, y: cellY, w: Math.max(1, cellW), h: Math.max(1, cellH), bezel: b });
+        }
+        let visibleW = availW;
+        let visibleH = visibleW / aspect;
+        if (visibleH > availH) {
+            visibleH = availH;
+            visibleW = visibleH * aspect;
+        }
+        const w = visibleW + b.left + b.right;
+        const h = visibleH + b.top + b.bottom;
+        return roundPlacement({
+            x: cellX + (cellW - w) / 2,
+            y: cellY + (cellH - h) / 2,
+            w: w,
+            h: h,
+            bezel: b
+        });
+    }
+
+    function buildTilePlan() {
+        const plan = {
+            ids: [],
+            cells: [],
+            placements: {},
+            errors: [],
+            mismatches: 0,
+            cols: 0,
+            rows: 0,
+            gap: 0,
+            cw: 0,
+            ch: 0,
+            shape: "keep"
+        };
+        if (!wallReady()) {
+            plan.errors.push("The wall size is not known yet.");
+            return plan;
+        }
+        const cols = Math.max(1, Math.round(Number(stage.tileColumns.value) || 0));
+        const rows = Math.max(1, Math.round(Number(stage.tileRows.value) || 0));
+        const gap = Math.max(0, Number(stage.tileGap.value) || 0);
+        const shape = stage.tileShape.value === "fill" ? "fill" : "keep";
+        plan.cols = cols;
+        plan.rows = rows;
+        plan.gap = gap;
+        plan.shape = shape;
+        plan.cw = (wall.width - (cols - 1) * gap) / cols;
+        plan.ch = (wall.height - (rows - 1) * gap) / rows;
+        if (!(plan.cw > 0) || !(plan.ch > 0)) {
+            plan.errors.push("The gap is too large for this wall.");
+        }
+        plan.ids = orderedTileIds(tileScopeIds(stage.tileScope.value), stage.tileOrder.value);
+        if (plan.ids.length === 0) plan.errors.push("No tablets match this scope.");
+        if (plan.ids.length > cols * rows) {
+            plan.errors.push(plan.ids.length + " tablets do not fit in " + cols + " × " + rows + " cells.");
+        }
+        return finishTilePlan(plan);
+    }
+
+    function finishTilePlan(plan) {
+        plan.cells = [];
+        plan.placements = {};
+        plan.mismatches = 0;
+        plan.errors = [];
+        if (!wallReady()) {
+            plan.errors = ["The wall size is not known yet."];
+            return plan;
+        }
+        if (!(plan.cw > 0) || !(plan.ch > 0)) {
+            plan.errors = ["The gap is too large for this wall."];
+            return plan;
+        }
+        const capacity = plan.cols * plan.rows;
+        if (plan.ids.length === 0) plan.errors = ["No tablets match this scope."];
+        if (plan.ids.length > capacity) {
+            plan.errors.push(plan.ids.length + " tablets do not fit in " + plan.cols + " × " + plan.rows + " cells.");
+        }
+        const limit = Math.min(plan.ids.length, capacity);
+        for (let i = 0; i < limit; i += 1) {
+            const id = plan.ids[i];
+            const device = devices.get(id);
+            const col = i % plan.cols;
+            const row = Math.floor(i / plan.cols);
+            const cellX = col * (plan.cw + plan.gap);
+            const cellY = row * (plan.ch + plan.gap);
+            const existing = savedPlacement(id);
+            const bezel = existing ? clonePlacement(existing.bezel) : { top: 0, right: 0, bottom: 0, left: 0 };
+            const placement = plan.shape === "keep"
+                ? fitPlacementInCell(device, cellX, cellY, plan.cw, plan.ch, bezel)
+                : roundPlacement({ x: cellX, y: cellY, w: plan.cw, h: plan.ch, bezel: bezel });
+            plan.placements[id] = placement;
+            const problem = placementProblem(placement);
+            if (problem) plan.errors.push(shortId(id) + ": " + problem + ".");
+            if (placementShapeMismatch(placement, device)) plan.mismatches += 1;
+            let conflict = false;
+            const scope = new Set(plan.ids);
+            for (const otherId of Object.keys(wall.placements)) {
+                if (scope.has(otherId)) continue;
+                if (intersects(placement, wall.placements[otherId])) {
+                    conflict = true;
+                    plan.errors.push(
+                        "Saved spot " + shortId(otherId) + " intersects " + shortId(id) +
+                        ". Move or release it first."
+                    );
+                }
+            }
+            plan.cells.push({ id: id, placement: placement, index: i, conflict: conflict });
+        }
+        return plan;
+    }
+
+    function recomputeTilePreview() {
+        if (!tilePreviewPlan) return;
+        finishTilePlan(tilePreviewPlan);
+        renderTilePreviewOnWall();
+        renderTileResult();
+    }
+
+    function startTilePreview() {
+        if (!wallReady()) {
+            stage.tileResult.textContent = "The wall size is not known yet.";
+            return;
+        }
+        tilePreviewPlan = buildTilePlan();
+        tilePreviewSelected = [];
+        stage.tilePreviewBtn.hidden = true;
+        stage.tileCancel.hidden = false;
+        stage.tileApply.hidden = false;
+        stage.tileWriteNote.hidden = false;
+        if (stage.app) stage.app.dataset.previewing = "true";
+        renderTilePreviewOnWall();
+        renderTileResult();
+        setContextMode("layout");
+        if (isMobile()) setMobileTask("saved");
+        if (stage.tileSection && stage.tileSection.scrollIntoView) {
+            stage.tileSection.scrollIntoView({ block: "nearest" });
+        }
+    }
+
+    function cancelTilePreview() {
+        tilePreviewPlan = null;
+        tilePreviewSelected = [];
+        if (stage.tileLayer) {
+            stage.tileLayer.textContent = "";
+            stage.tileLayer.hidden = true;
+        }
+        if (stage.mapFrame) stage.mapFrame.dataset.previewing = "false";
+        if (stage.tilePreviewBtn) stage.tilePreviewBtn.hidden = false;
+        if (stage.tileCancel) stage.tileCancel.hidden = true;
+        if (stage.tileApply) {
+            stage.tileApply.hidden = true;
+            stage.tileApply.disabled = false;
+            stage.tileApply.textContent = "Apply tiling";
+        }
+        if (stage.tileWriteNote) stage.tileWriteNote.hidden = true;
+        if (stage.tileResult) stage.tileResult.textContent = "";
+        if (stage.app) stage.app.dataset.previewing = "false";
+    }
+
+    function renderTilePreviewOnWall() {
+        if (!stage.tileLayer) return;
+        stage.tileLayer.textContent = "";
+        if (!tilePreviewPlan || !wallReady()) {
+            stage.tileLayer.hidden = true;
+            if (stage.mapFrame) stage.mapFrame.dataset.previewing = "false";
+            return;
+        }
+        stage.tileLayer.hidden = false;
+        if (stage.mapFrame) stage.mapFrame.dataset.previewing = "true";
+        for (const cell of tilePreviewPlan.cells) {
+            const button = document.createElement("button");
+            button.type = "button";
+            button.className = "tile-cell";
+            button.dataset.index = String(cell.index);
+            button.style.left = pct(cell.placement.x, wall.width);
+            button.style.top = pct(cell.placement.y, wall.height);
+            button.style.width = pct(cell.placement.w, wall.width);
+            button.style.height = pct(cell.placement.h, wall.height);
+            if (cell.conflict) button.dataset.conflict = "true";
+            button.setAttribute("aria-pressed", String(tilePreviewSelected.indexOf(cell.index) !== -1));
+            button.setAttribute("aria-label",
+                "Cell " + (cell.index + 1) + ", tablet " + shortId(cell.id));
+            const num = document.createElement("span");
+            num.className = "cell-number";
+            num.textContent = String(cell.index + 1);
+            const id = document.createElement("span");
+            id.className = "cell-id";
+            id.textContent = shortId(cell.id);
+            button.appendChild(num);
+            button.appendChild(id);
+            button.addEventListener("click", function () {
+                toggleTileCell(cell.index);
+            });
+            stage.tileLayer.appendChild(button);
+        }
+        renderTileResult();
+    }
+
+    function toggleTileCell(index) {
+        if (!tilePreviewPlan) return;
+        const at = tilePreviewSelected.indexOf(index);
+        if (at !== -1) {
+            tilePreviewSelected.splice(at, 1);
+        } else {
+            tilePreviewSelected.push(index);
+        }
+        if (tilePreviewSelected.length === 2) {
+            const a = tilePreviewSelected[0];
+            const b = tilePreviewSelected[1];
+            if (tilePreviewPlan.ids[a] !== undefined && tilePreviewPlan.ids[b] !== undefined) {
+                const swap = tilePreviewPlan.ids[a];
+                tilePreviewPlan.ids[a] = tilePreviewPlan.ids[b];
+                tilePreviewPlan.ids[b] = swap;
+            }
+            tilePreviewSelected = [];
+            recomputeTilePreview();
+            return;
+        }
+        renderTilePreviewOnWall();
+    }
+
+    function renderTileResult() {
+        if (!stage.tileResult) return;
+        if (!tilePreviewPlan) {
+            stage.tileResult.textContent = "";
+            stage.tileResult.classList.remove("blocked");
+            return;
+        }
+        const plan = tilePreviewPlan;
+        stage.tileApply.disabled = plan.errors.length > 0 || tileApplying;
+        stage.tileApply.textContent = tileApplying ? "Applying tiling" : "Apply tiling";
+        if (plan.errors.length) {
+            stage.tileResult.classList.add("blocked");
+            stage.tileResult.textContent = "Apply blocked. " + plan.errors.join(" ");
+            return;
+        }
+        stage.tileResult.classList.remove("blocked");
+        stage.tileResult.textContent =
+            plan.cells.length + " tablets in " + plan.cols + " × " + plan.rows +
+            " cells. " + fmtNumber(plan.cw) + " × " + fmtNumber(plan.ch) +
+            " units per cell. " + plan.mismatches +
+            (plan.mismatches === 1 ? " screen shape differs." : " screen shapes differ.");
+    }
+
+    async function putPlacement(deviceId, placement) {
+        await requestJson(
+            "PUT",
+            "/devices/" + encodeURIComponent(deviceId) + "/placement",
+            placement
+        );
+    }
+
+    async function applyTilePreview() {
+        if (!tilePreviewPlan || tilePreviewPlan.errors.length || tileApplying) return;
+        const plan = tilePreviewPlan;
+        const before = clonePlacements();
+        tileApplying = true;
+        stage.tileApply.disabled = true;
+        stage.tileApply.textContent = "Applying tiling";
+        let applied = 0;
+        let failure = null;
+        for (const cell of plan.cells) {
+            try {
+                await putPlacement(cell.id, cell.placement);
+                if (wall) wall.placements[cell.id] = clonePlacement(cell.placement);
+                applied += 1;
+                stage.tileResult.textContent =
+                    "Applying tiling: " + applied + " of " + plan.cells.length + ".";
+            } catch (err) {
+                failure = err;
+                break;
+            }
+        }
+        tileApplying = false;
+        if (applied > 0) {
+            pushStageHistory(before, clonePlacements(), "Tiled " + applied + (applied === 1 ? " tablet" : " tablets"));
+        }
+        cancelTilePreview();
+        renderWall();
+        if (failure) {
+            logStatus(
+                "Tiling stopped after " + applied + " of " + plan.cells.length +
+                " tablets: " + failure.message + ". Completed changes can be undone.",
+                "err"
+            );
+            stage.tileResult.classList.add("blocked");
+            stage.tileResult.textContent =
+                "Applied " + applied + " of " + plan.cells.length +
+                ". " + failure.message + ". Completed changes can be undone.";
+        } else {
+            logStatus("Tiled " + applied + (applied === 1 ? " tablet." : " tablets."), "ok");
+        }
+        if (isMobile()) setMobileTask("wall");
+        renderStageHistory();
+    }
+
+    /* ----------------------- stage pointer input ----------------------- */
+
+    function snapAxis(value, size, candidates, threshold) {
+        let best = value;
+        let bestDistance = threshold + 1;
+        for (const candidate of candidates) {
+            const distance = Math.abs(value - candidate);
+            if (distance < bestDistance) {
+                bestDistance = distance;
+                best = candidate;
+            }
+        }
+        return bestDistance <= threshold ? best : value;
+    }
+
+    function snapPlacement(placement, mode, id, disableSnap) {
+        if (!wall) return placement;
+        if (disableSnap) {
+            placement.x = Math.max(0, Math.min(wall.width - placement.w, placement.x));
+            placement.y = Math.max(0, Math.min(wall.height - placement.h, placement.y));
+            return roundPlacement(placement);
+        }
+        if (!stage.snapToggle || !stage.snapToggle.checked) return placement;
+        const step = Number(stage.snapStep.value) || 0;
+        const pxPerX = stage.mapFrame.clientWidth / wall.width;
+        const pxPerY = stage.mapFrame.clientHeight / wall.height;
+        const thresholdX = SNAP_THRESHOLD_PX / (pxPerX || 1);
+        const thresholdY = SNAP_THRESHOLD_PX / (pxPerY || 1);
+        if (step > 0) {
+            placement.x = Math.round(placement.x / step) * step;
+            placement.y = Math.round(placement.y / step) * step;
+            if (mode === "resize") {
+                placement.w = Math.round(placement.w / step) * step;
+                placement.h = Math.round(placement.h / step) * step;
+            }
+        }
+        const xCandidates = [0, wall.width - placement.w];
+        const yCandidates = [0, wall.height - placement.h];
+        for (const otherId of Object.keys(wall.placements)) {
+            if (otherId === id) continue;
+            const other = wall.placements[otherId];
+            xCandidates.push(other.x, other.x + other.w - placement.w,
+                other.x + other.w, other.x - placement.w);
+            yCandidates.push(other.y, other.y + other.h - placement.h,
+                other.y + other.h, other.y - placement.h);
+        }
+        if (mode === "move") {
+            placement.x = snapAxis(placement.x, placement.w, xCandidates, thresholdX);
+            placement.y = snapAxis(placement.y, placement.h, yCandidates, thresholdY);
+        }
+        placement.x = Math.max(0, Math.min(wall.width - placement.w, placement.x));
+        placement.y = Math.max(0, Math.min(wall.height - placement.h, placement.y));
+        if (mode === "resize") {
+            placement.w = Math.max(10, Math.min(wall.width - placement.x, placement.w));
+            placement.h = Math.max(10, Math.min(wall.height - placement.y, placement.h));
+        }
+        return roundPlacement(placement);
+    }
+
+    function startStageDrag(event, id, box, mode, corner) {
+        if (!wall || !wall.placements[id] || event.button !== 0 || isMobile()) return;
+        if (mode === "move" && event.target.closest(".map-handle")) return;
+        event.preventDefault();
+        event.stopPropagation();
+        if (stageDrag) cancelStageDrag();
+        selectDevice(id, { rebuildMap: false, keepTask: true });
+        const frameRect = stage.mapFrame.getBoundingClientRect();
+        if (!(frameRect.width > 0) || !(frameRect.height > 0)) return;
+        const pxX = frameRect.width / wall.width;
+        const pxY = frameRect.height / wall.height;
+        stageDrag = {
+            id: id,
+            box: box,
+            mode: mode,
+            corner: corner || null,
+            pointerId: event.pointerId,
+            startClientX: event.clientX,
+            startClientY: event.clientY,
+            start: clonePlacement(wall.placements[id]),
+            placement: clonePlacement(wall.placements[id]),
+            pxX: pxX,
+            pxY: pxY,
+            moved: false,
+            moveHandler: null,
+            upHandler: null,
+            cancelHandler: null
+        };
+        box.dataset.dragging = "true";
+        box.setPointerCapture(event.pointerId);
+
+        stageDrag.moveHandler = function (moveEvent) {
+            if (!stageDrag) return;
+            const dx = (moveEvent.clientX - stageDrag.startClientX) / stageDrag.pxX;
+            const dy = (moveEvent.clientY - stageDrag.startClientY) / stageDrag.pxY;
+            if (Math.abs(dx) > 1 || Math.abs(dy) > 1) stageDrag.moved = true;
+            let p = clonePlacement(stageDrag.start);
+            if (stageDrag.mode === "move") {
+                p.x = stageDrag.start.x + dx;
+                p.y = stageDrag.start.y + dy;
+            } else {
+                const min = 10;
+                if (stageDrag.corner.indexOf("e") !== -1) p.w = Math.max(min, stageDrag.start.w + dx);
+                if (stageDrag.corner.indexOf("s") !== -1) p.h = Math.max(min, stageDrag.start.h + dy);
+                if (stageDrag.corner.indexOf("w") !== -1) {
+                    p.w = Math.max(min, stageDrag.start.w - dx);
+                    p.x = stageDrag.start.x + (stageDrag.start.w - p.w);
+                }
+                if (stageDrag.corner.indexOf("n") !== -1) {
+                    p.h = Math.max(min, stageDrag.start.h - dy);
+                    p.y = stageDrag.start.y + (stageDrag.start.h - p.h);
+                }
+            }
+            p = snapPlacement(p, stageDrag.mode, stageDrag.id, moveEvent.altKey);
+            stageDrag.placement = p;
+            stageDrag.moved = true;
+            box.style.left = pct(p.x, wall.width);
+            box.style.top = pct(p.y, wall.height);
+            box.style.width = pct(p.w, wall.width);
+            box.style.height = pct(p.h, wall.height);
+            setInspectorFields(p, false);
+            updateStageReadout();
+            stage.stageReadout.textContent =
+                shortId(stageDrag.id) + "  X " + fmtNumber(p.x) + "  Y " + fmtNumber(p.y) +
+                "  W " + fmtNumber(p.w) + "  H " + fmtNumber(p.h);
+        };
+
+        stageDrag.upHandler = function (upEvent) {
+            const drag = stageDrag;
+            if (!drag) return;
+            const overRail = document.elementFromPoint(upEvent.clientX, upEvent.clientY);
+            const remove = drag.mode === "move" && overRail &&
+                overRail.closest && overRail.closest(".roster");
+            endStageDrag(remove);
+        };
+
+        stageDrag.cancelHandler = function () {
+            cancelStageDrag();
+        };
+
+        window.addEventListener("pointermove", stageDrag.moveHandler);
+        window.addEventListener("pointerup", stageDrag.upHandler);
+        window.addEventListener("pointercancel", stageDrag.cancelHandler);
+    }
+
+    function endStageDrag(remove) {
+        if (!stageDrag) return;
+        const drag = stageDrag;
+        window.removeEventListener("pointermove", drag.moveHandler);
+        window.removeEventListener("pointerup", drag.upHandler);
+        window.removeEventListener("pointercancel", drag.cancelHandler);
+        try { drag.box.releasePointerCapture(drag.pointerId); } catch (_err) { /* already released */ }
+        drag.box.dataset.dragging = "false";
+        stageDrag = null;
+        if (!drag.moved) {
+            renderWallMap();
+            return;
+        }
+        stageJustDragged = true;
+        setTimeout(function () { stageJustDragged = false; }, 0);
+        if (remove) {
+            removeSelectedFor(drag.id);
+            return;
+        }
+        commitPlacement(
+            drag.id,
+            drag.placement,
+            (drag.mode === "move" ? "Moved " : "Resized ") + shortId(drag.id)
+        );
+    }
+
+    function cancelStageDrag() {
+        if (!stageDrag) return;
+        const drag = stageDrag;
+        window.removeEventListener("pointermove", drag.moveHandler);
+        window.removeEventListener("pointerup", drag.upHandler);
+        window.removeEventListener("pointercancel", drag.cancelHandler);
+        try { drag.box.releasePointerCapture(drag.pointerId); } catch (_err) { /* already released */ }
+        drag.box.dataset.dragging = "false";
+        stageDrag = null;
+        renderWallMap();
+        logStatus("Movement cancelled.", "info");
+    }
+
+    async function removeSelectedFor(id) {
+        const previous = selectedId;
+        selectedId = id;
+        await removeSelected();
+        if (!devices.has(id)) selectedId = previous && devices.has(previous) ? previous : null;
+        renderSelection();
+    }
+
+    function dropDeviceOnWall(deviceId, clientX, clientY) {
+        if (!wallReady() || !devices.has(deviceId)) return;
+        const rect = stage.mapFrame.getBoundingClientRect();
+        if (!(rect.width > 0) || !(rect.height > 0)) return;
+        const p = defaultPlacementFor(devices.get(deviceId));
+        p.x = (clientX - rect.left) / rect.width * wall.width - p.w / 2;
+        p.y = (clientY - rect.top) / rect.height * wall.height - p.h / 2;
+        p.x = Math.max(0, Math.min(wall.width - p.w, p.x));
+        p.y = Math.max(0, Math.min(wall.height - p.h, p.y));
+        p.x = Math.round(p.x);
+        p.y = Math.round(p.y);
+        selectDevice(deviceId, { keepTask: true });
+        commitPlacement(deviceId, p, "Placed " + shortId(deviceId));
+    }
+
+    /* -------------------------- boot the stage -------------------------- */
+
+    function buildInspectorPalette() {
+        if (!stage.inspPalette) return;
+        stage.inspPalette.textContent = "";
+        for (const preset of PRESETS) {
+            const button = document.createElement("button");
+            button.type = "button";
+            button.className = "swatch";
+            button.dataset.inspColor = preset.color;
+            button.style.background = preset.color;
+            button.title = preset.name + " " + preset.color;
+            button.setAttribute("aria-label", preset.name + " " + preset.color);
+            button.setAttribute("aria-pressed", "false");
+            button.addEventListener("click", function () {
+                if (!selectedId) return;
+                setDeviceColor(selectedId, preset.color).then(renderSelection);
+            });
+            stage.inspPalette.appendChild(button);
+        }
+    }
+
+    function fillStepOptions(select) {
+        if (!select) return;
+        select.textContent = "";
+        for (const value of [1, 10, 20, 50, 100]) {
+            const option = document.createElement("option");
+            option.value = String(value);
+            option.textContent = String(value);
+            if (value === 20) option.selected = true;
+            select.appendChild(option);
+        }
+    }
+
+    function bindStageEvents() {
+        for (const tab of stage.contextTabs) {
+            tab.addEventListener("click", function () {
+                setContextMode(tab.dataset.contextTab);
+            });
+        }
+        for (const tab of stage.mobileTabs) {
+            tab.addEventListener("click", function () {
+                setMobileTask(tab.dataset.task);
+            });
+        }
+        const placementForm = document.getElementById("placement-form");
+        if (placementForm) {
+            placementForm.addEventListener("submit", function (event) {
+                event.preventDefault();
+                saveInspector();
+            });
+        }
+        if (stage.inspRemove) stage.inspRemove.addEventListener("click", removeSelected);
+        if (stage.inspRemoveBottom) stage.inspRemoveBottom.addEventListener("click", removeSelected);
+        if (stage.inspPlace) stage.inspPlace.addEventListener("click", placeSelectedFirstFree);
+        if (stage.inspMatch) stage.inspMatch.addEventListener("click", matchSelectedShape);
+        if (stage.inspW) stage.inspW.addEventListener("input", onInspectorDimensionInput);
+        if (stage.inspH) stage.inspH.addEventListener("input", onInspectorDimensionInput);
+        for (const input of [stage.inspBezelTop, stage.inspBezelRight,
+            stage.inspBezelBottom, stage.inspBezelLeft]) {
+            if (input) input.addEventListener("input", updateInspectorShape);
+        }
+        if (stage.inspector) {
+            stage.inspector.addEventListener("input", function () {
+                if (stage.inspError) stage.inspError.hidden = true;
+            });
+        }
+        if (stage.inspColor) {
+            stage.inspColor.addEventListener("change", function () {
+                if (!selectedId) return;
+                setDeviceColor(selectedId, stage.inspColor.value).then(renderSelection);
+            });
+        }
+        if (stage.inspForget) {
+            stage.inspForget.addEventListener("click", async function () {
+                if (!selectedId) return;
+                if (inspForgetPending) {
+                    const id = selectedId;
+                    inspForgetPending = false;
+                    if (inspForgetTimer) clearTimeout(inspForgetTimer);
+                    await forgetDevice(id);
+                    if (!devices.has(id)) selectedId = null;
+                    renderSelection();
+                    return;
+                }
+                inspForgetPending = true;
+                stage.inspForget.textContent = "Confirm forget";
+                stage.inspForget.dataset.pending = "true";
+                if (inspForgetTimer) clearTimeout(inspForgetTimer);
+                inspForgetTimer = setTimeout(function () {
+                    inspForgetPending = false;
+                    renderSelection();
+                }, 4000);
+            });
+        }
+        for (const button of document.querySelectorAll("[data-nudge]")) {
+            button.addEventListener("click", function () {
+                const parts = (button.dataset.nudge || "").split(",");
+                nudgeSelected(Number(parts[0]) || 0, Number(parts[1]) || 0);
+            });
+        }
+        const syncSteps = function (value) {
+            if (stage.inspStep && stage.inspStep.value !== value) stage.inspStep.value = value;
+            if (stage.inspStepDesktop && stage.inspStepDesktop.value !== value) stage.inspStepDesktop.value = value;
+        };
+        if (stage.inspStep) stage.inspStep.addEventListener("change", function () { syncSteps(stage.inspStep.value); });
+        if (stage.inspStepDesktop) stage.inspStepDesktop.addEventListener("change", function () { syncSteps(stage.inspStepDesktop.value); });
+        if (stage.btnUndoStage) stage.btnUndoStage.addEventListener("click", undoStage);
+        if (stage.btnRedoStage) stage.btnRedoStage.addEventListener("click", redoStage);
+        if (stage.statusUndo) stage.statusUndo.addEventListener("click", undoStage);
+        if (stage.btnChangeContent) {
+            stage.btnChangeContent.addEventListener("click", function () {
+                setContextMode("content");
+                if (isMobile()) setMobileTask("content");
+            });
+        }
+        if (stage.btnManageLayouts) {
+            stage.btnManageLayouts.addEventListener("click", function () {
+                setContextMode("layout");
+                if (isMobile()) setMobileTask("saved");
+            });
+        }
+        if (stage.btnReviewChecks) {
+            stage.btnReviewChecks.addEventListener("click", function () {
+                if (!el.alerts) return;
+                el.alerts.hidden = false;
+                if (el.alerts.scrollIntoView) el.alerts.scrollIntoView({ block: "nearest" });
+                const first = el.alerts.querySelector(".alert:not([hidden])");
+                if (first && first.focus) first.focus();
+            });
+        }
+        if (stage.btnTile) {
+            stage.btnTile.addEventListener("click", function () {
+                setContextMode("layout");
+                if (isMobile()) setMobileTask("saved");
+                startTilePreview();
+            });
+        }
+        if (stage.tilePreviewBtn) stage.tilePreviewBtn.addEventListener("click", startTilePreview);
+        if (stage.tileCancel) stage.tileCancel.addEventListener("click", cancelTilePreview);
+        if (stage.tileApply) stage.tileApply.addEventListener("click", applyTilePreview);
+        for (const field of [stage.tileColumns, stage.tileRows, stage.tileGap, stage.tileOrder, stage.tileScope]) {
+            if (!field) continue;
+            field.addEventListener("change", function () {
+                if (tilePreviewPlan) startTilePreview();
+            });
+        }
+        if (stage.tileShape) {
+            stage.tileShape.addEventListener("change", function () {
+                if (stage.tileHelp) {
+                    stage.tileHelp.textContent = stage.tileShape.value === "keep"
+                        ? "Each footprint fits inside its cell. Visible shape matches its screen."
+                        : "Each footprint fills its cell. Bezels stay fixed; shapes may differ.";
+                }
+                if (tilePreviewPlan) startTilePreview();
+            });
+        }
+        if (stage.btnZoomWall) {
+            stage.btnZoomWall.addEventListener("click", function () {
+                if (!stage.wallScroll) return;
+                const zoomed = stage.wallScroll.classList.toggle("zoomed");
+                stage.btnZoomWall.textContent = zoomed ? "Fit" : "2x zoom";
+                stage.btnZoomWall.setAttribute("aria-pressed", String(zoomed));
+                setTimeout(renderWallMap, 0);
+            });
+        }
+        if (stage.btnKeys && stage.keysDialog) {
+            stage.btnKeys.addEventListener("click", function () {
+                if (typeof stage.keysDialog.showModal === "function") stage.keysDialog.showModal();
+                else stage.keysDialog.hidden = false;
+            });
+        }
+        if (stage.keysClose) {
+            stage.keysClose.addEventListener("click", function () {
+                if (stage.keysDialog) stage.keysDialog.close();
+            });
+        }
+        if (stage.mapFrame) {
+            stage.mapFrame.addEventListener("dragover", function (event) {
+                event.preventDefault();
+                if (event.dataTransfer) event.dataTransfer.dropEffect = "move";
+                stage.mapFrame.classList.add("drop-ready");
+            });
+            stage.mapFrame.addEventListener("dragleave", function () {
+                stage.mapFrame.classList.remove("drop-ready");
+            });
+            stage.mapFrame.addEventListener("drop", function (event) {
+                event.preventDefault();
+                stage.mapFrame.classList.remove("drop-ready");
+                const id = event.dataTransfer ? event.dataTransfer.getData("text/plain") : "";
+                if (id) dropDeviceOnWall(id, event.clientX, event.clientY);
+            });
+        }
+        document.addEventListener("keydown", function (event) {
+            const target = event.target;
+            const tag = target && target.tagName ? target.tagName.toLowerCase() : "";
+            const editing = tag === "input" || tag === "textarea" || tag === "select" ||
+                (target && target.isContentEditable);
+            if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === "z" && !editing) {
+                event.preventDefault();
+                if (event.shiftKey) redoStage();
+                else undoStage();
+                return;
+            }
+            if (event.key === "Escape") {
+                if (stage.keysDialog && stage.keysDialog.open) {
+                    stage.keysDialog.close();
+                    return;
+                }
+                if (tilePreviewPlan) {
+                    cancelTilePreview();
+                    return;
+                }
+                if (stageDrag) {
+                    cancelStageDrag();
+                    return;
+                }
+            }
+            if (!editing && (event.key === "Delete" || event.key === "Backspace") && selectedId) {
+                event.preventDefault();
+                removeSelected();
+            }
+        });
+        window.addEventListener("resize", function () {
+            applyPaneVisibility();
+        });
+    }
+
+    function initStage() {
+        if (!stage.app) return;
+        buildInspectorPalette();
+        fillStepOptions(stage.inspStep);
+        fillStepOptions(stage.inspStepDesktop);
+        bindStageEvents();
+        stage.app.dataset.task = "wall";
+        stage.context.dataset.mode = "tablet";
+        applyPaneVisibility();
+        renderSelection();
+        renderStageHistory();
+        renderLayoutShortcuts();
+    }
+
     function init() {
         buildGlobalPalette();
         bindEvents();
+        initStage();
         // Pending until GET /operator-config answers: no URL is guessed here.
         renderTabletUrl();
         renderConn();

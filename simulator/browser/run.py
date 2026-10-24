@@ -501,6 +501,7 @@ async def exercise(artifacts: Path, report: dict[str, Any], observation_seconds:
         inventory = await api("GET", "/assets")
         asset = inventory["assets"][0]["id"]
         await api("PUT", "/scene", {"content": {"type": "image", "asset": asset}})
+        await controller.click('[data-context-tab="content"]')
         async with controller.expect_response(lambda response: response.url == base + "/scene" and response.request.method == "PUT") as changed:
             await controller.get_by_role("button", name="Calibration", exact=True).click()
         check("controller calibration response", (await changed.value).ok)
@@ -928,6 +929,7 @@ async def exercise(artifacts: Path, report: dict[str, Any], observation_seconds:
             return seen
 
         r1: dict[str, Any] = {}
+        await controller.click('[data-context-tab="content"]')
         await controller.wait_for_selector("#upload-block:not([hidden])", timeout=10000)
         await controller.set_input_files("#upload-file", str(upload_path))
         await controller.click("#btn-upload")

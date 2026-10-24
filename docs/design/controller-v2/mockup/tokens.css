@@ -1,0 +1,86 @@
+:root {
+  color-scheme: light;
+  --surface: #f6f8f5;
+  --rail: #edf1ec;
+  --field: #fcfdfa;
+  --hover: #e4eae3;
+  --ink: #25312b;
+  --muted: #59675d;
+  --rule: #d0d8d0;
+  --control-edge: #7a887d;
+  --accent: #23684f;
+  --accent-hover: #19533e;
+  --accent-wash: #dfede3;
+  --wall: #232e29;
+  --wall-grid: #354139;
+  --wall-text: #f0f5ed;
+  --wall-muted: #c4d0c4;
+  --wall-accent: #a5e3bb;
+  --bezel: #576057;
+  --bezel-hatch: #707b70;
+  --warning: #654d22;
+  --warning-wash: #f1ead9;
+  --error: #893d32;
+  --error-wash: #f5e7e2;
+  --disabled: #657269;
+  --sans: -apple-system, BlinkMacSystemFont, "Segoe UI", "Noto Sans", Arial, sans-serif;
+  --mono: ui-monospace, "SFMono-Regular", Consolas, "Liberation Mono", monospace;
+  --type-product: 600 16px/24px var(--sans);
+  --type-title: 600 24px/30px var(--sans);
+  --type-selection: 600 21px/28px var(--sans);
+  --type-section: 600 13px/20px var(--sans);
+  --type-body: 400 13px/20px var(--sans);
+  --type-control: 500 13px/20px var(--sans);
+  --type-meta: 400 12px/18px var(--sans);
+  --type-coordinate: 400 11px/16px var(--mono);
+  --tracking-title: -0.025em;
+  --tracking-body: 0;
+  --space-1: 4px;
+  --space-2: 8px;
+  --space-3: 12px;
+  --space-4: 16px;
+  --space-5: 20px;
+  --space-6: 24px;
+  --space-8: 32px;
+  --radius-small: 3px;
+  --radius-control: 6px;
+  --radius-dialog: 10px;
+  --topbar-height: 54px;
+  --status-height: 34px;
+  --roster-width: 204px;
+  --context-width: 308px;
+  --control-height: 34px;
+  --touch-target: 44px;
+  --field-padding: 8px 10px;
+  --focus-width: 2px;
+  --focus-offset: 3px;
+  --motion-duration: 120ms;
+  --layer-selection: 4;
+  --layer-ghost: 6;
+  --layer-dialog: 20;
+}
+*, *::before, *::after { box-sizing: border-box; }
+[hidden] { display: none !important; }
+body { margin: 0; color: var(--ink); background: var(--surface); font: var(--type-body); font-variant-numeric: tabular-nums; }
+button, input, select { font: var(--type-control); color: inherit; }
+button, .button { min-height: var(--control-height); border: 1px solid var(--control-edge); border-radius: var(--radius-control); background: var(--field); padding: 5px 11px; cursor: pointer; }
+button:hover, .button:hover { background: var(--hover); }
+button.primary { background: var(--accent); border-color: var(--accent); color: var(--field); }
+button.primary:hover { background: var(--accent-hover); }
+button.quiet { background: transparent; border-color: transparent; }
+button:disabled { background: var(--rail); border-color: var(--rule); color: var(--disabled); cursor: default; }
+input:not([type=checkbox]):not([type=file]):not([type=color]), select { min-width: 0; width: 100%; min-height: var(--control-height); padding: var(--field-padding); background: var(--field); border: 1px solid var(--control-edge); border-radius: var(--radius-control); }
+input[type=checkbox] { width: 15px; height: 15px; accent-color: var(--accent); }
+input[aria-invalid=true] { border: 2px solid var(--error); }
+:focus-visible { outline: var(--focus-width) solid var(--accent); outline-offset: var(--focus-offset); }
+a { color: var(--accent); text-underline-offset: 3px; }
+label { font: var(--type-meta); color: var(--muted); }
+@media (max-width: 900px) {
+  :root { --control-height: 44px; }
+  input:not([type=checkbox]):not([type=file]):not([type=color]), select { font-size: 16px; }
+  button, .button, summary { min-height: var(--touch-target); }
+}
+@media (prefers-reduced-motion: reduce) {
+  :root { --motion-duration: 0ms; }
+  *, *::before, *::after { scroll-behavior: auto !important; animation: none !important; transition: none !important; }
+}

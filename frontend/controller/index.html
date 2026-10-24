@@ -7,375 +7,537 @@
     <meta name="description" content="Control panel for a wall of tablets: choose what the wall shows and where each tablet sits.">
     <title>Wall control · tablet-wall-ai</title>
     <link rel="icon" href="favicon.svg" type="image/svg+xml">
-    <link rel="stylesheet" href="controller.css?v=8">
+    <link rel="stylesheet" href="controller.css?v=12">
 </head>
 <body>
-<a class="skip" href="#tablets">Skip to tablets</a>
+<a class="skip" href="#workspace">Skip to wall</a>
 
-<header class="topbar">
-    <h1 class="brand">Tablet wall</h1>
+<div class="app" id="app" data-task="wall">
 
-    <div class="topbar-status">
-        <p class="conn" id="conn" data-state="connecting" title="Live connection to the server">
-            <span class="conn-glyph" aria-hidden="true"></span>
-            <span class="conn-label" id="conn-label">Connecting</span>
-        </p>
-        <button type="button" class="btn btn-ghost btn-sm" id="btn-reconnect" hidden>Reconnect</button>
-        <p class="tally" title="Tablets currently connected">
-            <span class="tally-on" id="tally-online">0</span><span class="tally-slash">/</span><span class="tally-total" id="tally-total">0</span>
-            <span class="tally-label">online</span>
-        </p>
-    </div>
+    <header class="topbar">
+        <div class="brand">
+            <span class="brand-mark" aria-hidden="true"><i></i><i></i><i></i><i></i></span>
+            <h1>Tablet wall</h1>
+        </div>
 
-    <div class="tablet-link">
-        <span class="tablet-link-label">Tablet address</span>
-        <!-- The address and Copy state are driven by GET /operator-config;
-             an unverified address is never copied. -->
-        <code id="client-url" role="status" aria-atomic="true">/client/</code>
-        <button type="button" class="btn btn-sm" id="btn-copy-url"
-                aria-label="Copy the tablet URL" aria-describedby="client-url" disabled>Copy</button>
-    </div>
+        <div class="connection">
+            <p class="conn" id="conn" data-state="connecting" title="Live connection to the server">
+                <span class="conn-glyph" aria-hidden="true"></span>
+                <span id="conn-label">Connecting</span>
+            </p>
+            <button type="button" class="quiet small" id="btn-reconnect" hidden>Reconnect</button>
+            <span class="tally"><b id="tally-online">0</b> / <span id="tally-total">0</span> online</span>
+        </div>
 
-    <a class="btn btn-sm btn-quiet" href="physical.html">Physical setup</a>
-</header>
+        <div class="tablet-address">
+            <span class="meta">Tablet address</span>
+            <code id="client-url" role="status" aria-atomic="true">/client/</code>
+            <button type="button" id="btn-copy-url" aria-label="Copy the tablet URL" aria-describedby="client-url" disabled>Copy</button>
+        </div>
 
-<div class="layout">
+        <a class="quiet physical" href="physical.html">Physical setup</a>
+    </header>
 
-    <aside class="side" aria-label="Content controls">
+    <nav class="mobile-nav" aria-label="Controller tasks">
+        <button type="button" data-task="wall" aria-pressed="true">Wall</button>
+        <button type="button" data-task="tablets" aria-pressed="false">Tablets</button>
+        <button type="button" data-task="content" aria-pressed="false">Content</button>
+        <button type="button" data-task="saved" aria-pressed="false">Layout</button>
+    </nav>
 
-        <section class="card content-panel" id="show" aria-labelledby="show-title">
-            <div class="content-head">
-                <h2 id="show-title">Content</h2>
-                <p class="content-now">
-                    <span class="content-now-label">On the wall</span>
-                    <strong id="content-now">Waiting</strong>
-                </p>
+    <aside class="roster" id="roster" aria-label="Tablets">
+        <div class="rail-heading">
+            <h2>Tablets</h2>
+            <span class="meta" id="roster-count">None known</span>
+        </div>
+
+        <div class="device-list" id="grid" role="listbox" aria-label="Registered tablets"></div>
+
+        <section class="empty" id="empty" hidden>
+            <p class="empty-conn" id="empty-conn"></p>
+            <h3>No tablets yet</h3>
+            <p>Open the tablet address on each device. It appears here within a few seconds.</p>
+            <ol>
+                <li>Connect the tablet to the same network as this computer.</li>
+                <li>Open the exact tablet address shown at the top of this page. If it says <code>localhost</code> or <code>127.0.0.1</code>, that address only works on this computer.</li>
+                <li>Leave the page open. Reloading keeps the same tablet identity.</li>
+            </ol>
+        </section>
+
+        <section class="reservations" id="reservations" hidden aria-labelledby="reservations-title">
+            <h3 id="reservations-title">Saved spots</h3>
+            <p class="meta">A returning tablet reclaims its spot.</p>
+            <ul class="res-list" id="res-list"></ul>
+        </section>
+
+        <p class="roster-help">Drag a tablet onto the wall. Drag it back here to remove it.</p>
+
+        <section class="shortcut-group" aria-labelledby="shortcut-title">
+            <div class="section-label">
+                <h3 id="shortcut-title">Saved layouts</h3>
+                <button type="button" class="quiet small" id="btn-manage-layouts">Manage</button>
             </div>
-
-            <div class="field">
-                <div class="seg" id="wall-content" role="group" aria-label="Wall content">
-                    <button type="button" class="seg-opt" data-content="color"
-                            aria-pressed="true" disabled>Colour</button>
-                    <button type="button" class="seg-opt" data-content="calibration"
-                            aria-pressed="false" disabled>Calibration</button>
-                    <button type="button" class="seg-opt" data-content="image"
-                            aria-pressed="false" disabled>Image</button>
-                </div>
-                <p class="content-state" id="wall-content-state" hidden></p>
-            </div>
-
-            <div class="show-block" id="colour-block">
-                <div class="block-head">
-                    <h3>Palette</h3>
-                    <span class="block-note">All tablets</span>
-                </div>
-                <div class="palette palette-lg" id="global-palette" role="group" aria-label="Preset colours for all tablets"></div>
-                <div class="apply-row">
-                    <label class="custom-colour">
-                        <input type="color" id="global-color" class="colour-input" aria-label="Custom colour for all tablets">
-                        <span>Custom</span>
-                    </label>
-                    <span class="global-sel" id="global-sel">None chosen</span>
-                    <button type="button" class="btn btn-primary" id="btn-apply-all" disabled>Apply to all</button>
-                </div>
-                <p class="hint">Sets every tablet to the same colour.</p>
-            </div>
-
-            <div class="show-block" id="calibration-block" hidden>
-                <div class="block-head">
-                    <h3>Calibration</h3>
-                </div>
-                <p class="hint">A shared grid across every tablet. Use it to check that adjacent edges and bezels line up.</p>
-                <p class="calibration-state" id="calibration-state">Choose Calibration to show the shared grid.</p>
-            </div>
-
-            <!-- Still image: the curated inventory and the scene action that
-                 puts one asset across the whole wall. Picking and applying are
-                 separate on purpose: nothing is sent until an asset is
-                 selected and "Show on wall" is pressed. -->
-            <div class="show-block imagepanel" id="image-panel" role="group" aria-labelledby="image-title" hidden>
-                <div class="image-head">
-                    <h3 id="image-title">Image library</h3>
-                    <button type="button" class="btn btn-ghost btn-sm" id="btn-assets-refresh">Refresh</button>
-                </div>
-
-                <p class="image-active" id="image-active" data-state="none">
-                    <span class="image-active-label">Wall image</span>
-                    <span class="image-active-text" id="image-active-text">Nothing yet</span>
-                </p>
-
-                <!-- The active asset is in the scene but not in the inventory:
-                     the wall is showing an error state, so the way out is
-                     spelled out here. -->
-                <div class="image-missing" id="image-missing" data-kind="bad" hidden>
-                    <span class="warn-badge" aria-hidden="true">!</span>
-                    <div class="image-missing-body">
-                        <p class="image-missing-title" id="image-missing-title"></p>
-                        <p class="image-missing-text" id="image-missing-text"></p>
-                        <div class="image-missing-actions">
-                            <button type="button" class="btn btn-sm" id="btn-missing-pick">Pick a replacement</button>
-                            <button type="button" class="btn btn-ghost btn-sm" data-content-action="color">Show colour instead</button>
-                            <button type="button" class="btn btn-ghost btn-sm" data-content-action="calibration">Show calibration grid instead</button>
-                        </div>
-                    </div>
-                </div>
-
-                <div class="image-body">
-                    <p class="image-note" id="image-note" hidden></p>
-                    <ul class="asset-list" id="asset-list" aria-label="Available images" hidden></ul>
-                    <p class="image-empty" id="image-empty" hidden></p>
-
-                    <div class="image-preview-col">
-                        <div class="image-preview" id="image-preview" hidden>
-                            <img class="image-preview-img" id="image-preview-img" alt="Preview of the selected image">
-                        </div>
-                        <p class="image-preview-note" id="image-preview-note">Pick an image from the list.</p>
-                    </div>
-
-                    <div class="image-bar">
-                        <span class="image-count" id="image-count"></span>
-                        <span class="image-sel" id="image-sel">No image selected</span>
-                        <button type="button" class="btn btn-primary" id="btn-image-apply" disabled>Show on wall</button>
-                    </div>
-                </div>
-
-                <!-- Managed uploads are a second source beside the curated
-                     inventory. Selection and "Show on wall" stay the same:
-                     both stores hand back the same descriptor fields. -->
-                <div class="upload-block" id="upload-block" hidden>
-                    <div class="block-head">
-                        <h3>Add an image</h3>
-                        <span class="block-note">JPEG or PNG</span>
-                    </div>
-                    <div class="upload-row">
-                        <input class="upload-file" id="upload-file" type="file"
-                               accept="image/jpeg,image/png" aria-label="Choose an image to upload">
-                        <button type="button" class="btn" id="btn-upload" disabled>Upload</button>
-                    </div>
-                    <p class="upload-file-name" id="upload-file-name">No file chosen</p>
-                    <progress class="upload-progress" id="upload-progress" max="100" value="0"
-                              aria-label="Upload progress" hidden></progress>
-                    <p class="upload-status" id="upload-status" role="status"
-                       aria-live="polite" aria-atomic="true"></p>
-                </div>
-
-                <div class="media-library" id="media-library" hidden>
-                    <div class="media-head">
-                        <span class="label" id="media-title">Your uploads</span>
-                        <span class="media-count" id="media-count"></span>
-                    </div>
-                    <ul class="media-list" id="media-list" aria-labelledby="media-title" hidden></ul>
-                    <p class="media-note" id="media-note" hidden></p>
-                </div>
-            </div>
+            <div id="layout-shortcuts"></div>
         </section>
     </aside>
 
-    <main class="main">
+    <main class="center" id="workspace" tabindex="-1">
 
-        <section class="card wall" aria-labelledby="wall-title">
-            <div class="wall-head">
-                <h2 id="wall-title">Wall stage</h2>
-                <p class="wall-meta">
-                    <span class="meta-stat"><span class="meta-k">Revision</span><span id="wall-rev">-</span></span>
-                    <span class="meta-stat" title="Changes when the server restarts or restores a backup. The revision can then go back to a lower value."><span class="meta-k">Session</span><span id="wall-gen">-</span></span>
-                </p>
+        <div class="wall-heading">
+            <div class="heading-with-meta">
+                <h2>Wall</h2>
+                <span class="meta" id="wall-dimensions">Waiting for the server</span>
             </div>
-            <p class="wall-note" id="wall-note">Waiting for the server</p>
+            <button type="button" id="btn-tile">Tile tablets</button>
+        </div>
 
-            <div class="wall-tools">
-                <form class="wall-form" id="wall-form" novalidate>
-                    <div class="compact-field">
-                        <label class="label" for="wall-width">Width</label>
-                        <input class="inp" id="wall-width" type="number" min="1" step="1"
-                               inputmode="numeric" autocomplete="off" disabled>
-                    </div>
-                    <div class="compact-field">
-                        <label class="label" for="wall-height">Height</label>
-                        <input class="inp" id="wall-height" type="number" min="1" step="1"
-                               inputmode="numeric" autocomplete="off" disabled>
-                    </div>
-                    <button type="submit" class="btn btn-sm" id="btn-wall-save" disabled>Save size</button>
-                </form>
-                <div class="wall-arrange">
-                    <div class="compact-field">
-                        <label class="label" for="auto-columns">Columns</label>
-                        <input class="inp" id="auto-columns" type="number" min="1" step="1"
-                               inputmode="numeric" autocomplete="off" placeholder="Auto" disabled>
-                    </div>
-                    <button type="button" class="btn btn-sm" id="btn-auto" disabled>Arrange online</button>
-                </div>
+        <div class="actual-content">
+            <div class="actual-line">
+                <span class="meta">On the wall</span>
+                <strong id="content-now">Waiting</strong>
+                <button type="button" class="quiet small" id="btn-change-content">Change</button>
             </div>
-            <p class="wall-hint">All sizes use the same unit. Arrange replaces positions for online tablets only.</p>
+            <p class="meta" id="actual-coverage"></p>
+        </div>
 
-            <!-- Image coverage. Two blocks, kept apart on purpose: a tablet
-                 that is present but cannot render the image is a partial wall
-                 right now; a placed tablet that is offline, or not in the
-                 roster at all, is a slot whose capability nobody can confirm
-                 until it connects again. -->
-            <div class="alerts" id="alerts" hidden>
-                <div class="alert" id="alert-nocap" data-kind="warn" hidden>
-                    <span class="alert-mark" aria-hidden="true">!</span>
-                    <div class="alert-body">
-                        <p class="alert-title" id="alert-nocap-title"></p>
-                        <p class="alert-text" id="alert-nocap-text"></p>
-                    </div>
-                </div>
-                <div class="alert" id="alert-unverified" data-kind="dim" hidden>
-                    <span class="alert-mark" aria-hidden="true">?</span>
-                    <div class="alert-body">
-                        <p class="alert-title">Placed, not confirmed</p>
-                        <p class="alert-text" id="alert-unverified-text"></p>
-                    </div>
-                </div>
+        <p class="wall-note" id="wall-note">Waiting for the server.</p>
+
+        <div class="wall-tools">
+            <div class="snap-controls">
+                <label class="check-label"><input type="checkbox" id="snap-toggle" checked> Snap</label>
+                <label class="grid-label" for="snap-step">Grid</label>
+                <select id="snap-step" aria-label="Snap grid size in wall units">
+                    <option value="0">Off</option>
+                    <option value="10">10</option>
+                    <option value="20" selected>20</option>
+                    <option value="50">50</option>
+                    <option value="100">100</option>
+                </select>
             </div>
+            <div class="tools-end">
+                <button type="button" class="quiet small" id="btn-undo-stage" disabled>Undo</button>
+                <button type="button" class="quiet small" id="btn-redo-stage" disabled>Redo</button>
+                <button type="button" class="quiet small" id="btn-zoom-wall">2x zoom</button>
+                <button type="button" class="quiet small" id="btn-keys">Keys</button>
+            </div>
+        </div>
 
-            <div class="wall-mapwrap">
+        <div class="wall-scroll" id="wall-scroll">
+            <div class="wall-shell" id="wall-shell">
+                <div class="ruler ruler-x" id="ruler-x" aria-hidden="true"></div>
+                <div class="ruler ruler-y" id="ruler-y" aria-hidden="true"></div>
                 <div class="map-viewport" id="map-viewport">
-                    <div class="map-frame" id="map-frame" hidden></div>
+                    <div class="map-frame" id="map-frame" hidden>
+                        <div class="tile-layer" id="tile-layer" hidden></div>
+                    </div>
                 </div>
                 <p class="map-empty" id="map-empty">Waiting for the wall state from the server.</p>
-                <p class="map-caption" id="map-caption"></p>
-                <div class="map-legend" aria-label="Diagram legend">
-                    <span class="lg"><span class="lg-box lg-online" aria-hidden="true"></span>Online</span>
-                    <span class="lg"><span class="lg-box lg-offline" aria-hidden="true"></span>Offline</span>
-                    <span class="lg"><span class="lg-box lg-vacant" aria-hidden="true"></span>Missing tablet</span>
-                    <span class="lg"><span class="lg-box lg-hatch" aria-hidden="true"></span>Behind frame</span>
-                    <span class="lg"><span class="lg-tri" aria-hidden="true"></span>Shape mismatch</span>
+            </div>
+        </div>
+
+        <div class="wall-legend" aria-label="Wall legend">
+            <span class="legend-item"><i class="legend-key online"></i>Online</span>
+            <span class="legend-item"><i class="legend-key offline"></i>Offline</span>
+            <span class="legend-item"><i class="legend-key vacant"></i>Saved spot, no tablet</span>
+            <span class="legend-item"><i class="legend-key hatch"></i>Bezel</span>
+            <span class="legend-item"><i class="legend-mark">!</i>Shape differs</span>
+            <span class="legend-item"><i class="legend-overlap"></i>Overlap</span>
+        </div>
+
+        <div class="coordinate-readout">
+            <span id="stage-readout">Select a tablet to see its footprint.</span>
+            <span>Wall units</span>
+        </div>
+
+        <p class="map-caption" id="map-caption"></p>
+
+        <div class="alerts" id="alerts" hidden>
+            <div class="alert" id="alert-nocap" data-kind="warn" hidden>
+                <span class="alert-mark" aria-hidden="true">!</span>
+                <div class="alert-body">
+                    <p class="alert-title" id="alert-nocap-title"></p>
+                    <p class="alert-text" id="alert-nocap-text"></p>
                 </div>
             </div>
-
-            <!-- Placements whose device is absent from the roster. They are
-                 reservations, not leaks: the tablet that returns reclaims the
-                 slot, so the operator releases one only when it is not coming
-                 back. -->
-            <div class="reservations" id="reservations" hidden>
-                <h3>Saved spots with no tablet</h3>
-                <p class="res-hint">
-                    A returning tablet reclaims its spot. Release one only if that tablet is gone for good.
-                </p>
-                <ul class="res-list" id="res-list"></ul>
+            <div class="alert" id="alert-unverified" data-kind="dim" hidden>
+                <span class="alert-mark" aria-hidden="true">?</span>
+                <div class="alert-body">
+                    <p class="alert-title">Placed, not confirmed</p>
+                    <p class="alert-text" id="alert-unverified-text"></p>
+                </div>
             </div>
-        </section>
+        </div>
 
-        <section class="tablets" id="tablets" aria-labelledby="tablets-title" tabindex="-1">
-            <div class="section-head">
-                <h2 id="tablets-title">Tablets</h2>
-                <p class="section-meta" id="roster-count">None known</p>
-            </div>
-            <div class="grid" id="grid" aria-label="Registered tablets"></div>
+        <div class="wall-warnings" id="wall-warnings" hidden>
+            <p id="wall-warning-text"></p>
+            <button type="button" class="quiet" id="btn-review-checks">Review wall checks</button>
+        </div>
 
-            <section class="empty" id="empty" hidden>
-                <p class="empty-conn" id="empty-conn"></p>
-                <h3 class="empty-title">No tablets yet</h3>
-                <p class="empty-lead">
-                    Open the tablet address on each device. It appears here within a few seconds.
-                </p>
-                <ol class="empty-steps">
-                    <li>Connect the tablet to the same network as this computer.</li>
-                    <li>Open the exact tablet address shown at the top of this page. If it says <code>localhost</code> or <code>127.0.0.1</code>, that address only works on this computer.</li>
-                    <li>Leave the page open. Reloading keeps the same tablet identity.</li>
-                </ol>
-            </section>
-        </section>
-
-        <!-- Named snapshots: two independent panels with separate name
-             spaces. A saved layout is the arrangement only and a saved scene
-             is the content only, so recalling one can never drag the other
-             along with it. -->
-        <section class="snapshots" aria-labelledby="saved-title">
-            <div class="section-head">
-                <h2 id="saved-title">Saved setups</h2>
-                <p class="section-meta">Layouts store positions. Scenes store content.</p>
-            </div>
-            <div class="snap-cols">
-                <section class="snap-panel" aria-labelledby="layouts-title">
-                    <div class="snap-head">
-                        <h3 id="layouts-title">Layouts</h3>
-                        <button type="button" class="btn btn-ghost btn-sm" data-snap-refresh="layout">Refresh</button>
-                    </div>
-                    <p class="hint">Wall size and tablet positions.</p>
-
-                    <form class="snap-save" id="layout-save-form" novalidate>
-                        <div class="field">
-                            <label class="label" for="layout-name">Name</label>
-                            <input class="inp snap-inp" id="layout-name" type="text" maxlength="64"
-                                   autocomplete="off" spellcheck="false" placeholder="Lobby, 3 across"
-                                   aria-describedby="layout-msg">
-                        </div>
-                        <button type="submit" class="btn" id="btn-layout-save">Save layout</button>
-                    </form>
-
-                    <p class="snap-msg" id="layout-msg" data-kind="info" role="status"
-                       aria-live="polite" hidden></p>
-
-                    <!-- A name that already exists is never overwritten
-                         silently: the server answers 409 and this block asks
-                         for a second, deliberate click before ?replace=true is
-                         ever sent. -->
-                    <div class="snap-overwrite" id="layout-overwrite" hidden>
-                        <p class="snap-overwrite-text" id="layout-overwrite-text"></p>
-                        <div class="snap-overwrite-actions">
-                            <button type="button" class="btn btn-danger btn-sm"
-                                    id="btn-layout-overwrite">Replace</button>
-                            <button type="button" class="btn btn-ghost btn-sm"
-                                    id="btn-layout-overwrite-cancel">Cancel</button>
-                        </div>
-                    </div>
-
-                    <ul class="snap-list" id="layout-list" aria-label="Saved layouts"></ul>
-                    <p class="snap-empty" id="layout-empty" hidden></p>
-                </section>
-
-                <section class="snap-panel" aria-labelledby="scenes-title">
-                    <div class="snap-head">
-                        <h3 id="scenes-title">Scenes</h3>
-                        <button type="button" class="btn btn-ghost btn-sm" data-snap-refresh="scene">Refresh</button>
-                    </div>
-                    <p class="hint">Content only, on the current arrangement.</p>
-
-                    <form class="snap-save" id="scene-save-form" novalidate>
-                        <div class="field">
-                            <label class="label" for="scene-name">Name</label>
-                            <input class="inp snap-inp" id="scene-name" type="text" maxlength="64"
-                                   autocomplete="off" spellcheck="false" placeholder="Opening slide"
-                                   aria-describedby="scene-msg">
-                        </div>
-                        <button type="submit" class="btn" id="btn-scene-save">Save scene</button>
-                    </form>
-
-                    <p class="snap-msg" id="scene-msg" data-kind="info" role="status"
-                       aria-live="polite" hidden></p>
-
-                    <div class="snap-overwrite" id="scene-overwrite" hidden>
-                        <p class="snap-overwrite-text" id="scene-overwrite-text"></p>
-                        <div class="snap-overwrite-actions">
-                            <button type="button" class="btn btn-danger btn-sm"
-                                    id="btn-scene-overwrite">Replace</button>
-                            <button type="button" class="btn btn-ghost btn-sm"
-                                    id="btn-scene-overwrite-cancel">Cancel</button>
-                        </div>
-                    </div>
-
-                    <ul class="snap-list" id="scene-list" aria-label="Saved scenes"></ul>
-                    <p class="snap-empty" id="scene-empty" hidden></p>
-                </section>
-            </div>
-        </section>
+        <p class="canvas-help">Drag to move. Corner handles resize. Alt disables snap. Arrow keys move 1 unit. Shift moves 10.</p>
     </main>
+
+    <aside class="context" id="context" data-mode="tablet" aria-label="Context controls">
+        <nav class="context-tabs" aria-label="Inspector mode">
+            <button type="button" data-context-tab="tablet" aria-pressed="true">Tablet</button>
+            <button type="button" data-context-tab="content" aria-pressed="false">Content</button>
+            <button type="button" data-context-tab="layout" aria-pressed="false">Layout</button>
+        </nav>
+
+        <div class="context-body">
+
+            <section class="context-pane" id="pane-tablet" aria-label="Selected tablet">
+                <p class="inspector-empty" id="inspector-empty">Select a tablet on the wall or in the list to edit its position.</p>
+
+                <div id="inspector" hidden>
+                    <div class="selection-head">
+                        <div>
+                            <p class="meta" id="insp-eyebrow">Tablet</p>
+                            <h2 class="selection-title" id="insp-id" tabindex="-1">-</h2>
+                            <p class="meta" id="insp-meta">-</p>
+                        </div>
+                        <div class="selection-actions">
+                            <button type="button" class="quiet small" id="insp-remove">Remove</button>
+                            <button type="button" class="primary small" id="insp-place" hidden>Place</button>
+                        </div>
+                    </div>
+
+                    <div class="selection-state">
+                        <span id="insp-state-online">-</span>
+                        <span id="insp-state-placement">-</span>
+                    </div>
+
+                    <div class="mobile-move">
+                        <div class="section-label"><h3>Move</h3><span class="meta">Step in units</span></div>
+                        <div class="nudge-row">
+                            <button type="button" data-nudge="-1,0" aria-label="Move left">←</button>
+                            <button type="button" data-nudge="0,-1" aria-label="Move up">↑</button>
+                            <button type="button" data-nudge="0,1" aria-label="Move down">↓</button>
+                            <button type="button" data-nudge="1,0" aria-label="Move right">→</button>
+                            <select id="insp-step" aria-label="Movement step">20</select>
+                        </div>
+                        <p class="nudge-help">Arrow keys move 1 unit. Shift moves 10.</p>
+                    </div>
+
+                    <form id="placement-form" novalidate>
+                        <div class="inspector-section">
+                            <div class="section-label">
+                                <h3>Position and size</h3>
+                                <span class="meta">Wall units</span>
+                            </div>
+                            <div class="fields">
+                                <label class="field"><span>Left, X</span><input id="insp-x" type="number" step="any" inputmode="decimal"></label>
+                                <label class="field"><span>Top, Y</span><input id="insp-y" type="number" step="any" inputmode="decimal"></label>
+                            </div>
+                            <div class="fields">
+                                <label class="field"><span>Width</span><input id="insp-w" type="number" step="any" min="1" inputmode="decimal"></label>
+                                <label class="field"><span>Height</span><input id="insp-h" type="number" step="any" min="1" inputmode="decimal"></label>
+                            </div>
+                            <label class="check-label aspect-check"><input type="checkbox" id="insp-lock" checked> Lock visible aspect</label>
+                            <button type="submit" class="wide" id="insp-save">Save position</button>
+                            <p class="error-box" id="insp-error" role="alert" tabindex="-1" hidden></p>
+                            <div class="shape-readout" id="insp-shape"></div>
+                            <div class="shape-warning" id="insp-warning" hidden>
+                                <strong>The screen shape does not match</strong>
+                                <span id="insp-warning-text"></span>
+                                <button type="button" class="quiet" id="insp-match">Match screen shape</button>
+                            </div>
+                        </div>
+                    </form>
+
+                    <div class="inspector-section desktop-move">
+                        <div class="section-label"><h3>Move</h3><span class="meta">Step in units</span></div>
+                        <div class="nudge-row">
+                            <button type="button" data-nudge="-1,0" aria-label="Move left">←</button>
+                            <button type="button" data-nudge="0,-1" aria-label="Move up">↑</button>
+                            <button type="button" data-nudge="0,1" aria-label="Move down">↓</button>
+                            <button type="button" data-nudge="1,0" aria-label="Move right">→</button>
+                            <select id="insp-step-desktop" aria-label="Movement step">20</select>
+                        </div>
+                        <p class="nudge-help">Arrow keys move 1 unit. Shift moves 10.</p>
+                    </div>
+
+                    <details class="details-list" id="insp-bezel-details">
+                        <summary>Bezel and visible area <span class="meta" id="insp-bezel-summary">0 / 0 / 0 / 0</span></summary>
+                        <div class="details-body">
+                            <div class="fields">
+                                <label class="field"><span>Top</span><input id="insp-bezel-top" type="number" step="any" min="0" inputmode="decimal"></label>
+                                <label class="field"><span>Right</span><input id="insp-bezel-right" type="number" step="any" min="0" inputmode="decimal"></label>
+                                <label class="field"><span>Bottom</span><input id="insp-bezel-bottom" type="number" step="any" min="0" inputmode="decimal"></label>
+                                <label class="field"><span>Left</span><input id="insp-bezel-left" type="number" step="any" min="0" inputmode="decimal"></label>
+                            </div>
+                            <p class="meta">Offsets hide content behind the frame. They do not rotate the tablet.</p>
+                        </div>
+                    </details>
+
+                    <details class="details-list" id="insp-colour-details">
+                        <summary>Tablet colour <span class="meta" id="insp-colour-summary">Not set</span></summary>
+                        <div class="details-body">
+                            <div class="swatches" id="insp-palette" role="group" aria-label="Preset colours for this tablet"></div>
+                            <div class="colour-row">
+                                <label for="insp-color">Custom</label>
+                                <input id="insp-color" type="color" value="#000000">
+                                <span class="meta" id="insp-color-text">Not set</span>
+                            </div>
+                            <p class="meta">Used in Colour mode and as the image fallback.</p>
+                        </div>
+                    </details>
+
+                    <details class="details-list" id="insp-device-details">
+                        <summary>Device details</summary>
+                        <div class="details-body">
+                            <dl class="facts">
+                                <dt>Device ID</dt><dd id="insp-detail-id">-</dd>
+                                <dt>Type</dt><dd id="insp-detail-type">-</dd>
+                                <dt>Screen</dt><dd id="insp-detail-screen">-</dd>
+                                <dt>Image capability</dt><dd id="insp-detail-image">-</dd>
+                                <dt>Last seen</dt><dd id="insp-detail-seen">-</dd>
+                                <dt>Placement</dt><dd id="insp-detail-placement">-</dd>
+                            </dl>
+                            <button type="button" class="wide" id="insp-forget">Forget tablet</button>
+                            <p class="meta" id="insp-forget-hint">Only an offline tablet can be forgotten.</p>
+                        </div>
+                    </details>
+
+                    <div class="remove-area" id="insp-remove-area">
+                        <button type="button" class="wide" id="insp-remove-bottom">Remove from wall</button>
+                        <p class="meta">Delete also removes it. You can undo.</p>
+                    </div>
+                </div>
+            </section>
+
+            <section class="context-pane" id="pane-content" aria-label="Wall content" hidden>
+                <section class="content-panel" id="show" aria-labelledby="show-title">
+                    <div class="content-head">
+                        <h2 id="show-title">Content</h2>
+                    </div>
+
+                    <div class="field">
+                        <div class="seg content-tabs" id="wall-content" role="group" aria-label="Wall content">
+                            <button type="button" class="seg-opt" data-content="color" aria-pressed="true" disabled>Colour</button>
+                            <button type="button" class="seg-opt" data-content="calibration" aria-pressed="false" disabled>Calibration</button>
+                            <button type="button" class="seg-opt" data-content="image" aria-pressed="false" disabled>Image</button>
+                        </div>
+                        <p class="content-state" id="wall-content-state" hidden></p>
+                    </div>
+
+                    <div class="show-block" id="colour-block">
+                        <div class="block-head">
+                            <h3>Palette</h3>
+                            <span class="block-note">All tablets</span>
+                        </div>
+                        <div class="palette" id="global-palette" role="group" aria-label="Preset colours for all tablets"></div>
+                        <div class="apply-row">
+                            <label class="custom-colour">
+                                <input type="color" id="global-color" aria-label="Custom colour for all tablets">
+                                <span>Custom</span>
+                            </label>
+                            <span class="global-sel" id="global-sel">None chosen</span>
+                            <button type="button" class="primary" id="btn-apply-all" disabled>Apply to all</button>
+                        </div>
+                        <p class="meta">Sets every tablet to the same colour.</p>
+                    </div>
+
+                    <div class="show-block" id="calibration-block" hidden>
+                        <div class="block-head"><h3>Calibration</h3></div>
+                        <p class="meta">A shared grid across every tablet. Use it to check that adjacent edges and bezels line up.</p>
+                        <p class="calibration-state" id="calibration-state">Choose Calibration to show the shared grid.</p>
+                    </div>
+
+                    <div class="show-block imagepanel" id="image-panel" role="group" aria-labelledby="image-title" hidden>
+                        <div class="image-head">
+                            <h3 id="image-title">Image library</h3>
+                            <button type="button" class="quiet small" id="btn-assets-refresh">Refresh</button>
+                        </div>
+
+                        <p class="image-active" id="image-active" data-state="none">
+                            <span class="image-active-label">Wall image</span>
+                            <span class="image-active-text" id="image-active-text">Nothing yet</span>
+                        </p>
+
+                        <div class="image-missing" id="image-missing" data-kind="bad" hidden>
+                            <span class="warn-badge" aria-hidden="true">!</span>
+                            <div class="image-missing-body">
+                                <p class="image-missing-title" id="image-missing-title"></p>
+                                <p class="image-missing-text" id="image-missing-text"></p>
+                                <div class="image-missing-actions">
+                                    <button type="button" class="small" id="btn-missing-pick">Pick a replacement</button>
+                                    <button type="button" class="quiet small" data-content-action="color">Show colour instead</button>
+                                    <button type="button" class="quiet small" data-content-action="calibration">Show calibration grid instead</button>
+                                </div>
+                            </div>
+                        </div>
+
+                        <div class="image-body">
+                            <p class="image-note" id="image-note" hidden></p>
+                            <ul class="asset-list" id="asset-list" aria-label="Available images" hidden></ul>
+                            <p class="image-empty" id="image-empty" hidden></p>
+
+                            <div class="image-preview-col">
+                                <div class="image-preview" id="image-preview" hidden>
+                                    <img id="image-preview-img" alt="Preview of the selected image">
+                                </div>
+                                <p class="image-preview-note" id="image-preview-note">Pick an image to preview it.</p>
+                            </div>
+
+                            <div class="image-bar">
+                                <span class="image-count" id="image-count"></span>
+                                <span class="image-sel" id="image-sel">No image selected</span>
+                                <button type="button" class="primary" id="btn-image-apply" disabled>Show on wall</button>
+                            </div>
+                            <p class="meta">Browsing does not change the wall.</p>
+                        </div>
+
+                        <div class="upload-block" id="upload-block" hidden>
+                            <div class="block-head"><h3>Add an image</h3><span class="block-note">JPEG or PNG</span></div>
+                            <div class="upload-row">
+                                <input class="upload-file" id="upload-file" type="file" accept="image/jpeg,image/png" aria-label="Choose an image to upload">
+                                <button type="button" id="btn-upload" disabled>Upload</button>
+                            </div>
+                            <p class="upload-file-name" id="upload-file-name">No file chosen</p>
+                            <progress class="upload-progress" id="upload-progress" max="100" value="0" aria-label="Upload progress" hidden></progress>
+                            <p class="upload-status" id="upload-status" role="status" aria-live="polite" aria-atomic="true"></p>
+                        </div>
+
+                        <div class="media-library" id="media-library" hidden>
+                            <div class="media-head">
+                                <span class="label" id="media-title">Your uploads</span>
+                                <span class="media-count" id="media-count"></span>
+                            </div>
+                            <ul class="media-list" id="media-list" aria-labelledby="media-title" hidden></ul>
+                            <p class="media-note" id="media-note" hidden></p>
+                        </div>
+                    </div>
+                </section>
+            </section>
+
+            <section class="context-pane" id="pane-layout" aria-label="Wall layout" hidden>
+                <h2 class="selection-title">Layout</h2>
+                <p class="meta">Positions and wall size. Content stays separate.</p>
+
+                <form id="wall-form" class="inspector-section" novalidate>
+                    <div class="section-label"><h3>Wall size</h3><span class="meta">Wall units</span></div>
+                    <div class="fields">
+                        <label class="field"><span>Width</span><input id="wall-width" type="number" min="1" step="1" inputmode="numeric" autocomplete="off" disabled></label>
+                        <label class="field"><span>Height</span><input id="wall-height" type="number" min="1" step="1" inputmode="numeric" autocomplete="off" disabled></label>
+                    </div>
+                    <button type="submit" class="wide" id="btn-wall-save" disabled>Save size</button>
+                    <p class="meta">Size changes keep each footprint at its current coordinates.</p>
+                </form>
+
+                <section class="inspector-section" id="tile-section" aria-labelledby="tile-section-title">
+                    <div class="section-label">
+                        <h3 id="tile-section-title">Tile tablets</h3>
+                        <button type="button" class="quiet small" id="tile-cancel" hidden>Cancel preview</button>
+                    </div>
+                    <p class="meta">Preview on the wall. Positions change only when you apply.</p>
+
+                    <div class="tile-fields">
+                        <label class="field span2"><span>Scope</span>
+                            <select id="tile-scope">
+                                <option value="online">Online tablets</option>
+                                <option value="placed">Placed tablets</option>
+                                <option value="all">All registered tablets</option>
+                            </select>
+                        </label>
+                        <label class="field"><span>Columns</span><input id="tile-columns" type="number" min="1" step="1" value="3"></label>
+                        <label class="field"><span>Rows</span><input id="tile-rows" type="number" min="1" step="1" value="2"></label>
+                        <label class="field"><span>Gap, units</span><input id="tile-gap" type="number" min="0" step="any" value="20"></label>
+                        <label class="field"><span>Order</span>
+                            <select id="tile-order">
+                                <option value="wall">Wall order</option>
+                                <option value="id">Tablet ID</option>
+                            </select>
+                        </label>
+                        <label class="field span2"><span>Screen shape</span>
+                            <select id="tile-shape">
+                                <option value="keep">Keep screen shape</option>
+                                <option value="fill">Fill cells</option>
+                            </select>
+                        </label>
+                    </div>
+                    <p class="meta" id="tile-help">Each footprint fits inside its cell. Visible shape matches its screen.</p>
+                    <p class="tile-result" id="tile-result" role="status"></p>
+                    <button type="button" class="wide" id="tile-preview-btn">Preview tiling</button>
+                    <button type="button" class="primary wide" id="tile-apply" hidden>Apply tiling</button>
+                    <p class="meta" id="tile-write-note" hidden>Each tablet is written one after another. If one fails, earlier updates stay applied.</p>
+                </section>
+
+                <section class="inspector-section">
+                    <div class="section-label"><h3>Quick arrange</h3></div>
+                    <p class="meta">Arrange online tablets in equal columns.</p>
+                    <label class="field" for="auto-columns"><span>Columns, empty for auto</span>
+                        <input id="auto-columns" type="number" min="1" step="1" inputmode="numeric" autocomplete="off" placeholder="Auto" disabled>
+                    </label>
+                    <button type="button" class="wide" id="btn-auto" disabled>Arrange online</button>
+                </section>
+
+                <section class="snapshots" aria-labelledby="saved-title">
+                    <div class="section-head">
+                        <h2 id="saved-title">Saved setups</h2>
+                        <p class="meta">Layouts store positions. Scenes store content.</p>
+                    </div>
+                    <div class="snap-cols">
+                        <section class="snap-panel" aria-labelledby="layouts-title">
+                            <div class="snap-head">
+                                <h3 id="layouts-title">Layouts</h3>
+                                <button type="button" class="quiet small" data-snap-refresh="layout">Refresh</button>
+                            </div>
+                            <form class="snap-save" id="layout-save-form" novalidate>
+                                <label class="field"><span>Name</span>
+                                    <input id="layout-name" type="text" maxlength="64" autocomplete="off" spellcheck="false" placeholder="Lobby, 3 across" aria-describedby="layout-msg">
+                                </label>
+                                <button type="submit" id="btn-layout-save">Save layout</button>
+                            </form>
+                            <p class="snap-msg" id="layout-msg" data-kind="info" role="status" aria-live="polite" hidden></p>
+                            <div class="snap-overwrite" id="layout-overwrite" hidden>
+                                <p class="snap-overwrite-text" id="layout-overwrite-text"></p>
+                                <div class="snap-overwrite-actions">
+                                    <button type="button" class="danger small" id="btn-layout-overwrite">Replace</button>
+                                    <button type="button" class="quiet small" id="btn-layout-overwrite-cancel">Cancel</button>
+                                </div>
+                            </div>
+                            <ul class="snap-list" id="layout-list" aria-label="Saved layouts"></ul>
+                            <p class="snap-empty" id="layout-empty" hidden></p>
+                        </section>
+
+                        <section class="snap-panel" aria-labelledby="scenes-title">
+                            <div class="snap-head">
+                                <h3 id="scenes-title">Scenes</h3>
+                                <button type="button" class="quiet small" data-snap-refresh="scene">Refresh</button>
+                            </div>
+                            <form class="snap-save" id="scene-save-form" novalidate>
+                                <label class="field"><span>Name</span>
+                                    <input id="scene-name" type="text" maxlength="64" autocomplete="off" spellcheck="false" placeholder="Opening slide" aria-describedby="scene-msg">
+                                </label>
+                                <button type="submit" id="btn-scene-save">Save scene</button>
+                            </form>
+                            <p class="snap-msg" id="scene-msg" data-kind="info" role="status" aria-live="polite" hidden></p>
+                            <div class="snap-overwrite" id="scene-overwrite" hidden>
+                                <p class="snap-overwrite-text" id="scene-overwrite-text"></p>
+                                <div class="snap-overwrite-actions">
+                                    <button type="button" class="danger small" id="btn-scene-overwrite">Replace</button>
+                                    <button type="button" class="quiet small" id="btn-scene-overwrite-cancel">Cancel</button>
+                                </div>
+                            </div>
+                            <ul class="snap-list" id="scene-list" aria-label="Saved scenes"></ul>
+                            <p class="snap-empty" id="scene-empty" hidden></p>
+                        </section>
+                    </div>
+                </section>
+            </section>
+        </div>
+    </aside>
+
+    <footer class="statusbar">
+        <span class="status-stamp" id="status-stamp"></span>
+        <span class="status-message" id="status-text" role="status" aria-live="polite" aria-atomic="true">Starting</span>
+        <button type="button" class="quiet small" id="status-undo" hidden>Undo</button>
+        <span class="status-session">Revision <span id="wall-rev">-</span> &nbsp; Session <span id="wall-gen">-</span></span>
+    </footer>
 </div>
 
-<footer class="statusbar">
-    <span class="status-stamp" id="status-stamp"></span>
-    <span class="status-text" id="status-text" role="status" aria-live="polite">Starting</span>
-</footer>
-
-<noscript>
-    <p class="noscript">This page needs JavaScript. It talks to the server over a live connection.</p>
-</noscript>
-
 <template id="tile-tpl">
-    <article class="tile" data-state="offline" data-busy="false">
+    <article class="tile" data-state="offline" data-busy="false" data-selected="false" role="option" aria-selected="false" tabindex="0">
         <div class="screen" aria-hidden="true">
             <span class="screen-fill"></span>
             <span class="screen-note">No colour</span>
@@ -383,103 +545,76 @@
 
         <header class="tile-top">
             <h3 class="dev-id"></h3>
-            <span class="badge">
-                <span class="badge-dot" aria-hidden="true"></span>
-                <span class="badge-label">Offline</span>
-            </span>
+            <span class="badge"><span class="badge-dot" aria-hidden="true"></span><span class="badge-label">Offline</span></span>
         </header>
 
         <p class="tile-meta">
             <span class="meta-res"></span>
             <span class="meta-sep" aria-hidden="true">·</span>
             <span class="meta-type"></span>
-            <!-- Render capability, shown while the scene is an image: the
-                 tablet that never advertised `image` cannot show it. -->
             <span class="meta-sep meta-cap-sep" aria-hidden="true" hidden>·</span>
             <span class="meta-cap" hidden></span>
         </p>
 
+        <span class="tile-location">Not placed</span>
+
         <dl class="tile-facts">
-            <dt>Seen</dt>
-            <dd class="fact-seen"></dd>
-            <dt>Colour</dt>
-            <dd class="fact-colour">
-                <span class="cur-swatch" aria-hidden="true"></span>
-                <span class="cur-hex"></span>
-            </dd>
+            <dt>Seen</dt><dd class="fact-seen"></dd>
+            <dt>Colour</dt><dd class="fact-colour"><span class="cur-swatch" aria-hidden="true"></span><span class="cur-hex"></span></dd>
         </dl>
 
-        <div class="tile-controls">
-            <div class="palette palette-sm" role="group" aria-label="Colour presets"></div>
-        </div>
+        <div class="tile-controls"><div class="palette palette-sm" role="group" aria-label="Colour presets"></div></div>
 
         <div class="place">
             <details class="place-edit">
-                <summary>
-                    <span class="place-title">Placement</span>
-                    <span class="place-state" data-state="unplaced">Not placed</span>
-                </summary>
-
+                <summary><span class="place-title">Placement</span><span class="place-state" data-state="unplaced">Not placed</span></summary>
                 <div class="place-row">
                     <span class="pf-row-k">Area</span>
                     <div class="place-fields" role="group" aria-label="Area on the wall">
-                        <label class="pf"><span class="pf-k">Left</span>
-                            <input class="inp" type="number" step="any" inputmode="numeric"
-                                   autocomplete="off" data-field="x" aria-label="Footprint x"></label>
-                        <label class="pf"><span class="pf-k">Top</span>
-                            <input class="inp" type="number" step="any" inputmode="numeric"
-                                   autocomplete="off" data-field="y" aria-label="Footprint y"></label>
-                        <label class="pf"><span class="pf-k">Width</span>
-                            <input class="inp" type="number" step="any" inputmode="numeric"
-                                   autocomplete="off" data-field="w" aria-label="Footprint width"></label>
-                        <label class="pf"><span class="pf-k">Height</span>
-                            <input class="inp" type="number" step="any" inputmode="numeric"
-                                   autocomplete="off" data-field="h" aria-label="Footprint height"></label>
+                        <label class="pf"><span class="pf-k">Left</span><input class="inp" type="number" step="any" inputmode="numeric" autocomplete="off" data-field="x" aria-label="Footprint x"></label>
+                        <label class="pf"><span class="pf-k">Top</span><input class="inp" type="number" step="any" inputmode="numeric" autocomplete="off" data-field="y" aria-label="Footprint y"></label>
+                        <label class="pf"><span class="pf-k">Width</span><input class="inp" type="number" step="any" inputmode="numeric" autocomplete="off" data-field="w" aria-label="Footprint width"></label>
+                        <label class="pf"><span class="pf-k">Height</span><input class="inp" type="number" step="any" inputmode="numeric" autocomplete="off" data-field="h" aria-label="Footprint height"></label>
                     </div>
                 </div>
-
                 <div class="place-row">
                     <span class="pf-row-k">Frame</span>
                     <div class="place-fields" role="group" aria-label="Frame hiding part of the screen, in wall units">
-                        <label class="pf"><span class="pf-k">Top</span>
-                            <input class="inp" type="number" step="any" inputmode="numeric"
-                                   autocomplete="off" data-field="bezel-top" aria-label="Bezel top"></label>
-                        <label class="pf"><span class="pf-k">Right</span>
-                            <input class="inp" type="number" step="any" inputmode="numeric"
-                                   autocomplete="off" data-field="bezel-right" aria-label="Bezel right"></label>
-                        <label class="pf"><span class="pf-k">Bottom</span>
-                            <input class="inp" type="number" step="any" inputmode="numeric"
-                                   autocomplete="off" data-field="bezel-bottom" aria-label="Bezel bottom"></label>
-                        <label class="pf"><span class="pf-k">Left</span>
-                            <input class="inp" type="number" step="any" inputmode="numeric"
-                                   autocomplete="off" data-field="bezel-left" aria-label="Bezel left"></label>
+                        <label class="pf"><span class="pf-k">Top</span><input class="inp" type="number" step="any" inputmode="numeric" autocomplete="off" data-field="bezel-top" aria-label="Bezel top"></label>
+                        <label class="pf"><span class="pf-k">Right</span><input class="inp" type="number" step="any" inputmode="numeric" autocomplete="off" data-field="bezel-right" aria-label="Bezel right"></label>
+                        <label class="pf"><span class="pf-k">Bottom</span><input class="inp" type="number" step="any" inputmode="numeric" autocomplete="off" data-field="bezel-bottom" aria-label="Bezel bottom"></label>
+                        <label class="pf"><span class="pf-k">Left</span><input class="inp" type="number" step="any" inputmode="numeric" autocomplete="off" data-field="bezel-left" aria-label="Bezel left"></label>
                     </div>
                 </div>
-
                 <div class="place-actions">
-                    <button type="button" class="btn btn-sm" data-action="place-save">Save position</button>
-                    <button type="button" class="btn btn-ghost btn-sm"
-                            data-action="place-clear" disabled>Remove from wall</button>
+                    <button type="button" class="small" data-action="place-save">Save position</button>
+                    <button type="button" class="quiet small" data-action="place-clear" disabled>Remove from wall</button>
                 </div>
             </details>
-
             <p class="place-readout" data-state="none">
                 <span class="ro-row ro-vp"></span>
                 <span class="ro-row ro-vis"></span>
-                <span class="ro-flag" hidden>
-                    <span class="warn-badge" aria-hidden="true">!</span>
-                    <span class="ro-flag-text"></span>
-                </span>
+                <span class="ro-flag" hidden><span class="warn-badge" aria-hidden="true">!</span><span class="ro-flag-text"></span></span>
             </p>
         </div>
 
         <footer class="tile-foot">
-            <input type="color" class="colour-input tile-colour-input"
-                   aria-label="Custom colour for this tablet" title="Pick a custom colour">
+            <input type="color" class="colour-input tile-colour-input" aria-label="Custom colour for this tablet" title="Pick a custom colour">
         </footer>
     </article>
 </template>
 
-<script src="controller.js?v=8"></script>
+<dialog id="keys-dialog" aria-labelledby="keys-title">
+    <h2 id="keys-title">Keyboard</h2>
+    <p>Tab reaches controls and tablets. Enter or Space selects a tablet.</p>
+    <p>Arrow keys move 1 unit. Shift and an arrow move 10 units. Delete removes a placed tablet.</p>
+    <p>Alt disables snapping while dragging. Escape cancels a drag, resize, or tiling preview.</p>
+    <p>Ctrl or Command and Z undoes a placement change; Shift adds redo.</p>
+    <div class="dialog-actions"><button type="button" id="keys-close">Close</button></div>
+</dialog>
+
+<noscript><p class="noscript">This page needs JavaScript. It talks to the server over a live connection.</p></noscript>
+
+<script src="controller.js?v=12"></script>
 </body>
 </html>
