@@ -376,7 +376,7 @@ class TestSchemaUpgrade:
     def test_an_old_database_gains_the_snapshot_tables_and_keeps_its_row(
         self, tmp_path, monkeypatch
     ):
-        """The migration is additive: three ``CREATE TABLE IF NOT EXISTS``
+        """The migration is additive: ``CREATE TABLE IF NOT EXISTS``
         statements, none of which reads or writes ``wall_state``."""
         db = tmp_path / "phase-2b.db"
         expected = write_pre_snapshot_database(db)
@@ -388,7 +388,10 @@ class TestSchemaUpgrade:
         assert persist.load_state() == expected
 
         # … the old row is byte for byte what it was …
-        assert table_names(db) == {"wall_state", "saved_layouts", "saved_scenes"}
+        assert table_names(db) == {
+            "wall_state", "saved_layouts", "saved_scenes",
+            "media_assets", "media_objects", "media_renditions", "schema_meta",
+        }
         assert wall_row(db) == row_before
 
         # … and the new tables work straight away.

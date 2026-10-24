@@ -46,6 +46,9 @@ Thumbs.db
 *.sqlite
 *.sqlite3
 assets/
+media/
+*.schema.lock
+*.pre-schema-*.bak
 
 # Temporary files
 tmp/

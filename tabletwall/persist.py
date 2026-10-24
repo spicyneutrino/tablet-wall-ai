@@ -13,19 +13,28 @@ can point it at a temporary file) and defaults to ``tablet-wall.db`` in the
 working directory, which ``*.db`` already keeps out of git.
 """
 
+import fcntl
 import json
 import os
+import secrets
 import sqlite3
 from collections.abc import Iterator, Mapping
 from contextlib import contextmanager
+from datetime import datetime, timezone
 from typing import Any
 
 DEFAULT_DB_FILENAME = "tablet-wall.db"
 
+# The database schema version, kept separately from the web protocol major and
+# from the wall document shape. Version 0 is the pre-media database that older
+# builds wrote implicitly; version 1 adds the managed-media index and pins the
+# version in ``PRAGMA user_version``. Anything newer is refused before a write,
+# because an older binary cannot know what it would be rewriting.
+SCHEMA_VERSION = 1
+
 # The whole persisted wall state lives in a single row (the CHECK pins id to
 # 1). ``layout`` and ``scene`` are JSON documents, so the schema does not need
-# to know about placements, bezels, or content types — there is deliberately
-# no migration framework here.
+# to know about placements, bezels, or content types.
 _SCHEMA = """
 CREATE TABLE IF NOT EXISTS wall_state (
     id         INTEGER PRIMARY KEY CHECK (id = 1),
@@ -37,10 +46,7 @@ CREATE TABLE IF NOT EXISTS wall_state (
 """
 
 # Named save/recall: one row per saved name, the payload as JSON exactly as
-# the wall row stores its layout and scene. ``IF NOT EXISTS`` *is* the
-# migration — a database created before these tables existed gains them on its
-# next connection, and nothing in the migration reads or rewrites the
-# ``wall_state`` row, so an upgraded file keeps its state byte for byte.
+# the wall row stores its layout and scene.
 _SAVED_LAYOUTS_SCHEMA = """
 CREATE TABLE IF NOT EXISTS saved_layouts (
     name   TEXT PRIMARY KEY,
@@ -55,10 +61,272 @@ CREATE TABLE IF NOT EXISTS saved_scenes (
 )
 """
 
-# Applied in order, one statement per ``execute`` call — never
-# ``executescript``, which implicitly commits any pending transaction before
-# running and would violate the persist-before-apply boundary.
-_MIGRATION = (_SCHEMA, _SAVED_LAYOUTS_SCHEMA, _SAVED_SCENES_SCHEMA)
+# Schema 1: the managed media index. Object bytes live on disk under the media
+# directory; these rows are the authority for what may be served and listed.
+# ``media_assets`` is the upload identity, ``media_objects`` the exact-byte
+# content, and ``media_renditions`` the roles an asset publishes. Roles are
+# scoped to one asset, so two assets may share an object without sharing a
+# row.
+_MEDIA_ASSETS_SCHEMA = """
+CREATE TABLE IF NOT EXISTS media_assets (
+    asset_id         TEXT PRIMARY KEY,
+    name             TEXT NOT NULL,
+    kind             TEXT NOT NULL,
+    state            TEXT NOT NULL CHECK (state IN ('ready', 'failed', 'unavailable')),
+    pipeline_version INTEGER NOT NULL,
+    width            INTEGER NOT NULL,
+    height           INTEGER NOT NULL,
+    display_object   TEXT NOT NULL REFERENCES media_objects(object_id),
+    master_object    TEXT NOT NULL REFERENCES media_objects(object_id),
+    error            TEXT,
+    created_at       TEXT NOT NULL,
+    updated_at       TEXT NOT NULL
+)
+"""
+
+_MEDIA_OBJECTS_SCHEMA = """
+CREATE TABLE IF NOT EXISTS media_objects (
+    object_id  TEXT PRIMARY KEY,
+    mime       TEXT NOT NULL,
+    bytes      INTEGER NOT NULL,
+    width      INTEGER NOT NULL,
+    height     INTEGER NOT NULL,
+    path       TEXT NOT NULL,
+    created_at TEXT NOT NULL
+)
+"""
+
+_MEDIA_RENDITIONS_SCHEMA = """
+CREATE TABLE IF NOT EXISTS media_renditions (
+    asset_id  TEXT NOT NULL REFERENCES media_assets(asset_id) ON DELETE CASCADE,
+    object_id TEXT NOT NULL REFERENCES media_objects(object_id),
+    role      TEXT NOT NULL,
+    width     INTEGER NOT NULL,
+    height    INTEGER NOT NULL,
+    PRIMARY KEY (asset_id, role)
+)
+"""
+
+_SCHEMA_META_SCHEMA = """
+CREATE TABLE IF NOT EXISTS schema_meta (
+    key   TEXT PRIMARY KEY,
+    value TEXT NOT NULL
+)
+"""
+
+# Applied in order, one statement per ``execute`` call. ``IF NOT EXISTS`` makes
+# a re-run harmless, but it is not the migration mechanism: the version gate in
+# ``ensure_schema`` decides whether DDL may run at all.
+_MIGRATION = (
+    _SCHEMA,
+    _SAVED_LAYOUTS_SCHEMA,
+    _SAVED_SCENES_SCHEMA,
+    _MEDIA_OBJECTS_SCHEMA,
+    _MEDIA_ASSETS_SCHEMA,
+    _MEDIA_RENDITIONS_SCHEMA,
+    _SCHEMA_META_SCHEMA,
+)
+
+# A schema-0 file is this application's database when it carries ``wall_state``.
+# The saved-snapshot tables arrived later and a pre-snapshot file legitimately
+# lacks them, so they are added by the migration rather than demanded first.
+_REQUIRED_TABLES = frozenset({"wall_state"})
+_SCHEMA_1_TABLES = frozenset({
+    "wall_state", "saved_layouts", "saved_scenes",
+    "media_assets", "media_objects", "media_renditions", "schema_meta",
+})
+
+
+class SchemaError(RuntimeError):
+    """The database cannot be opened safely; startup must refuse it.
+
+    Raised for a future schema, a file that is not this application's
+    database, a missing required table, a failed pre-migration backup, or a
+    wall row that cannot be validated. The message is operator-facing.
+    """
+
+
+def _user_version(connection: sqlite3.Connection) -> int:
+    return int(connection.execute("PRAGMA user_version").fetchone()[0])
+
+
+def _tables(connection: sqlite3.Connection) -> set[str]:
+    rows = connection.execute(
+        "SELECT name FROM sqlite_master WHERE type = 'table'"
+    ).fetchall()
+    return {str(row[0]) for row in rows}
+
+
+def _fsync_path(path: str) -> None:
+    fd = os.open(path, os.O_RDONLY | os.O_CLOEXEC)
+    try:
+        os.fsync(fd)
+    finally:
+        os.close(fd)
+
+
+def _fsync_directory(path: str) -> None:
+    fd = os.open(path or ".", os.O_RDONLY | os.O_DIRECTORY | os.O_CLOEXEC)
+    try:
+        os.fsync(fd)
+    finally:
+        os.close(fd)
+
+
+def _write_migration_backup(connection: sqlite3.Connection) -> str:
+    """Copy the schema-0 database beside itself, durably, before any DDL.
+
+    SQLite's online backup API is used rather than a raw copy, so a writer in
+    another process cannot leave a torn page in the backup. The copy is
+    integrity-checked and fsynced before its path is returned; any failure
+    raises and the caller must not migrate. The name is unique per attempt so
+    a retry cannot overwrite the only usable rollback copy.
+    """
+    source = db_path()
+    stamp = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%S%fZ")
+    target_path = (
+        f"{source}.pre-schema-{SCHEMA_VERSION}.{stamp}."
+        f"{os.getpid()}.{secrets.token_hex(4)}.bak"
+    )
+    target = sqlite3.connect(target_path)
+    try:
+        connection.backup(target)
+        target.commit()
+        check = target.execute("PRAGMA integrity_check").fetchone()
+        if not check or check[0] != "ok":
+            raise SchemaError(
+                f"pre-migration backup failed integrity_check: {check!r}"
+            )
+    except SchemaError:
+        raise
+    except Exception as error:
+        raise SchemaError(
+            f"pre-migration backup failed ({type(error).__name__}: {error}); "
+            "the database was not migrated"
+        ) from error
+    finally:
+        target.close()
+    os.chmod(target_path, 0o600)
+    _fsync_path(target_path)
+    _fsync_directory(os.path.dirname(os.path.abspath(target_path)))
+    return target_path
+
+
+@contextmanager
+def _migration_lock() -> Iterator[None]:
+    """Serialize schema-0 migration across processes with one stable inode.
+
+    The lock file is a sibling of the database, not the database itself: a
+    SQLite connection holding a write transaction cannot also run its own
+    backup API. The lock is released by the OS if the process dies, so an
+    interrupted migration cannot wedge the next start.
+    """
+    path = os.path.abspath(db_path()) + ".schema.lock"
+    directory = os.path.dirname(path)
+    if directory:
+        os.makedirs(directory, exist_ok=True)
+    fd = os.open(path, os.O_CREAT | os.O_RDWR | os.O_CLOEXEC, 0o600)
+    try:
+        fcntl.flock(fd, fcntl.LOCK_EX)
+        yield
+    finally:
+        fcntl.flock(fd, fcntl.LOCK_UN)
+        os.close(fd)
+
+
+def ensure_schema() -> int:
+    """Bring the database to ``SCHEMA_VERSION``, or refuse it.
+
+    Called by every persistence entry point, not only the lifespan, so a test
+    or a direct caller cannot bypass the gate. A new empty file is migrated
+    without a backup. An existing schema-0 file is backed up first; a file
+    that is neither new nor this application's database is refused. The DDL
+    and the version bump commit together, so an interrupted attempt reopens as
+    schema 0 and can be retried with a fresh backup.
+    """
+    path = db_path()
+    directory = os.path.dirname(os.path.abspath(path))
+    if directory:
+        os.makedirs(directory, exist_ok=True)
+    connection = sqlite3.connect(path)
+    try:
+        try:
+            version = _user_version(connection)
+        except sqlite3.DatabaseError as error:
+            raise SchemaError(f"{path} is not a usable SQLite database: {error}") from error
+        if version > SCHEMA_VERSION:
+            raise SchemaError(
+                f"database schema {version} is newer than this build supports "
+                f"({SCHEMA_VERSION}); refusing to modify {path}"
+            )
+        if version == 1:
+            missing = _SCHEMA_1_TABLES - _tables(connection)
+            if missing:
+                raise SchemaError(
+                    f"database schema 1 is missing required tables: "
+                    f"{', '.join(sorted(missing))}"
+                )
+            connection.execute("PRAGMA foreign_keys = ON")
+            return version
+        if version != 0:
+            raise SchemaError(f"unsupported database schema {version} in {path}")
+
+        with _migration_lock():
+            # Another process may have migrated while this one waited.
+            connection.close()
+            connection = sqlite3.connect(path)
+            version = _user_version(connection)
+            if version > SCHEMA_VERSION:
+                raise SchemaError(
+                    f"database schema {version} is newer than this build supports "
+                    f"({SCHEMA_VERSION}); refusing to modify {path}"
+                )
+            if version == 1:
+                missing = _SCHEMA_1_TABLES - _tables(connection)
+                if missing:
+                    raise SchemaError(
+                        "database schema 1 is missing required tables: "
+                        + ", ".join(sorted(missing))
+                    )
+                return version
+
+            existing = _tables(connection)
+            size = os.path.getsize(path) if os.path.exists(path) else 0
+            if existing:
+                missing = _REQUIRED_TABLES - existing
+                if missing:
+                    raise SchemaError(
+                        f"{path} exists but is not this application's database: "
+                        f"missing {', '.join(sorted(missing))}"
+                    )
+                # An existing schema-0 file gets a durable rollback copy before
+                # the first DDL. A failed backup aborts the migration.
+                _write_migration_backup(connection)
+            elif size > 0:
+                raise SchemaError(
+                    f"{path} is an existing non-empty file with no tables; "
+                    "refusing to overwrite it"
+                )
+
+            try:
+                connection.execute("BEGIN IMMEDIATE")
+                for statement in _MIGRATION:
+                    connection.execute(statement)
+                connection.execute(f"PRAGMA user_version = {SCHEMA_VERSION}")
+                connection.commit()
+            except Exception:
+                connection.rollback()
+                raise
+            connection.execute("PRAGMA foreign_keys = ON")
+            return SCHEMA_VERSION
+    finally:
+        connection.close()
+
+
+def schema_version() -> int:
+    """The current version, read through the same gate as every other call."""
+    return ensure_schema()
+
 
 
 def db_path() -> str:
@@ -68,32 +336,68 @@ def db_path() -> str:
 
 @contextmanager
 def _connection() -> Iterator[sqlite3.Connection]:
-    """A connection with the schema applied; commits on success, always closes.
+    """A connection to a migrated database; commits on success, always closes.
 
-    The schema statements run first, so a brand-new file and an older file
-    alike reach the body of the context with every table present (see
-    ``_MIGRATION``). The commit happens inside the context, which is what
-    makes "commit before notifying" hold: ``save_state`` and the snapshot
-    saves return only after their transaction is durable. An exception skips
-    the commit and closing the connection rolls the open transaction back, so
-    a failed write never half-persists.
+    ``ensure_schema`` runs first so a brand-new file, an old file and a file
+    that another process just migrated all reach the body with every table
+    present. It refuses a future schema or a damaged database before this
+    connection can read or write it. A failed write skips the commit and the
+    connection closes with its open transaction rolled back, so a failed
+    mutation never half-persists.
     """
+    ensure_schema()
     connection = sqlite3.connect(db_path())
     try:
-        for statement in _MIGRATION:
-            connection.execute(statement)
+        connection.execute("PRAGMA foreign_keys = ON")
         yield connection
         connection.commit()
     finally:
         connection.close()
 
 
+def _validate_wall_state(wall: Any, where: str) -> dict[str, Any]:
+    """The persisted wall row must be a complete, usable document.
+
+    Returning defaults for a damaged row would make the next save overwrite
+    the operator's only copy. Every required piece is therefore checked here,
+    before the lifespan can adopt it or rewrite the generation.
+    """
+    if not isinstance(wall, dict):
+        raise SchemaError(f"{where} is not a mapping")
+    layout = wall.get("layout")
+    scene = wall.get("scene")
+    if not isinstance(layout, dict) or not isinstance(scene, dict):
+        raise SchemaError(f"{where} is missing its layout or scene document")
+    if (
+        not isinstance(layout.get("width"), int)
+        or isinstance(layout["width"], bool)
+        or layout["width"] <= 0
+        or not isinstance(layout.get("height"), int)
+        or isinstance(layout["height"], bool)
+        or layout["height"] <= 0
+        or not isinstance(layout.get("placements"), dict)
+    ):
+        raise SchemaError(f"{where} has an invalid layout document")
+    if (
+        not isinstance(scene.get("content"), dict)
+        or not isinstance(scene.get("layout"), str)
+    ):
+        raise SchemaError(f"{where} has an invalid scene document")
+    revision = wall.get("revision")
+    if not isinstance(revision, int) or isinstance(revision, bool) or revision < 0:
+        raise SchemaError(f"{where} has an invalid revision")
+    if not isinstance(wall.get("generation"), str) or not wall["generation"]:
+        raise SchemaError(f"{where} has an invalid generation")
+    return wall
+
+
 def load_state() -> dict[str, Any] | None:
     """The persisted wall state, or None when the database has no row yet.
 
     Called from the lifespan before the app accepts a socket. A row that
-    cannot be read raises instead of being papered over with defaults: serving
-    defaults would then silently overwrite real state on the next save.
+    cannot be read or does not validate raises instead of being papered over
+    with defaults: serving defaults would then silently overwrite real state
+    on the next save.
     """
     with _connection() as connection:
         row = connection.execute(
@@ -101,12 +405,21 @@ def load_state() -> dict[str, Any] | None:
         ).fetchone()
     if row is None:
         return None
-    return {
-        "layout": json.loads(row[0]),
-        "scene": json.loads(row[1]),
-        "revision": int(row[2]),
-        "generation": str(row[3]),
-    }
+    try:
+        layout = json.loads(row[0])
+        scene = json.loads(row[1])
+        revision = int(row[2])
+    except (TypeError, ValueError, json.JSONDecodeError) as error:
+        raise SchemaError(f"wall_state row is not valid: {error}") from error
+    return _validate_wall_state(
+        {
+            "layout": layout,
+            "scene": scene,
+            "revision": revision,
+            "generation": str(row[3]),
+        },
+        "wall_state",
+    )
 
 
 def save_state(wall: Mapping[str, Any]) -> None:
