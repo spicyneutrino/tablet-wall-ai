@@ -275,7 +275,30 @@
     /* Assigned by the server on welcome. It is a display number for matching a
      * physical tablet to the controller, not identity: the device id remains
      * the key. A reconnect may legitimately receive a different number. */
-    var deviceNumber = null;
+    var DEVICE_NUMBER_KEY = "tablet-wall-device-number";
+
+    function readStoredDeviceNumber() {
+        try {
+            var stored = Number(localStorage.getItem(DEVICE_NUMBER_KEY));
+            return deviceNumberValid(stored) ? stored : null;
+        } catch (err) {
+            return null;
+        }
+    }
+
+    function storeDeviceNumber(value) {
+        try {
+            if (deviceNumberValid(value)) {
+                localStorage.setItem(DEVICE_NUMBER_KEY, String(value));
+            } else {
+                localStorage.removeItem(DEVICE_NUMBER_KEY);
+            }
+        } catch (err) {
+            warn("could not persist the tablet number", err);
+        }
+    }
+
+    var deviceNumber = readStoredDeviceNumber();
 
     /* ------------------------------------------------------------------ */
     /* HTTP                                                               */
@@ -320,6 +343,7 @@
                     width: window.innerWidth,
                     height: window.innerHeight,
                     device_type: DEVICE_TYPE,
+                    number: deviceNumberValid(deviceNumber) ? deviceNumber : undefined,
                 }),
             },
             REGISTER_TIMEOUT_MS
@@ -2310,6 +2334,7 @@
             welcomedOnce = true;
             var number = Number(frame.number);
             deviceNumber = deviceNumberValid(number) ? number : null;
+            storeDeviceNumber(deviceNumber);
             resetBackoff();
             startHeartbeat(socket, frame.heartbeat_interval_ms);
             setStatus("connected");

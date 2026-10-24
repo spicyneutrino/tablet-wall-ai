@@ -141,7 +141,7 @@ def _recycle_device_numbers(exclude: str | None = None) -> list[str]:
     return released
 
 
-def _ensure_device_number(device_id: str) -> list[str]:
+def _ensure_device_number(device_id: str, requested: int | None = None) -> list[str]:
     """Give ``device_id`` the lowest free display number.
 
     Returns any other device ids whose expired number was released first, so
@@ -162,6 +162,9 @@ def _ensure_device_number(device_id: str) -> list[str]:
         for other in devices.values()
         if isinstance((value := other.get("number")), int)
     }
+    if isinstance(requested, int) and requested > 0 and requested not in used:
+        record["number"] = requested
+        return released
     number = 1
     while number in used:
         number += 1

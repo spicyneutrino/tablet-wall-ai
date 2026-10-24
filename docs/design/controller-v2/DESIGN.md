@@ -69,7 +69,7 @@ Mobile inputs are 16px to avoid automatic zoom.
 ## Components
 
 - **Roster row:** 38x28 screen thumbnail, small display number, short ID, online/offline badge, resolution and type, "On the wall" or "Not placed". Placed rows use the accent border; offline rows use a dashed border. No palette or placement form in the row.
-- **Display number:** assigned by the server, lowest free. It is a physical-identification label, not identity. The controller shows `#N` in the roster, wall label, and inspector. A tablet that is offline for 15 minutes releases its number when a replacement needs one; the lease is process-local.
+- **Display number:** assigned by the server, lowest free. It is a physical-identification label, not identity. The controller shows `#N` in the roster, wall label, and inspector. A tablet that is offline for 15 minutes releases its number when a replacement needs one. The browser remembers its number and asks for it on reconnect, so a server restart normally restores the same label. The lease is process-local.
 - **Wall footprint:** hatched frame, visible screen inset, short ID label, offline dashed, vacant dotted, shape warning mark. Selected footprint gets a wall-accent outline and four corner handles.
 - **Wall image:** one asset mapped through every visible rect; bezel areas stay frame. The map shows the same slice geometry as the clients.
 - **Inspector:** selection head with Remove/Place, position and size, shape readout and warning with Match screen shape, Move arrows, bezel disclosure, colour, details, remove/place action. `Remove` and `Place` are always near the top.

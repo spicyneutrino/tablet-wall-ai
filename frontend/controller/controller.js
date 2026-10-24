@@ -781,6 +781,13 @@
         connect();
     }
 
+    function deviceHandle(device) {
+        const number = Number(device && device.number);
+        return Number.isInteger(number) && number > 0
+            ? "Tablet #" + number
+            : "Tablet " + shortId(device && device.device_id);
+    }
+
     function renderConn() {
         el.conn.dataset.state = connState;
         let label;
@@ -844,6 +851,14 @@
                 if (!device || typeof device.device_id !== "string") return;
                 const previous = devices.get(device.device_id);
                 devices.set(device.device_id, previous ? Object.assign({}, previous, device) : device);
+                if (msg.type === "device_online" && (!previous || previous.online !== true)) {
+                    logStatus(deviceHandle(device) + " connected.", "ok");
+                } else if (msg.type === "device_updated" && previous &&
+                        Number(previous.number) !== Number(device.number)) {
+                    logStatus(deviceHandle(device) + " is now " +
+                        (Number(device.number) > 0 ? "#" + Number(device.number) : "un-numbered") +
+                        ".", "info");
+                }
                 syncTiles();
                 break;
             }
@@ -857,6 +872,7 @@
                     online: false,
                     last_seen: typeof msg.last_seen === "string" ? msg.last_seen : previous.last_seen
                 }));
+                logStatus(deviceHandle(previous) + " disconnected.", "info");
                 syncTiles();
                 break;
             }
@@ -872,7 +888,9 @@
                 // `wall_updated` says the server really cleared it.
                 const id = msg.device_id;
                 if (typeof id !== "string") return;
+                const removed = devices.get(id);
                 if (!devices.delete(id)) return;
+                logStatus(deviceHandle(removed) + " removed from the roster.", "info");
                 syncTiles();
                 break;
             }

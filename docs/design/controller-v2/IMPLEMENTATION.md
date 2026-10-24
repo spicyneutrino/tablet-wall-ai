@@ -97,7 +97,7 @@ The tile template still carries the exact placement inputs, palette, colour inpu
 - `tabletwall/state.py`: `_recycle_device_numbers()` releases numbers for devices without an open socket and older than `DEVICE_NUMBER_LEASE_S`; `_ensure_device_number()` assigns the lowest free number. Both run synchronously before an await.
 - `main.py`: registration preserves `number`, allocates it, and broadcasts `device_updated` for any released holder. The device socket ensures a number after reconnect and includes it in the v2/v3 welcome. The v1 welcome is unchanged.
 - `frontend/client/client.js`: stores the welcome number outside the revision-gated wall state, repaints on a changed welcome, and draws one screen-space badge on calibration and diagnostic screens.
-- The number lease is in-memory. A server restart renumbers in reconnect order, noted in PROTOCOL.md.
+- The number lease is in-memory. The client stores the number in localStorage and sends it on registration, so a returning tablet reclaims its previous number after a restart while it is free. `PROTOCOL.md` documents the optional claim.
 
 ## API notes
 
@@ -109,9 +109,9 @@ The tile template still carries the exact placement inputs, palette, colour inpu
 
 ## Test plan and results
 
-- Browser evidence: `106/106` checks passed, `/tmp/opencode/tablet-wall-calibration-final/report.json`.
-- Python: `645 passed`.
-- Client JS: `27 passed`.
+- Browser evidence: `106/106` checks passed, `/tmp/opencode/tablet-wall-final-reclaim/report.json`.
+- Python: `647 passed`.
+- Client JS: `28 passed`.
 - View JS: `8 passed`.
 - Deployment guards: `3 passed`.
 - Manual: 1440, 1280, and 390 layouts; no page horizontal overflow; selected inspector, drag move, corner resize, place, remove, undo/redo, tile preview/apply/undo, content switching, and mobile tasks.

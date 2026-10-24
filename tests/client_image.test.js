@@ -354,6 +354,7 @@ function createHarness(opts = {}) {
         }
     };
 
+    const storage = Object.assign({}, opts.storage);
     const sandbox = {
         console: {
             log() {},
@@ -372,10 +373,17 @@ function createHarness(opts = {}) {
         document: documentMock,
         window: windowMock,
         localStorage: {
-            getItem() {
-                return null;
+            getItem(key) {
+                return Object.prototype.hasOwnProperty.call(storage, key)
+                    ? storage[key]
+                    : null;
             },
-            setItem() {},
+            setItem(key, value) {
+                storage[key] = String(value);
+            },
+            removeItem(key) {
+                delete storage[key];
+            },
         },
         crypto: webcrypto,
         Image: MockImage,
@@ -466,6 +474,7 @@ function createHarness(opts = {}) {
         clickTakeover() {
             for (const fn of takeoverListeners) fn({});
         },
+        storage,
         status() {
             return { state: status.state, text: statusText.textContent };
         },
@@ -1202,6 +1211,31 @@ test("an unplaced tablet still shows its number for physical matching", async ()
     assert.ok(
         h.texts().includes("#5"),
         "the number badge is drawn on the unplaced panel: " + JSON.stringify(h.texts())
+    );
+});
+
+test("the tablet stores the welcome number and claims it on the next registration", async () => {
+    const first = await startHarness(VP);
+    first.emit({ type: "welcome", heartbeat_interval_ms: 5000, protocol: 3, number: 4 });
+    await drain();
+    assert.equal(
+        first.storage["tablet-wall-device-number"],
+        "4",
+        "the welcome number is persisted"
+    );
+
+    const reloaded = createHarness(Object.assign({}, VP, {
+        storage: { "tablet-wall-device-number": "4" },
+    }));
+    await drain();
+    const registration = reloaded.fetchLog.find((entry) =>
+        String(entry.url).includes("/devices/register")
+    );
+    assert.ok(registration, "the reloaded tablet registered");
+    assert.equal(
+        JSON.parse(registration.options.body).number,
+        4,
+        "the stored number is claimed on registration"
     );
 });
 

@@ -205,6 +205,9 @@ class DeviceRegistration(BaseModel):
     width: int = Field(gt=0, le=MAX_DEVICE_DIMENSION)
     height: int = Field(gt=0, le=MAX_DEVICE_DIMENSION)
     device_type: str = Field(min_length=1, max_length=MAX_DEVICE_TYPE_LENGTH)
+    # A returning tablet may ask for the display number it had before the
+    # server restarted. The server honours it only while it is free.
+    number: int | None = Field(default=None, ge=1, le=MAX_DEVICES)
 
     @field_validator("device_type")
     @classmethod
@@ -855,7 +858,7 @@ async def device_register(device: DeviceRegistration):
     devices[device_id] = record
     # Stamp the monotonic contact reading too; presence expiry uses it.
     _touch_device(device_id)
-    released = _ensure_device_number(device_id)
+    released = _ensure_device_number(device_id, device.number)
     for old_id in released:
         if old_id in devices:
             await _broadcast({"type": "device_updated", "device": _device_record(old_id)})

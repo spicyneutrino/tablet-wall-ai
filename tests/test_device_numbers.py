@@ -12,17 +12,20 @@ import main
 from tabletwall.state import DEVICE_NUMBER_LEASE_S
 
 
-def _payload(device_id: str) -> dict[str, object]:
-    return {
+def _payload(device_id: str, number: int | None = None) -> dict[str, object]:
+    body = {
         "device_id": device_id,
         "width": 768,
         "height": 393,
         "device_type": "ipad",
     }
+    if number is not None:
+        body["number"] = number
+    return body
 
 
-def _register(client, device_id: str) -> dict[str, object]:
-    response = client.post("/devices/register", json=_payload(device_id))
+def _register(client, device_id: str, number: int | None = None) -> dict[str, object]:
+    response = client.post("/devices/register", json=_payload(device_id, number))
     assert response.status_code == 200, response.text
     return client.get("/devices").json()[device_id]
 
@@ -160,3 +163,29 @@ def test_reconnect_after_release_receives_a_new_number(client):
 
     assert welcome["number"] == 3
     assert main.devices[first]["number"] == 3
+
+
+def test_returning_tablet_can_reclaim_its_number_after_restart(client):
+    first, second, third = _three_ids()
+    _register(client, first)
+    _register(client, second)
+    # A restart drops the in-memory roster. The browser remembers its number
+    # in localStorage and asks for it on the next registration.
+    main.devices.clear()
+    main.device_sockets.clear()
+    assert _register(client, second, number=2)["number"] == 2
+    assert _register(client, first, number=1)["number"] == 1
+    assert _register(client, third, number=3)["number"] == 3
+
+
+def test_requested_number_that_is_taken_falls_back_to_the_lowest_free(client):
+    first, second, third = _three_ids()
+    _register(client, first)   # 1
+    _register(client, second)  # 2
+    _register(client, third)   # 3
+    main.devices.pop(second)
+
+    # 2 is free, but 1 is still held by first. A stale or malicious claim for
+    # 1 must not overwrite it; the replacement gets the lowest free number.
+    assert _register(client, second, number=1)["number"] == 2
+    assert main.devices[first]["number"] == 1

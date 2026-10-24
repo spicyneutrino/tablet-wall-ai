@@ -67,18 +67,19 @@ The existing data layer is kept. The tile template stays in the DOM as the hidde
 
 Every tablet gets a small display number, lowest free over the in-memory roster. The controller shows it in the roster, the wall label, and the inspector. The calibration scene draws the same number large on the tablet and previews each tablet's grid and number on the controller map, so a person can match a physical screen to a row without decoding a UUID.
 
-The number is leased for 15 minutes after the tablet goes offline. A replacement can take an expired number; the old record loses it and the controller is told. The lease is process-local: a server restart renumbers tablets in reconnect order. That is documented in PROTOCOL.md; persisting numbers would need a schema change.
+The number is leased for 15 minutes after the tablet goes offline. A replacement can take an expired number; the old record loses it and the controller is told. The number is process-local, but a returning browser remembers it in localStorage and asks for it on registration; after a server restart it reclaims its previous number while it is free. That is documented in PROTOCOL.md.
 
 The image preview in the controller now uses the same centered cover geometry as the client. The map and the roster thumbnail both use the image origin, not its negative offset.
 
 ## Verification
 
-- Browser evidence: 106/106 checks passed, `/tmp/opencode/tablet-wall-calibration-final/report.json`.
-- Python: 645 passed.
-- Client JS: 27 passed.
+- Browser evidence: 106/106 checks passed, `/tmp/opencode/tablet-wall-final-reclaim/report.json`.
+- Python: 647 passed.
+- Client JS: 28 passed.
 - View JS: 8 passed.
 - Deployment guards: 3 passed.
 - Manual: 1440, 1280, and 390 layouts; no horizontal overflow; selection, drag move, corner resize, place, remove, undo/redo, tile apply, tile undo, content switching, and mobile tasks exercised.
+- Manual feature test: four simulated tablets kept #1–#4 across a server restart, reconnected within one second, and the controller logged each connect and disconnect. A tablet taken offline for 18 seconds showed Reconnecting, released its socket, and returned as #1.
 
 ## Known limits
 

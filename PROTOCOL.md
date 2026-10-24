@@ -98,8 +98,10 @@ Every payload that carries a device uses this exact shape:
   calibration screen. It is not identity. The server allocates the lowest free
   positive integer and leases it while the tablet stays in contact. A tablet
   that is offline for 15 minutes releases the number for a replacement.
-  Numbers are process-local: a server restart renumbers tablets in reconnect
-  order.
+  A returning client may include its previous `number` in
+  `POST /devices/register`; the server honours it only while it is free.
+  Numbers are process-local, so a client that does not ask, or asks for a
+  taken number, receives the lowest free one.
 - `protocol` is the last negotiated major (or `null` before a socket connects);
   `caps` is the list advertised by that socket (empty until then). A version-1
   socket does not receive `wall` frames even if it supplies a `caps` query
@@ -206,8 +208,11 @@ Returns a single device record. `404` if unknown.
 Request body:
 
 ```json
-{ "device_id": "<uuid4>", "width": 1024, "height": 768, "device_type": "ipad" }
+{ "device_id": "<uuid4>", "width": 1024, "height": 768, "device_type": "ipad", "number": 3 }
 ```
+
+`number` is optional. A returning client sends the number it held before a
+server restart; the server keeps it only while it is free.
 
 Response is unchanged: `{"registered": true, "device": "<device_id>"}`.
 
@@ -220,6 +225,7 @@ record enters memory:
 | `width`       | `1 … 16384`                                      | outside that range |
 | `height`      | `1 … 16384`                                      | outside that range |
 | `device_type` | `1 … 32` characters, printable ASCII (`0x20–0x7e`) | empty, longer, or any other character |
+| `number`      | `1 … 512` (optional)                             | outside that range |
 
 The roster holds `512` records. A registration that would exceed it evicts the
 least recently contacted **offline** device; placements are stored separately
@@ -227,8 +233,8 @@ and survive as reservations. If every record is online the server answers
 `429` instead of evicting a live tablet.
 
 Re-registering an existing id updates `width`, `height`, `type`, and
-`last_seen`, preserves any assigned `color` and an open socket, and broadcasts
-`device_updated`.
+`last_seen`, preserves any assigned `color`, `number`, and an open socket, and
+broadcasts `device_updated`.
 
 ### `POST /devices/{device_id}/color`
 
