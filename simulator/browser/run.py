@@ -1193,6 +1193,16 @@ async def exercise(artifacts: Path, report: dict[str, Any], observation_seconds:
                 "matrix": "[-1,0,0,-1,300,260] source 400x240 -> backing 300x180; panel clip 0..200 x 0..120",
             }
             await physical_page.screenshot(path=str(artifacts / "physical-client.png"))
+
+            # A viewport change that no calibration covers must remove the
+            # physical claim instead of repainting a stale plan.
+            await physical_page.set_viewport_size({"width": 240, "height": 140})
+            await asyncio.sleep(1)
+            stale = await canvas_pixel(physical_page, 100, 60)
+            report["r2"]["stale_viewport"] = stale
+            check("a stale viewport removes the physical claim",
+                  max(abs(a - b) for a, b in zip(stale, (240, 220, 20))) > 30,
+                  colour=stale)
         finally:
             physical_http.close()
 
