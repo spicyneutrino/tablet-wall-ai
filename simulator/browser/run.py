@@ -88,14 +88,6 @@ def write_fixture(path: Path) -> None:
 
 
 def expected_pixel(name: str, bx: int, by: int) -> tuple[int, int, int]:
-    """Hand-derived inverse maps for these fixed placements, sampled at pixel centers.
-
-    The 1600x800 source covers a 1200x800 wall, hiding 200 source columns
-    on either side. Landscape crops 175 wall rows above and below its
-    600x800 placement. Portrait maps its right-hand placement one to one.
-    The third viewport covers the whole wall by its height, 601/800.
-    No application or simulator geometry implementation is imported.
-    """
     spec = next(spec for spec in SPECS if spec.name == name)
     x, y = (bx + 0.5) / spec.dpr, (by + 0.5) / spec.dpr
     if name == "landscape":
@@ -437,42 +429,52 @@ async def exercise(artifacts: Path, report: dict[str, Any], observation_seconds:
                 observation.event("failure_screenshot_unavailable", error=str(error))
         raise
     finally:
-        owned_processes.update(descendants(os.getpid()))
-        cleanup_errors = []
-        for resource in reversed(resources):
+        async def cleanup() -> None:
+            nonlocal owned_processes
+
+            owned_processes.update(descendants(os.getpid()))
+            cleanup_errors = []
+            for resource in reversed(resources):
+                try:
+                    if hasattr(resource, "dispose"):
+                        await resource.dispose()
+                    else:
+                        await resource.close()
+                except Exception as error:
+                    cleanup_errors.append(str(error))
+            if playwright is not None:
+                try:
+                    await playwright.stop()
+                except Exception as error:
+                    cleanup_errors.append(str(error))
             try:
-                if hasattr(resource, "dispose"):
-                    await resource.dispose()
-                else:
-                    await resource.close()
+                stop_server(process)
             except Exception as error:
                 cleanup_errors.append(str(error))
-        if playwright is not None:
+            if listener is not None:
+                listener.close()
+            if log is not None:
+                log.close()
             try:
-                await playwright.stop()
+                shutil.rmtree(root)
             except Exception as error:
                 cleanup_errors.append(str(error))
+            owned_processes = {pid: birth for pid, birth in owned_processes.items() if pid not in initial_processes}
+            table = process_table()
+            remaining = {pid: birth for pid, birth in owned_processes.items() if table.get(pid, (None, None))[1] == birth}
+            report["cleanup"] = {"server_reaped": process is None or process.returncode is not None,
+                                 "server_returncode": process.returncode if process else None,
+                                 "owned_processes": owned_processes, "remaining_processes": remaining,
+                                 "temporary_root_removed": not root.exists(), "errors": cleanup_errors}
+            check("cleanup reaps server and browser processes and removes data", not remaining and not root.exists()
+                  and not cleanup_errors and (process is None or process.returncode is not None))
+
+        cleanup_task = asyncio.create_task(cleanup())
         try:
-            stop_server(process)
-        except Exception as error:
-            cleanup_errors.append(str(error))
-        if listener is not None:
-            listener.close()
-        if log is not None:
-            log.close()
-        try:
-            shutil.rmtree(root)
-        except Exception as error:
-            cleanup_errors.append(str(error))
-        owned_processes = {pid: birth for pid, birth in owned_processes.items() if pid not in initial_processes}
-        table = process_table()
-        remaining = {pid: birth for pid, birth in owned_processes.items() if table.get(pid, (None, None))[1] == birth}
-        report["cleanup"] = {"server_reaped": process is None or process.returncode is not None,
-                             "server_returncode": process.returncode if process else None,
-                             "owned_processes": owned_processes, "remaining_processes": remaining,
-                             "temporary_root_removed": not root.exists(), "errors": cleanup_errors}
-        check("cleanup reaps server and browser processes and removes data", not remaining and not root.exists()
-              and not cleanup_errors and (process is None or process.returncode is not None))
+            await asyncio.shield(cleanup_task)
+        except asyncio.CancelledError:
+            await cleanup_task
+            raise
 
 
 GAPS = [

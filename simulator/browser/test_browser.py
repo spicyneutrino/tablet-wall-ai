@@ -3,8 +3,10 @@ import json
 import os
 from pathlib import Path
 import signal
+import shutil
 import subprocess
 import sys
+from types import SimpleNamespace
 
 from PIL import Image
 import pytest
@@ -36,6 +38,104 @@ def test_signal_cancellation_keeps_event_reader_alive_during_cleanup(tmp_path, m
     with pytest.raises(asyncio.CancelledError, match="SIGTERM"):
         asyncio.run(run.run_with_signals(tmp_path, {}))
     assert evidence == [True]
+
+
+@pytest.mark.parametrize("resource", ["dispose", "close"])
+def test_first_cancellation_during_cleanup_after_launch_failure(tmp_path, monkeypatch, resource):
+    playwright = pytest.importorskip("playwright.async_api")
+    report = {"checks": []}
+    completed = []
+    original_dispose = playwright.APIRequestContext.dispose
+
+    async def scenario():
+        task = asyncio.current_task()
+
+        async def interrupted_cleanup(context=None):
+            task.cancel("first cancellation during cleanup")
+            await asyncio.sleep(0)
+            if context is not None:
+                await original_dispose(context)
+            completed.append(resource)
+
+        async def fail(*args, **kwargs):
+            raise RuntimeError("injected launch failure")
+
+        if resource == "dispose":
+            monkeypatch.setattr(playwright.APIRequestContext, "dispose", interrupted_cleanup)
+            monkeypatch.setattr(playwright.BrowserType, "launch", fail)
+        else:
+            async def launch(*args, **kwargs):
+                return SimpleNamespace(version="injected", close=interrupted_cleanup, new_context=fail)
+
+            monkeypatch.setattr(playwright.BrowserType, "launch", launch)
+        await exercise(tmp_path, report, 6)
+
+    try:
+        with pytest.raises(asyncio.CancelledError, match="first cancellation during cleanup"):
+            asyncio.run(scenario())
+        assert completed == [resource]
+        assert report["cleanup"]["server_reaped"]
+        assert report["cleanup"]["remaining_processes"] == {}
+        assert report["cleanup"]["temporary_root_removed"]
+        assert report["cleanup"]["errors"] == []
+        assert not Path(f"/proc/{report['server_pid']}").exists()
+        assert not Path(report["temporary_root"]).exists()
+    finally:
+        if Path(f"/proc/{report['server_pid']}").exists():
+            os.kill(report["server_pid"], signal.SIGTERM)
+            os.waitpid(report["server_pid"], 0)
+        shutil.rmtree(report["temporary_root"], ignore_errors=True)
+
+
+def test_first_sigterm_during_dispose_saves_failure_report_and_cleans_server(tmp_path):
+    pytest.importorskip("playwright")
+    destination = tmp_path / "signal-during-cleanup-report"
+    result = subprocess.run(
+        [sys.executable, "-c", """
+import asyncio
+import os
+import signal
+import sys
+from pathlib import Path
+from unittest.mock import patch
+from playwright.async_api import APIRequestContext
+from simulator.browser import run
+
+original_dispose = APIRequestContext.dispose
+
+async def dispose(context):
+    loop = asyncio.get_running_loop()
+    loop.call_soon(os.kill, os.getpid(), signal.SIGTERM)
+    await asyncio.sleep(.05)
+    loop.call_soon(os.kill, os.getpid(), signal.SIGTERM)
+    await asyncio.sleep(.05)
+    await original_dispose(context)
+    Path(sys.argv[2], 'dispose-completed').touch()
+
+with patch.object(APIRequestContext, 'dispose', dispose):
+    raise SystemExit(run.main())
+""", "--artifacts", str(destination)],
+        cwd=REPO,
+        env={**os.environ, "PLAYWRIGHT_BROWSERS_PATH": str(tmp_path / "missing-browsers")},
+        capture_output=True, text=True, timeout=25,
+    )
+    report = json.loads((destination / "report.json").read_text())
+    try:
+        assert result.returncode == report["exit_code"] == 1, result.stderr
+        assert report["failure"]["type"] == "CancelledError"
+        assert "signal SIGTERM" in report["failure"]["message"]
+        assert "Executable doesn't exist" in report["failure"]["traceback"]
+        assert (destination / "dispose-completed").exists()
+        assert report["cleanup"]["server_reaped"]
+        assert report["cleanup"]["remaining_processes"] == {}
+        assert report["cleanup"]["temporary_root_removed"]
+        assert report["cleanup"]["errors"] == []
+        assert not Path(f"/proc/{report['server_pid']}").exists()
+        assert not Path(report["temporary_root"]).exists()
+    finally:
+        if Path(f"/proc/{report['server_pid']}").exists():
+            os.kill(report["server_pid"], signal.SIGTERM)
+        shutil.rmtree(report["temporary_root"], ignore_errors=True)
 
 
 def test_browser_process_detection_handles_rewritten_chromium_argv(monkeypatch):
