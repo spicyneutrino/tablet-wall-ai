@@ -1203,6 +1203,34 @@ async def exercise(artifacts: Path, report: dict[str, Any], observation_seconds:
             check("a stale viewport removes the physical claim",
                   max(abs(a - b) for a, b in zip(stale, (240, 220, 20))) > 30,
                   colour=stale)
+
+            editor_context = await browser.new_context(
+                viewport={"width": 1280, "height": 900}, device_scale_factor=1
+            )
+            resources.append(editor_context)
+            editor_page, editor_obs = await watch_page(
+                editor_context, ClientSpec("editor", 1280, 900, 1), observations
+            )
+            captured_pages.append((editor_page, editor_obs))
+            await editor_page.goto(base + "/controller/physical.html")
+            await editor_page.wait_for_selector("#stage-svg [data-device-id]", timeout=10000)
+            await editor_page.locator("#stage-svg [data-device-id]").first.click()
+            await editor_page.click("#btn-rotate")
+            angle_after_rotate = await editor_page.locator("#slot-angle").input_value()
+            async with editor_page.expect_response(
+                lambda response: response.url == base + "/api/v3/layout"
+                and response.request.method == "PUT"
+            ) as applied:
+                await editor_page.click("#btn-apply")
+            check("physical editor rotates and applies a slot",
+                  (await applied.value).ok and angle_after_rotate.strip() == "270",
+                  angle=angle_after_rotate)
+            config_after = physical_http.get("/api/v3/config").json()
+            check("applied editor pose is the server pose",
+                  config_after["layout"]["slots"][physical_obs.device_id]["mount_angle"] == 270,
+                  angle=config_after["layout"]["slots"][physical_obs.device_id]["mount_angle"])
+            report["r2"]["editor"] = {"angle": angle_after_rotate}
+            await editor_page.screenshot(path=str(artifacts / "physical-editor.png"), full_page=True)
         finally:
             physical_http.close()
 

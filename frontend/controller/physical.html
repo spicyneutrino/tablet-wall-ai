@@ -1,0 +1,384 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="color-scheme" content="light">
+    <meta name="description" content="Measure tablets and place them on a physical wall.">
+    <title>Physical setup · tablet-wall-ai</title>
+    <link rel="icon" href="favicon.svg" type="image/svg+xml">
+    <link rel="stylesheet" href="controller.css?v=7">
+    <link rel="stylesheet" href="physical.css?v=1">
+</head>
+<body class="physical">
+<a class="skip" href="#stage-title">Skip to the wall stage</a>
+
+<header class="topbar">
+    <h1 class="brand">Physical setup</h1>
+    <p class="topbar-note">Measure each tablet, then place it on the wall.</p>
+    <a class="btn btn-sm" href="index.html">Wall control</a>
+</header>
+
+<div class="layout">
+    <main class="main">
+
+        <section class="card stage-card" aria-labelledby="stage-title">
+            <div class="wall-head">
+                <h2 id="stage-title">Wall stage</h2>
+                <p class="wall-meta physical-meta">
+                    <span>Revision <b id="wall-revision">–</b></span>
+                    <span>Session <b id="wall-generation">–</b></span>
+                    <span class="etag-meta">
+                        ETag <code id="etag-value" title="">–</code>
+                        <span class="chip" id="etag-state" data-kind="info">waiting</span>
+                    </span>
+                </p>
+            </div>
+
+            <p class="hint" id="layout-kind-note">Loading the configuration.</p>
+
+            <div class="phys-toolbar" role="group" aria-label="Layout draft">
+                <button type="button" class="btn btn-ghost" id="btn-undo" disabled>Undo</button>
+                <button type="button" class="btn btn-ghost" id="btn-redo" disabled>Redo</button>
+                <span class="draft-flag" id="draft-flag" data-dirty="false">No changes</span>
+                <span class="toolbar-gap" aria-hidden="true"></span>
+                <button type="button" class="btn btn-primary" id="btn-apply" disabled>Apply layout</button>
+                <button type="button" class="btn" id="btn-cancel" disabled>Cancel changes</button>
+                <button type="button" class="btn btn-ghost" id="btn-reload">Reload config</button>
+            </div>
+
+            <p class="page-error" id="error-text" role="alert" hidden></p>
+
+            <div class="conflict" id="conflict-panel" role="alert" hidden>
+                <p class="conflict-title">Configuration changed on the server</p>
+                <p class="conflict-text" id="conflict-text"></p>
+                <div class="conflict-actions">
+                    <button type="button" class="btn btn-danger" id="btn-conflict-reload">Reload config</button>
+                </div>
+            </div>
+
+            <div class="stage-scroll">
+                <svg class="stage-svg" id="stage-svg" viewBox="0 0 720 480"
+                     role="group" aria-label="Wall stage. Select a tablet and drag it, or use the arrow keys to nudge the selected tablet."></svg>
+            </div>
+
+            <div class="stage-foot">
+                <p class="stage-scale" id="stage-scale">Waiting for the wall.</p>
+                <ul class="stage-legend" aria-label="Stage legend">
+                    <li class="lg"><span class="lg-body" aria-hidden="true"></span>Tablet body</li>
+                    <li class="lg"><span class="lg-active" aria-hidden="true"></span>Active panel</li>
+                    <li class="lg"><span class="lg-sel" aria-hidden="true"></span>Selected</li>
+                    <li class="lg"><span class="lg-grid" aria-hidden="true"></span>Wall grid</li>
+                </ul>
+            </div>
+            <p class="hint">Drag a tablet to move it on the wall. A drag starts after 3 px, so a tap only selects. Escape cancels a drag in progress.</p>
+        </section>
+
+        <section class="card devices-card" aria-labelledby="devices-title">
+            <div class="sec-head">
+                <h2 id="devices-title">Tablets</h2>
+                <span class="sec-count" id="device-count">0</span>
+            </div>
+            <p class="hint">Label, short device id, active panel size, and the newest profile and calibration revisions. A tablet with no slot can be added once it has a profile and a matching calibration.</p>
+            <ul class="dev-list" id="device-list" aria-label="Tablets known to this server"></ul>
+            <p class="empty-note" id="device-empty" hidden>No tablets are registered yet. Open the tablet page on a tablet, then reload this page.</p>
+        </section>
+
+        <section class="card bounds-card" aria-labelledby="bounds-title">
+            <h2 id="bounds-title">Wall bounds</h2>
+            <p class="hint">The rectangle every slot is placed inside. Values are millimetres, measured from the top-left corner of the wall as the audience sees it.</p>
+            <div class="bounds-grid">
+                <div class="field">
+                    <label class="label" for="bounds-x">X (mm)</label>
+                    <input class="inp" id="bounds-x" type="number" step="any" inputmode="decimal" autocomplete="off">
+                </div>
+                <div class="field">
+                    <label class="label" for="bounds-y">Y (mm)</label>
+                    <input class="inp" id="bounds-y" type="number" step="any" inputmode="decimal" autocomplete="off">
+                </div>
+                <div class="field">
+                    <label class="label" for="bounds-width">Width (mm)</label>
+                    <input class="inp" id="bounds-width" type="number" min="1" step="any" inputmode="decimal" autocomplete="off">
+                </div>
+                <div class="field">
+                    <label class="label" for="bounds-height">Height (mm)</label>
+                    <input class="inp" id="bounds-height" type="number" min="1" step="any" inputmode="decimal" autocomplete="off">
+                </div>
+            </div>
+            <p class="hint" id="bounds-note"></p>
+        </section>
+
+        <section class="card saved-card" aria-labelledby="saved-title">
+            <div class="sec-head">
+                <h2 id="saved-title">Saved physical layouts</h2>
+                <button type="button" class="btn btn-ghost btn-sm" id="btn-layouts-refresh">Refresh</button>
+            </div>
+            <p class="hint">Saving keeps the committed layout, not the draft. Apply the draft first to save its changes under a new name.</p>
+
+            <form class="saved-form" id="layout-save-form" novalidate>
+                <div class="field">
+                    <label class="label" for="layout-name">Name</label>
+                    <input class="inp" id="layout-name" type="text" maxlength="64" autocomplete="off"
+                           spellcheck="false" placeholder="Lobby, 3 across" aria-describedby="layout-msg">
+                </div>
+                <button type="submit" class="btn" id="btn-layout-save">Save committed layout</button>
+            </form>
+
+            <p class="form-msg" id="layout-msg" role="status" aria-live="polite" hidden></p>
+            <ul class="saved-list" id="saved-layouts" aria-label="Saved physical layouts"></ul>
+            <p class="empty-note" id="saved-empty" hidden>No saved physical layouts yet.</p>
+        </section>
+    </main>
+
+    <aside class="side" aria-label="Selected tablet and measurements">
+
+        <section class="card inspector" aria-labelledby="inspector-title">
+            <h2 id="inspector-title">Selected tablet</h2>
+            <p class="empty-note" id="inspector-empty">Select a tablet on the stage or in the list.</p>
+
+            <div id="inspector-body" hidden>
+                <div class="insp-head">
+                    <div class="insp-name">
+                        <h3 id="selected-title">–</h3>
+                        <code id="selected-id">–</code>
+                    </div>
+                    <span class="chip" id="selected-state" data-kind="ok">On the wall</span>
+                </div>
+                <p class="hint" id="selected-note"></p>
+
+                <div class="slot-fields">
+                    <div class="field">
+                        <label class="label" for="slot-center-x">Centre X (mm)</label>
+                        <input class="inp" id="slot-center-x" type="number" step="any" inputmode="decimal" autocomplete="off">
+                    </div>
+                    <div class="field">
+                        <label class="label" for="slot-center-y">Centre Y (mm)</label>
+                        <input class="inp" id="slot-center-y" type="number" step="any" inputmode="decimal" autocomplete="off">
+                    </div>
+                    <div class="field">
+                        <label class="label" for="slot-angle">Mount angle (°)</label>
+                        <input class="inp" id="slot-angle" type="number" step="any" inputmode="decimal" autocomplete="off">
+                    </div>
+                    <div class="field">
+                        <label class="label" for="slot-nudge-x">Nudge X (mm)</label>
+                        <input class="inp" id="slot-nudge-x" type="number" step="any" inputmode="decimal" autocomplete="off">
+                    </div>
+                    <div class="field">
+                        <label class="label" for="slot-nudge-y">Nudge Y (mm)</label>
+                        <input class="inp" id="slot-nudge-y" type="number" step="any" inputmode="decimal" autocomplete="off">
+                    </div>
+                </div>
+
+                <div class="insp-actions">
+                    <button type="button" class="btn" id="btn-rotate">Rotate 90°</button>
+                    <button type="button" class="btn btn-danger" id="btn-delete-slot">Delete from wall</button>
+                </div>
+
+                <div class="nudge-block" role="group" aria-labelledby="nudge-title">
+                    <span class="label" id="nudge-title">Nudge by 1 mm</span>
+                    <div class="nudge-grid">
+                        <button type="button" class="btn nudge-btn" id="btn-nudge-x-minus"
+                                aria-label="Nudge X minus 1 millimetre">X −1</button>
+                        <button type="button" class="btn nudge-btn" id="btn-nudge-x-plus"
+                                aria-label="Nudge X plus 1 millimetre">X +1</button>
+                        <button type="button" class="btn nudge-btn" id="btn-nudge-y-minus"
+                                aria-label="Nudge Y minus 1 millimetre">Y −1</button>
+                        <button type="button" class="btn nudge-btn" id="btn-nudge-y-plus"
+                                aria-label="Nudge Y plus 1 millimetre">Y +1</button>
+                    </div>
+                    <p class="hint">Arrow keys nudge by 1 mm. Shift + arrow nudges by 10 mm.</p>
+                </div>
+            </div>
+
+            <div id="inspector-missing" hidden>
+                <p class="empty-note" id="slot-missing-text"></p>
+                <button type="button" class="btn btn-primary" id="btn-add-slot">Add to wall</button>
+            </div>
+        </section>
+
+        <section class="card device-card" aria-labelledby="device-card-title">
+            <h2 id="device-card-title">Profile and calibration</h2>
+            <p class="empty-note" id="device-card-empty">Select a tablet to edit its measurements.</p>
+
+            <div id="device-card-body" hidden>
+                <div class="insp-head">
+                    <div class="insp-name">
+                        <h3 id="device-card-name">–</h3>
+                        <code id="device-card-id">–</code>
+                    </div>
+                    <span class="chip" id="device-card-cal" data-kind="info">–</span>
+                </div>
+
+                <form class="measure-form" id="profile-form" novalidate>
+                    <h3>Profile</h3>
+                    <p class="current" id="profile-current"></p>
+
+                    <div class="form-grid">
+                        <div class="field">
+                            <label class="label" for="profile-active-width">Active width (mm)</label>
+                            <input class="inp" id="profile-active-width" type="number" min="0" step="any"
+                                   inputmode="decimal" autocomplete="off">
+                        </div>
+                        <div class="field">
+                            <label class="label" for="profile-active-height">Active height (mm)</label>
+                            <input class="inp" id="profile-active-height" type="number" min="0" step="any"
+                                   inputmode="decimal" autocomplete="off">
+                        </div>
+                        <div class="field">
+                            <label class="label" for="profile-bezel-top">Bezel top (mm)</label>
+                            <input class="inp" id="profile-bezel-top" type="number" min="0" step="any"
+                                   inputmode="decimal" autocomplete="off">
+                        </div>
+                        <div class="field">
+                            <label class="label" for="profile-bezel-right">Bezel right (mm)</label>
+                            <input class="inp" id="profile-bezel-right" type="number" min="0" step="any"
+                                   inputmode="decimal" autocomplete="off">
+                        </div>
+                        <div class="field">
+                            <label class="label" for="profile-bezel-bottom">Bezel bottom (mm)</label>
+                            <input class="inp" id="profile-bezel-bottom" type="number" min="0" step="any"
+                                   inputmode="decimal" autocomplete="off">
+                        </div>
+                        <div class="field">
+                            <label class="label" for="profile-bezel-left">Bezel left (mm)</label>
+                            <input class="inp" id="profile-bezel-left" type="number" min="0" step="any"
+                                   inputmode="decimal" autocomplete="off">
+                        </div>
+                        <div class="field field-wide">
+                            <label class="label" for="profile-label">Label</label>
+                            <input class="inp" id="profile-label" type="text" maxlength="80"
+                                   autocomplete="off" spellcheck="false">
+                        </div>
+                        <div class="field field-wide">
+                            <label class="label" for="profile-provenance">Provenance</label>
+                            <input class="inp" id="profile-provenance" type="text" maxlength="40"
+                                   autocomplete="off" spellcheck="false" placeholder="manual, datasheet">
+                        </div>
+                        <div class="field">
+                            <label class="label" for="profile-pixel-width">Panel pixels wide (optional)</label>
+                            <input class="inp" id="profile-pixel-width" type="number" min="1" step="1"
+                                   inputmode="numeric" autocomplete="off">
+                        </div>
+                        <div class="field">
+                            <label class="label" for="profile-pixel-height">Panel pixels high (optional)</label>
+                            <input class="inp" id="profile-pixel-height" type="number" min="1" step="1"
+                                   inputmode="numeric" autocomplete="off">
+                        </div>
+                    </div>
+
+                    <p class="form-msg" id="profile-msg" role="status" aria-live="polite" hidden></p>
+                    <button type="submit" class="btn btn-primary" id="btn-profile-save">Save profile</button>
+                </form>
+
+                <form class="measure-form" id="calibration-form" novalidate>
+                    <h3>Calibration</h3>
+                    <p class="current" id="calibration-current"></p>
+
+                    <div class="form-grid">
+                        <div class="field">
+                            <label class="label" for="cal-profile-revision">Profile revision</label>
+                            <input class="inp" id="cal-profile-revision" type="number" min="1" step="1"
+                                   inputmode="numeric" autocomplete="off">
+                        </div>
+                        <div class="field">
+                            <label class="label" for="cal-viewport-width">Viewport width (CSS px)</label>
+                            <input class="inp" id="cal-viewport-width" type="number" min="1" step="any"
+                                   inputmode="decimal" autocomplete="off">
+                        </div>
+                        <div class="field">
+                            <label class="label" for="cal-viewport-height">Viewport height (CSS px)</label>
+                            <input class="inp" id="cal-viewport-height" type="number" min="1" step="any"
+                                   inputmode="decimal" autocomplete="off">
+                        </div>
+                        <div class="field">
+                            <label class="label" for="cal-dpr">Device pixel ratio</label>
+                            <input class="inp" id="cal-dpr" type="number" min="0" step="any"
+                                   inputmode="decimal" autocomplete="off">
+                        </div>
+                        <div class="field">
+                            <label class="label" for="cal-orientation">Orientation</label>
+                            <select class="inp" id="cal-orientation">
+                                <option value="0">0°</option>
+                                <option value="90">90°</option>
+                                <option value="180">180°</option>
+                                <option value="270">270°</option>
+                            </select>
+                        </div>
+                        <div class="field">
+                            <label class="label" for="cal-mode">Mode</label>
+                            <select class="inp" id="cal-mode">
+                                <option value="tab">Tab</option>
+                                <option value="fullscreen">Fullscreen</option>
+                                <option value="standalone">Standalone</option>
+                            </select>
+                        </div>
+                        <div class="field">
+                            <label class="label" for="cal-quarter-turn">Quarter turn</label>
+                            <select class="inp" id="cal-quarter-turn">
+                                <option value="0">0</option>
+                                <option value="1">1</option>
+                                <option value="2">2</option>
+                                <option value="3">3</option>
+                            </select>
+                        </div>
+                        <div class="field">
+                            <label class="label" for="cal-anchor-edge">Anchor edge</label>
+                            <select class="inp" id="cal-anchor-edge">
+                                <option value="top-left">Top left</option>
+                                <option value="top-right">Top right</option>
+                                <option value="bottom-left">Bottom left</option>
+                                <option value="bottom-right">Bottom right</option>
+                            </select>
+                        </div>
+                        <div class="field">
+                            <label class="label" for="cal-offset-x">Panel offset X (mm)</label>
+                            <input class="inp" id="cal-offset-x" type="number" step="any"
+                                   inputmode="decimal" autocomplete="off">
+                        </div>
+                        <div class="field">
+                            <label class="label" for="cal-offset-y">Panel offset Y (mm)</label>
+                            <input class="inp" id="cal-offset-y" type="number" step="any"
+                                   inputmode="decimal" autocomplete="off">
+                        </div>
+                        <div class="field">
+                            <label class="label" for="cal-mm-css-x">mm per CSS pixel X</label>
+                            <input class="inp" id="cal-mm-css-x" type="number" min="0" step="any"
+                                   inputmode="decimal" autocomplete="off">
+                        </div>
+                        <div class="field">
+                            <label class="label" for="cal-mm-css-y">mm per CSS pixel Y</label>
+                            <input class="inp" id="cal-mm-css-y" type="number" min="0" step="any"
+                                   inputmode="decimal" autocomplete="off">
+                        </div>
+                        <div class="field">
+                            <label class="label" for="cal-uncertainty">Uncertainty (mm)</label>
+                            <input class="inp" id="cal-uncertainty" type="number" min="0" step="any"
+                                   inputmode="decimal" autocomplete="off">
+                        </div>
+                        <div class="field field-wide">
+                            <label class="label" for="cal-method">Method</label>
+                            <input class="inp" id="cal-method" type="text" maxlength="80"
+                                   autocomplete="off" spellcheck="false" placeholder="ruler across the active edge">
+                        </div>
+                    </div>
+
+                    <p class="form-msg" id="calibration-msg" role="status" aria-live="polite" hidden></p>
+                    <button type="submit" class="btn btn-primary" id="btn-calibration-save">Save calibration</button>
+                </form>
+            </div>
+        </section>
+    </aside>
+</div>
+
+<footer class="statusbar">
+    <span class="status-stamp" id="status-stamp"></span>
+    <span class="status-text" id="page-status" role="status" aria-live="polite" aria-atomic="true">Loading</span>
+</footer>
+
+<noscript>
+    <p class="noscript">This page needs JavaScript. It talks to the server over plain HTTP.</p>
+</noscript>
+
+<script src="physical.js?v=1"></script>
+</body>
+</html>
