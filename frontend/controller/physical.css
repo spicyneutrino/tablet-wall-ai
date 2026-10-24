@@ -741,3 +741,13 @@
         transition-duration: 0.001ms !important;
     }
 }
+
+.playback-card { display: grid; gap: 10px; }
+.playlist-assets { min-height: 110px; font-family: ui-monospace, "SF Mono", monospace; font-size: 13px; resize: vertical; }
+.playlist-row { display: flex; flex-wrap: wrap; gap: 12px; align-items: end; }
+.playback-actions { display: flex; flex-wrap: wrap; gap: 8px; }
+.playback-actions .btn { min-height: 44px; }
+.playback-status { margin: 0; padding: 10px 12px; background: #f9f9f8; border: 1px solid #eaeaea; border-radius: 8px; font-weight: 600; }
+.playback-status[data-state="playing"] { border-color: #346538; }
+.playback-status[data-state="failed"] { border-color: #9f2f2d; background: #fdebec; }
+.playlist-row .check { display: inline-flex; align-items: center; gap: 6px; min-height: 44px; }

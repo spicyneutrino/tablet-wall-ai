@@ -42,6 +42,18 @@
         btnLayoutsRefresh: document.getElementById("btn-layouts-refresh"),
         layoutSaveForm: document.getElementById("layout-save-form"),
         layoutName: document.getElementById("layout-name"),
+        playlistAssets: document.getElementById("playlist-assets"),
+        playlistDwell: document.getElementById("playlist-dwell"),
+        playlistLoop: document.getElementById("playlist-loop"),
+        btnPlaylistSave: document.getElementById("btn-playlist-save"),
+        playlistMsg: document.getElementById("playlist-msg"),
+        btnPlaybackStart: document.getElementById("btn-playback-start"),
+        btnPlaybackPause: document.getElementById("btn-playback-pause"),
+        btnPlaybackStop: document.getElementById("btn-playback-stop"),
+        btnPlaybackPrevious: document.getElementById("btn-playback-previous"),
+        btnPlaybackNext: document.getElementById("btn-playback-next"),
+        btnPlaybackRefresh: document.getElementById("btn-playback-refresh"),
+        playbackStatus: document.getElementById("playback-status"),
         btnLayoutSave: document.getElementById("btn-layout-save"),
         layoutMsg: document.getElementById("layout-msg"),
         savedLayouts: document.getElementById("saved-layouts"),
@@ -127,7 +139,10 @@
         formDeviceId: null,
         profileDirty: false,
         calDirty: false,
-        busy: false
+        busy: false,
+        playlistEtag: null,
+        playlistLoaded: false,
+        playbackVersion: null
     };
 
     const profileCache = new Map();
@@ -333,7 +348,7 @@
         if (!profile) {
             return {
                 bodyW: 100, bodyH: 60, activeW: 100, activeH: 60,
-                activeX: -50, activeY: -30, known: false
+                activeX: -50, activeY: -30
             };
         }
         const activeW = finiteOr(profile.active_width_mm, 100) > 0
@@ -353,8 +368,7 @@
             activeW: activeW,
             activeH: activeH,
             activeX: -bodyW / 2 + left,
-            activeY: -bodyH / 2 + top,
-            known: true
+            activeY: -bodyH / 2 + top
         };
     }
 
@@ -505,6 +519,9 @@
             if (!state.etag) throw new ApiError(428, "No configuration ETag is loaded.");
             init.headers["If-Match"] = state.etag;
         }
+        if (settings.ifMatch) {
+            init.headers["If-Match"] = settings.ifMatch;
+        }
 
         let timer = null;
         if (typeof AbortController === "function") {
@@ -560,9 +577,11 @@
             state.redo = [];
         }
         state.drag = null;
-        state.formDeviceId = null;
-        state.profileDirty = false;
-        state.calDirty = false;
+        if (settings.resetForms) {
+            state.formDeviceId = null;
+            state.profileDirty = false;
+            state.calDirty = false;
+        }
         ensureSelection();
         hideConflict();
         renderAll();
@@ -600,7 +619,7 @@
                 api("GET", API_DEVICES)
             ]);
             state.roster = results[1] && typeof results[1] === "object" ? results[1] : {};
-            ingestConfig(results[0], { resetHistory: true });
+            ingestConfig(results[0], { resetHistory: true, resetForms: true });
             clearError();
             announce("Loaded wall revision " + (state.revision === null ? "?" : state.revision) + ".", "ok");
             return true;
@@ -617,7 +636,10 @@
 
     async function reloadConfigWithConfirm() {
         if (state.busy) return;
-        if (isDirty() && !window.confirm("Reload the configuration and discard the unapplied draft?")) {
+        const hasUnsaved = isDirty() || state.profileDirty || state.calDirty;
+        if (hasUnsaved && !window.confirm(
+            "Reload the configuration and discard the unapplied draft and unsaved measurement fields?"
+        )) {
             return;
         }
         await loadConfig();
@@ -628,7 +650,7 @@
         syncDraftUi();
         renderDeviceList();
         renderStage();
-        populateDeviceCard(true);
+        populateDeviceCard(false);
     }
 
     function syncMeta() {
@@ -707,7 +729,7 @@
         el.btnReload.disabled = state.busy;
         el.btnProfileSave.disabled = state.busy;
         el.btnCalibrationSave.disabled = state.busy;
-        el.btnLayoutSave.disabled = state.busy;
+        el.btnLayoutSave.disabled = state.busy || !state.etag;
         el.btnLayoutsRefresh.disabled = state.busy;
         el.btnConflictReload.disabled = state.busy;
 
@@ -740,7 +762,7 @@
     }
 
     function undoDraft() {
-        if (state.busy || state.undo.length === 0) return;
+        if (state.busy || state.drag || state.undo.length === 0) return;
         const current = clone(state.draft);
         state.draft = state.undo.pop();
         state.redo.push(current);
@@ -749,7 +771,7 @@
     }
 
     function redoDraft() {
-        if (state.busy || state.redo.length === 0) return;
+        if (state.busy || state.drag || state.redo.length === 0) return;
         const current = clone(state.draft);
         state.draft = state.redo.pop();
         state.undo.push(current);
@@ -813,10 +835,10 @@
             ? state.draft.bounds : { x: 0, y: 0, width: 1200, height: 800 };
         const width = bounds.width > 0 ? bounds.width : 1200;
         const height = bounds.height > 0 ? bounds.height : 800;
-        const scale = Math.min(
+        const scale = Math.max(1e-9, Math.min(
             (STAGE_W - STAGE_MARGIN * 2) / width,
             (STAGE_H - STAGE_MARGIN * 2) / height
-        );
+        ));
         return {
             scale: scale,
             offX: STAGE_W / 2 - (bounds.x + width / 2) * scale,
@@ -875,8 +897,9 @@
             "class": "wall-grid", "clip-path": "url(#wall-clip)"
         });
         const startX = Math.ceil(bounds.x / stage.step) * stage.step;
-        const endX = bounds.x + bounds.width;
-        for (let x = startX; x <= endX + 1e-6; x += stage.step) {
+        const countX = Math.min(400, Math.floor(bounds.width / stage.step) + 2);
+        for (let index = 0; index < countX; index += 1) {
+            const x = startX + index * stage.step;
             const px = stage.offX + x * scale;
             const major = Math.round(x / stage.step) % 5 === 0;
             grid.appendChild(svgNode("line", {
@@ -885,8 +908,9 @@
             }));
         }
         const startY = Math.ceil(bounds.y / stage.step) * stage.step;
-        const endY = bounds.y + bounds.height;
-        for (let y = startY; y <= endY + 1e-6; y += stage.step) {
+        const countY = Math.min(400, Math.floor(bounds.height / stage.step) + 2);
+        for (let index = 0; index < countY; index += 1) {
+            const y = startY + index * stage.step;
             const py = stage.offY + y * scale;
             const major = Math.round(y / stage.step) % 5 === 0;
             grid.appendChild(svgNode("line", {
@@ -910,6 +934,9 @@
             if (leftSelected !== rightSelected) return leftSelected - rightSelected;
             return left.localeCompare(right);
         });
+        const svgRect = svg.getBoundingClientRect();
+        const stagePerCss = svgRect.width > 0 ? STAGE_W / svgRect.width : 1;
+        const minimumHit = 44 * stagePerCss;
 
         slotIds.forEach(function (id) {
             const slot = state.draft.slots[id];
@@ -945,12 +972,14 @@
                 + formatNumber(angle, 1) + "°";
             group.appendChild(title);
 
+            const hitWidth = Math.max((metrics.bodyW + 16) * scale, minimumHit);
+            const hitHeight = Math.max((metrics.bodyH + 16) * scale, minimumHit);
             group.appendChild(svgNode("rect", {
                 "class": "slot-hit",
-                x: -metrics.bodyW / 2 * scale - 8,
-                y: -metrics.bodyH / 2 * scale - 8,
-                width: (metrics.bodyW + 16) * scale,
-                height: (metrics.bodyH + 16) * scale
+                x: -hitWidth / 2,
+                y: -hitHeight / 2,
+                width: hitWidth,
+                height: hitHeight
             }));
 
             group.appendChild(svgNode("rect", {
@@ -1017,7 +1046,9 @@
             + formatNumber(stage.step, stage.step >= 1 ? 0 : 2) + " mm · wall "
             + formatNumber(bounds.width, 1) + " × " + formatNumber(bounds.height, 1) + " mm";
 
-        if (focusedSlotId) focusStageSlot(focusedSlotId);
+        if (focusedSlotId && focusedSlotId === state.selectedId) {
+            focusStageSlot(focusedSlotId);
+        }
     }
 
     function pointerToStage(event) {
@@ -1098,7 +1129,6 @@
         } catch (error) { /* capture already gone */ }
 
         if (!drag.moved) {
-            afterDraftChange();
             return;
         }
         if (!commit) {
@@ -1130,7 +1160,7 @@
      * ---------------------------------------------------------------- */
 
     function selectDevice(id) {
-        if (!id) return;
+        if (!id || state.busy) return;
         if (state.selectedId !== id) {
             state.selectedId = id;
             state.formDeviceId = null;
@@ -1183,7 +1213,6 @@
             pick.className = "dev-pick";
             pick.dataset.deviceId = entry.id;
             pick.setAttribute("aria-pressed", entry.id === state.selectedId ? "true" : "false");
-            pick.setAttribute("aria-label", entry.label + ", device " + shortId(entry.id));
 
             const label = document.createElement("span");
             label.className = "dev-label";
@@ -1220,6 +1249,15 @@
             calText.dataset.kind = status.kind;
             calText.textContent = status.text;
             meta.appendChild(calText);
+
+            pick.setAttribute("aria-label", entry.label + ", device " + shortId(entry.id)
+                + ", " + (entry.profile
+                    ? formatNumber(entry.profile.active_width_mm, 1) + " by "
+                        + formatNumber(entry.profile.active_height_mm, 1) + " millimetres active"
+                    : "size unknown")
+                + ", " + (entry.profile ? "profile revision " + entry.profile.revision : "no profile")
+                + ", " + status.text
+                + (entry.id === state.selectedId ? ", selected" : ""));
 
             pick.appendChild(label);
             pick.appendChild(flag);
@@ -1396,9 +1434,10 @@
         const bounds = state.draft.bounds;
         const count = Object.keys(state.draft.slots).length;
         const column = count % 3;
+        const columnOffset = count === 0 ? 0 : column - 1;
         const row = Math.floor(count / 3);
         let centerX = bounds.x + bounds.width / 2
-            + (column - 1) * (metrics.bodyW + 24);
+            + columnOffset * (metrics.bodyW + 24);
         let centerY = bounds.y + bounds.height / 2
             + row * (metrics.bodyH + 24);
         const minX = bounds.x + metrics.bodyW / 2 + 10;
@@ -1450,10 +1489,13 @@
         });
 
         function commit() {
-            markInvalid(input, false);
+            const value = num(input.value);
+            const valid = value !== null && (!validate || validate(value));
+            markInvalid(input, !valid);
             if (!before) return;
             pushUndo(before);
-            before = null;
+            before = document.activeElement === input && state.draft
+                ? clone(state.draft) : null;
             syncDraftUi();
         }
 
@@ -1532,6 +1574,8 @@
             const width = requirePositive("Panel pixel width", el.profilePixelWidth);
             const height = requirePositive("Panel pixel height", el.profilePixelHeight);
             if (!Number.isInteger(width) || !Number.isInteger(height)) {
+                markInvalid(el.profilePixelWidth, true);
+                markInvalid(el.profilePixelHeight, true);
                 throw new ValidationError("Panel pixel dimensions must be whole numbers.");
             }
             panelPixels = { width: width, height: height };
@@ -1873,6 +1917,88 @@
      * Saved layouts
      * ---------------------------------------------------------------- */
 
+    async function loadPlayback() {
+        try {
+            const playlist = await api("GET", "/api/v3/playlist");
+            const status = await api("GET", "/api/v3/playback");
+            state.playlistEtag = playlist.etag;
+            if (!state.playlistLoaded) {
+                const items = playlist.playlist && Array.isArray(playlist.playlist.items)
+                    ? playlist.playlist.items : [];
+                if (el.playlistAssets) {
+                    el.playlistAssets.value = items.map(function (item) {
+                        return item.asset;
+                    }).join("\n");
+                }
+                if (items.length > 0 && el.playlistDwell) {
+                    el.playlistDwell.value = String(items[0].dwell_ms);
+                }
+                if (playlist.playlist && el.playlistLoop) {
+                    el.playlistLoop.checked = Boolean(playlist.playlist.loop);
+                }
+                state.playlistLoaded = true;
+            }
+            renderPlayback(status);
+        } catch (error) {
+            setMsg(el.playlistMsg, error.message, "err");
+        }
+    }
+
+    function renderPlayback(status) {
+        if (!el.playbackStatus) return;
+        const stateName = status && status.state ? status.state : "stopped";
+        state.playbackVersion = status && status.version ? status.version : null;
+        el.playbackStatus.dataset.state = stateName;
+        if (stateName === "stopped") {
+            el.playbackStatus.textContent = "Playback is stopped.";
+            return;
+        }
+        const current = status.current
+            ? "item " + (status.current.item_index + 1) + " (loop " + status.current.loop + ")"
+            : "waiting for the first cut";
+        const missed = status.missed && status.missed.length
+            ? " · missed " + status.missed.length : "";
+        const held = status.held ? " · holding" : "";
+        el.playbackStatus.textContent = stateName + " · " + current + missed + held;
+    }
+
+    async function savePlaylist() {
+        clearMsg(el.playlistMsg);
+        const lines = (el.playlistAssets ? el.playlistAssets.value : "")
+            .split(/\s+/).map(function (value) { return value.trim(); })
+            .filter(function (value) { return value !== ""; });
+        const dwell = Number(el.playlistDwell ? el.playlistDwell.value : 0);
+        try {
+            const saved = await api("PUT", "/api/v3/playlist", {
+                items: lines.map(function (asset) {
+                    return { asset: asset, dwell_ms: dwell };
+                }),
+                loop: Boolean(el.playlistLoop && el.playlistLoop.checked),
+            }, { ifMatch: state.playlistEtag });
+            state.playlistEtag = saved.etag;
+            state.playlistLoaded = true;
+            setMsg(el.playlistMsg, "Playlist saved.", "ok");
+        } catch (error) {
+            setMsg(el.playlistMsg, error.message, "err");
+        }
+    }
+
+    async function playbackAction(action) {
+        clearMsg(el.playlistMsg);
+        try {
+            const path = "/api/v3/playback/" + action;
+            const options = action === "start"
+                ? undefined : { ifMatch: String(state.playbackVersion) };
+            const status = await api("POST", path, undefined, options);
+            renderPlayback(status);
+            setMsg(el.playlistMsg,
+                action.charAt(0).toUpperCase() + action.slice(1) + " accepted.", "ok");
+        } catch (error) {
+            setMsg(el.playlistMsg, error.message, "err");
+            loadPlayback();
+        }
+    }
+
     async function loadLayouts() {
         try {
             const payload = await api("GET", API_LAYOUTS);
@@ -2057,6 +2183,8 @@
             return;
         }
 
+        if (state.drag) return;
+
         if (modified && (key === "z" || key === "Z")) {
             if (isEditableTarget(event.target)) return;
             event.preventDefault();
@@ -2161,6 +2289,13 @@
         el.calibrationForm.addEventListener("change", function () { state.calDirty = true; });
 
         el.layoutSaveForm.addEventListener("submit", saveLayout);
+        if (el.btnPlaylistSave) el.btnPlaylistSave.addEventListener("click", savePlaylist);
+        if (el.btnPlaybackRefresh) el.btnPlaybackRefresh.addEventListener("click", loadPlayback);
+        if (el.btnPlaybackStart) el.btnPlaybackStart.addEventListener("click", function () { playbackAction("start"); });
+        if (el.btnPlaybackPause) el.btnPlaybackPause.addEventListener("click", function () { playbackAction("pause"); });
+        if (el.btnPlaybackStop) el.btnPlaybackStop.addEventListener("click", function () { playbackAction("stop"); });
+        if (el.btnPlaybackPrevious) el.btnPlaybackPrevious.addEventListener("click", function () { playbackAction("previous"); });
+        if (el.btnPlaybackNext) el.btnPlaybackNext.addEventListener("click", function () { playbackAction("next"); });
         el.btnLayoutsRefresh.addEventListener("click", loadLayouts);
         el.layoutName.addEventListener("input", function () { clearMsg(el.layoutMsg); });
 
@@ -2173,6 +2308,7 @@
         syncDraftUi();
         loadConfig();
         loadLayouts();
+        loadPlayback();
     }
 
     if (document.readyState === "loading") {

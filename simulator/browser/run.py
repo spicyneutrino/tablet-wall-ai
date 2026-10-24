@@ -1231,6 +1231,111 @@ async def exercise(artifacts: Path, report: dict[str, Any], observation_seconds:
                   angle=config_after["layout"]["slots"][physical_obs.device_id]["mount_angle"])
             report["r2"]["editor"] = {"angle": angle_after_rotate}
             await editor_page.screenshot(path=str(artifacts / "physical-editor.png"), full_page=True)
+
+            # ------------------------------------------------------------------
+            # R3: two hard cuts on the calibrated still client
+            # ------------------------------------------------------------------
+
+            await physical_page.set_viewport_size({"width": 300, "height": 180})
+            current = physical_http.get("/api/v3/config").json()
+            restored_layout = physical_http.put(
+                "/api/v3/layout",
+                json={
+                    "bounds": {"x": 0, "y": 0, "width": 200, "height": 120},
+                    "slots": {
+                        physical_obs.device_id: {
+                            "center_x_mm": 100, "center_y_mm": 100,
+                            "mount_angle": 180, "nudge_x_mm": 0, "nudge_y_mm": 0,
+                            "profile_revision": 1, "calibration_revision": 1,
+                            "participating": True,
+                        }
+                    },
+                },
+                headers={"If-Match": current["etag"]},
+            )
+            check("playback fixture layout restored",
+                  restored_layout.status_code == 200, text=restored_layout.text[-500:])
+            deadline = time.monotonic() + 10
+            restored_colour = (0, 0, 0)
+            while time.monotonic() < deadline:
+                restored_colour = await canvas_pixel(physical_page, 100, 60)
+                if max(abs(a - b) for a, b in zip(
+                    restored_colour, (240, 220, 20)
+                )) <= 30:
+                    break
+                await asyncio.sleep(.1)
+            check("physical plan returns after the viewport is restored",
+                  max(abs(a - b) for a, b in zip(restored_colour, (240, 220, 20))) <= 30,
+                  colour=restored_colour)
+
+            green_source = root / "green.png"
+            Image.new("RGB", (400, 240), (20, 200, 60)).save(green_source)
+            green_upload = physical_http.post(
+                "/uploads?name=green.png", content=green_source.read_bytes(),
+                headers={"Content-Type": "image/png"},
+            )
+            check("playback green fixture uploads", green_upload.status_code == 201,
+                  text=green_upload.text[-500:])
+            green_asset = green_upload.json()["asset"]["id"]
+            playlist_before = physical_http.get("/api/v3/playlist").json()
+            saved_playlist = physical_http.put(
+                "/api/v3/playlist",
+                json={
+                    "items": [
+                        {"asset": physical_asset, "dwell_ms": 1500},
+                        {"asset": green_asset, "dwell_ms": 1500},
+                    ],
+                    "loop": True,
+                },
+                headers={"If-Match": playlist_before["etag"]},
+            )
+            check("hard-cut playlist saves", saved_playlist.status_code == 200,
+                  text=saved_playlist.text[-500:])
+            await asyncio.sleep(1.5)  # let the clock sampler finish its burst
+            started = physical_http.post("/api/v3/playback/start")
+            check("playback starts", started.status_code == 200, text=started.text[-500:])
+
+            observed = []
+            deadline = time.monotonic() + 20
+            last = "yellow"  # the pre-playback still is already on screen
+            while time.monotonic() < deadline and len(observed) < 2:
+                colour = await canvas_pixel(physical_page, 100, 60)
+                label = None
+                if max(abs(a - b) for a, b in zip(colour, (20, 200, 60))) <= 30:
+                    label = "green"
+                elif max(abs(a - b) for a, b in zip(colour, (240, 220, 20))) <= 30:
+                    label = "yellow"
+                if label is not None and label != last:
+                    observed.append({"colour": label, "time": time.monotonic()})
+                    last = label
+                await asyncio.sleep(.05)
+            report["r3"] = {
+                "playlist": saved_playlist.json()["playlist"],
+                "observed": [entry["colour"] for entry in observed],
+                "software_only": True,
+                "note": "polled canvas onset; no camera or optical claim",
+            }
+            check("two hard cuts reach the calibrated client",
+                  [entry["colour"] for entry in observed][:2] == ["green", "yellow"],
+                  observed=observed)
+
+            await editor_page.click("#btn-playback-refresh")
+            await editor_page.wait_for_function(
+                "document.querySelector('#playback-status').textContent.includes('playing')",
+                timeout=5000,
+            )
+            await editor_page.click("#btn-playback-pause")
+            await editor_page.wait_for_function(
+                "document.querySelector('#playback-status').textContent.includes('paused')",
+                timeout=5000,
+            )
+            await editor_page.click("#btn-playback-stop")
+            await editor_page.wait_for_function(
+                "document.querySelector('#playback-status').textContent.includes('stopped')",
+                timeout=5000,
+            )
+            check("playback pause and stop work from the controller",
+                  physical_http.get("/api/v3/playback").json().get("state") == "stopped")
         finally:
             physical_http.close()
 

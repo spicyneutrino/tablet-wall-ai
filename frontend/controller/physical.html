@@ -132,6 +132,39 @@
 
     <aside class="side" aria-label="Selected tablet and measurements">
 
+        <section class="card playback-card" aria-labelledby="playback-title">
+            <div class="saved-head">
+                <h2 id="playback-title">Hard-cut playback</h2>
+                <button type="button" class="btn btn-ghost btn-sm" id="btn-playback-refresh">Refresh</button>
+            </div>
+            <p class="hint">
+                One published asset ID per line, in order. The server prepares the next still and
+                commits it at a common effective time. This is software evidence, not an optical
+                synchronization claim.
+            </p>
+            <label class="label" for="playlist-assets">Assets</label>
+            <textarea class="inp playlist-assets" id="playlist-assets" rows="5"
+                      spellcheck="false" placeholder="sha256:…&#10;sha256:…"></textarea>
+            <div class="playlist-row">
+                <label class="field"><span class="label">Dwell (ms)</span>
+                    <input class="inp" id="playlist-dwell" type="number" min="1000" max="600000"
+                           step="100" value="5000" inputmode="numeric"></label>
+                <label class="check"><input type="checkbox" id="playlist-loop" checked> Loop</label>
+                <button type="button" class="btn" id="btn-playlist-save">Save playlist</button>
+            </div>
+            <p class="form-msg" id="playlist-msg" role="status" aria-live="polite" hidden></p>
+            <div class="playback-actions">
+                <button type="button" class="btn btn-primary" id="btn-playback-start">Start</button>
+                <button type="button" class="btn" id="btn-playback-pause">Pause</button>
+                <button type="button" class="btn" id="btn-playback-stop">Stop</button>
+                <button type="button" class="btn btn-ghost" id="btn-playback-previous">Previous</button>
+                <button type="button" class="btn btn-ghost" id="btn-playback-next">Next</button>
+            </div>
+            <p class="playback-status" id="playback-status" role="status" aria-live="polite">
+                Playback is stopped.
+            </p>
+        </section>
+
         <section class="card inspector" aria-labelledby="inspector-title">
             <h2 id="inspector-title">Selected tablet</h2>
             <p class="empty-note" id="inspector-empty">Select a tablet on the stage or in the list.</p>

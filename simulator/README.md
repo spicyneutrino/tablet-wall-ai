@@ -322,6 +322,15 @@ the explicit rejection message, and checks the scene did not change. The
 server runs the direct-local admission mode for this disposable origin, so the
 flow proves the loopback path, not the authenticated proxy path.
 
+The R2 flow adds one calibrated physical client. It uploads a 400x240 coded
+fixture, records a 100x60 mm display and a 300x180 CSS calibration, applies a
+200x120 physical layout with a mount-180 slot, and checks the panel-centre
+marker against the hand-derived `[-1,0,0,-1,300,260]` transform. It also
+checks the neutral area outside the panel clip and then resizes the page past
+the measured viewport, requiring the plan to disappear rather than repaint.
+That is desktop Chromium software evidence, not a physical seam or optical
+measurement.
+
 Reports contain per-page console messages, page errors, HTTP statuses, failed
 requests, socket frames, close codes, pixel checks, collision counts, cleanup
 evidence, versions, the tested `HEAD`, a hash of the working diff, and evidence
