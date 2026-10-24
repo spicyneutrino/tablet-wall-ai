@@ -76,15 +76,17 @@ from tabletwall.protocol import (
 )
 # Curated still-image assets (PROTOCOL.md "Still images"): the directory scan,
 # content IDs, and byte-verified serving behind ``GET /assets``.
-from tabletwall import assets, clock, displays, geometry, media, playback
+from tabletwall import assets, clock, displays, geometry, media, media_serve, playback, video
 from tabletwall import persist
 from tabletwall import writer as writers
 from tabletwall.media_limits import (
     FREE_RESERVE_BYTES,
     MAX_SOURCE_BYTES,
+    MAX_VIDEO_BYTES,
     MAX_WAITING_UPLOADS,
     PIPELINE_VERSION,
     QUOTA_BYTES,
+    VIDEO_RECEIVE_TIMEOUT_S,
 )
 # Persistence of the wall state (PROTOCOL.md "Persistence"): the roster,
 # sockets, presence, and heartbeat timestamps stay in memory. The snapshot
@@ -1522,8 +1524,8 @@ def get_assets():
     )
 
 
-@app.get("/assets/{asset_id}")
-def get_asset(asset_id: str):
+@app.api_route("/assets/{asset_id}", methods=["GET", "HEAD"])
+def get_asset(asset_id: str, request: Request):
     """Serve one asset's bytes, and only when they still hash to that ID.
 
     Managed uploads are checked first through the indexed media store, so a
@@ -1533,7 +1535,15 @@ def get_asset(asset_id: str):
     re-hashing what was just read proves this response is exactly those bytes.
     The bytes are content-addressed, hence cached as immutable; ``nosniff``
     keeps a browser from second-guessing the declared image type.
+
+    A published video is the one object that is not buffered: it is streamed
+    with byte ranges and a strong ETag (``tabletwall.media_serve``), after its
+    hash has been checked once for the file's identity.
     """
+    if _is_asset_id(asset_id):
+        file = media.open_video(asset_id)
+        if file is not None:
+            return media_serve.video_response(request, file)
     managed = media.fetch_object(asset_id)
     if managed is not None:
         data, mime = managed
@@ -1612,13 +1622,15 @@ def _upload_display_name(raw: str | None) -> str:
 async def upload_image(
     request: Request, name: str | None = Query(default=None, max_length=255)
 ):
-    """Stream one JPEG or PNG into the managed store and publish it.
+    """Stream one JPEG, PNG, or H.264 MP4/MOV into the managed store and publish it.
 
     The response is the finished state: R1 has one decoder and a bounded
     request, so a durable job API would add a second state machine without
     changing what the controller can show. Progress during transmission is
     the browser's upload progress; after that the controller shows an
-    indeterminate "processing" state until this response arrives.
+    indeterminate "processing" state until this response arrives. A video
+    takes the same admission, the same single decoder slot and the same
+    quota, with its own size cap, receive deadline and bounded worker.
     """
     try:
         media.admit_upload(request)
@@ -1626,12 +1638,21 @@ async def upload_image(
         return _store_error(error)
 
     content_type = (request.headers.get("content-type") or "").split(";", 1)[0].strip().lower()
-    if content_type not in ("image/jpeg", "image/png"):
+    is_video = content_type in ("video/mp4", "video/quicktime")
+    if not is_video and content_type not in ("image/jpeg", "image/png"):
         return JSONResponse(
             status_code=415,
-            content={"detail": "only image/jpeg or image/png is accepted"},
+            content={"detail": "only image/jpeg, image/png, video/mp4 or video/quicktime is accepted"},
             headers={"Cache-Control": "no-store"},
         )
+    if is_video and not video.tools_available():
+        return JSONResponse(
+            status_code=503,
+            content={"detail": "ffmpeg and ffprobe are not installed; video uploads are unavailable"},
+            headers={"Cache-Control": "no-store"},
+        )
+    limit = MAX_VIDEO_BYTES if is_video else MAX_SOURCE_BYTES
+    noun = "video" if is_video else "image"
 
     raw_length = request.headers.get("content-length")
     declared: int | None = None
@@ -1639,22 +1660,35 @@ async def upload_image(
         if not raw_length.isdigit():
             return JSONResponse(status_code=400, content={"detail": "invalid Content-Length"})
         declared = int(raw_length)
-        if declared > MAX_SOURCE_BYTES:
+        if declared > limit:
             return JSONResponse(
                 status_code=413,
-                content={"detail": "image is larger than the 32 MiB source limit"},
+                content={"detail": f"{noun} is larger than the {limit // (1024 * 1024)} MiB source limit"},
             )
 
     try:
         async with _upload_slot():
             job = media.new_job()
             try:
-                media.check_capacity(declared if declared is not None else MAX_SOURCE_BYTES)
-                await media.receive_body(job, request.stream(), declared)
-                media.check_capacity(0)
-                result = await media.run_worker(job)
+                incoming = declared if declared is not None else limit
+                if is_video:
+                    # The source and its remuxed copy share staging until publication.
+                    media.check_capacity(2 * incoming)
+                    received = await media.receive_body(
+                        job, request.stream(), declared, limit=MAX_VIDEO_BYTES,
+                        deadline_s=VIDEO_RECEIVE_TIMEOUT_S, noun="video",
+                    )
+                    media.check_capacity(received)
+                    result = await media.run_video_worker(job)
+                    publish = media.publish_video
+                else:
+                    media.check_capacity(incoming)
+                    await media.receive_body(job, request.stream(), declared)
+                    media.check_capacity(0)
+                    result = await media.run_worker(job)
+                    publish = media.publish
                 descriptor = await asyncio.to_thread(
-                    media.publish, job, result, _upload_display_name(name)
+                    publish, job, result, _upload_display_name(name)
                 )
             except BaseException:
                 # ``receive_body`` and ``run_worker`` already remove failed

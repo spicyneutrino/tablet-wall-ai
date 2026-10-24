@@ -18,6 +18,8 @@ from pathlib import Path
 import httpx
 import pytest
 
+from video_fixtures import HAVE_FFMPEG, _ensure as build_fixture
+
 CWD = Path(__file__).resolve().parents[1]
 CADDY = shutil.which("caddy")
 CREDENTIAL = "test-ingress-credential-0123456789"
@@ -182,6 +184,59 @@ http://127.0.0.1:{operator_port} {{
         served = httpx.get(f"{tablet}{descriptor['url']}")
         assert served.status_code == 200
         assert len(served.content) == descriptor["bytes"]
+
+        if HAVE_FFMPEG:
+            clip = build_fixture("baseline.mp4", tmp_path).read_bytes()
+            sent = httpx.post(
+                f"{operator}/uploads?name=clip.mp4", content=clip, auth=auth, timeout=60,
+                headers={"Origin": operator_origin, "Content-Type": "video/mp4",
+                         "X-Tablet-Wall-Operator": "forged-by-the-client"},
+            )
+            assert sent.status_code == 201, sent.text
+            video = sent.json()["asset"]
+
+            # The tablet listener still cannot upload or list, whatever the type.
+            assert httpx.post(
+                f"{tablet}/uploads", content=clip,
+                headers={"X-Tablet-Wall-Operator": CREDENTIAL, "Origin": operator_origin,
+                         "Content-Type": "video/mp4"},
+            ).status_code == 403
+            assert httpx.get(f"{tablet}/media").status_code == 403
+
+            # ... but it reads the published object, with ranges, through the proxy.
+            first = httpx.get(f"{tablet}{video['url']}", headers={"Range": "bytes=0-99"})
+            assert first.status_code == 206
+            assert first.headers["content-range"] == f"bytes 0-99/{video['bytes']}"
+            assert len(first.content) == 100
+            tail = httpx.get(f"{tablet}{video['url']}", headers={"Range": "bytes=-50"})
+            assert tail.status_code == 206 and len(tail.content) == 50
+            open_ended = httpx.get(
+                f"{tablet}{video['url']}", headers={"Range": f"bytes={video['bytes'] - 10}-"}
+            )
+            assert open_ended.status_code == 206 and len(open_ended.content) == 10
+            past = httpx.get(
+                f"{tablet}{video['url']}", headers={"Range": f"bytes={video['bytes']}-"}
+            )
+            assert past.status_code == 416
+            assert past.headers["content-range"] == f"bytes */{video['bytes']}"
+            etag = first.headers["etag"]
+            assert httpx.get(
+                f"{tablet}{video['url']}", headers={"Range": "bytes=0-9", "If-Range": etag}
+            ).status_code == 206
+            assert httpx.get(
+                f"{tablet}{video['url']}", headers={"If-None-Match": etag}
+            ).status_code == 304
+            assert httpx.get(f"{tablet}{video['poster']['url']}").status_code == 200
+
+            # HEAD and a ranged HEAD under the real server (the proxy's tablet
+            # allowlist is GET-only, so these go to the backend directly).
+            backend = f"http://127.0.0.1:{app_port}{video['url']}"
+            head = httpx.head(backend)
+            assert head.status_code == 200 and head.content == b""
+            assert head.headers["content-length"] == str(video["bytes"])
+            ranged_head = httpx.head(backend, headers={"Range": "bytes=0-9"})
+            assert ranged_head.status_code == 206
+            assert ranged_head.headers["content-range"] == f"bytes 0-9/{video['bytes']}"
     finally:
         for process in (caddy, app):
             if process is not None and process.poll() is None:

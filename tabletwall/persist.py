@@ -28,9 +28,12 @@ DEFAULT_DB_FILENAME = "tablet-wall.db"
 # The database schema version, kept separately from the web protocol major and
 # from the wall document shape. Version 0 is the pre-media database that older
 # builds wrote implicitly; version 1 adds the managed-media index and pins the
-# version in ``PRAGMA user_version``. Anything newer is refused before a write,
-# because an older binary cannot know what it would be rewriting.
-SCHEMA_VERSION = 2
+# version in ``PRAGMA user_version``; version 2 adds display profiles and
+# calibrations; version 3 adds ``media_video``. Anything newer is refused
+# before a write, because an older binary cannot know what it would be
+# rewriting. That refusal is why video is a version bump: an older build that
+# opened a ``kind = 'video'`` row would list it as a still.
+SCHEMA_VERSION = 3
 
 # The whole persisted wall state lives in a single row (the CHECK pins id to
 # 1). ``layout`` and ``scene`` are JSON documents, so the schema does not need
@@ -152,6 +155,25 @@ CREATE TABLE IF NOT EXISTS media_renditions (
 )
 """
 
+# Schema 3: the facts of a ready video asset. One row per ``media_assets`` row
+# whose kind is 'video'; the MP4 and its poster are ordinary rows in
+# ``media_objects`` and ``media_renditions`` (roles ``video`` and
+# ``thumbnail``), so backup closure and byte serving need no second index.
+_MEDIA_VIDEO_SCHEMA = """
+CREATE TABLE IF NOT EXISTS media_video (
+    asset_id     TEXT PRIMARY KEY REFERENCES media_assets(asset_id) ON DELETE CASCADE,
+    duration_ms  INTEGER NOT NULL,
+    codec        TEXT NOT NULL,
+    profile      TEXT NOT NULL,
+    level        TEXT NOT NULL,
+    pixel_format TEXT NOT NULL,
+    frame_rate   REAL NOT NULL,
+    bitrate      INTEGER NOT NULL,
+    faststart    INTEGER NOT NULL,
+    has_audio    INTEGER NOT NULL
+)
+"""
+
 _SCHEMA_META_SCHEMA = """
 CREATE TABLE IF NOT EXISTS schema_meta (
     key   TEXT PRIMARY KEY,
@@ -172,6 +194,7 @@ _MIGRATION = (
     _SCHEMA_META_SCHEMA,
     _DISPLAY_PROFILES_SCHEMA,
     _CALIBRATIONS_SCHEMA,
+    _MEDIA_VIDEO_SCHEMA,
 )
 
 # A schema-0 file is this application's database when it carries ``wall_state``.
@@ -183,6 +206,7 @@ _SCHEMA_1_TABLES = frozenset({
     "media_assets", "media_objects", "media_renditions", "schema_meta",
 })
 _SCHEMA_2_TABLES = _SCHEMA_1_TABLES | {"display_profiles", "calibrations"}
+_SCHEMA_3_TABLES = _SCHEMA_2_TABLES | {"media_video"}
 
 
 class SchemaError(RuntimeError):
@@ -283,7 +307,7 @@ def _migration_lock() -> Iterator[None]:
 
 
 def _require_tables(connection: sqlite3.Connection, version: int) -> None:
-    required = {1: _SCHEMA_1_TABLES, 2: _SCHEMA_2_TABLES}[version]
+    required = {1: _SCHEMA_1_TABLES, 2: _SCHEMA_2_TABLES, 3: _SCHEMA_3_TABLES}[version]
     missing = required - _tables(connection)
     if missing:
         raise SchemaError(
@@ -302,8 +326,8 @@ def ensure_schema() -> int:
     DDL and the version bump commit together, so an interrupted attempt
     reopens at the previous version and can be retried with a fresh backup.
 
-    Schema 1 to 2 is additive: it creates the display/calibration tables and
-    bumps the version. It deliberately does not rewrite the active or saved
+    Schema 1 to 2 and 2 to 3 are additive: they create the display/calibration
+    tables and the ``media_video`` table, then bump the version. It deliberately does not rewrite the active or saved
     documents. Legacy logical documents are adapted at read time, which keeps
     damaged saved rows byte-for-byte visible and deletable as they were.
     """
@@ -326,7 +350,7 @@ def ensure_schema() -> int:
             _require_tables(connection, version)
             connection.execute("PRAGMA foreign_keys = ON")
             return version
-        if version not in (0, 1):
+        if version not in (0, 1, 2):
             raise SchemaError(f"unsupported database schema {version} in {path}")
 
         with _migration_lock():
@@ -342,8 +366,8 @@ def ensure_schema() -> int:
             if version == SCHEMA_VERSION:
                 _require_tables(connection, version)
                 return version
-            if version == 1:
-                _require_tables(connection, 1)
+            if version in (1, 2):
+                _require_tables(connection, version)
             else:
                 existing = _tables(connection)
                 size = os.path.getsize(path) if os.path.exists(path) else 0

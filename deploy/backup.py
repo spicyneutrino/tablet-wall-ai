@@ -73,8 +73,16 @@ from typing import Any, Iterator, NoReturn, Sequence
 # The artifact layout, all relative and fixed: the manifest may not point at
 # anything outside these two prefixes, so a hostile or stale manifest cannot
 # steer verification (or restore) at an arbitrary path.
+#
+# Version 2 is the still-image grammar. Version 3 widens it to video: a media
+# object may be an MP4, and a media asset may be a video asset (roles ``video``
+# and ``thumbnail``). A snapshot is written at the lowest version that can
+# express its closure, so a snapshot without video is byte-compatible with a
+# reader that only knows version 2, and an older reader meeting video says
+# "unsupported manifest version 3" instead of a misleading path error.
 MANIFEST_VERSION = 2
-SUPPORTED_MANIFEST_VERSIONS = (1, 2)
+VIDEO_MANIFEST_VERSION = 3
+SUPPORTED_MANIFEST_VERSIONS = (1, 2, 3)
 MANIFEST_NAME = "manifest.json"
 DATABASE_DIR = "database"
 ASSETS_DIR = "assets"
@@ -100,6 +108,11 @@ HEX64_PATTERN = re.compile(r"[0-9a-f]{64}\Z")
 # this could never have been inventoried, hence never referenced. Capping the
 # read also bounds the work if a path is swapped for something enormous.
 MAX_ASSET_BYTES = 10 * 1024 * 1024
+MAX_VIDEO_OBJECT_BYTES = 250 * 1024 * 1024
+VIDEO_MIME = "video/mp4"
+MEDIA_EXTENSIONS = {"image/jpeg": ".jpg", VIDEO_MIME: ".mp4"}
+IMAGE_ROLES = frozenset({"master", "display", "fallback", "thumbnail"})
+VIDEO_ROLES = frozenset({"video", "thumbnail"})
 MAX_MANIFEST_BYTES = 64 * 1024 * 1024
 READ_CHUNK = 1 << 20
 
@@ -486,18 +499,19 @@ def _read_snapshot(database_path: str) -> tuple[set[str], int | None]:
             saved = connection.execute(
                 "SELECT name, content FROM saved_scenes ORDER BY name"
             ).fetchall()
-            playlist = None
-            if "schema_meta" in tables:
-                found = connection.execute(
+            # The saved playlist lives in ``schema_meta`` (schema 1 and later;
+            # a schema-0 file has no such table). Its items name content IDs
+            # under ``asset`` exactly as a scene does, so a video or still that
+            # only a playlist uses is still part of the closure.
+            playlist = (
+                connection.execute(
                     "SELECT value FROM schema_meta WHERE key = 'playlist'"
                 ).fetchone()
-                playlist = found[0] if found else None
+                if "schema_meta" in tables
+                else None
+            )
         except sqlite3.Error as exc:
             _fail(f"cannot read the database {database_path}: {exc}")
-        if playlist is not None:
-            # The playlist names assets no scene may reference; without this
-            # a playlist-only upload is omitted and restored as unavailable.
-            _collect_references(_parse_document(playlist, "the playlist"), "the playlist", references)
         for name, content in saved:
             document = _parse_document(content, f"saved scene {name!r}")
             if document is None:
@@ -505,6 +519,12 @@ def _read_snapshot(database_path: str) -> tuple[set[str], int | None]:
                 # treats such a snapshot as absent content as well.
                 continue
             _collect_references(document, f"saved scene {name!r}", references)
+        if playlist is not None:
+            _collect_references(
+                _parse_document(playlist[0], "the saved playlist"),
+                "the saved playlist",
+                references,
+            )
         return references, revision
     finally:
         connection.close()
@@ -831,7 +851,7 @@ def _require_digest_entry(entry: dict[str, Any], label: str) -> None:
 
 
 def _validate_manifest(manifest: Any) -> None:
-    """Check a version 1 or version 2 manifest's shape and closure.
+    """Check a version 1, 2 or 3 manifest's shape and closure.
 
     Version 1 artifacts remain readable exactly as they were: their
     ``assets`` list is the scene-root reference list. Version 2 separates
@@ -848,8 +868,8 @@ def _validate_manifest(manifest: Any) -> None:
     if version == 1:
         _validate_manifest_v1(manifest)
         return
-    if version == 2:
-        _validate_manifest_v2(manifest)
+    if version in (2, 3):
+        _validate_manifest_v2(manifest, version)
         return
     _fail(
         f"unsupported manifest version {version}: this tool reads versions "
@@ -949,7 +969,9 @@ def _validate_curated_assets(assets: Any) -> set[str]:
     return seen_ids
 
 
-def _validate_manifest_v2(manifest: dict[str, Any]) -> None:
+def _validate_manifest_v2(manifest: dict[str, Any], version: int = 2) -> None:
+    """Versions 2 and 3 share one grammar; 3 additionally admits video."""
+    allowed_mimes = {"image/jpeg"} if version == 2 else set(MEDIA_EXTENSIONS)
     missing = sorted(MANIFEST_KEYS_V2 - set(manifest))
     unexpected = sorted(set(manifest) - MANIFEST_KEYS_V2)
     if missing or unexpected:
@@ -1009,9 +1031,15 @@ def _validate_manifest_v2(manifest: dict[str, Any]) -> None:
         relative = path[len(MEDIA_OBJECTS_PREFIX) :]
         parts = relative.split("/")
         digest = object_id.split(":", 1)[1]
-        if len(parts) != 2 or parts[0] != digest[:2] or parts[1] != digest + ".jpg":
+        if not isinstance(entry["mime"], str) or entry["mime"] not in allowed_mimes:
             _fail(
-                f"manifest media path must be {MEDIA_OBJECTS_PREFIX}<aa>/<hex>.jpg, "
+                f"manifest media object {object_id} is {entry['mime']!r}, which a "
+                f"version {version} manifest cannot carry"
+            )
+        extension = MEDIA_EXTENSIONS[entry["mime"]]
+        if len(parts) != 2 or parts[0] != digest[:2] or parts[1] != digest + extension:
+            _fail(
+                f"manifest media path must be {MEDIA_OBJECTS_PREFIX}<aa>/<hex>{extension}, "
                 f"not {path!r}"
             )
         if path in object_paths:
@@ -1022,10 +1050,9 @@ def _validate_manifest_v2(manifest: dict[str, Any]) -> None:
         for field in ("bytes", "width", "height"):
             if type(entry[field]) is not int or entry[field] <= 0:
                 _fail(f"manifest media object {object_id} has an invalid {field}")
-        if entry["bytes"] > MAX_ASSET_BYTES:
+        ceiling = MAX_VIDEO_OBJECT_BYTES if entry["mime"] == VIDEO_MIME else MAX_ASSET_BYTES
+        if entry["bytes"] > ceiling:
             _fail(f"manifest media object {object_id} exceeds the byte ceiling")
-        if entry["mime"] != "image/jpeg":
-            _fail(f"manifest media object {object_id} is not image/jpeg")
 
     assets = manifest["media_assets"]
     if not isinstance(assets, list):
@@ -1058,7 +1085,7 @@ def _validate_manifest_v2(manifest: dict[str, Any]) -> None:
                     f"role, object_id"
                 )
             role = rendition["role"]
-            if role not in {"master", "display", "fallback", "thumbnail"}:
+            if role not in IMAGE_ROLES | (VIDEO_ROLES if version == 3 else frozenset()):
                 _fail(f"media asset {asset_id} has an unknown role {role!r}")
             if role in roles:
                 _fail(f"media asset {asset_id} lists role {role} twice")
@@ -1069,12 +1096,16 @@ def _validate_manifest_v2(manifest: dict[str, Any]) -> None:
                     _fail(f"media asset {asset_id} has an invalid rendition {field}")
             roles[role] = rendition["object_id"]
             covered.add(rendition["object_id"])
-        if set(roles) != {"master", "display", "fallback", "thumbnail"}:
+        if set(roles) == VIDEO_ROLES and version == 3:
+            if entry["display_object"] != roles["video"] or entry["master_object"] != roles["video"]:
+                _fail(f"media asset {asset_id} video object disagrees with its role")
+        elif set(roles) == IMAGE_ROLES:
+            if roles["display"] != entry["display_object"]:
+                _fail(f"media asset {asset_id} display object disagrees with its role")
+            if roles["master"] != entry["master_object"]:
+                _fail(f"media asset {asset_id} master object disagrees with its role")
+        else:
             _fail(f"media asset {asset_id} is missing a rendition role")
-        if roles["display"] != entry["display_object"]:
-            _fail(f"media asset {asset_id} display object disagrees with its role")
-        if roles["master"] != entry["master_object"]:
-            _fail(f"media asset {asset_id} master object disagrees with its role")
         if not (set(roles.values()) & references):
             _fail(f"media asset {asset_id} is not referenced by any scene")
 
@@ -1208,7 +1239,7 @@ def _check_tree(root: str, manifest: dict[str, Any]) -> None:
     expected = {MANIFEST_NAME, manifest["database"]["path"]}
     expected.update(entry["path"] for entry in manifest["assets"])
     allowed_directories = {"", DATABASE_DIR, ASSETS_DIR}
-    if manifest["manifest_version"] == 2:
+    if manifest["manifest_version"] >= 2:
         expected.update(entry["path"] for entry in manifest["media_objects"])
         allowed_directories |= {MEDIA_DIR, MEDIA_OBJECTS_DIR}
         for entry in manifest["media_objects"]:
@@ -1460,7 +1491,7 @@ def _print_summary(heading: str, root: str, manifest: dict[str, Any]) -> None:
         f"sha256:{manifest['database']['sha256']})"
     )
     print(f"  assets: {len(manifest['assets'])} referenced file(s), {asset_bytes} bytes")
-    if manifest["manifest_version"] == 2:
+    if manifest["manifest_version"] >= 2:
         media_bytes = sum(entry["bytes"] for entry in manifest["media_objects"])
         print(
             f"  media: {len(manifest['media_assets'])} managed asset(s), "
@@ -1572,7 +1603,7 @@ def cmd_backup(args: argparse.Namespace) -> int:
                     not relative.startswith("objects/")
                     or len(parts) != 3
                     or parts[1] != digest[:2]
-                    or parts[2] != digest + ".jpg"
+                    or parts[2] != digest + MEDIA_EXTENSIONS.get(entry["mime"], "")
                 ):
                     _fail(
                         f"managed object {entry['object_id']} has an unsafe store path"
@@ -1588,7 +1619,9 @@ def cmd_backup(args: argparse.Namespace) -> int:
 
             database_digest, database_bytes, _head, _truncated = _hash_file(snapshot_path)
             manifest = {
-                "manifest_version": MANIFEST_VERSION,
+                "manifest_version": VIDEO_MANIFEST_VERSION
+                if any(entry["mime"] == VIDEO_MIME for entry in media_objects)
+                else MANIFEST_VERSION,
                 "created_utc": datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"),
                 "schema_version": _schema_version(snapshot_path),
                 "pipeline_version": MEDIA_PIPELINE_VERSION,
@@ -1649,7 +1682,7 @@ def cmd_restore(args: argparse.Namespace) -> int:
     # leaves the machine exactly as it was.
     manifest = verify_artifact(src)
     if (
-        manifest["manifest_version"] == 2
+        manifest["manifest_version"] >= 2
         and manifest["media_objects"]
         and media_target is None
     ):
@@ -1694,7 +1727,7 @@ def cmd_restore(args: argparse.Namespace) -> int:
                 expected_sha256=entry["sha256"],
                 expected_bytes=entry["bytes"],
             )
-        if manifest["manifest_version"] == 2 and manifest["media_objects"]:
+        if manifest["manifest_version"] >= 2 and manifest["media_objects"]:
             try:
                 os.mkdir(media_target, 0o777)
             except OSError as exc:
@@ -1763,10 +1796,10 @@ def _check_restored(
             f"restored asset {entry['id']}",
         )
 
-    if manifest["manifest_version"] != 2 or not manifest["media_objects"]:
+    if manifest["manifest_version"] < 2 or not manifest["media_objects"]:
         return
     if media_target is None:
-        _fail("a version 2 snapshot cannot be checked without a media target")
+        _fail("a version 2 or 3 snapshot cannot be checked without a media target")
     expected_media = {
         entry["path"][len(MEDIA_DIR) + 1 :]: entry
         for entry in manifest["media_objects"]
@@ -1950,7 +1983,7 @@ def _build_parser() -> argparse.ArgumentParser:
     restore_parser.add_argument(
         "--media",
         metavar="NEW_DIR",
-        help="new managed media directory to create (required for manifest 2)",
+        help="new managed media directory to create (required for manifest 2 and 3)",
     )
     restore_parser.set_defaults(handler=cmd_restore)
     return parser

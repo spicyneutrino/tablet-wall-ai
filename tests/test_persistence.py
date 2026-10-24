@@ -391,7 +391,7 @@ class TestSchemaUpgrade:
         assert table_names(db) == {
             "wall_state", "saved_layouts", "saved_scenes",
             "media_assets", "media_objects", "media_renditions", "schema_meta",
-            "display_profiles", "calibrations",
+            "display_profiles", "calibrations", "media_video",
         }
         assert wall_row(db) == row_before
 
