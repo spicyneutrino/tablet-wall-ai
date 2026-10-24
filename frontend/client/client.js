@@ -272,6 +272,10 @@
     }
 
     var deviceId = resolveDeviceId();
+    /* Assigned by the server on welcome. It is a display number for matching a
+     * physical tablet to the controller, not identity: the device id remains
+     * the key. A reconnect may legitimately receive a different number. */
+    var deviceNumber = null;
 
     /* ------------------------------------------------------------------ */
     /* HTTP                                                               */
@@ -403,6 +407,46 @@
     /* "Short id": the first UUID group, e.g. 0f8fad5b. */
     function shortDeviceId() {
         return String(deviceId).slice(0, 8);
+    }
+
+    function deviceNumberValid(value) {
+        return Number.isInteger(value) && value > 0;
+    }
+
+    /* Screen-space badge used on calibration and the diagnostic panels. The
+     * number is the thing a person matches against the controller; the short
+     * id is the fallback when a server did not send one. */
+    function drawDeviceBadge(ctx, vp, dpr) {
+        if (!deviceNumberValid(deviceNumber)) return;
+        var pad = Math.max(10, Math.min(vp.w, vp.h) * 0.03);
+        var big = Math.max(22, Math.min(vp.w, vp.h) * 0.11);
+        var small = Math.max(10, big * 0.36);
+        var title = "#" + deviceNumber;
+        var sub = "TABLET " + deviceNumber + " \u00b7 " + shortDeviceId();
+        ctx.save();
+        ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+        ctx.textAlign = "left";
+        ctx.textBaseline = "top";
+        ctx.font = "700 " + big + "px " + FONT_STACK;
+        var titleW = ctx.measureText(title).width;
+        ctx.font = small + "px " + FONT_STACK;
+        var subW = ctx.measureText(sub).width;
+        var width = Math.max(titleW, subW) + pad * 1.6;
+        var height = big + small + pad * 2;
+        var x = pad;
+        var y = vp.h - height - pad;
+        ctx.fillStyle = PATTERN.labelBg;
+        ctx.fillRect(x, y, width, height);
+        ctx.strokeStyle = PATTERN.ownRect;
+        ctx.lineWidth = 2;
+        ctx.strokeRect(x, y, width, height);
+        ctx.fillStyle = PATTERN.ownRect;
+        ctx.font = "700 " + big + "px " + FONT_STACK;
+        ctx.fillText(title, x + pad * 0.8, y + pad * 0.5);
+        ctx.fillStyle = PATTERN.info;
+        ctx.font = small + "px " + FONT_STACK;
+        ctx.fillText(sub, x + pad * 0.8, y + pad + big);
+        ctx.restore();
     }
 
     /*
@@ -579,6 +623,7 @@
             midX,
             midY + idSize * 0.35 + noteSize
         );
+        drawDeviceBadge(ctx, vp, view.dpr);
     }
 
     function drawCalibration() {
@@ -611,6 +656,7 @@
             -(visible.y + oy) * k
         );
         drawPattern(view.ctx, scale, view.dpr, visible);
+        drawDeviceBadge(view.ctx, vp, view.dpr);
     }
 
     /*
@@ -805,6 +851,7 @@
             midX,
             midY + idSize * 0.35 + noteSize
         );
+        drawDeviceBadge(ctx, vp, view.dpr);
     }
 
     /* ------------------------------------------------------------------ */
@@ -1478,6 +1525,7 @@
             ? wallState.physical.calibration.reason || ""
             : "";
         ctx.fillText(reason, vp.w / 2, vp.h / 2 + size * 0.55);
+        drawDeviceBadge(ctx, vp, view.dpr);
     }
 
     function drawWallImage(vp, entry) {
@@ -2260,9 +2308,15 @@
 
         if (frame.type === "welcome") {
             welcomedOnce = true;
+            var number = Number(frame.number);
+            deviceNumber = deviceNumberValid(number) ? number : null;
             resetBackoff();
             startHeartbeat(socket, frame.heartbeat_interval_ms);
             setStatus("connected");
+            /* The welcome can change the number on a reconnect while the
+             * wall replay is dropped as the same revision. Repaint the
+             * current state so the badge is never stale. */
+            if (wallState) render();
             onWelcome();
         } else if (frame.type === "set_color") {
             applyColor(frame.color);

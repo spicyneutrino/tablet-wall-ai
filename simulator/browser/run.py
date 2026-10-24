@@ -499,20 +499,54 @@ async def exercise(artifacts: Path, report: dict[str, Any], observation_seconds:
         for (_, observation), placement in zip(pages, placements, strict=True):
             await api("PUT", f"/devices/{observation.device_id}/placement", placement)
         inventory = await api("GET", "/assets")
-        asset = inventory["assets"][0]["id"]
+        asset_entry = inventory["assets"][0]
+        asset = asset_entry["id"]
         await api("PUT", "/scene", {"content": {"type": "image", "asset": asset}})
         await controller.click('[data-context-tab="content"]')
         async with controller.expect_response(lambda response: response.url == base + "/scene" and response.request.method == "PUT") as changed:
             await controller.get_by_role("button", name="Calibration", exact=True).click()
         check("controller calibration response", (await changed.value).ok)
         await controller.wait_for_function("document.querySelector('[data-content=calibration]').getAttribute('aria-pressed') === 'true'")
+        await controller.wait_for_selector(".map-number", timeout=5000)
+        check("controller calibration paints each screen",
+              await controller.locator('.map-vis[data-calibration="true"]').count() >= 1)
+        check("controller calibration shows tablet numbers",
+              await controller.locator(".map-number").count() >= 1)
         await controller.click('#wall-content button[data-content="image"]')
         await controller.locator(f"button[data-asset='{asset}']").click()
         async with controller.expect_response(lambda response: response.url == base + "/scene" and response.request.method == "PUT") as changed:
             await controller.locator("#btn-image-apply").click()
         check("controller image response", (await changed.value).ok)
         await controller.wait_for_function("document.querySelector('[data-content=image]').getAttribute('aria-pressed') === 'true'")
-        check("controller selects and shows curated image", (await api("GET", "/wall"))["scene"]["content"]["asset"] == asset)
+        wall_after_image = await api("GET", "/wall")
+        check("controller selects and shows curated image",
+              wall_after_image["scene"]["content"]["asset"] == asset)
+        first_id = pages[0][1].device_id
+        first_placement = wall_after_image["placements"][first_id]
+        frame = await controller.evaluate(
+            "() => { const f = document.querySelector('#map-frame');"
+            " return { w: f.clientWidth, h: f.clientHeight }; }"
+        )
+        iw = float(asset_entry["intrinsicWidth"])
+        ih = float(asset_entry["intrinsicHeight"])
+        scale = max(frame["w"] / iw, frame["h"] / ih)
+        expected_x = (frame["w"] - iw * scale) / 2 - (
+            first_placement["x"] / wall_after_image["width"]
+        ) * frame["w"]
+        expected_y = (frame["h"] - ih * scale) / 2 - (
+            first_placement["y"] / wall_after_image["height"]
+        ) * frame["h"]
+        position = await controller.evaluate(
+            "() => getComputedStyle(document.querySelector("
+            "'.map-pl[data-id=\"%s\"] .map-vis')).backgroundPosition" % first_id
+        )
+        actual_x, actual_y = (
+            float(part.removesuffix("px"))
+            for part in str(position).split()[:2]
+        )
+        check("controller image slice starts at the wall origin",
+              abs(actual_x - expected_x) <= 2 and abs(actual_y - expected_y) <= 2,
+              actual=position, expected=[expected_x, expected_y])
         await controller.screenshot(path=str(artifacts / "controller.png"), full_page=True)
         report["controller_screenshot"] = str(artifacts / "controller.png")
 

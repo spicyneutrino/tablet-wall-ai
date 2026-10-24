@@ -63,3 +63,8 @@ It rejects:
 ## Final synthesis note
 
 The synthesis mockups and tokens were produced by Sol before its account limit stopped the written plan. The direct Opus routes were unavailable. The final plan, design system, and implementation map were completed from the four artifacts, the two cross-reviews, and the final synthesis mockups. This is recorded so the process is not attributed to a model that could not finish.
+
+
+## Calibration and numbers follow-up
+
+Sonnet 5.5 at high effort reviewed the image-slice, display-number, and calibration plan. It approved the sign fix for the map, corrected the roster thumbnail math to a two-stage cover, recommended in-memory number allocation rather than a schema change, and required the number in the welcome (outside revision gating) so a reconnect repaints a changed number. It also recommended the number on unplaced and diagnostic screens, not just calibration. The implementation follows that memo.

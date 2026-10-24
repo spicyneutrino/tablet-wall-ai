@@ -1187,6 +1187,59 @@ function calibrationTransform(harness) {
     throw new Error("calibration drew with no transform");
 }
 
+test("an unplaced tablet still shows its number for physical matching", async () => {
+    const h = await startHarness(VP);
+    h.emit({ type: "welcome", heartbeat_interval_ms: 5000, protocol: 3, number: 5 });
+    h.emit(
+        wallFrame({
+            revision: 1,
+            placement: null,
+            scene: { content: { type: "calibration" }, layout: "active" },
+        })
+    );
+    await drain();
+    assert.ok(h.texts().includes("NO PLACEMENT"), "the unplaced panel is drawn");
+    assert.ok(
+        h.texts().includes("#5"),
+        "the number badge is drawn on the unplaced panel: " + JSON.stringify(h.texts())
+    );
+});
+
+test("the calibration screen shows the tablet number and updates it on reconnect", async () => {
+    const h = await startHarness(VP);
+    h.emit({ type: "welcome", heartbeat_interval_ms: 5000, protocol: 3, number: 3 });
+    h.emit(
+        wallFrame({
+            revision: 1,
+            scene: { content: { type: "calibration" }, layout: "active" },
+        })
+    );
+    await drain();
+    assert.ok(
+        h.texts().includes("#3"),
+        "the calibration badge shows the assigned number: " + JSON.stringify(h.texts())
+    );
+    assert.ok(
+        h.texts().some((t) => t.startsWith("TABLET 3")),
+        "and names the tablet in words"
+    );
+
+    /* A reconnect can change the number while the wall frame is a replay.
+     * The welcome is accepted outside the revision gate, so the badge must
+     * update without waiting for a newer scene. */
+    h.reset();
+    h.emit({ type: "welcome", heartbeat_interval_ms: 5000, protocol: 3, number: 4 });
+    await drain();
+    assert.ok(
+        h.texts().includes("#4"),
+        "the replayed scene repaints with the new number"
+    );
+    assert.ok(
+        !h.texts().includes("#3"),
+        "the old number is not left on screen"
+    );
+});
+
 test("a stalled asset times out, and its late decode neither paints nor retries", async () => {
     const h = await startHarness(VP);
     const stalled = deferred(); /* headers arrive, body never does */

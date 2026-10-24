@@ -88,6 +88,17 @@ The tile template still carries the exact placement inputs, palette, colour inpu
 - `updateImageControls()` previews the active wall image when no replacement is selected; it does not change selection.
 - `renderSnapshotPanel()` refreshes the left-rail layout shortcuts.
 
+### Mapping, calibration, and display numbers
+
+- `paintMapSlice()` uses the image's top-left in the map frame. The position is `offX - visible.x/wall.width*pxW`, and the same for Y. The previous negative-offset form shifted a letterboxed image down or right.
+- `paintTileScreen()` uses the two-stage cover: visible rect to thumbnail, then the wall image to that virtual wall. A simple wall-cover shrank the crop.
+- `paintCalibrationSlice()` paints a wall-aligned minor and major grid inside each visible rect.
+- `buildMapPlacement()` hides the normal label in calibration, adds a centred number badge and the short id, and adds the large number only when the scene is calibration.
+- `tabletwall/state.py`: `_recycle_device_numbers()` releases numbers for devices without an open socket and older than `DEVICE_NUMBER_LEASE_S`; `_ensure_device_number()` assigns the lowest free number. Both run synchronously before an await.
+- `main.py`: registration preserves `number`, allocates it, and broadcasts `device_updated` for any released holder. The device socket ensures a number after reconnect and includes it in the v2/v3 welcome. The v1 welcome is unchanged.
+- `frontend/client/client.js`: stores the welcome number outside the revision-gated wall state, repaints on a changed welcome, and draws one screen-space badge on calibration and diagnostic screens.
+- The number lease is in-memory. A server restart renumbers in reconnect order, noted in PROTOCOL.md.
+
 ## API notes
 
 - No backend changes. Placements still use `{x, y, w, h, bezel}` and must be integers.
@@ -98,9 +109,9 @@ The tile template still carries the exact placement inputs, palette, colour inpu
 
 ## Test plan and results
 
-- Browser evidence: `102/102` checks passed in the final run, `/tmp/opencode/tablet-wall-v2-run7/report.json` (the preceding run passed 103/103; the check count varies with duplicate API verification lines).
-- Python: `635 passed`.
-- Client JS: `25 passed`.
+- Browser evidence: `106/106` checks passed, `/tmp/opencode/tablet-wall-calibration-final/report.json`.
+- Python: `645 passed`.
+- Client JS: `27 passed`.
 - View JS: `8 passed`.
 - Deployment guards: `3 passed`.
 - Manual: 1440, 1280, and 390 layouts; no page horizontal overflow; selected inspector, drag move, corner resize, place, remove, undo/redo, tile preview/apply/undo, content switching, and mobile tasks.

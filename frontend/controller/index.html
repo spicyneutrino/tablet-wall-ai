@@ -7,7 +7,7 @@
     <meta name="description" content="Control panel for a wall of tablets: choose what the wall shows and where each tablet sits.">
     <title>Wall control · tablet-wall-ai</title>
     <link rel="icon" href="favicon.svg" type="image/svg+xml">
-    <link rel="stylesheet" href="controller.css?v=12">
+    <link rel="stylesheet" href="controller.css?v=14">
 </head>
 <body>
 <a class="skip" href="#workspace">Skip to wall</a>
@@ -340,7 +340,7 @@
                     <div class="show-block" id="calibration-block" hidden>
                         <div class="block-head"><h3>Calibration</h3></div>
                         <p class="meta">A shared grid across every tablet. Use it to check that adjacent edges and bezels line up.</p>
-                        <p class="calibration-state" id="calibration-state">Choose Calibration to show the shared grid.</p>
+                        <p class="calibration-state" id="calibration-state">Choose Calibration to show the shared grid and each tablet number.</p>
                     </div>
 
                     <div class="show-block imagepanel" id="image-panel" role="group" aria-labelledby="image-title" hidden>
@@ -544,6 +544,7 @@
         </div>
 
         <header class="tile-top">
+            <span class="tile-number" hidden></span>
             <h3 class="dev-id"></h3>
             <span class="badge"><span class="badge-dot" aria-hidden="true"></span><span class="badge-label">Offline</span></span>
         </header>
@@ -615,6 +616,6 @@
 
 <noscript><p class="noscript">This page needs JavaScript. It talks to the server over a live connection.</p></noscript>
 
-<script src="controller.js?v=12"></script>
+<script src="controller.js?v=14"></script>
 </body>
 </html>

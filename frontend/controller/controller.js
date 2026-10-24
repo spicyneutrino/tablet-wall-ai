@@ -965,6 +965,7 @@
 
         const tile = {
             el: node,
+            number: node.querySelector(".tile-number"),
             devId: node.querySelector(".dev-id"),
             badgeLabel: node.querySelector(".badge-label"),
             screenFill: node.querySelector(".screen-fill"),
@@ -1088,6 +1089,13 @@
         const online = device.online === true;
         tile.el.dataset.state = online ? "online" : "offline";
         tile.badgeLabel.textContent = online ? "Online" : "Offline";
+        if (tile.number) {
+            const number = Number(device.number);
+            const hasNumber = Number.isInteger(number) && number > 0;
+            tile.number.hidden = !hasNumber;
+            tile.number.textContent = hasNumber ? "#" + number : "";
+            tile.number.title = hasNumber ? "Tablet number " + number : "";
+        }
 
         // Re-applied on every sync so the button tracks presence changes.
         const forget = tile.foot.querySelector('[data-action="forget"]');
@@ -1341,8 +1349,8 @@
         if (el.calibrationBlock) el.calibrationBlock.hidden = view !== "calibration";
         if (el.calibrationState) {
             el.calibrationState.textContent = type === "calibration"
-                ? "Calibration grid is on the wall. Choose Colour or Image to replace it."
-                : "Choose Calibration to show the shared grid.";
+                ? "Calibration grid is on the wall. Each tablet shows its number; the roster and map use the same number."
+                : "Choose Calibration to show the shared grid and each tablet number.";
         }
         if (el.contentNow) el.contentNow.textContent = contentSummaryLabel(type);
         renderContentState(type);
@@ -2602,6 +2610,9 @@
         const devAspect = viewportAspect(device);
         const delta = aspectDelta(visAspect, devAspect);
         const mismatch = isAspectMismatch(delta);
+        const calibration = !!(device && wall && wall.contentType === "calibration");
+        const number = device ? Number(device.number) : NaN;
+        const hasNumber = Number.isInteger(number) && number > 0;
 
         const box = document.createElement("button");
         box.type = "button";
@@ -2689,7 +2700,10 @@
         if (room >= 16) {
             const label = document.createElement("span");
             label.className = "map-label";
-            label.textContent = shortId(id);
+            label.textContent = hasNumber
+                ? "#" + number + " " + shortId(id)
+                : shortId(id);
+            if (calibration) label.hidden = true;
             inset.style.setProperty(
                 "--label-fs",
                 Math.max(6, Math.min(11, Math.round(room / 6))) + "px"
@@ -2702,6 +2716,11 @@
                 const sub = document.createElement("span");
                 sub.className = "map-sub";
                 sub.textContent = "no tablet";
+                inset.appendChild(sub);
+            } else if (calibration) {
+                const sub = document.createElement("span");
+                sub.className = "map-sub";
+                sub.textContent = shortId(id);
                 inset.appendChild(sub);
             }
 
@@ -2723,6 +2742,18 @@
             inset.style.setProperty("--shown", shown);
         } else if (device && wall && wall.contentType === "image") {
             paintMapSlice(inset, visible, wallW, wallH, pxW, pxH);
+        } else if (calibration) {
+            paintCalibrationSlice(inset, visible, wallW, wallH, pxW, pxH);
+            if (hasNumber) {
+                const badge = document.createElement("span");
+                badge.className = "map-number";
+                badge.textContent = "#" + number;
+                badge.style.setProperty(
+                    "--number-fs",
+                    Math.max(14, Math.min(42, Math.round(room / 3))) + "px"
+                );
+                inset.appendChild(badge);
+            }
         }
 
         box.appendChild(inset);
@@ -2751,6 +2782,8 @@
         const imgW = Number(asset.width);
         const imgH = Number(asset.height);
         if (!(imgW > 0) || !(imgH > 0)) return;
+        /* The image covers the whole wall, centered. Its top-left in the map
+         * frame is (offX, offY); the inset begins at the visible rect. */
         const scale = Math.max(pxW / imgW, pxH / imgH);
         const drawW = imgW * scale;
         const drawH = imgH * scale;
@@ -2760,8 +2793,44 @@
         inset.style.backgroundRepeat = "no-repeat";
         inset.style.backgroundSize = drawW + "px " + drawH + "px";
         inset.style.backgroundPosition =
-            (-offX - (visible.x / wallW) * pxW) + "px " +
-            (-offY - (visible.y / wallH) * pxH) + "px";
+            (offX - (visible.x / wallW) * pxW) + "px " +
+            (offY - (visible.y / wallH) * pxH) + "px";
+    }
+
+    /**
+     * Paint the shared calibration grid through one visible rect. The grid
+     * is in wall units, so adjacent footprints line up exactly as the
+     * tablets do. The number is a separate screen-space badge on the tablet;
+     * on the map it is a large centred mark.
+     */
+    function paintCalibrationSlice(inset, visible, wallW, wallH, pxW, pxH) {
+        const gx = (100 / wallW) * pxW;
+        const gy = (100 / wallH) * pxH;
+        const mx = (500 / wallW) * pxW;
+        const my = (500 / wallH) * pxH;
+        const posX = -(visible.x / wallW) * pxW;
+        const posY = -(visible.y / wallH) * pxH;
+        inset.style.backgroundColor = "#0b1120";
+        inset.style.backgroundImage = [
+            "linear-gradient(to right, rgba(148, 163, 184, 0.3) 1px, transparent 1px)",
+            "linear-gradient(to bottom, rgba(148, 163, 184, 0.3) 1px, transparent 1px)",
+            "linear-gradient(to right, rgba(226, 232, 240, 0.7) 1px, transparent 1px)",
+            "linear-gradient(to bottom, rgba(226, 232, 240, 0.7) 1px, transparent 1px)"
+        ].join(", ");
+        inset.style.backgroundSize = [
+            gx + "px " + gy + "px",
+            gx + "px " + gy + "px",
+            mx + "px " + my + "px",
+            mx + "px " + my + "px"
+        ].join(", ");
+        inset.style.backgroundPosition = [
+            posX + "px " + posY + "px",
+            posX + "px " + posY + "px",
+            posX + "px " + posY + "px",
+            posX + "px " + posY + "px"
+        ].join(", ");
+        inset.style.backgroundRepeat = "repeat";
+        inset.dataset.calibration = "true";
     }
 
     /** Paint a roster thumbnail from the same wall image and placement. */
@@ -2778,24 +2847,31 @@
         if (!asset || !asset.url || !placement) return;
         const imgW = Number(asset.width);
         const imgH = Number(asset.height);
+        const visible = visibleRect(placement);
         const box = tile.screenFill.parentElement;
         const boxW = box && box.clientWidth > 0 ? box.clientWidth : 32;
         const boxH = box && box.clientHeight > 0 ? box.clientHeight : 22;
-        if (!(imgW > 0) || !(imgH > 0)) return;
-        const visible = visibleRect(placement);
-        if (!(wall.width > 0) || !(wall.height > 0)) return;
-        const scale = Math.max(boxW / imgW, boxH / imgH);
-        const drawW = imgW * scale;
-        const drawH = imgH * scale;
-        const offX = (boxW - drawW) / 2;
-        const offY = (boxH - drawH) / 2;
+        if (!(imgW > 0) || !(imgH > 0) || !(wall.width > 0) || !(wall.height > 0)) return;
+        /* First cover the visible rect into the thumbnail, then cover the
+         * image to that virtual wall. The two stages match the tablet's
+         * viewport crop rather than a shrunken copy of the whole wall. */
+        const s = Math.max(boxW / visible.w, boxH / visible.h);
+        const wallPxW = wall.width * s;
+        const wallPxH = wall.height * s;
+        const c = Math.max(wallPxW / imgW, wallPxH / imgH);
+        const drawW = imgW * c;
+        const drawH = imgH * c;
+        const offX = (wallPxW - drawW) / 2;
+        const offY = (wallPxH - drawH) / 2;
+        const centerX = (boxW - visible.w * s) / 2;
+        const centerY = (boxH - visible.h * s) / 2;
         tile.screenFill.style.background = "transparent";
         tile.screenFill.style.backgroundImage = 'url("' + asset.url.replace(/"/g, '\\"') + '")';
         tile.screenFill.style.backgroundRepeat = "no-repeat";
         tile.screenFill.style.backgroundSize = drawW + "px " + drawH + "px";
         tile.screenFill.style.backgroundPosition =
-            (-offX - (visible.x / wall.width) * boxW) + "px " +
-            (-offY - (visible.y / wall.height) * boxH) + "px";
+            (offX - visible.x * s + centerX) + "px " +
+            (offY - visible.y * s + centerY) + "px";
         tile.screenNote.hidden = true;
     }
 
@@ -5216,7 +5292,10 @@
         stage.inspectorEmpty.hidden = true;
         stage.inspector.hidden = false;
         stage.inspId.textContent = shortId(selectedId);
-        stage.inspEyebrow.textContent = "Tablet";
+        const number = Number(device.number);
+        stage.inspEyebrow.textContent = Number.isInteger(number) && number > 0
+            ? "Tablet #" + number
+            : "Tablet";
         stage.inspMeta.textContent =
             (DEVICE_TYPE_NAMES[(device.type || "").toLowerCase()] || device.type || "Tablet") +
             (device.width != null && device.height != null

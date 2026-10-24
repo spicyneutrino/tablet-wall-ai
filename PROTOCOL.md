@@ -83,6 +83,7 @@ Every payload that carries a device uses this exact shape:
   "color": "#3b82f6",
   "protocol": 2,
   "caps": ["calibration", "image"],
+  "number": 1,
   "online": false,
   "last_seen": "2026-09-24T21:38:59.231663+00:00"
 }
@@ -93,6 +94,12 @@ Every payload that carries a device uses this exact shape:
 - `online` is a boolean.
 - `last_seen` is ISO-8601 UTC with an explicit `+00:00` offset.
 - `device_id` is a lowercase UUID4 string.
+- `number` is the small display number shown in the controller and on the
+  calibration screen. It is not identity. The server allocates the lowest free
+  positive integer and leases it while the tablet stays in contact. A tablet
+  that is offline for 15 minutes releases the number for a replacement.
+  Numbers are process-local: a server restart renumbers tablets in reconnect
+  order.
 - `protocol` is the last negotiated major (or `null` before a socket connects);
   `caps` is the list advertised by that socket (empty until then). A version-1
   socket does not receive `wall` frames even if it supplies a `caps` query
@@ -105,13 +112,15 @@ All frames are JSON text frames with a discriminating `type` key.
 ### Server → device
 
 ```json
-{ "type": "welcome", "device_id": "<uuid>", "heartbeat_interval_ms": 5000 }
+{ "type": "welcome", "device_id": "<uuid>", "heartbeat_interval_ms": 5000, "protocol": 3, "server_caps": [], "number": 1 }
 { "type": "set_color", "color": "#3b82f6" }
 ```
 
 `welcome` is the first frame after the socket opens. If a color was already
 assigned, the server sends `set_color` immediately after `welcome` so a
-reconnecting tablet restores its appearance.
+reconnecting tablet restores its appearance. The `protocol`, `server_caps`,
+and `number` keys are present for protocol 2 and 3 only; the protocol-1
+welcome is unchanged.
 
 ### Device → server
 

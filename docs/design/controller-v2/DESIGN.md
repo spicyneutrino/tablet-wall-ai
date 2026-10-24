@@ -68,11 +68,13 @@ Mobile inputs are 16px to avoid automatic zoom.
 
 ## Components
 
-- **Roster row:** 38x28 screen thumbnail, short ID, online/offline badge, resolution and type, "On the wall" or "Not placed". Placed rows use the accent border; offline rows use a dashed border. No palette or placement form in the row.
+- **Roster row:** 38x28 screen thumbnail, small display number, short ID, online/offline badge, resolution and type, "On the wall" or "Not placed". Placed rows use the accent border; offline rows use a dashed border. No palette or placement form in the row.
+- **Display number:** assigned by the server, lowest free. It is a physical-identification label, not identity. The controller shows `#N` in the roster, wall label, and inspector. A tablet that is offline for 15 minutes releases its number when a replacement needs one; the lease is process-local.
 - **Wall footprint:** hatched frame, visible screen inset, short ID label, offline dashed, vacant dotted, shape warning mark. Selected footprint gets a wall-accent outline and four corner handles.
 - **Wall image:** one asset mapped through every visible rect; bezel areas stay frame. The map shows the same slice geometry as the clients.
 - **Inspector:** selection head with Remove/Place, position and size, shape readout and warning with Match screen shape, Move arrows, bezel disclosure, colour, details, remove/place action. `Remove` and `Place` are always near the top.
 - **Content:** Colour / Calibration / Image tabs. Colour and Calibration switch the scene; Image opens the library and applies only from its explicit action. Active image preview follows the selection or the active wall image. Curated and uploaded assets are separate. Missing asset shows Pick replacement / Show colour / Show calibration.
+- **Calibration state:** each tablet draws its number in a screen-space badge plus the short id; the controller map paints each tablet's grid slice with the same large number and short id. The Calibration panel says the numbers match the roster. This is the physical matching aid.
 - **Tile tool:** scope, order, columns, rows, gap, shape policy. Numbered cells overlay the wall. Two clicked cells swap. Apply is disabled on blocked capacity or retained-spot conflicts. The write note says each tablet is written one after another.
 - **Warnings:** amber tinted full border with a mark, title, and specific text. The wall summary says how many shape and image checks need review.
 - **Status bar:** time, live status, Undo, revision and session. Static on mobile so it does not cover controls.

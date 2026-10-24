@@ -105,6 +105,7 @@ from tabletwall.persist import (
 # and must keep mutating what the running app uses.
 from tabletwall.state import (
     _device_record,
+    _ensure_device_number,
     _fresh_wall,
     _is_online,
     _new_generation,
@@ -840,6 +841,7 @@ async def device_register(device: DeviceRegistration):
         "color": existing["color"] if existing is not None else None,
         "protocol": existing.get("protocol") if existing is not None else None,
         "caps": list(existing.get("caps") or []) if existing is not None else [],
+        "number": existing.get("number") if existing is not None else None,
         "last_seen": _now_iso(),
     }
     if existing is not None:
@@ -853,6 +855,10 @@ async def device_register(device: DeviceRegistration):
     devices[device_id] = record
     # Stamp the monotonic contact reading too; presence expiry uses it.
     _touch_device(device_id)
+    released = _ensure_device_number(device_id)
+    for old_id in released:
+        if old_id in devices:
+            await _broadcast({"type": "device_updated", "device": _device_record(old_id)})
     record = _device_record(device_id)
 
     await _broadcast({"type": "device_updated", "device": record})
@@ -2324,6 +2330,10 @@ async def ws_device(
     device_sockets[key] = websocket
     record = devices[key]
     _touch_device(key)
+    released = _ensure_device_number(key)
+    for old_id in released:
+        if old_id in devices:
+            await _broadcast({"type": "device_updated", "device": _device_record(old_id)})
     record["protocol"] = negotiated
     record["caps"] = _parse_caps(caps)
     record["connection_id"] = uuid.uuid4().hex
@@ -2352,9 +2362,11 @@ async def ws_device(
             # contract; the version-2 keys are added only when negotiated.
             welcome["protocol"] = 2
             welcome["server_caps"] = list(SERVER_CAPS)
+            welcome["number"] = record.get("number")
         elif negotiated == 3:
             welcome["protocol"] = 3
             welcome["server_caps"] = list(SERVER_CAPS_V3)
+            welcome["number"] = record.get("number")
         await connection.send(welcome)
         if negotiated == 3 and _server_clock is not None:
             await connection.send({

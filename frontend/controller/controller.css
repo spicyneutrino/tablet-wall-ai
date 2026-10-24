@@ -321,6 +321,14 @@ fieldset { border: 0; padding: 0; margin: 0; }
 .tile[data-placement="placed"] .screen { border-color: var(--accent); }
 
 .tile-top { grid-area: top; display: flex; align-items: center; justify-content: space-between; gap: 6px; min-width: 0; }
+.tile-number {
+    flex: none;
+    color: var(--accent);
+    font-family: var(--mono);
+    font-size: 10px;
+    font-weight: 700;
+    line-height: 16px;
+}
 .dev-id { font-size: 13px; line-height: 18px; font-weight: 600; letter-spacing: -0.01em; overflow: hidden; text-overflow: ellipsis; }
 .badge { display: inline-flex; align-items: center; gap: 5px; flex: none; color: var(--muted); font-size: 10px; }
 .badge-dot { width: 6px; height: 6px; border-radius: 50%; background: var(--control-edge); }
@@ -491,6 +499,17 @@ fieldset { border: 0; padding: 0; margin: 0; }
     white-space: nowrap;
 }
 .map-sub { position: absolute; left: 7px; bottom: 5px; color: var(--wall-muted); font-size: 9px; }
+.map-number {
+    position: absolute;
+    inset: 0;
+    display: grid;
+    place-items: center;
+    color: #f8fafc;
+    font: 700 var(--number-fs, 22px) / 1 var(--sans);
+    text-shadow: 0 1px 3px #0b1120, 0 0 12px #0b1120;
+    pointer-events: none;
+}
+.map-vis[data-calibration="true"] { background-color: #0b1120; }
 .map-ar { position: absolute; right: 6px; bottom: 5px; color: var(--wall-muted); font-size: 9px; }
 .map-none { position: absolute; inset: 0; display: grid; place-content: center; gap: 5px; color: var(--wall-muted); font-size: 12px; text-align: center; }
 .map-empty { padding: 22px 14px; color: var(--muted); font-size: 12px; text-align: center; border: 1px dashed var(--control-edge); border-radius: var(--radius-control); }

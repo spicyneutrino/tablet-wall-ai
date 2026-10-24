@@ -26,6 +26,11 @@ from tabletwall.protocol import HEARTBEAT_TIMEOUT_S, _asset_url, _now_iso
 DEFAULT_WALL_WIDTH = 2000
 DEFAULT_WALL_HEIGHT = 1000
 
+# A tablet's small display number is leased while it stays in contact. The
+# number is not identity: a tablet that is gone for this long releases it for
+# a replacement, so physical labels do not accumulate dead numbers.
+DEVICE_NUMBER_LEASE_S = 15 * 60
+
 
 def _new_generation() -> str:
     """A fresh ``generation`` token (PROTOCOL.md "Revision and generation").
@@ -110,6 +115,58 @@ def _is_online(device_id: str) -> bool:
         return False
     age = _seconds_since_last_seen(device_id)
     return age is not None and age <= HEARTBEAT_TIMEOUT_S
+
+
+def _recycle_device_numbers(exclude: str | None = None) -> list[str]:
+    """Release numbers held by tablets that have been gone for the lease.
+
+    A device with an open socket keeps its number even if it is quiet: the
+    socket is the stronger signal than a missed heartbeat. Releasing is lazy,
+    at allocation time, because a number only needs to be free when someone
+    asks for one. Returns the ids whose number was removed so the caller can
+    tell controllers before the replacement takes it.
+    """
+    released: list[str] = []
+    for device_id, record in list(devices.items()):
+        if device_id == exclude:
+            continue
+        if not isinstance(record.get("number"), int):
+            continue
+        if device_id in device_sockets:
+            continue
+        age = _seconds_since_last_seen(device_id)
+        if age is not None and age > DEVICE_NUMBER_LEASE_S:
+            record.pop("number", None)
+            released.append(device_id)
+    return released
+
+
+def _ensure_device_number(device_id: str) -> list[str]:
+    """Give ``device_id`` the lowest free display number.
+
+    Returns any other device ids whose expired number was released first, so
+    the caller can broadcast their updated record. An existing number is kept;
+    a reconnecting tablet that already lost its number gets the lowest free
+    one. The allocation runs before any caller awaits, so two simultaneous
+    registrations cannot receive the same number.
+    """
+    record = devices.get(device_id)
+    if record is None:
+        return []
+    current = record.get("number")
+    if isinstance(current, int) and current > 0:
+        return []
+    released = _recycle_device_numbers(exclude=device_id)
+    used = {
+        value
+        for other in devices.values()
+        if isinstance((value := other.get("number")), int)
+    }
+    number = 1
+    while number in used:
+        number += 1
+    record["number"] = number
+    return released
 
 
 def _device_record(device_id: str) -> dict[str, Any]:
