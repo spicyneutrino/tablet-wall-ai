@@ -144,3 +144,131 @@ its referenced image bytes both require backups; SQLite should be backed up
 using its online backup API, not a raw file copy during writes. The snapshot,
 verify and restore drill — including stopping the service first and restoring only
 into new paths — is in [OPERATIONS.md](OPERATIONS.md#backups).
+
+## Field readiness (R5): operations notes
+
+Everything below is software-side. The steps marked **HUMAN** need an
+operator at the laptop or at the tablets; no script in this repository does
+them, and none installs a CA, edits a trust store or changes host networking.
+
+### Local-CA trust (HUMAN)
+
+1. With Caddy running once, find its **public** root certificate, usually
+   `~/.local/share/caddy/pki/authorities/local/root.crt` on Linux (`caddy
+   environ` prints the data directory). Never copy `root.key`.
+2. Verify the certificate from the laptop without `-k`:
+   `curl --cacert root.crt https://$WALL_HOTSPOT_IP:8443/client/` must return
+   the page.
+3. Put `root.crt` on each tablet (AirDrop/USB/local download page — not the
+   internet) and trust it as in [KIOSK.md](KIOSK.md#certificate-trust-on-an-offline-lan):
+   iPadOS needs the profile *and* Certificate Trust Settings; Android varies
+   by version and browser.
+4. On each tablet open the tablet URL: no warning, the page paints and the
+   controller roster shows it online. Only then disconnect the WAN.
+5. Tick the matching gate rows in KIOSK.md. A CA that is trusted on the laptop
+   but not on a tablet is the most likely first-day failure; `caddy trust`
+   changes only the laptop and needs privileges, so it is not part of this.
+
+### Origin migration and rebinding
+
+A tablet's identity (UUID) and display number live in `localStorage`, which
+is per origin. Moving from `http://` to `https://`, or to a new host, IP or
+port, wipes both: the tablet registers as a brand-new device with the lowest
+free number and **no placement**, while the wall keeps its placement as a
+vacant reservation under the old id. Keep the origin unchanged when you can;
+when you cannot:
+
+1. Before moving, note each tablet's number and position (screenshot the
+   controller). Do not delete the old devices or reservations.
+2. Move the tablets to the new origin and let them register. Close the old
+   pages: the old id must be offline.
+3. Find the old id (the vacant reservation in the controller, or the
+   `placements` keys of `GET /wall`) and the new id (the unplaced tablet; its
+   short id is drawn on its screen).
+4. Re-bind, from the operator origin, with exactly one `Origin` header equal
+   to the operator origin:
+
+   ```sh
+   curl --netrc-file "$WALL_OPERATOR_NETRC" -X POST \
+     -H "Origin: https://localhost:8444" -H 'Content-Type: application/json' \
+     -d '{"replaces": "<old-id>"}' \
+     https://localhost:8444/devices/<new-id>/rebind
+   ```
+
+   The new device takes over the old placement (logical) or slot plus its
+   display profiles and calibrations (physical), and the old id's display
+   number; the old roster record disappears and the tablet reconnects once to
+   learn its number. If the server also restarted, the old number is unknown:
+   add `"number": N` (the label on the glass; it must be free). Refusals:
+   `409` old device online, new device already placed, number in use, or new
+   device already holding display records; `404` unknown device.
+5. Re-save named layouts: they still name the old id. Recall each, then save
+   it again (`PUT /layouts/<name>?replace=true`, or the physical equivalent).
+6. Check the wall, numbers and (physical) calibration status in the controller.
+
+Rebinding is not authentication: any operator-origin caller can do it, and
+only an offline old id can be replaced.
+
+### Storage and health readout
+
+`GET /diagnostics` (operator listener only: it needs the same admission as
+`GET /media`, so it is refused while `TABLET_WALL_UPLOAD_MODE=disabled` and is
+not in the tablet allowlist) returns media quota/used/free/reserve bytes,
+object and ready-asset counts, `orphans` (object files no database row
+lists; a crash between publish and commit leaves them, and nothing deletes
+them), the database schema and size, `last_manifest_at` and client counts with
+the wake-lock tally. `?verify=1` additionally re-hashes every ready object
+(`media.integrity`) and is the call to make after a restore or a disk event.
+Point `TABLET_WALL_BACKUP_DIR` at a snapshot (or a directory of snapshots) to
+fill `last_manifest_at`; it is read-only.
+
+```sh
+curl --netrc-file "$WALL_OPERATOR_NETRC" 'https://localhost:8444/diagnostics?verify=1'
+```
+
+### Backup and recovery drill
+
+Automated, on a throwaway instance (free loopback port, temp paths, never the
+configured database): `uv run python deploy/drill.py`. It populates a wall
+(placements, numbers, a saved layout, curated and uploaded images, saved
+scenes, a playlist containing an upload no scene uses), runs `backup.py
+backup` while the server is up, verifies, restores into new targets, boots the
+restored copy and compares wall, layouts, scenes, playlist, library and the
+bytes behind every image. The unused upload is *deliberately* absent after
+restore. Display numbers are memory-only, so the drill checks that
+re-registering tablets get their remembered numbers back with placements still
+attached. `tests/test_deploy_drill.py` runs it in the suite.
+
+The snapshot closure includes the playlist's assets (a playlist-only image
+used to be omitted and restored as unavailable). A snapshot taken before that
+change whose playlist names such an image fails `verify`; take a fresh one.
+
+Real-host drill (**HUMAN**, record the time): the restore steps in
+[OPERATIONS.md](OPERATIONS.md#restore-drill-rehearse-this-before-you-need-it),
+then `GET /diagnostics?verify=1`, the rebind recipe above if origins changed,
+and the manual checks in KIOSK.md.
+
+### WAN-disconnected restart
+
+`tests/test_offline.py` re-runs a seeded instance twice inside a network
+namespace (`unshare -rn`) that has only loopback, after proving it cannot
+reach the outside. It checks that startup, the static wall, saved layouts and
+scenes, the playlist and media bytes come back, that every served page and
+stylesheet references nothing outside its own origin (the SVG namespace string
+is the only allowed foreign name), and that the real `client.js` registers,
+connects, fetches its image from the loopback origin and paints. It is skipped
+where unprivileged namespaces or `node` are unavailable. It cannot prove that
+a tablet browser trusts the CA or that Safari/Chrome make no hidden requests.
+
+### What stays MISSING
+
+None of these are shown by software tests, and none is claimed:
+
+- the two-hour media soak and the overnight still soak (needed for unattended
+  operation);
+- physical kiosk and power setup (Guided Access/pinning, display timeout,
+  charging, thermal) and the OS-level behaviour of a held wake lock;
+- certificate trust on real iPads and Android tablets, and the full ingress
+  checks on a real hotspot;
+- the exact device/build matrix, the intended physical client count and any
+  real-tablet observation of rebinding, wake lock or reconnect.

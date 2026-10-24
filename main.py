@@ -80,9 +80,11 @@ from tabletwall import assets, clock, displays, geometry, media, playback
 from tabletwall import persist
 from tabletwall import writer as writers
 from tabletwall.media_limits import (
+    FREE_RESERVE_BYTES,
     MAX_SOURCE_BYTES,
     MAX_WAITING_UPLOADS,
     PIPELINE_VERSION,
+    QUOTA_BYTES,
 )
 # Persistence of the wall state (PROTOCOL.md "Persistence"): the roster,
 # sockets, presence, and heartbeat timestamps stay in memory. The snapshot
@@ -192,6 +194,14 @@ async def lifespan(_: FastAPI):
 # ---------------------------------------------------------------------------
 
 
+WAKE_LOCK_STATES = frozenset({"held", "released", "unsupported", "insecure", "denied"})
+
+
+def _wake_lock_value(value: Any) -> str | None:
+    """``value`` when it is one of the five reported states, else ``None``."""
+    return value if isinstance(value, str) and value in WAKE_LOCK_STATES else None
+
+
 class DeviceRegistration(BaseModel):
     """``POST /devices/register`` body — the one public write.
 
@@ -208,6 +218,9 @@ class DeviceRegistration(BaseModel):
     # A returning tablet may ask for the display number it had before the
     # server restarted. The server honours it only while it is free.
     number: int | None = Field(default=None, ge=1, le=MAX_DEVICES)
+    # Diagnostic only (R5): a value outside WAKE_LOCK_STATES is dropped rather
+    # than rejected, so a bad report can never keep a tablet off the wall.
+    wake_lock: Any = None
 
     @field_validator("device_type")
     @classmethod
@@ -852,9 +865,12 @@ async def device_register(device: DeviceRegistration):
         # re-registers while the same socket stays connected, and dropping
         # the viewport would silently invalidate a physical plan.
         for key in ("viewport", "connection_id", "clock", "clock_ok",
-                    "clock_samples", "clock_pending", "render_seq"):
+                    "clock_samples", "clock_pending", "render_seq", "wake_lock"):
             if key in existing:
                 record[key] = existing[key]
+    wake_lock = _wake_lock_value(device.wake_lock)
+    if wake_lock is not None:
+        record["wake_lock"] = wake_lock
     devices[device_id] = record
     # Stamp the monotonic contact reading too; presence expiry uses it.
     _touch_device(device_id)
@@ -946,6 +962,104 @@ async def delete_device(device_id: str):
         await _broadcast_wall()
 
     return {"removed": True, "device_id": key}
+
+
+class RebindCommand(BaseModel):
+    """``POST /devices/{device_id}/rebind`` body.
+
+    ``replaces`` is the id the wall remembers (a placement, slot or roster
+    record). ``number`` is only needed when the server restarted too: numbers
+    live in the roster, so the operator supplies the label on the glass.
+    """
+
+    replaces: UUID4
+    number: int | None = Field(default=None, ge=1, le=MAX_DEVICES)
+
+
+@app.post("/devices/{device_id}/rebind")
+async def rebind_device(device_id: str, command: RebindCommand):
+    """Move a lost identity's placement/slot, display records and number.
+
+    A tablet that changed origin (http to https, new host) lost its
+    localStorage and registered as a new device. The operator points that new
+    registration at the id the wall still remembers. The old id must be
+    offline: this is a hand-over, never a way to take a live tablet's place.
+    Saved layouts keep naming the old id; recall one and save it again.
+    """
+    new_id = _parse_device_id(device_id)
+    if new_id is None or new_id not in devices:
+        raise HTTPException(status_code=404, detail="Unknown device")
+    old_id = str(command.replaces)
+    if old_id == new_id:
+        raise HTTPException(status_code=422, detail="replaces must be a different device")
+    if _is_online(old_id):
+        raise HTTPException(status_code=409, detail="The replaced device is online")
+
+    layout = wall["layout"]
+    physical = layout.get("kind") == "physical"
+    held = layout["slots"] if physical else layout["placements"]
+    if old_id not in devices and old_id not in held:
+        raise HTTPException(status_code=404, detail="Unknown device to replace")
+    if new_id in held:
+        raise HTTPException(status_code=409, detail="The new device is already placed")
+
+    old_record = devices.get(old_id)
+    number = command.number
+    if number is None and old_record is not None:
+        number = old_record.get("number")
+    if number is not None and any(
+        other.get("number") == number
+        for key, other in devices.items()
+        if key not in (old_id, new_id)
+    ):
+        raise HTTPException(status_code=409, detail="That display number is in use")
+
+    try:
+        copied = displays.copy_records(old_id, new_id)
+    except displays.DisplayError as error:
+        raise HTTPException(status_code=409, detail=str(error)) from error
+
+    moved = old_id in held
+    if moved:
+        def apply(target: dict[str, Any]) -> None:
+            bucket = target["layout"]["slots" if physical else "placements"]
+            entry = bucket.pop(old_id)
+            if not physical:
+                entry["device_id"] = new_id
+            bucket[new_id] = entry
+
+        _commit_wall(apply)
+
+    record = devices[new_id]
+    renumbered = number is not None and record.get("number") != number
+    if number is not None:
+        record["number"] = number
+    devices.pop(old_id, None)
+    stale_socket = device_sockets.pop(old_id, None)
+    live_socket = device_sockets.get(new_id)
+
+    if stale_socket is not None:
+        with contextlib.suppress(Exception):
+            await stale_socket.close(code=WS_CLOSE_NORMAL)
+    if old_record is not None:
+        await _broadcast({"type": "device_removed", "device_id": old_id})
+    await _broadcast({"type": "device_updated", "device": _device_record(new_id)})
+    if moved:
+        await _broadcast_wall()
+    if renumbered and live_socket is not None:
+        # A tablet learns its number only from `welcome`; a normal close makes
+        # it reconnect (4409 would park it on the takeover screen).
+        with contextlib.suppress(Exception):
+            await live_socket.close(code=WS_CLOSE_NORMAL)
+
+    return {
+        "rebound": True,
+        "device_id": new_id,
+        "replaces": old_id,
+        "number": record.get("number"),
+        "placed": moved,
+        "display_records": copied,
+    }
 
 
 @app.get("/devices")
@@ -1589,6 +1703,116 @@ def verify_media(request: Request):
     problems = media.verify_integrity()
     return JSONResponse(
         content={"ok": not problems, "problems": problems},
+        headers={"Cache-Control": "no-store"},
+    )
+
+
+# ---------------------------------------------------------------------------
+# diagnostics (R5)
+# ---------------------------------------------------------------------------
+
+BACKUP_DIR_ENV = "TABLET_WALL_BACKUP_DIR"
+
+
+def _last_backup_at() -> str | None:
+    """Newest ``created_utc`` among manifests under ``TABLET_WALL_BACKUP_DIR``.
+
+    Read-only and best effort: the directory may itself be a snapshot or hold
+    snapshots one level down. Unset, unreadable and oversized all answer
+    ``None``; this server never writes backups.
+    """
+    root = os.environ.get(BACKUP_DIR_ENV)
+    if not root:
+        return None
+    paths = [os.path.join(root, "manifest.json")]
+    try:
+        with os.scandir(root) as entries:
+            paths += [
+                os.path.join(entry.path, "manifest.json")
+                for entry in entries
+                if entry.is_dir(follow_symlinks=False)
+            ]
+    except OSError:
+        pass
+    newest: str | None = None
+    for path in paths:
+        try:
+            if os.lstat(path).st_size > 16 * 1024 * 1024:
+                continue
+            with open(path, encoding="utf-8") as handle:
+                created = json.load(handle).get("created_utc")
+        except (OSError, ValueError, AttributeError):
+            continue
+        if isinstance(created, str) and len(created) <= 40 and (newest is None or created > newest):
+            newest = created
+    return newest
+
+
+def _media_diagnostics() -> dict[str, Any]:
+    """Quota and store counts; ``orphans`` are object files no row lists."""
+    media.ensure_dirs()
+    with persist._connection() as connection:
+        listed = {str(row[0]) for row in connection.execute("SELECT path FROM media_objects")}
+        assets_ready = connection.execute(
+            "SELECT COUNT(*) FROM media_assets WHERE state = 'ready'"
+        ).fetchone()[0]
+    root = media.media_dir()
+    orphans = 0
+    for directory, _dirs, names in os.walk(media.objects_dir()):
+        for name in names:
+            relative = os.path.relpath(os.path.join(directory, name), root)
+            if relative.replace(os.sep, "/") not in listed:
+                orphans += 1
+    return {
+        "quota_bytes": QUOTA_BYTES,
+        "used_bytes": media._tree_bytes(root),
+        "free_bytes": shutil.disk_usage(root).free,
+        "reserve_bytes": FREE_RESERVE_BYTES,
+        "objects": len(listed),
+        "assets": assets_ready,
+        "orphans": orphans,
+    }
+
+
+@app.get("/diagnostics")
+def get_diagnostics(request: Request, verify: bool = Query(default=False)):
+    """Operator-only storage and health readout.
+
+    Admitted exactly like the managed library (``media.admit_library``), so
+    it is unreachable on the tablet listener and fails closed while uploads
+    are disabled. Cheap by default; ``?verify=1`` additionally re-hashes every
+    ready object (``media.verify_integrity``) and reports objects whose bytes
+    are missing or no longer match their ID under ``media.integrity``.
+    """
+    try:
+        media.admit_library(request)
+    except media.StoreError as error:
+        return _store_error(error)
+    store = _media_diagnostics()
+    if verify:
+        problems = media.verify_integrity()
+        store["integrity"] = {"ok": not problems, "problems": problems}
+    try:
+        db_bytes = os.path.getsize(persist.db_path())
+    except OSError:
+        db_bytes = None
+    roster = list(devices)
+    wake_lock = {state: 0 for state in sorted(WAKE_LOCK_STATES)}
+    for device_id in roster:
+        state = devices[device_id].get("wake_lock")
+        if state in wake_lock:
+            wake_lock[state] += 1
+    return JSONResponse(
+        content={
+            "media": store,
+            "db": {"schema": persist.schema_version(), "bytes": db_bytes},
+            "backup": {"last_manifest_at": _last_backup_at()},
+            "clients": {
+                "online": sum(1 for device_id in roster if _is_online(device_id)),
+                "total": len(roster),
+                "wake_lock": wake_lock,
+            },
+        },
         headers={"Cache-Control": "no-store"},
     )
 
@@ -2304,6 +2528,12 @@ async def _device_loop(websocket: WebSocket, device_id: str) -> None:
             # A replaced socket must not keep the new one alive.
             if device_sockets.get(device_id) is websocket and device_id in devices:
                 _touch_device(device_id)
+                wake_lock = _wake_lock_value(payload.get("wake_lock"))
+                if wake_lock is not None and devices[device_id].get("wake_lock") != wake_lock:
+                    devices[device_id]["wake_lock"] = wake_lock
+                    await _broadcast(
+                        {"type": "device_updated", "device": _device_record(device_id)}
+                    )
         elif isinstance(payload, dict) and payload.get("type") == "viewport":
             viewport = payload.get("viewport")
             if (

@@ -251,12 +251,13 @@ node tests/client_image.test.js
 - **`device_type` is hardcoded to `"ipad"`.** The client reports the actual
   viewport for aspect-mismatch warnings, but device-type identification is not
   implemented.
-- **The server has no wake-lock story.** A tablet's screen will still sleep;
-  that needs either kiosk software or HTTPS plus the Screen Wake Lock API. The
-  page makes no wake-lock or visibility request, and its only fullscreen
-  request is the on-screen "Full screen" button (shown for 5 s after a touch),
-  so screen sleep and staying-foreground are entirely OS settings —
-  see [deploy/KIOSK.md](deploy/KIOSK.md).
+- **Screen sleep is still an OS decision.** In a secure context (HTTPS) the
+  page asks for a Screen Wake Lock while it is visible, retakes it when the
+  page returns, and reports `held`/`released`/`unsupported`/`insecure`/`denied`
+  per tablet in the roster. On a plain-HTTP origin the API does not exist, and
+  a held lock never replaces kiosk, Auto-Lock or power settings. Its only
+  fullscreen request is the on-screen "Full screen" button (shown for 5 s
+  after a touch) — see [deploy/KIOSK.md](deploy/KIOSK.md).
 
 ## Roadmap
 

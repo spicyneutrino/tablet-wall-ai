@@ -344,6 +344,7 @@
                     height: window.innerHeight,
                     device_type: DEVICE_TYPE,
                     number: deviceNumberValid(deviceNumber) ? deviceNumber : undefined,
+                    wake_lock: wakeLock.state(),
                 }),
             },
             REGISTER_TIMEOUT_MS
@@ -2107,15 +2108,118 @@
             ms = DEFAULT_HEARTBEAT_MS;
         }
         heartbeatTimer = setInterval(function () {
+            wakeLock.retry();
             try {
                 if (socket.readyState === WebSocket.OPEN) {
-                    socket.send(JSON.stringify({ type: "heartbeat" }));
+                    socket.send(
+                        JSON.stringify({ type: "heartbeat", wake_lock: wakeLock.state() })
+                    );
                 }
             } catch (err) {
                 warn("heartbeat send failed", err);
             }
         }, ms);
     }
+
+    /* ------------------------------------------------------------------ */
+    /* Screen wake lock                                                   */
+    /* ------------------------------------------------------------------ */
+
+    var WAKE_LOCK_RETRY_MS = 30000;
+
+    /* Keeps the screen awake while the page is visible and reports one of
+     * held | released | unsupported | insecure | denied through `report`.
+     * The API exists only in a secure context, so that is checked first: on
+     * a plain-HTTP origin "insecure" is the real reason, not "unsupported".
+     * The browser drops the lock when the page hides; it is requested again
+     * when the page is visible. A denied or lost lock is retried from the
+     * heartbeat, at most every WAKE_LOCK_RETRY_MS. This does not replace the
+     * OS screen-sleep and kiosk settings. */
+    function createWakeLock(report) {
+        var state = "released";
+        var sentinel = null;
+        var pending = false;
+        var lastAttempt = 0;
+
+        function set(next) {
+            if (next === state) return;
+            state = next;
+            report(next);
+        }
+
+        function visible() {
+            return document.visibilityState !== "hidden";
+        }
+
+        function acquire() {
+            if (window.isSecureContext !== true) return set("insecure");
+            var api = typeof navigator !== "undefined" ? navigator.wakeLock : null;
+            if (!api || typeof api.request !== "function") return set("unsupported");
+            if (sentinel || pending || !visible()) return;
+            pending = true;
+            lastAttempt = Date.now();
+            var request;
+            try {
+                request = Promise.resolve(api.request("screen"));
+            } catch (err) {
+                request = Promise.reject(err);
+            }
+            request.then(
+                function (lock) {
+                    pending = false;
+                    sentinel = lock;
+                    lock.addEventListener("release", function () {
+                        if (sentinel !== lock) return;
+                        sentinel = null;
+                        set("released");
+                    });
+                    set("held");
+                },
+                function (err) {
+                    pending = false;
+                    warn("wake lock request failed", err);
+                    set("denied");
+                }
+            );
+        }
+
+        document.addEventListener("visibilitychange", function () {
+            if (visible()) return acquire();
+            var lock = sentinel;
+            if (!lock) return;
+            sentinel = null;
+            set("released");
+            try {
+                Promise.resolve(lock.release()).catch(function () {});
+            } catch (err) {
+                warn("wake lock release failed", err);
+            }
+        });
+
+        acquire();
+        return {
+            state: function () {
+                return state;
+            },
+            retry: function () {
+                if (
+                    (state === "released" || state === "denied") &&
+                    Date.now() - lastAttempt >= WAKE_LOCK_RETRY_MS
+                ) {
+                    acquire();
+                }
+            },
+        };
+    }
+
+    var wakeLock = createWakeLock(function (state) {
+        if (!activeSocket || activeSocket.readyState !== 1) return;
+        try {
+            activeSocket.send(JSON.stringify({ type: "heartbeat", wake_lock: state }));
+        } catch (err) {
+            warn("could not report the wake lock", err);
+        }
+    });
 
     function applyColor(color) {
         if (typeof color !== "string" || color.length === 0) return;

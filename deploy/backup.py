@@ -14,7 +14,7 @@ What a snapshot is:
   for locks to clear instead of ever reporting a half-taken snapshot.
 * references are read **from the snapshot**, not from the live file: the
   active scene (``wall_state.scene``) and every ``saved_scenes.content``
-  document are walked for ``asset`` content IDs, and only those files are
+  document, and the stored playlist, are walked for ``asset`` content IDs, and only those files are
   copied out of the asset directory (top-level, regular, non-symlink; no
   upload, no scanning of sub-directories). Unreferenced files are not part of
   the wall and are not claimed. The copied bytes are hashed against the ID
@@ -486,8 +486,18 @@ def _read_snapshot(database_path: str) -> tuple[set[str], int | None]:
             saved = connection.execute(
                 "SELECT name, content FROM saved_scenes ORDER BY name"
             ).fetchall()
+            playlist = None
+            if "schema_meta" in tables:
+                found = connection.execute(
+                    "SELECT value FROM schema_meta WHERE key = 'playlist'"
+                ).fetchone()
+                playlist = found[0] if found else None
         except sqlite3.Error as exc:
             _fail(f"cannot read the database {database_path}: {exc}")
+        if playlist is not None:
+            # The playlist names assets no scene may reference; without this
+            # a playlist-only upload is omitted and restored as unavailable.
+            _collect_references(_parse_document(playlist, "the playlist"), "the playlist", references)
         for name, content in saved:
             document = _parse_document(content, f"saved scene {name!r}")
             if document is None:

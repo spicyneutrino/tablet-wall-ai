@@ -148,6 +148,42 @@ def save_calibration(
     return calibration(device, revision)
 
 
+def copy_records(source_id: str, target_id: str) -> dict[str, int]:
+    """Copy every profile and calibration revision from one device to another.
+
+    Origin migration gives a physical tablet a new ID; a saved slot names
+    revisions, so the rows keep their revision numbers under the new ID. The
+    source rows are never touched (they stay the history older layouts name).
+    A target that already has rows of its own is refused rather than merged.
+    """
+    source, target = _device(source_id), _device(target_id)
+    with persist._connection() as connection:
+        count = (
+            "SELECT (SELECT COUNT(*) FROM display_profiles WHERE device_id = ?) + "
+            "(SELECT COUNT(*) FROM calibrations WHERE device_id = ?)"
+        )
+        if not connection.execute(count, (source, source)).fetchone()[0]:
+            return {"profiles": 0, "calibrations": 0}
+        if connection.execute(count, (target, target)).fetchone()[0]:
+            raise DisplayError("the new device already has display records")
+        profiles = connection.execute(
+            "INSERT INTO display_profiles SELECT ?, revision, active_width_mm, "
+            "active_height_mm, bezel_left_mm, bezel_top_mm, bezel_right_mm, "
+            "bezel_bottom_mm, panel_pixels_width, panel_pixels_height, label, "
+            "provenance, created_at FROM display_profiles WHERE device_id = ?",
+            (target, source),
+        ).rowcount
+        calibrations = connection.execute(
+            "INSERT INTO calibrations SELECT ?, revision, profile_revision, "
+            "viewport_width, viewport_height, dpr, orientation, mode, quarter_turn, "
+            "panel_offset_x_mm, panel_offset_y_mm, mm_per_css_x, mm_per_css_y, "
+            "anchor_edge, uncertainty_mm, method, created_at "
+            "FROM calibrations WHERE device_id = ?",
+            (target, source),
+        ).rowcount
+    return {"profiles": profiles, "calibrations": calibrations}
+
+
 def _negative_number(value: Any, label: str) -> float:
     if not isinstance(value, (int, float)) or isinstance(value, bool):
         raise DisplayError(f"{label} must be a number")

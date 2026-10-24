@@ -74,7 +74,7 @@ http://127.0.0.1:{tablet_port} {{
 \thandle @uploads {{
 \t\trespond "Forbidden" 403
 \t}}
-\t@media path /media*
+\t@media path /media* /diagnostics*
 \thandle @media {{
 \t\trespond "Forbidden" 403
 \t}}
@@ -92,7 +92,7 @@ http://127.0.0.1:{tablet_port} {{
 \t}}
 }}
 http://127.0.0.1:{operator_port} {{
-\t@surface path /uploads* /media*
+\t@surface path /uploads* /media* /diagnostics*
 \thandle @surface {{
 \t\tbasic_auth {{
 \t\t\toperator {password_hash}
@@ -140,12 +140,20 @@ http://127.0.0.1:{operator_port} {{
         # Tablet listener: never reaches upload/library, and a forged internal
         # credential cannot change that.
         assert httpx.get(f"{tablet}/media", headers={"X-Tablet-Wall-Operator": CREDENTIAL}).status_code == 403
+        assert httpx.get(f"{tablet}/diagnostics", headers={"X-Tablet-Wall-Operator": CREDENTIAL}).status_code == 403
         assert httpx.post(f"{tablet}/uploads", content=jpeg(),
                           headers={"X-Tablet-Wall-Operator": CREDENTIAL,
                                    "Origin": operator_origin}).status_code == 403
 
         # Operator listener: no auth is refused by Caddy, not the app.
         assert httpx.get(f"{operator}/media").status_code == 401
+
+        # Diagnostics ride the library's admission: refused without auth,
+        # served with it, and never reachable on the tablet listener.
+        assert httpx.get(f"{operator}/diagnostics").status_code == 401
+        diagnostics = httpx.get(f"{operator}/diagnostics", auth=auth)
+        assert diagnostics.status_code == 200, diagnostics.text
+        assert diagnostics.json()["media"]["assets"] == 0
 
         # Auth + library read: Caddy supplied the credential on a GET.
         library = httpx.get(f"{operator}/media", auth=auth)

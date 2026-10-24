@@ -58,7 +58,7 @@ def test_tablet_ingress_strips_the_operator_credential():
     assert tablet.count("header_up -X-Tablet-Wall-Operator") == 4
     assert not re.search(r"header_up\s+X-Tablet-Wall-Operator", tablet)
     assert "header_up X-Tablet-Wall-Operator {env.WALL_OPERATOR_CREDENTIAL}" in operator
-    for path in ("/uploads", "/media"):
+    for path in ("/uploads", "/media", "/diagnostics", "/rebind"):
         assert path not in tablet
 
 
