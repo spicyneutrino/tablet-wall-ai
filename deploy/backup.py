@@ -53,6 +53,8 @@ already-corrupt database is any less corrupt than its source.
 from __future__ import annotations
 
 import argparse
+import contextlib
+import fcntl
 import hashlib
 import json
 import os
@@ -66,17 +68,23 @@ import sys
 import time
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Any, NoReturn, Sequence
+from typing import Any, Iterator, NoReturn, Sequence
 
 # The artifact layout, all relative and fixed: the manifest may not point at
 # anything outside these two prefixes, so a hostile or stale manifest cannot
 # steer verification (or restore) at an arbitrary path.
-MANIFEST_VERSION = 1
+MANIFEST_VERSION = 2
+SUPPORTED_MANIFEST_VERSIONS = (1, 2)
 MANIFEST_NAME = "manifest.json"
 DATABASE_DIR = "database"
 ASSETS_DIR = "assets"
+MEDIA_DIR = "media"
+MEDIA_OBJECTS_DIR = "media/objects"
 DATABASE_REL = DATABASE_DIR + "/wall.db"
 ASSETS_PREFIX = ASSETS_DIR + "/"
+MEDIA_OBJECTS_PREFIX = MEDIA_DIR + "/objects/"
+STORE_LOCK_NAME = ".store.lock"
+MEDIA_PIPELINE_VERSION = 1
 
 # The schema this tool expects to find in a source database. It is read, never
 # written: there is no CREATE or ALTER anywhere below, so a backup can never
@@ -109,7 +117,7 @@ PNG_MAGIC = b"\x89PNG\r\n\x1a\n"
 MAGIC_BY_FORMAT = {"jpeg": JPEG_MAGIC, "png": PNG_MAGIC}
 EXTENSIONS_BY_FORMAT = {"jpeg": (".jpg", ".jpeg"), "png": (".png",)}
 
-MANIFEST_KEYS = {
+MANIFEST_KEYS_V1 = {
     "manifest_version",
     "created_utc",
     "database",
@@ -117,8 +125,22 @@ MANIFEST_KEYS = {
     "references",
     "revision",
 }
+MANIFEST_KEYS_V2 = MANIFEST_KEYS_V1 | {
+    "schema_version",
+    "pipeline_version",
+    "scope",
+    "media_objects",
+    "media_assets",
+    "omitted_media",
+}
 DIGEST_ENTRY_KEYS = {"path", "bytes", "sha256"}
 ASSET_ENTRY_KEYS = {"id", "path", "bytes", "sha256"}
+MEDIA_OBJECT_KEYS = {"object_id", "path", "bytes", "sha256", "width", "height", "mime"}
+MEDIA_ASSET_KEYS = {"asset_id", "display_object", "master_object", "renditions"}
+MEDIA_RENDITION_KEYS = {"role", "object_id", "width", "height"}
+UUID4_PATTERN = re.compile(
+    r"[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-4[0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}\Z"
+)
 
 _PROG = "backup.py"
 
@@ -478,6 +500,154 @@ def _read_snapshot(database_path: str) -> tuple[set[str], int | None]:
         connection.close()
 
 
+def _schema_version(database_path: str) -> int:
+    connection = _connect_ro(database_path)
+    try:
+        return int(connection.execute("PRAGMA user_version").fetchone()[0])
+    except sqlite3.Error as exc:
+        _fail(f"cannot read the schema version from {database_path}: {exc}")
+    finally:
+        connection.close()
+
+
+def _read_media_closure(
+    database_path: str, references: set[str]
+) -> tuple[list[dict[str, Any]], list[dict[str, Any]], list[str]]:
+    """Read the managed-media closure from the captured database.
+
+    A scene root is a published object ID. The asset that owns it contributes
+    its master, display, fallback and thumbnail objects, so the manifest can
+    describe transitive closure without pretending those extra objects are
+    scene references. Ready assets no scene references are returned as
+    ``omitted``: their rows are marked unavailable in the captured copy rather
+    than being claimed as backed up.
+    """
+    connection = _connect_ro(database_path)
+    try:
+        try:
+            tables = {
+                row[0]
+                for row in connection.execute(
+                    "SELECT name FROM sqlite_master WHERE type='table'"
+                )
+            }
+            required = {"media_assets", "media_objects", "media_renditions"}
+            if not required <= tables:
+                return [], [], []
+            object_rows = connection.execute(
+                "SELECT object_id, mime, bytes, width, height, path FROM media_objects"
+            ).fetchall()
+            asset_rows = connection.execute(
+                "SELECT asset_id, display_object, master_object, state FROM media_assets"
+            ).fetchall()
+            rendition_rows = connection.execute(
+                "SELECT asset_id, object_id, role, width, height FROM media_renditions"
+            ).fetchall()
+        except sqlite3.Error as exc:
+            _fail(f"cannot read managed media from {database_path}: {exc}")
+    finally:
+        connection.close()
+
+    objects = {
+        str(row[0]): {
+            "object_id": str(row[0]), "mime": str(row[1]), "bytes": int(row[2]),
+            "width": int(row[3]), "height": int(row[4]), "path": str(row[5]),
+        }
+        for row in object_rows
+    }
+    by_asset: dict[str, list[dict[str, Any]]] = {}
+    for asset_id, object_id, role, width, height in rendition_rows:
+        by_asset.setdefault(str(asset_id), []).append(
+            {"role": str(role), "object_id": str(object_id),
+             "width": int(width), "height": int(height)}
+        )
+    referenced_assets: set[str] = set()
+    for asset_id, renditions in by_asset.items():
+        if any(rendition["object_id"] in references for rendition in renditions):
+            referenced_assets.add(asset_id)
+
+    media_assets: list[dict[str, Any]] = []
+    used: set[str] = set()
+    for asset_id, display_object, master_object, state in asset_rows:
+        asset_id = str(asset_id)
+        if asset_id not in referenced_assets:
+            continue
+        renditions = sorted(
+            by_asset.get(asset_id, []), key=lambda entry: entry["role"]
+        )
+        if not renditions:
+            _fail(f"managed asset {asset_id} has no renditions")
+        for object_id in {str(display_object), str(master_object)} | {
+            rendition["object_id"] for rendition in renditions
+        }:
+            if object_id not in objects:
+                _fail(f"managed asset {asset_id} names a missing object {object_id}")
+            used.add(object_id)
+        media_assets.append({
+            "asset_id": asset_id,
+            "display_object": str(display_object),
+            "master_object": str(master_object),
+            "renditions": renditions,
+        })
+
+    media_objects = []
+    for object_id in sorted(used):
+        entry = dict(objects[object_id])
+        entry["path"] = MEDIA_DIR + "/" + entry["path"]
+        entry["sha256"] = object_id.split(":", 1)[1]
+        media_objects.append(entry)
+
+    omitted = sorted(
+        str(asset_id)
+        for asset_id, _display, _master, _state in asset_rows
+        if str(asset_id) not in referenced_assets
+    )
+    return media_objects, media_assets, omitted
+
+
+def _mark_omitted_media(database_path: str, omitted: list[str]) -> None:
+    """Mark unreferenced ready assets unavailable inside the captured copy.
+
+    This runs only on the snapshot, never on the live database, and before the
+    snapshot's final digest. The restored application therefore never lists
+    or serves a ready asset whose bytes were deliberately left out of the
+    backup.
+    """
+    if not omitted:
+        return
+    connection = sqlite3.connect(database_path)
+    try:
+        connection.executemany(
+            "UPDATE media_assets SET state = 'unavailable' WHERE asset_id = ?",
+            [(asset_id,) for asset_id in omitted],
+        )
+        connection.commit()
+    except sqlite3.Error as exc:
+        _fail(f"cannot mark omitted media in the captured database: {exc}")
+    finally:
+        connection.close()
+
+
+@contextlib.contextmanager
+def _store_lock(media_source: str) -> Iterator[None]:
+    """Hold the app's shared store lock from capture through verification.
+
+    The lock file is the same stable inode ``tabletwall.media`` uses. A
+    missing media directory is allowed only when the captured database has no
+    media closure; the caller decides that after reading it, so this context
+    is entered only when a media directory exists.
+    """
+    os.makedirs(media_source, exist_ok=True)
+    lock = os.path.join(media_source, STORE_LOCK_NAME)
+    fd = os.open(lock, os.O_CREAT | os.O_RDONLY | os.O_CLOEXEC, 0o600)
+    try:
+        fcntl.flock(fd, fcntl.LOCK_SH)
+        yield
+    finally:
+        fcntl.flock(fd, fcntl.LOCK_UN)
+        os.close(fd)
+
+
 # ---------------------------------------------------------------------------
 # locating and copying referenced assets
 # ---------------------------------------------------------------------------
@@ -651,30 +821,40 @@ def _require_digest_entry(entry: dict[str, Any], label: str) -> None:
 
 
 def _validate_manifest(manifest: Any) -> None:
-    """Check the manifest's shape, version, path safety and reference closure.
+    """Check a version 1 or version 2 manifest's shape and closure.
 
-    Every rule that decides *where* bytes are read from lives here, ahead of
-    any read: a manifest is untrusted input like any other file on disk.
-    Closure is part of the shape too — a manifest listing an asset no scene
-    references, or omitting one that is referenced, is rejected before the
-    filesystem is touched.
+    Version 1 artifacts remain readable exactly as they were: their
+    ``assets`` list is the scene-root reference list. Version 2 separates
+    scene roots (``references``) from curated bytes (``assets``), managed
+    objects (``media_objects``) and the asset-to-rendition relationships
+    (``media_assets``), because one managed upload contributes several objects
+    that are not themselves scene roots.
     """
     if not isinstance(manifest, dict):
         _fail(f"{MANIFEST_NAME} must contain a JSON object")
-    missing = sorted(MANIFEST_KEYS - set(manifest))
-    unexpected = sorted(set(manifest) - MANIFEST_KEYS)
-    if missing or unexpected:
-        _fail(
-            f"{MANIFEST_NAME} must carry exactly {sorted(MANIFEST_KEYS)} "
-            f"(missing: {missing}, unexpected: {unexpected})"
-        )
-    version = manifest["manifest_version"]
+    version = manifest.get("manifest_version")
     if type(version) is not int:
         _fail(f"{MANIFEST_NAME} manifest_version must be an integer, not {version!r}")
-    if version != MANIFEST_VERSION:
+    if version == 1:
+        _validate_manifest_v1(manifest)
+        return
+    if version == 2:
+        _validate_manifest_v2(manifest)
+        return
+    _fail(
+        f"unsupported manifest version {version}: this tool reads versions "
+        f"{', '.join(str(v) for v in SUPPORTED_MANIFEST_VERSIONS)}"
+    )
+
+
+def _validate_manifest_v1(manifest: dict[str, Any]) -> None:
+    """The original manifest: assets list equals the scene-root references."""
+    missing = sorted(MANIFEST_KEYS_V1 - set(manifest))
+    unexpected = sorted(set(manifest) - MANIFEST_KEYS_V1)
+    if missing or unexpected:
         _fail(
-            f"unsupported manifest version {version}: this tool reads version "
-            f"{MANIFEST_VERSION}"
+            f"{MANIFEST_NAME} must carry exactly {sorted(MANIFEST_KEYS_V1)} "
+            f"(missing: {missing}, unexpected: {unexpected})"
         )
     if not isinstance(manifest["created_utc"], str):
         _fail(f"{MANIFEST_NAME} created_utc must be a string")
@@ -692,18 +872,30 @@ def _validate_manifest(manifest: Any) -> None:
             f"manifest database path must be {DATABASE_REL!r}, not {database['path']!r}"
         )
 
-    references = manifest["references"]
+    seen_references = _validate_reference_list(manifest["references"])
+    seen_ids = _validate_curated_assets(manifest["assets"])
+    if seen_ids != seen_references:
+        _fail(
+            "manifest references and assets disagree: only in references "
+            f"{sorted(seen_references - seen_ids)}, only in assets "
+            f"{sorted(seen_ids - seen_references)}"
+        )
+
+
+def _validate_reference_list(references: Any) -> set[str]:
     if not isinstance(references, list):
         _fail(f"{MANIFEST_NAME} references must be a list")
-    seen_references: set[str] = set()
+    seen: set[str] = set()
     for reference in references:
         if not isinstance(reference, str) or ASSET_ID_PATTERN.match(reference) is None:
             _fail(f"manifest reference is not a content id: {reference!r}")
-        if reference in seen_references:
+        if reference in seen:
             _fail(f"manifest lists reference {reference} twice")
-        seen_references.add(reference)
+        seen.add(reference)
+    return seen
 
-    assets = manifest["assets"]
+
+def _validate_curated_assets(assets: Any) -> set[str]:
     if not isinstance(assets, list):
         _fail(f"{MANIFEST_NAME} assets must be a list")
     seen_ids: set[str] = set()
@@ -744,12 +936,167 @@ def _validate_manifest(manifest: Any) -> None:
         if entry["path"] in seen_paths:
             _fail(f"manifest lists the same asset path twice: {entry['path']!r}")
         seen_paths.add(entry["path"])
+    return seen_ids
 
-    if seen_ids != seen_references:
+
+def _validate_manifest_v2(manifest: dict[str, Any]) -> None:
+    missing = sorted(MANIFEST_KEYS_V2 - set(manifest))
+    unexpected = sorted(set(manifest) - MANIFEST_KEYS_V2)
+    if missing or unexpected:
         _fail(
-            "manifest references and assets disagree: only in references "
-            f"{sorted(seen_references - seen_ids)}, only in assets "
-            f"{sorted(seen_ids - seen_references)}"
+            f"{MANIFEST_NAME} must carry exactly {sorted(MANIFEST_KEYS_V2)} "
+            f"(missing: {missing}, unexpected: {unexpected})"
+        )
+    if not isinstance(manifest["created_utc"], str):
+        _fail(f"{MANIFEST_NAME} created_utc must be a string")
+    revision = manifest["revision"]
+    if revision is not None and type(revision) is not int:
+        _fail(f"{MANIFEST_NAME} revision must be an integer or null, not {revision!r}")
+    if type(manifest["schema_version"]) is not int or manifest["schema_version"] < 0:
+        _fail(f"{MANIFEST_NAME} schema_version must be a non-negative integer")
+    if type(manifest["pipeline_version"]) is not int or manifest["pipeline_version"] < 1:
+        _fail(f"{MANIFEST_NAME} pipeline_version must be a positive integer")
+    if manifest["scope"] != "referenced":
+        _fail(f"{MANIFEST_NAME} scope must be 'referenced', not {manifest['scope']!r}")
+
+    database = manifest["database"]
+    if not isinstance(database, dict) or set(database) != DIGEST_ENTRY_KEYS:
+        _fail(f"{MANIFEST_NAME} database must be an object with exactly path, bytes, sha256")
+    _require_digest_entry(database, "database")
+    _require_safe_relative(database["path"], "database")
+    if database["path"] != DATABASE_REL:
+        _fail(
+            f"manifest database path must be {DATABASE_REL!r}, not {database['path']!r}"
+        )
+
+    references = _validate_reference_list(manifest["references"])
+    curated_ids = _validate_curated_assets(manifest["assets"])
+
+    objects = manifest["media_objects"]
+    if not isinstance(objects, list):
+        _fail(f"{MANIFEST_NAME} media_objects must be a list")
+    object_ids: set[str] = set()
+    object_paths: set[str] = set()
+    for entry in objects:
+        if not isinstance(entry, dict) or set(entry) != MEDIA_OBJECT_KEYS:
+            _fail(
+                f"{MANIFEST_NAME} media objects must carry exactly "
+                f"{sorted(MEDIA_OBJECT_KEYS)}"
+            )
+        object_id = entry["object_id"]
+        if not isinstance(object_id, str) or ASSET_ID_PATTERN.match(object_id) is None:
+            _fail(f"manifest media object id is not a content id: {object_id!r}")
+        if object_id in object_ids:
+            _fail(f"manifest lists media object {object_id} twice")
+        object_ids.add(object_id)
+        path = entry["path"]
+        _require_safe_relative(path, f"media object {object_id}")
+        if not path.startswith(MEDIA_OBJECTS_PREFIX):
+            _fail(
+                f"manifest media path must start with {MEDIA_OBJECTS_PREFIX!r}, "
+                f"not {path!r}"
+            )
+        relative = path[len(MEDIA_OBJECTS_PREFIX) :]
+        parts = relative.split("/")
+        digest = object_id.split(":", 1)[1]
+        if len(parts) != 2 or parts[0] != digest[:2] or parts[1] != digest + ".jpg":
+            _fail(
+                f"manifest media path must be {MEDIA_OBJECTS_PREFIX}<aa>/<hex>.jpg, "
+                f"not {path!r}"
+            )
+        if path in object_paths:
+            _fail(f"manifest lists the same media path twice: {path!r}")
+        object_paths.add(path)
+        if entry["sha256"] != digest:
+            _fail(f"manifest digest for {object_id} does not match its own id")
+        for field in ("bytes", "width", "height"):
+            if type(entry[field]) is not int or entry[field] <= 0:
+                _fail(f"manifest media object {object_id} has an invalid {field}")
+        if entry["bytes"] > MAX_ASSET_BYTES:
+            _fail(f"manifest media object {object_id} exceeds the byte ceiling")
+        if entry["mime"] != "image/jpeg":
+            _fail(f"manifest media object {object_id} is not image/jpeg")
+
+    assets = manifest["media_assets"]
+    if not isinstance(assets, list):
+        _fail(f"{MANIFEST_NAME} media_assets must be a list")
+    asset_ids: set[str] = set()
+    covered: set[str] = set()
+    for entry in assets:
+        if not isinstance(entry, dict) or set(entry) != MEDIA_ASSET_KEYS:
+            _fail(
+                f"{MANIFEST_NAME} media assets must carry exactly "
+                f"{sorted(MEDIA_ASSET_KEYS)}"
+            )
+        asset_id = entry["asset_id"]
+        if not isinstance(asset_id, str) or UUID4_PATTERN.match(asset_id) is None:
+            _fail(f"manifest media asset id is not a UUID4: {asset_id!r}")
+        if asset_id in asset_ids:
+            _fail(f"manifest lists media asset {asset_id} twice")
+        asset_ids.add(asset_id)
+        for field in ("display_object", "master_object"):
+            if entry[field] not in object_ids:
+                _fail(f"media asset {asset_id} names an unknown {field}")
+        renditions = entry["renditions"]
+        if not isinstance(renditions, list):
+            _fail(f"media asset {asset_id} renditions must be a list")
+        roles: dict[str, str] = {}
+        for rendition in renditions:
+            if not isinstance(rendition, dict) or set(rendition) != MEDIA_RENDITION_KEYS:
+                _fail(
+                    f"media asset {asset_id} renditions must carry exactly "
+                    f"role, object_id"
+                )
+            role = rendition["role"]
+            if role not in {"master", "display", "fallback", "thumbnail"}:
+                _fail(f"media asset {asset_id} has an unknown role {role!r}")
+            if role in roles:
+                _fail(f"media asset {asset_id} lists role {role} twice")
+            if rendition["object_id"] not in object_ids:
+                _fail(f"media asset {asset_id} names an unknown object")
+            for field in ("width", "height"):
+                if type(rendition[field]) is not int or rendition[field] <= 0:
+                    _fail(f"media asset {asset_id} has an invalid rendition {field}")
+            roles[role] = rendition["object_id"]
+            covered.add(rendition["object_id"])
+        if set(roles) != {"master", "display", "fallback", "thumbnail"}:
+            _fail(f"media asset {asset_id} is missing a rendition role")
+        if roles["display"] != entry["display_object"]:
+            _fail(f"media asset {asset_id} display object disagrees with its role")
+        if roles["master"] != entry["master_object"]:
+            _fail(f"media asset {asset_id} master object disagrees with its role")
+        if not (set(roles.values()) & references):
+            _fail(f"media asset {asset_id} is not referenced by any scene")
+
+    omitted = manifest["omitted_media"]
+    if not isinstance(omitted, list):
+        _fail(f"{MANIFEST_NAME} omitted_media must be a list")
+    seen_omitted: set[str] = set()
+    for asset_id in omitted:
+        if not isinstance(asset_id, str) or UUID4_PATTERN.match(asset_id) is None:
+            _fail(f"omitted media id is not a UUID4: {asset_id!r}")
+        if asset_id in seen_omitted:
+            _fail(f"manifest lists omitted media {asset_id} twice")
+        seen_omitted.add(asset_id)
+    overlap = seen_omitted & asset_ids
+    if overlap:
+        _fail(f"manifest includes and omits the same media asset: {sorted(overlap)}")
+    if covered != object_ids:
+        _fail(
+            "manifest media objects and renditions disagree: unreferenced objects "
+            f"{sorted(object_ids - covered)}"
+        )
+    managed_references = references & object_ids
+    if managed_references - covered:
+        _fail(
+            "manifest references name unmanaged objects: "
+            f"{sorted(managed_references - covered)}"
+        )
+    if curated_ids != references - object_ids:
+        _fail(
+            "manifest references and curated assets disagree: only in references "
+            f"{sorted(references - object_ids - curated_ids)}, only in assets "
+            f"{sorted(curated_ids - (references - object_ids))}"
         )
 
 
@@ -851,6 +1198,11 @@ def _check_tree(root: str, manifest: dict[str, Any]) -> None:
     expected = {MANIFEST_NAME, manifest["database"]["path"]}
     expected.update(entry["path"] for entry in manifest["assets"])
     allowed_directories = {"", DATABASE_DIR, ASSETS_DIR}
+    if manifest["manifest_version"] == 2:
+        expected.update(entry["path"] for entry in manifest["media_objects"])
+        allowed_directories |= {MEDIA_DIR, MEDIA_OBJECTS_DIR}
+        for entry in manifest["media_objects"]:
+            allowed_directories.add(posixpath.dirname(entry["path"]))
     seen: set[str] = set()
     for directory, dirnames, filenames in os.walk(root, followlinks=False):
         relative_directory = os.path.relpath(directory, root)
@@ -910,6 +1262,61 @@ def _check_reference_closure(references: set[str], manifest: dict[str, Any]) -> 
         )
 
 
+def _check_manifest_closure(
+    database_path: str, references: set[str], manifest: dict[str, Any]
+) -> None:
+    """Database and manifest must describe the same closure, version-specifically."""
+    if manifest["manifest_version"] == 1:
+        _check_reference_closure(references, manifest)
+        return
+    if references != set(manifest["references"]):
+        _fail(
+            "reference closure failed: only in the database "
+            f"{sorted(references - set(manifest['references']))}, only in the "
+            f"manifest {sorted(set(manifest['references']) - references)}"
+        )
+    objects, assets, omitted = _read_media_closure(database_path, references)
+    wanted_objects = {entry["object_id"]: entry for entry in manifest["media_objects"]}
+    actual_objects = {entry["object_id"]: entry for entry in objects}
+    if set(wanted_objects) != set(actual_objects):
+        _fail(
+            "managed object closure failed: only in the database "
+            f"{sorted(set(actual_objects) - set(wanted_objects))}, only in the "
+            f"manifest {sorted(set(wanted_objects) - set(actual_objects))}"
+        )
+    for object_id, wanted in wanted_objects.items():
+        actual = actual_objects[object_id]
+        for field in ("path", "bytes", "sha256", "width", "height", "mime"):
+            if wanted[field] != actual[field]:
+                _fail(
+                    f"managed object {object_id} {field} disagrees between the "
+                    f"database and the manifest"
+                )
+    wanted_assets = {entry["asset_id"]: entry for entry in manifest["media_assets"]}
+    actual_assets = {entry["asset_id"]: entry for entry in assets}
+    if set(wanted_assets) != set(actual_assets):
+        _fail(
+            "managed asset closure failed: only in the database "
+            f"{sorted(set(actual_assets) - set(wanted_assets))}, only in the "
+            f"manifest {sorted(set(wanted_assets) - set(actual_assets))}"
+        )
+    for asset_id, wanted in wanted_assets.items():
+        actual = actual_assets[asset_id]
+        if (
+            wanted["display_object"] != actual["display_object"]
+            or wanted["master_object"] != actual["master_object"]
+            or sorted(wanted["renditions"], key=lambda entry: entry["role"])
+            != sorted(actual["renditions"], key=lambda entry: entry["role"])
+        ):
+            _fail(f"managed asset {asset_id} disagrees between the database and the manifest")
+    if sorted(omitted) != sorted(manifest["omitted_media"]):
+        _fail(
+            "omitted media closure failed: only in the database "
+            f"{sorted(set(omitted) - set(manifest['omitted_media']))}, only in "
+            f"the manifest {sorted(set(manifest['omitted_media']) - set(omitted))}"
+        )
+
+
 def verify_artifact(src: str) -> dict[str, Any]:
     """Fully check a snapshot directory; return its manifest or raise.
 
@@ -930,8 +1337,13 @@ def verify_artifact(src: str) -> dict[str, Any]:
         _check_digest_file(
             _artifact_file(root, entry["path"]), entry, f"asset {entry['id']}"
         )
+    for entry in manifest.get("media_objects", []):
+        _check_digest_file(
+            _artifact_file(root, entry["path"]), entry,
+            f"media object {entry['object_id']}",
+        )
     references, revision = _read_snapshot(database_path)
-    _check_reference_closure(references, manifest)
+    _check_manifest_closure(database_path, references, manifest)
     if revision != manifest["revision"]:
         _fail(
             f"manifest revision {manifest['revision']!r} does not match the "
@@ -945,7 +1357,9 @@ def verify_artifact(src: str) -> dict[str, Any]:
 # ---------------------------------------------------------------------------
 
 
-def _assert_service_stopped(db_target: str, assets_target: str) -> None:
+def _assert_service_stopped(
+    db_target: str, assets_target: str, media_target: str | None = None
+) -> None:
     """Refuse targets the current environment still names for the service.
 
     A best-effort check and nothing more: the tool cannot see whether the
@@ -957,10 +1371,13 @@ def _assert_service_stopped(db_target: str, assets_target: str) -> None:
     says so, because a guard that pretended otherwise would be worse than
     none.
     """
-    for variable, target in (
+    configured_targets = [
         ("TABLET_WALL_DB", db_target),
         ("TABLET_WALL_ASSET_DIR", assets_target),
-    ):
+    ]
+    if media_target is not None:
+        configured_targets.append(("TABLET_WALL_MEDIA_DIR", media_target))
+    for variable, target in configured_targets:
         configured = os.environ.get(variable)
         if not configured:
             continue
@@ -1033,6 +1450,17 @@ def _print_summary(heading: str, root: str, manifest: dict[str, Any]) -> None:
         f"sha256:{manifest['database']['sha256']})"
     )
     print(f"  assets: {len(manifest['assets'])} referenced file(s), {asset_bytes} bytes")
+    if manifest["manifest_version"] == 2:
+        media_bytes = sum(entry["bytes"] for entry in manifest["media_objects"])
+        print(
+            f"  media: {len(manifest['media_assets'])} managed asset(s), "
+            f"{len(manifest['media_objects'])} object(s), {media_bytes} bytes"
+        )
+        print(f"  omitted media: {len(manifest['omitted_media'])} unused upload(s)")
+        print(
+            f"  schema {manifest['schema_version']}, pipeline "
+            f"{manifest['pipeline_version']}, scope {manifest['scope']}"
+        )
     print(f"  revision: {manifest['revision']}")
     print(f"  references: {len(manifest['references'])}")
 
@@ -1046,6 +1474,7 @@ def cmd_backup(args: argparse.Namespace) -> int:
     """``backup --db PATH --assets DIR --dest DIR`` — snapshot into a new directory."""
     db_source = os.path.abspath(args.db)
     assets_source = os.path.abspath(args.assets)
+    media_source = os.path.abspath(args.media)
     dest = os.path.abspath(args.dest)
 
     # Every refusal that can be decided from the paths alone happens before
@@ -1057,6 +1486,8 @@ def cmd_backup(args: argparse.Namespace) -> int:
         _fail(f"source database is a directory: {db_source}")
     if os.path.exists(assets_source) and not os.path.isdir(assets_source):
         _fail(f"asset path is not a directory: {assets_source}")
+    if os.path.exists(media_source) and not os.path.isdir(media_source):
+        _fail(f"media path is not a directory: {media_source}")
     if dest == db_source or dest == assets_source:
         _fail(f"destination must not be one of the source paths: {dest}")
     if os.path.lexists(dest):
@@ -1079,66 +1510,108 @@ def cmd_backup(args: argparse.Namespace) -> int:
     staging_ino = os.lstat(staging).st_ino
 
     try:
-        os.mkdir(os.path.join(staging, DATABASE_DIR), 0o777)
-        snapshot_path = _artifact_file(staging, DATABASE_REL)
-        _snapshot_database(db_source, snapshot_path)
-        # References come from the snapshot, never from the live file: they
-        # must describe exactly the state that was copied.
-        references, revision = _read_snapshot(snapshot_path)
+        lock = _store_lock(media_source) if os.path.isdir(media_source) else contextlib.nullcontext()
+        with lock:
+            os.mkdir(os.path.join(staging, DATABASE_DIR), 0o777)
+            snapshot_path = _artifact_file(staging, DATABASE_REL)
+            _snapshot_database(db_source, snapshot_path)
+            # References and managed closure come from the snapshot, never
+            # from the live file: they describe exactly the state copied.
+            references, revision = _read_snapshot(snapshot_path)
+            media_objects, media_assets, omitted = _read_media_closure(
+                snapshot_path, references
+            )
+            if media_objects and not os.path.isdir(media_source):
+                _fail(
+                    f"the captured database references managed media, but "
+                    f"{media_source} does not exist"
+                )
+            _mark_omitted_media(snapshot_path, omitted)
 
-        os.mkdir(os.path.join(staging, ASSETS_DIR), 0o777)
-        digests: dict[str, tuple[str, int, bytes] | None] = {}
-        asset_entries: list[dict[str, Any]] = []
-        for asset_id in sorted(references):
-            source_path, source_name, source_bytes = _locate_asset(
-                assets_source, asset_id, digests
-            )
-            filename = _asset_filename(asset_id, source_name)
-            _asset_ino, written = _copy_verified(
-                source_path,
-                os.path.join(staging, ASSETS_DIR, filename),
-                expected_sha256=asset_id.split(":", 1)[1],
-                expected_bytes=source_bytes,
-            )
-            asset_entries.append(
-                {
-                    "id": asset_id,
-                    "path": ASSETS_PREFIX + filename,
-                    "bytes": written,
-                    "sha256": asset_id.split(":", 1)[1],
-                }
-            )
+            os.mkdir(os.path.join(staging, ASSETS_DIR), 0o777)
+            digests: dict[str, tuple[str, int, bytes] | None] = {}
+            asset_entries: list[dict[str, Any]] = []
+            managed_ids = {entry["object_id"] for entry in media_objects}
+            for asset_id in sorted(references):
+                if asset_id in managed_ids:
+                    continue
+                source_path, source_name, source_bytes = _locate_asset(
+                    assets_source, asset_id, digests
+                )
+                filename = _asset_filename(asset_id, source_name)
+                _asset_ino, written = _copy_verified(
+                    source_path,
+                    os.path.join(staging, ASSETS_DIR, filename),
+                    expected_sha256=asset_id.split(":", 1)[1],
+                    expected_bytes=source_bytes,
+                )
+                asset_entries.append(
+                    {
+                        "id": asset_id,
+                        "path": ASSETS_PREFIX + filename,
+                        "bytes": written,
+                        "sha256": asset_id.split(":", 1)[1],
+                    }
+                )
 
-        database_digest, database_bytes, _head, _truncated = _hash_file(snapshot_path)
-        manifest = {
-            "manifest_version": MANIFEST_VERSION,
-            "created_utc": datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"),
-            "database": {
-                "path": DATABASE_REL,
-                "bytes": database_bytes,
-                "sha256": database_digest,
-            },
-            "assets": asset_entries,
-            "references": sorted(references),
-            "revision": revision,
-        }
-        # The manifest goes in last: until it exists, a directory cannot be
-        # mistaken for a backup even by someone who finds it mid-run.
-        _write_manifest(os.path.join(staging, MANIFEST_NAME), manifest)
-        # Verify the staging directory with the same code path the verify
-        # command uses, and only then publish it in one rename. An artifact
-        # that is not fully checked never reaches the destination path.
-        verify_artifact(staging)
-        if os.path.lexists(dest):
-            _fail(
-                f"destination appeared while the backup was running; refusing "
-                f"to overwrite: {dest}"
-            )
-        try:
-            os.rename(staging, dest)
-        except OSError as exc:
-            _fail(f"cannot publish the snapshot to {dest}: {exc.strerror or exc}")
-        _fsync_dir(parent)
+            for entry in media_objects:
+                relative = entry["path"][len(MEDIA_DIR) + 1 :]
+                parts = relative.split("/")
+                digest = entry["sha256"]
+                if (
+                    not relative.startswith("objects/")
+                    or len(parts) != 3
+                    or parts[1] != digest[:2]
+                    or parts[2] != digest + ".jpg"
+                ):
+                    _fail(
+                        f"managed object {entry['object_id']} has an unsafe store path"
+                    )
+                target = os.path.join(staging, *entry["path"].split("/"))
+                os.makedirs(os.path.dirname(target), exist_ok=True)
+                _copy_verified(
+                    os.path.join(media_source, *parts),
+                    target,
+                    expected_sha256=digest,
+                    expected_bytes=entry["bytes"],
+                )
+
+            database_digest, database_bytes, _head, _truncated = _hash_file(snapshot_path)
+            manifest = {
+                "manifest_version": MANIFEST_VERSION,
+                "created_utc": datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"),
+                "schema_version": _schema_version(snapshot_path),
+                "pipeline_version": MEDIA_PIPELINE_VERSION,
+                "scope": "referenced",
+                "database": {
+                    "path": DATABASE_REL,
+                    "bytes": database_bytes,
+                    "sha256": database_digest,
+                },
+                "assets": asset_entries,
+                "media_objects": media_objects,
+                "media_assets": media_assets,
+                "omitted_media": omitted,
+                "references": sorted(references),
+                "revision": revision,
+            }
+            # The manifest goes in last: until it exists, a directory cannot be
+            # mistaken for a backup even by someone who finds it mid-run.
+            _write_manifest(os.path.join(staging, MANIFEST_NAME), manifest)
+            # Verify the staging directory with the same code path the verify
+            # command uses, and only then publish it in one rename. An artifact
+            # that is not fully checked never reaches the destination path.
+            verify_artifact(staging)
+            if os.path.lexists(dest):
+                _fail(
+                    f"destination appeared while the backup was running; refusing "
+                    f"to overwrite: {dest}"
+                )
+            try:
+                os.rename(staging, dest)
+            except OSError as exc:
+                _fail(f"cannot publish the snapshot to {dest}: {exc.strerror or exc}")
+            _fsync_dir(parent)
     except BaseException:
         _remove_staging(staging, staging_ino)
         raise
@@ -1155,21 +1628,32 @@ def cmd_verify(args: argparse.Namespace) -> int:
 
 
 def cmd_restore(args: argparse.Namespace) -> int:
-    """``restore --src DIR --db NEW_PATH --assets NEW_DIR`` — new targets only."""
+    """``restore --src DIR --db NEW_PATH --assets NEW_DIR [--media NEW_DIR]``."""
     src = os.path.abspath(args.src)
     db_target = os.path.abspath(args.db)
     assets_target = os.path.abspath(args.assets)
+    media_target = os.path.abspath(args.media) if args.media else None
 
     # Nothing is written until the snapshot itself has proven sound, and
     # every target check happens before any write, so a refusal anywhere
     # leaves the machine exactly as it was.
     manifest = verify_artifact(src)
-    if db_target == assets_target:
-        _fail("database and asset targets must be two different paths")
-    for label, target in (
-        ("database", db_target),
-        ("asset directory", assets_target),
+    if (
+        manifest["manifest_version"] == 2
+        and manifest["media_objects"]
+        and media_target is None
     ):
+        _fail(
+            "this snapshot carries managed media, so restore also needs "
+            "--media NEW_DIR"
+        )
+    targets = [("database", db_target), ("asset directory", assets_target)]
+    if media_target is not None:
+        targets.append(("media directory", media_target))
+    for index, (label, target) in enumerate(targets):
+        for other_label, other in targets[index + 1:]:
+            if target == other:
+                _fail(f"{label} and {other_label} targets must be two different paths")
         if os.path.lexists(target):
             _fail(f"{label} target already exists; refusing to overwrite: {target}")
         target_parent = os.path.dirname(target)
@@ -1177,7 +1661,7 @@ def cmd_restore(args: argparse.Namespace) -> int:
             _fail(f"{label} target parent directory does not exist: {target_parent}")
         if _is_inside(target, src):
             _fail(f"{label} target would be written inside the snapshot: {target}")
-    _assert_service_stopped(db_target, assets_target)
+    _assert_service_stopped(db_target, assets_target, media_target)
 
     created: list[tuple[str, str, int]] = []
     try:
@@ -1200,31 +1684,51 @@ def cmd_restore(args: argparse.Namespace) -> int:
                 expected_sha256=entry["sha256"],
                 expected_bytes=entry["bytes"],
             )
+        if manifest["manifest_version"] == 2 and manifest["media_objects"]:
+            try:
+                os.mkdir(media_target, 0o777)
+            except OSError as exc:
+                _fail(f"cannot create {media_target}: {exc.strerror or exc}")
+            created.append((media_target, "dir", os.lstat(media_target).st_ino))
+            for entry in manifest["media_objects"]:
+                relative = entry["path"][len(MEDIA_DIR) + 1 :]
+                target = os.path.join(media_target, *relative.split("/"))
+                os.makedirs(os.path.dirname(target), mode=0o777, exist_ok=True)
+                _copy_verified(
+                    _artifact_file(src, entry["path"]),
+                    target,
+                    expected_sha256=entry["sha256"],
+                    expected_bytes=entry["bytes"],
+                )
         # Last look, at the targets themselves: the bytes really landed, the
         # restored database still passes integrity, and every reference in it
-        # resolves to bytes in the restored asset directory that hash to that
-        # same ID.
-        _check_restored(db_target, assets_target, manifest)
+        # resolves to bytes in the restored directories that hash to that ID.
+        _check_restored(db_target, assets_target, media_target, manifest)
     except BaseException:
         _rollback(created)
         raise
 
     _print_summary(
-        "restore complete (two paths, no cutover — repoint the service yourself):",
+        "restore complete (targets, no cutover — repoint the service yourself):",
         db_target,
         manifest,
     )
     print(f"  assets: {assets_target}")
+    if media_target is not None:
+        print(f"  media:  {media_target}")
     return 0
 
 
 def _check_restored(
-    db_target: str, assets_target: str, manifest: dict[str, Any]
+    db_target: str,
+    assets_target: str,
+    media_target: str | None,
+    manifest: dict[str, Any],
 ) -> None:
-    """Prove the two restored targets stand on their own before reporting."""
+    """Prove the restored targets stand on their own before reporting."""
     _check_digest_file(db_target, manifest["database"], "restored database")
     references, revision = _read_snapshot(db_target)
-    _check_reference_closure(references, manifest)
+    _check_manifest_closure(db_target, references, manifest)
     if revision != manifest["revision"]:
         _fail(
             f"restored database revision {revision!r} does not match the "
@@ -1248,6 +1752,62 @@ def _check_restored(
             entry,
             f"restored asset {entry['id']}",
         )
+
+    if manifest["manifest_version"] != 2 or not manifest["media_objects"]:
+        return
+    if media_target is None:
+        _fail("a version 2 snapshot cannot be checked without a media target")
+    expected_media = {
+        entry["path"][len(MEDIA_DIR) + 1 :]: entry
+        for entry in manifest["media_objects"]
+    }
+    seen: set[str] = set()
+    for directory, dirnames, filenames in os.walk(media_target, followlinks=False):
+        relative_directory = os.path.relpath(directory, media_target)
+        if relative_directory == ".":
+            relative_directory = ""
+        relative_directory = relative_directory.replace(os.sep, "/")
+        for name in dirnames:
+            relative = f"{relative_directory}/{name}" if relative_directory else name
+            info = os.lstat(os.path.join(directory, name))
+            if stat.S_ISLNK(info.st_mode):
+                _fail(f"restored media contains a symlinked directory: {relative}")
+            allowed = relative == "objects" or (
+                relative.startswith("objects/") and len(relative.split("/")) == 2
+                and len(relative.split("/")[1]) == 2
+            )
+            if not allowed:
+                _fail(f"restored media contains an unexpected directory: {relative}")
+        for name in filenames:
+            relative = f"{relative_directory}/{name}" if relative_directory else name
+            info = os.lstat(os.path.join(directory, name))
+            if stat.S_ISLNK(info.st_mode) or not stat.S_ISREG(info.st_mode):
+                _fail(f"restored media contains a non-regular file: {relative}")
+            if relative not in expected_media:
+                _fail(f"restored media contains an unexpected file: {relative}")
+            seen.add(relative)
+    if seen != set(expected_media):
+        _fail(
+            f"restored media is incomplete; missing: "
+            f"{', '.join(sorted(set(expected_media) - seen))}"
+        )
+    for relative, entry in expected_media.items():
+        _check_digest_file(
+            os.path.join(media_target, *relative.split("/")),
+            entry,
+            f"restored media object {entry['object_id']}",
+        )
+    # Omitted ready assets must never look usable after a referenced backup.
+    connection = _connect_ro(db_target)
+    try:
+        states = dict(
+            connection.execute("SELECT asset_id, state FROM media_assets").fetchall()
+        )
+    finally:
+        connection.close()
+    for asset_id in manifest["omitted_media"]:
+        if states.get(asset_id) != "unavailable":
+            _fail(f"omitted media asset {asset_id} is not marked unavailable")
 
 
 # ---------------------------------------------------------------------------
@@ -1305,6 +1865,13 @@ def _build_parser() -> argparse.ArgumentParser:
         required=True,
         metavar="DIR",
         help="curated asset directory to copy referenced files from",
+    )
+    backup_parser.add_argument(
+        "--media",
+        default="./media",
+        metavar="DIR",
+        help="managed media directory (default ./media); absent is allowed "
+             "only when the captured database references no managed media",
     )
     backup_parser.add_argument(
         "--dest",
@@ -1369,6 +1936,11 @@ def _build_parser() -> argparse.ArgumentParser:
         required=True,
         metavar="NEW_DIR",
         help="new asset directory to create (must not exist)",
+    )
+    restore_parser.add_argument(
+        "--media",
+        metavar="NEW_DIR",
+        help="new managed media directory to create (required for manifest 2)",
     )
     restore_parser.set_defaults(handler=cmd_restore)
     return parser

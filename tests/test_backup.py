@@ -1266,7 +1266,7 @@ class TestRestore:
         new_db = restored / "wall.db"
         new_assets = restored / "assets"
 
-        def explode(db_target, assets_target, manifest):
+        def explode(db_target, assets_target, media_target, manifest):
             raise backup.BackupError("simulated failure after both targets exist")
 
         monkeypatch.setattr(backup, "_check_restored", explode)

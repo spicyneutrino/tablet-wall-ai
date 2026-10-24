@@ -78,8 +78,10 @@ origins byte-for-byte what the browser sends, including scheme and port.
 Contract (approved, and what `backup.py` is for):
 
 - a **verified snapshot** of the SQLite database **plus only the referenced
-  SHA-256 curated assets** — unreferenced files in the asset directory are not
-  part of the wall and are not copied;
+  SHA-256 curated assets and managed upload objects** — unreferenced files in
+  the asset directory and unused uploads are not part of the wall and are not
+  copied; the captured database marks unused upload rows `unavailable` so a
+  restore cannot advertise bytes that were deliberately left out;
 - restore only into **new** targets, with the service stopped;
 - no force flag, no atomic database/assets cutover, no permanent paths
   recorded anywhere: after a restore *you* point the service at the new paths.
@@ -89,8 +91,12 @@ only, run with the same interpreter as the server). Exit code `0` is success;
 `1` is a refusal or a failed verification, printed as one line on stderr; `2`
 is a usage error; `130` is an interrupt. There is no force flag.
 
-A snapshot directory holds `manifest.json`, `database/wall.db` and `assets/`
-with only the referenced files. `backup` verifies its own staging directory
+A snapshot directory holds `manifest.json`, `database/wall.db`, `assets/`
+with only the referenced curated files, and `media/objects/` with the
+transitive closure of referenced managed uploads (master, display, fallback
+and thumbnail). Manifest version 2 records the schema, pipeline, referenced
+scope, object/rendition relationships and omitted uploads; version 1
+snapshots remain readable and restorable. `backup` verifies its own staging directory
 with the same code path as `verify` before publishing it by one rename, so a
 snapshot that exists is one that already passed. `restore` verifies first,
 writes only new targets, and rolls back only what that run created; it refuses
@@ -104,6 +110,7 @@ rather than copying a file mid-write):
 uv run python deploy/backup.py backup \
   --db "$TABLET_WALL_DB" \
   --assets "$TABLET_WALL_ASSET_DIR" \
+  --media "$TABLET_WALL_MEDIA_DIR" \
   --dest "$BACKUP_DEST"
 ```
 
@@ -123,18 +130,20 @@ retention window are **open decisions** below.
    --user stop ...`). Restore assumes no writer is attached; there is no
    force flag to override this.
 2. Choose **new** paths for the database and assets — for example
-   `/REPLACE/with/data-dir/restored-YYYYMMDD/{wall.db,assets}`. Restore refuses
-   to overwrite, so nothing that exists today is touched:
+   `/REPLACE/with/data-dir/restored-YYYYMMDD/{wall.db,assets,media}`. Restore
+   refuses to overwrite, so nothing that exists today is touched. A manifest 2
+   snapshot that carries managed media needs `--media`:
 
    ```sh
    uv run python deploy/backup.py restore --src "$BACKUP_DEST" \
      --db /REPLACE/with/data-dir/restored-YYYYMMDD/wall.db \
-     --assets /REPLACE/with/data-dir/restored-YYYYMMDD/assets
+     --assets /REPLACE/with/data-dir/restored-YYYYMMDD/assets \
+     --media /REPLACE/with/data-dir/restored-YYYYMMDD/media
    ```
 
 3. There is no atomic cutover: edit the unit (or environment) to point
-   `TABLET_WALL_DB` and `TABLET_WALL_ASSET_DIR` at the new paths, then start
-   the service again.
+   `TABLET_WALL_DB`, `TABLET_WALL_ASSET_DIR` and `TABLET_WALL_MEDIA_DIR` at
+   the new paths, then start the service again.
 4. Check the wall: active layout and scene recall, curated images resolve,
    tablets re-register, `deploy/smoke.sh` still passes.
 5. Record how long the whole drill took; that number is your real recovery
@@ -142,9 +151,10 @@ retention window are **open decisions** below.
 
 ### Rollback — keep the old targets
 
-Restore never modifies the previous database or asset directory, so rollback
-is only a repoint: stop the service, set `TABLET_WALL_DB` and
-`TABLET_WALL_ASSET_DIR` back to the paths you were using before, start it
+Restore never modifies the previous database, asset or media directory, so
+rollback is only a repoint: stop the service, set `TABLET_WALL_DB`,
+`TABLET_WALL_ASSET_DIR` and `TABLET_WALL_MEDIA_DIR` back to the paths you were
+using before, start it
 again. **Do not delete, move or "clean up" the old targets** until the new
 one has been verified in normal use; they are your rollback, and they are also
 the only copy the restore tool will not overwrite.
