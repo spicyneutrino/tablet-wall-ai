@@ -8,14 +8,16 @@ they show.
 
 This project began as a copy of `tablet-wall`. New development happens here.
 
-> **Status: R1-R3 software scope implemented; physical and optical validation
-> pending.** Tablets self-register, hold a live WebSocket, heartbeat, reconnect,
-> and stop fighting over one identity. The operator can upload stills (when an
-> admission mode is configured), show them on the logical wall, measure and
-> calibrate physical panels, place bodies with an accessible editor, and run
-> hard-cut still playlists with clock compensation and leased readiness. Schema
-> 2 and protocol 3 are live; v1/v2 remain compatible. Physical seams, real
-> tablet suspend, 100-cut optical timing and video are not claimed — see
+> **Status: R1-R4 software scope implemented; R5 software closeout and all
+> physical validation pending.** Tablets self-register, hold a live WebSocket,
+> heartbeat, reconnect, and stop fighting over one identity. The operator can
+> upload stills and H.264 MP4 clips (when an admission mode is configured),
+> show stills on the logical wall, measure and calibrate physical panels, place
+> bodies with an accessible editor, and run hard-cut still/video playlists with
+> clock compensation, leased readiness, buffer evidence, pause/resume and
+> drift samples. Schema 3 and protocol 3 are live; v1/v2 remain compatible.
+> Physical seams, real tablet decode/suspend, optical timing, mixed-model
+> calibration and soak are not claimed — see
 > [Known limitations](#known-limitations).
 
 ## Requirements
@@ -320,9 +322,14 @@ the manual ingress checks in [deploy/README.md](deploy/README.md).*
 - [ ] **3c** Operational resilience: structured logs, health/readiness, asset-error states, soak tests — **deferred until the tablet trial confirms 2a–3b**
 - [ ] **3d** Engineering gate: ruff, targeted mypy, CI (basic CI starts in 2a) — **deferred for the same reason**
 
-**Phase 4 — timed media, only if validated**
+**Phase 4 — timed media, software slice**
 
-- [ ] Prototype real-tablet video decoding and synchronisation, then design clock estimation, scheduled starts, drift correction, and buffering fallback. Proceed only if that prototype shows acceptable seams.
+- [x] Clock estimation, scheduled starts, leased readiness, hard-cut stills
+- [x] Native H.264 MP4 ingest, ranged serving, buffered preparation, drift
+  samples, pause/resume and loop occurrences in a real browser
+- [ ] Physical tablet decode/suspend, optical onset, mixed-model timing and a
+  ten-minute optical run. The browser evidence is software timing on one host
+  clock, not a wall-synchronization claim.
 
 ---
 

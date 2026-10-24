@@ -792,7 +792,7 @@ before the socket is published to broadcasts. Overflow or a sustained slow
 send closes that connection with `4429`; other connections are unaffected.
 R2 does not coalesce frames.
 
-### Clock and hard-cut playback (R3)
+### Clock and hard-cut playback (R3/R4)
 
 A v3 device receives `clock_bootstrap` immediately after `welcome`:
 
@@ -812,8 +812,9 @@ The client then sends bounded samples and returns the receive time:
 and `s2` is stamped by the writer immediately before the frame leaves. The
 server validates the exchange and keeps the lowest-delay fresh sample;
 uncertainty above 25 ms or a sample older than 15 s is not sufficient for
-timed readiness. A host suspend changes the epoch, cancels every preparation
-and sends `{ "type": "playback", "state": "stopped", "reason": "host suspend" }`.
+timed readiness. A host suspend changes the epoch, cancels every preparation,
+sends `{ "type": "playback", "state": "stopped", "reason": "host suspend" }`
+and then the persisted `render` frame.
 
 A saved playlist is one ordered list of published display-object IDs with a
 dwell and a loop flag:
@@ -823,10 +824,17 @@ GET  /api/v3/playlist        -> { "playlist": {...} | null, "etag": "..." }
 PUT  /api/v3/playlist        -> requires If-Match; 1..64 items, 1000..600000 ms
 ```
 
-Playback commands are `POST /api/v3/playback/{start,pause,stop,next,previous}`.
-`start` needs a saved playlist and at least one online, placed v3 endpoint;
-pause/stop/next/previous require `If-Match` with the current session version
-(`428` missing, `412` stale, `404` no session).
+A video item's dwell is its published duration, not the request value.
+Playback commands are
+`POST /api/v3/playback/{start,pause,stop,next,previous,retry}`. `start` needs a
+saved playlist and a physical layout. `policy` is optional: an explicit
+`"online"` or `"strict"` wins; otherwise the server resolves `"strict"` when
+any playlist item is video and `"online"` for stills. A strict start includes
+every participating slot, including offline and protocol-unsupported members;
+an online start keeps only online v3 endpoints. `start` on a paused session
+resumes the displayed item at a new anchor. `pause/stop/next/previous/retry`
+require `If-Match` with the current session version (`428` missing, `412`
+stale, `404` no session).
 
 A preparation is one occurrence `{playlist_revision, item_index, loop}` with a
 preparation ID, its own version, the exact asset and physical plan, a deadline
@@ -837,7 +845,7 @@ and a per-device lease. Frames:
   "preparation_id": "…", "occurrence": {...}, "asset": {...},
   "plan": {...}, "calibration": {...},
   "prepare_deadline_ms": 123, "effective_server_ms": 456,
-  "connection_id": "…", "cohort": ["<uuid>"] }
+  "connection_id": "…", "cohort": ["<uuid>"], "media": {...} }
 
 { "type": "ready", "preparation_id": "…", "version": 3,
   "connection_id": "…", "occurrence": {...}, "evidence_seq": 1,
@@ -846,23 +854,97 @@ and a per-device lease. Frames:
 { "type": "commit", "session_id": "…", "version": 4,
   "prepared_at_version": 3, "preparation_id": "…", "occurrence": {...},
   "asset": {...}, "effective_server_ms": 789, "connection_id": "…",
-  "missed": ["<uuid>"] }
+  "missed": ["<uuid>"], "start_media_ms": 0 }
 
 { "type": "cancel", "session_id": "…", "version": 5, "reason": "superseded" }
+
+{ "type": "playback", "state": "paused"|"stopped", ... }
 ```
 
-A ready lease is renewed every 500 ms and expires after 2 s; it must cover the
-effective time. A full cohort commits early at its effective time. A partial
-cohort holds the current still for at most `min(dwell/2, 5 s)`, then commits a
-future cut for the ready members and records every miss. A higher version
-supersedes every different pending preparation; a stale or mismatched
-ready/commit never paints. The displayed still is not changed by preparation.
-Restart leaves no session and restores static content.
+A ready lease is renewed every 500 ms and expires after 2 s. It must cover the
+actual accepted cut and the report must match the preparation's occurrence,
+connection and calibration revision; a still must report `decoded: true`, and
+a stale clock is refused. A full cohort commits early at the cut. A partial
+cohort holds for at most `min(dwell/2, 5 s)`, then commits a future cut for the
+ready members and records every miss. A lease that expired before that cut is
+not used. Every late cut is re-anchored to `now + 1 s`; the server sends a
+`reanchor` status action and the next commit carries the new anchor. The
+preparation deadline is `effective + timeout`, so a long clip does not block
+30 s after it was prepared. A higher version supersedes every different
+preparation. A non-looping last item reaches `final` after its commit and
+stays sample-capable and controllable. The displayed still is not changed by
+preparation. Stop and abort restore the persisted render. Restart leaves no
+session and restores static content.
 
-Controller diagnostics use `playback_status` with the lineage, state, current
-and pending occurrence, cohort, ready/missed members and hold deadline. The
-browser evidence measures software canvas onset only; optical onset, physical
-sleep and mixed-model timing remain unverified.
+`playback_status` reports the lineage, state, `current` (last committed),
+`displayed`, `current_effective_ms`, `pending`, policy, cohort, ready/missed
+members, `final`, and per-device `video` samples. `members` carries each
+pending lease's `ready` and video evidence so a blocked clip names its failed
+gate.
+
+### Prerecorded video (R4)
+
+A ready video library entry adds these fields to the still descriptor:
+
+| field | value |
+| --- | --- |
+| `kind` | `"video"` |
+| `mime` | `"video/mp4"` |
+| `durationMs` | `1000..600000` |
+| `codec` | RFC 6381, for example `avc1.42C01F` |
+| `profile`, `level` | for example `Constrained Baseline`, `3.1` |
+| `pixelFormat` | `yuv420p` |
+| `frameRate` | number |
+| `bitrate` | bits per second |
+| `faststart` | always true after ingest |
+| `audio` | true when the stored file keeps an AAC or MP3 track (ignored, muted) |
+| `poster`, `thumbnail` | a 256-px thumbnail object |
+
+`intrinsicWidth` and `intrinsicHeight` are the displayed size after rotation
+metadata. `GET /media` lists stills and videos. Scene `image` content never
+accepts a video or poster id (`422`).
+
+`POST /uploads` accepts `video/mp4` and `video/quicktime` under the same
+operator admission: H.264 Constrained Baseline/Main/High up to level 4.1,
+8-bit `yuv420p`, long edge at most 1920 and short edge at most 1080, at most
+60 fps, 250 MiB, 10 minutes and at least 1 second. The server remuxes losslessly
+to faststart MP4, strips metadata, and does not transcode. `201` returns the
+descriptor; `413` over 250 MiB, `415` another type, `422` an actionable codec
+reason, `503` ffmpeg missing, `507` quota.
+
+`GET` and `HEAD /assets/sha256:<hex>` serve a video with
+`Accept-Ranges: bytes` and the strong `ETag` `"<hex>"`. A single range returns
+`206` with `Content-Range`; an unsatisfiable range returns `416` with
+`Content-Range: bytes */size`. `If-Range` and `If-None-Match` (304) are
+honoured. At most four ranges are served; more is a full `200`. A malformed
+`Range` is ignored; a `Range` header over 256 bytes returns `431`.
+
+A video `prepare` adds
+`media: {kind:"video", duration_ms, buffer_goal_ms:5000, start_lead_ms:1000,
+prepare_timeout_ms:30000}`. Its `ready.video` evidence is
+`{metadata, seeked, buffered_ahead_ms, play_ok: "yes"|"needs_gesture"|"no",
+rvfc}`. A video lease is ready only with metadata and seek true, `play_ok` yes,
+and contiguous `buffered_ahead_ms >= min(goal, duration - start)`; a later
+report that fails clears readiness. `commit.start_media_ms` is 0 for a fresh
+occurrence. The client never sets the native `loop` attribute; every loop is a
+new server occurrence. After the commit the client sends
+`{ "type": "video_sample", "session_id": "…", "version": 4,
+"occurrence": {...}, "media_ms": 1200, "target_ms": 1200,
+"drift_ms": 0.4, "rate": 1.0, "source": "rvfc"|"time" }` at most once per
+1000 ms. Only the current socket, session, version, occurrence and a playing
+device are accepted; values are bounded and the latest sample is kept for 5 s.
+
+The client owns three slots: preparing, armed (commit received) and active. A
+routine next preparation replaces only the preparing slot. Drift correction
+uses a 50 ms deadband, a rate within 0.98..1.02 inside 50..250 ms, and one seek
+per 5 s above 250 ms. Pause freezes; Start resumes by restarting the displayed
+item; Stop restores the persisted render. Group rebuffer with a new common
+anchor, named exclusions, and mid-video reconnect recovery are not implemented
+and are not claimed. Optical timing, physical decode/suspend, iOS Safari and
+soak remain MISSING.
+
+The browser evidence measures software canvas/DOM timing only. No optical
+onset, physical sleep or mixed-model claim follows from it.
 
 ## Persistence
 
