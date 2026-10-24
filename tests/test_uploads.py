@@ -108,6 +108,49 @@ def test_upload_rejects_an_oversized_declared_and_streamed_body(operator, monkey
     assert streamed.status_code == 413
 
 
+def test_a_phone_style_rotated_jpeg_arrives_upright_and_stripped(operator):
+    source = Image.new("RGB", (4032, 3024), (20, 60, 200))
+    exif = Image.Exif()
+    exif[0x0112] = 6  # rotate 90 degrees clockwise on display
+    buffer = BytesIO()
+    source.save(buffer, format="JPEG", quality=90, exif=exif)
+    with TestClient(main.app) as client:
+        response = client.post(
+            "/uploads?name=phone.jpg", content=buffer.getvalue(), headers=headers()
+        )
+        assert response.status_code == 201, response.text
+        descriptor = response.json()["asset"]
+        # Upright source is 3024x4032; the 2048 display rendition is 1536x2048.
+        assert (descriptor["intrinsicWidth"], descriptor["intrinsicHeight"]) == (1536, 2048)
+        served = client.get(descriptor["url"])
+        image = Image.open(BytesIO(served.content))
+        assert image.size == (1536, 2048)
+        assert image.getexif().get(0x0112) in (None, 1)
+        assert "exif" not in image.info and "icc_profile" not in image.info
+
+
+def test_upload_quota_exhaustion_is_a_507(operator, monkeypatch):
+    monkeypatch.setattr(media, "QUOTA_BYTES", 1)
+    monkeypatch.setattr(media, "FREE_RESERVE_BYTES", 0)
+    with TestClient(main.app) as client:
+        response = client.post("/uploads", content=jpeg(), headers=headers())
+    assert response.status_code == 507
+    assert "quota" in response.json()["detail"]
+
+
+def test_worker_timeout_is_reported_and_leaves_no_asset(operator, monkeypatch):
+    async def timeout(job):
+        raise media.StoreError(422, "image processing exceeded 30 seconds")
+
+    monkeypatch.setattr(media, "run_worker", timeout)
+    with TestClient(main.app) as client:
+        response = client.post("/uploads", content=jpeg(), headers=headers())
+        library = client.get("/media")
+    assert response.status_code == 422
+    assert "30 seconds" in response.json()["detail"]
+    assert library.json()["assets"] == []
+
+
 def test_a_rejected_image_leaves_no_ready_asset(operator):
     with TestClient(main.app) as client:
         response = client.post(
