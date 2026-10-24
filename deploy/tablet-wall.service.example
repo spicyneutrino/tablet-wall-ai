@@ -47,6 +47,12 @@ WorkingDirectory=/REPLACE/with/checkout/of/tablet-wall-ai
 # relative filenames that would land next to the code.
 Environment=TABLET_WALL_DB=/REPLACE/with/data-dir/wall.db
 Environment=TABLET_WALL_ASSET_DIR=/REPLACE/with/data-dir/assets
+# Managed uploads (R1): keep this beside the database and asset directory so
+# one backup set covers both. Uploads stay disabled unless an admission mode
+# is chosen deliberately: `loopback` for direct local development, `proxy`
+# behind the authenticated operator listener.
+Environment=TABLET_WALL_MEDIA_DIR=/REPLACE/with/data-dir/media
+Environment=TABLET_WALL_UPLOAD_MODE=disabled
 
 # Exact origins as the browser address bar shows them: scheme, host and port,
 # no trailing slash. These are the strings the operator-Origin guard compares

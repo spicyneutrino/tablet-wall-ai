@@ -38,9 +38,28 @@ def test_reference_service_is_single_worker_and_loopback_only():
     assert "WorkingDirectory=" in template
     assert "TABLET_WALL_DB=" in template
     assert "TABLET_WALL_ASSET_DIR=" in template
+    assert "TABLET_WALL_MEDIA_DIR=" in template
+    assert "TABLET_WALL_UPLOAD_MODE=" in template
     assert "TABLET_WALL_OPERATOR_ORIGIN=" in template
     assert "TABLET_WALL_TABLET_ORIGIN=" in template
     assert "Restart=on-failure" in template
+
+
+def test_tablet_ingress_strips_the_operator_credential():
+    """The tablet listener must not forward the internal credential.
+
+    Text inspection only: it catches an accidental Caddyfile edit. Real
+    authenticated-ingress behavior is exercised by the Caddy test in
+    ``tests/test_ingress.py``.
+    """
+    caddyfile = (ROOT / "deploy/hotspot.Caddyfile").read_text()
+    tablet, operator = caddyfile.split("https://localhost:8444", 1)
+    tablet = re.sub(r"#.*", "", tablet)
+    assert tablet.count("header_up -X-Tablet-Wall-Operator") == 4
+    assert not re.search(r"header_up\s+X-Tablet-Wall-Operator", tablet)
+    assert "header_up X-Tablet-Wall-Operator {env.WALL_OPERATOR_CREDENTIAL}" in operator
+    for path in ("/uploads", "/media"):
+        assert path not in tablet
 
 
 def test_frontend_declares_no_external_static_resources():

@@ -15,6 +15,7 @@ import ipaddress
 import json
 import os
 import re
+import shutil
 from collections.abc import Callable
 from contextlib import asynccontextmanager
 from copy import deepcopy
@@ -71,7 +72,12 @@ from tabletwall.protocol import (
 )
 # Curated still-image assets (PROTOCOL.md "Still images"): the directory scan,
 # content IDs, and byte-verified serving behind ``GET /assets``.
-from tabletwall import assets
+from tabletwall import assets, media
+from tabletwall.media_limits import (
+    MAX_SOURCE_BYTES,
+    MAX_WAITING_UPLOADS,
+    PIPELINE_VERSION,
+)
 # Persistence of the wall state (PROTOCOL.md "Persistence"): the roster,
 # sockets, presence, and heartbeat timestamps stay in memory. The snapshot
 # calls save and read the named layouts/scenes beside that one row and never
@@ -107,6 +113,11 @@ from tabletwall.state import (
 
 _sweeper_task: asyncio.Task[Any] | None = None
 
+# One decoder at a time, with at most two requests waiting (R1). Created in
+# the lifespan so each app start gets a primitive bound to its own loop.
+_upload_semaphore: asyncio.Semaphore | None = None
+_upload_waiting = 0
+
 
 def _restore_wall_state() -> None:
     """Load the persisted wall state before the app can accept a socket.
@@ -128,7 +139,7 @@ def _restore_wall_state() -> None:
 
 @asynccontextmanager
 async def lifespan(_: FastAPI):
-    global _sweeper_task
+    global _sweeper_task, _upload_semaphore
     # Before the first yield: no socket may be accepted against state that
     # has not been loaded from the database.
     _restore_wall_state()
@@ -138,6 +149,11 @@ async def lifespan(_: FastAPI):
     # read. Every later read path re-scans anyway — this pass only establishes
     # the initial inventory (an absent directory is an empty one).
     assets.refresh()
+    # Managed media (R1): create the store layout before the first upload and
+    # remove only stale staging directories left by an interrupted job.
+    media.ensure_dirs()
+    media.cleanup_staging()
+    _upload_semaphore = asyncio.Semaphore(1)
     _sweeper_task = asyncio.create_task(_sweep_loop())
     try:
         yield
@@ -936,25 +952,29 @@ async def put_scene(update: SceneUpdate):
     # ``PUT /wall`` above.
     content = update.content
     if content.type == "image":
-        # The directory is re-scanned here, so a file copied in after the
-        # last read is usable immediately, and the intrinsic dimensions come
-        # from the file this scan just validated — never from the caller. The
-        # scan reads and hashes every candidate, so it runs in a worker
-        # thread: heartbeats and broadcasts must not wait behind it.
-        asset = await asyncio.to_thread(assets.find, content.asset)
-        if asset is None:
-            # Well-formed ID, no such asset: an invalid *body*, so 422 and
-            # nothing is committed (PROTOCOL.md "PUT /scene").
-            raise HTTPException(status_code=422, detail="Unknown asset")
+        # Managed uploads are indexed, so check them first; only an unknown
+        # managed ID falls back to the curated scan. Intrinsic dimensions come
+        # from the published record or the file this scan just validated —
+        # never from the caller.
+        managed = await asyncio.to_thread(media.find_object, content.asset)
+        if managed is not None:
+            asset_id, width, height = managed["id"], managed["width"], managed["height"]
+        else:
+            asset = await asyncio.to_thread(assets.find, content.asset)
+            if asset is None:
+                # Well-formed ID, no such asset: an invalid *body*, so 422 and
+                # nothing is committed (PROTOCOL.md "PUT /scene").
+                raise HTTPException(status_code=422, detail="Unknown asset")
+            asset_id, width, height = asset.id, asset.width, asset.height
         # Persisted: ID, fit, and the derived dimensions. Deliberately no URL
         # — it is composed from the ID on the way out, so it can never go
         # stale in the database (PROTOCOL.md "Still images").
         scene_content: dict[str, Any] = {
             "type": "image",
-            "asset": asset.id,
+            "asset": asset_id,
             "fit": content.fit,
-            "intrinsicWidth": asset.width,
-            "intrinsicHeight": asset.height,
+            "intrinsicWidth": width,
+            "intrinsicHeight": height,
         }
     else:
         scene_content = {"type": content.type}
@@ -1345,24 +1365,175 @@ def get_assets():
 def get_asset(asset_id: str):
     """Serve one asset's bytes, and only when they still hash to that ID.
 
-    Unknown, malformed, removed, and replaced IDs are all ``404``: because
-    the ID *is* the hash of the validated bytes, re-hashing what was just
-    read proves this response is exactly the bytes that passed validation, so
-    no stale copy can be served under an old ID (PROTOCOL.md "Still images").
+    Managed uploads are checked first through the indexed media store, so a
+    ready upload avoids re-scanning the curated directory entirely. Curated
+    bytes remain the fallback. Unknown, malformed, removed, and replaced IDs
+    are all ``404``: because the ID *is* the hash of the validated bytes,
+    re-hashing what was just read proves this response is exactly those bytes.
     The bytes are content-addressed, hence cached as immutable; ``nosniff``
     keeps a browser from second-guessing the declared image type.
     """
-    served = assets.fetch(asset_id)
-    if served is None:
-        raise HTTPException(status_code=404, detail="Unknown asset")
-    asset, data = served
+    managed = media.fetch_object(asset_id)
+    if managed is not None:
+        data, mime = managed
+    else:
+        served = assets.fetch(asset_id)
+        if served is None:
+            raise HTTPException(status_code=404, detail="Unknown asset")
+        asset, data = served
+        mime = asset.mime
     return Response(
         content=data,
-        media_type=asset.mime,
+        media_type=mime,
         headers={
             "X-Content-Type-Options": "nosniff",
             "Cache-Control": "public, max-age=31536000, immutable",
         },
+    )
+
+
+# ---------------------------------------------------------------------------
+# managed uploads (R1)
+# ---------------------------------------------------------------------------
+
+
+def _store_error(error: media.StoreError) -> JSONResponse:
+    return JSONResponse(
+        status_code=error.status,
+        content={"detail": error.message},
+        headers={"Cache-Control": "no-store"},
+    )
+
+
+@asynccontextmanager
+async def _upload_slot():
+    """One active decoder and at most two waiting requests.
+
+    The counter is decremented before the active holder yields the slot, so it
+    counts waiters only. A third waiter is refused rather than queued without
+    bound. The semaphore itself is created per app start in the lifespan.
+    """
+    global _upload_waiting
+    semaphore = _upload_semaphore
+    if semaphore is None:
+        raise HTTPException(status_code=503, detail="upload service is not ready")
+    if _upload_waiting >= MAX_WAITING_UPLOADS:
+        raise HTTPException(status_code=429, detail="too many uploads are waiting")
+    _upload_waiting += 1
+    acquired = False
+    try:
+        await semaphore.acquire()
+        acquired = True
+        yield
+    finally:
+        _upload_waiting -= 1
+        if acquired:
+            semaphore.release()
+
+
+def _upload_display_name(raw: str | None) -> str:
+    """A bounded display label, never a path and never control characters."""
+    base = os.path.basename((raw or "").replace("\\", "/")).strip()
+    base = "".join(ch for ch in base if 0x20 <= ord(ch) <= 0x7E)
+    return base[:120] or "upload"
+
+
+@app.post("/uploads")
+async def upload_image(
+    request: Request, name: str | None = Query(default=None, max_length=255)
+):
+    """Stream one JPEG or PNG into the managed store and publish it.
+
+    The response is the finished state: R1 has one decoder and a bounded
+    request, so a durable job API would add a second state machine without
+    changing what the controller can show. Progress during transmission is
+    the browser's upload progress; after that the controller shows an
+    indeterminate "processing" state until this response arrives.
+    """
+    try:
+        media.admit_upload(request)
+    except media.StoreError as error:
+        return _store_error(error)
+
+    content_type = (request.headers.get("content-type") or "").split(";", 1)[0].strip().lower()
+    if content_type not in ("image/jpeg", "image/png"):
+        return JSONResponse(
+            status_code=415,
+            content={"detail": "only image/jpeg or image/png is accepted"},
+            headers={"Cache-Control": "no-store"},
+        )
+
+    raw_length = request.headers.get("content-length")
+    declared: int | None = None
+    if raw_length is not None:
+        if not raw_length.isdigit():
+            return JSONResponse(status_code=400, content={"detail": "invalid Content-Length"})
+        declared = int(raw_length)
+        if declared > MAX_SOURCE_BYTES:
+            return JSONResponse(
+                status_code=413,
+                content={"detail": "image is larger than the 32 MiB source limit"},
+            )
+
+    try:
+        async with _upload_slot():
+            job = media.new_job()
+            try:
+                media.check_capacity(declared if declared is not None else MAX_SOURCE_BYTES)
+                await media.receive_body(job, request.stream(), declared)
+                media.check_capacity(0)
+                result = await media.run_worker(job)
+                descriptor = await asyncio.to_thread(
+                    media.publish, job, result, _upload_display_name(name)
+                )
+            except BaseException:
+                # ``receive_body`` and ``run_worker`` already remove failed
+                # jobs; this also covers cancellation between them.
+                shutil.rmtree(job.directory, ignore_errors=True)
+                raise
+    except media.StoreError as error:
+        return _store_error(error)
+    except HTTPException:
+        raise
+    except Exception as error:
+        return JSONResponse(
+            status_code=500,
+            content={"detail": f"upload failed ({type(error).__name__})"},
+            headers={"Cache-Control": "no-store"},
+        )
+    if not descriptor:
+        return JSONResponse(status_code=500, content={"detail": "upload did not publish"})
+    return JSONResponse(
+        status_code=201,
+        content={"state": "ready", "asset": descriptor},
+        headers={"Cache-Control": "no-store"},
+    )
+
+
+@app.get("/media")
+def get_media(request: Request):
+    """The operator's managed-image library, newest first."""
+    try:
+        media.admit_library(request)
+    except media.StoreError as error:
+        return _store_error(error)
+    return JSONResponse(
+        content={"assets": media.list_assets(), "pipeline_version": PIPELINE_VERSION},
+        headers={"Cache-Control": "no-store"},
+    )
+
+
+@app.post("/media/verify")
+def verify_media(request: Request):
+    """Re-hash every ready object and report mismatches; never mutates."""
+    try:
+        media.admit_upload(request)
+    except media.StoreError as error:
+        return _store_error(error)
+    problems = media.verify_integrity()
+    return JSONResponse(
+        content={"ok": not problems, "problems": problems},
+        headers={"Cache-Control": "no-store"},
     )
 
 

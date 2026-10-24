@@ -1,7 +1,10 @@
 # Reference for a laptop hotspot, not a production credential or certificate.
 # Set WALL_HOTSPOT_IP to the address assigned to the laptop's hotspot interface.
 # Set WALL_OPERATOR_PASSWORD_HASH to a Caddy `hash-password` result (never a
-# plaintext password). Both services must already be on loopback:8000.
+# plaintext password). Set WALL_OPERATOR_CREDENTIAL to the same random value
+# the backend receives as TABLET_WALL_OPERATOR_CREDENTIAL; it is injected only
+# after operator authentication. Both services must already be on
+# loopback:8000.
 {
 	auto_https disable_redirects
 }
@@ -11,13 +14,17 @@ https://{$WALL_HOTSPOT_IP}:8443 {
 	tls internal
 
 	# Exact public tablet surface. No unmatched URL or method is forwarded;
-	# /assets (inventory), the operator socket, and all wall writes are denied.
+	# /assets (inventory), /uploads, /media, the operator socket, and all wall
+	# writes are denied. Every upstream strips the internal operator credential,
+	# so a forged header from a tablet never reaches the backend.
 	@client {
 		method GET
 		path /client/ /client/index.html /client/client.js /client/client.css
 	}
 	handle @client {
-		reverse_proxy 127.0.0.1:8000
+		reverse_proxy 127.0.0.1:8000 {
+			header_up -X-Tablet-Wall-Operator
+		}
 	}
 
 	@register {
@@ -25,7 +32,9 @@ https://{$WALL_HOTSPOT_IP}:8443 {
 		path /devices/register
 	}
 	handle @register {
-		reverse_proxy 127.0.0.1:8000
+		reverse_proxy 127.0.0.1:8000 {
+			header_up -X-Tablet-Wall-Operator
+		}
 	}
 
 	@device_socket {
@@ -33,7 +42,9 @@ https://{$WALL_HOTSPOT_IP}:8443 {
 		path /ws/device
 	}
 	handle @device_socket {
-		reverse_proxy 127.0.0.1:8000
+		reverse_proxy 127.0.0.1:8000 {
+			header_up -X-Tablet-Wall-Operator
+		}
 	}
 
 	@asset_bytes {
@@ -41,7 +52,9 @@ https://{$WALL_HOTSPOT_IP}:8443 {
 		path_regexp ^/assets/sha256:[0-9a-f]{64}$
 	}
 	handle @asset_bytes {
-		reverse_proxy 127.0.0.1:8000
+		reverse_proxy 127.0.0.1:8000 {
+			header_up -X-Tablet-Wall-Operator
+		}
 	}
 
 	handle {
@@ -59,6 +72,10 @@ https://localhost:8444 {
 		operator {$WALL_OPERATOR_PASSWORD_HASH}
 	}
 	reverse_proxy 127.0.0.1:8000 {
+		# Overwrite any client-supplied value after basic_auth succeeds.
+		# The backend trusts this header only in proxy mode, together with
+		# the exact operator Origin.
+		header_up X-Tablet-Wall-Operator {env.WALL_OPERATOR_CREDENTIAL}
 		header_up -Authorization
 		header_up -Cookie
 	}
