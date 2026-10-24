@@ -202,8 +202,14 @@ when you cannot:
    add `"number": N` (the label on the glass; it must be free). Refusals:
    `409` old device online, new device already placed, number in use, or new
    device already holding display records; `404` unknown device.
-5. Re-save named layouts: they still name the old id. Recall each, then save
-   it again (`PUT /layouts/<name>?replace=true`, or the physical equivalent).
+5. Fix named layouts: rebinding changes the active layout only. A saved
+   layout still names the old id, and recalling then saving it again preserves
+   that old id. For each saved layout, recall it, then in the draft remove the
+   old slot/placement and add the new device at the same position (physical:
+   slot center, angle and nudge; logical: same rectangle), apply the draft,
+   and save it under the original name with `?replace=true`. Repeat for every
+   layout that named the old id. Saved scenes carry content only and need no
+   change.
 6. Check the wall, numbers and (physical) calibration status in the controller.
 
 Rebinding is not authentication: any operator-origin caller can do it, and

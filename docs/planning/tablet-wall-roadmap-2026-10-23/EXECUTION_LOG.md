@@ -426,3 +426,44 @@ Pending.
 - Next implementation steps: a 100-cut software/optical harness, strict slots,
   causal coalescing, suspend injection in a browser, and the physical seam
   procedure.
+
+## Stage 3 closeout (2026-10-24)
+
+Runner: `simulator/browser.run --cuts 100 --suspend`, 129/129 checks.
+
+- 100 of 100 requested cuts committed and painted, three calibrated clients,
+  0 failed events, 0 degradation windows, 0 holds.
+- Software onset delta (whole show, failed events would be unbounded):
+  p50 0.2 ms, p95 1.0 ms, max 1.3 ms. Healthy subset identical.
+- Lateness against the planned effective time is about -39.8 ms p50 on all
+  three members. That is a browser draw timestamp before the planned instant,
+  not optical evidence.
+- Suspend injection: the server clock epoch changed, both clients stopped,
+  readiness renewals stopped, no cancelled preparation committed or painted,
+  and the persisted static scene survived. Control step under the threshold
+  changed nothing.
+- Optical gate: MISSING. No camera, panel capture, or physical suspend.
+- One product gap remains until R4: after a clock-epoch abort the screens keep
+  the last committed still until a reload or a new wall frame. The R4 abort
+  path sends `stopped` then the persisted wall, and the client restores it.
+
+Field fix committed as `01123e5`: a denied wake lock is reported without a
+console warning, and the runner matches a heartbeat frame by type because the
+field work added `wake_lock` to it.
+
+## Stage 5 browser verification (2026-10-24)
+
+Temporary server, loopback admission, no operator data. Real Chromium.
+
+- `GET /diagnostics` returned 200 with media quota/used/free/reserve/objects/
+  assets/orphans, db schema 3 and size, backup age, clients online/total, and
+  the wake-lock state counts.
+- A client registered with `wake_lock: "denied"` after reconnecting on a page
+  where the permission was refused.
+- Rebind with the operator Origin moved the placement and number from an
+  offline device to a new registration, removed the old identity, closed the
+  new tablet's socket, and the tablet reconnected as `#1` online.
+- A write without the operator Origin answered 403.
+- Screenshot: `/tmp/opencode/stages35-r5-browser/client-after-rebind.png`.
+- Missing: an operator surface for diagnostics/rebind, and every physical
+  gate (iPad/Android, real suspend, iOS decode, two-hour soak).

@@ -701,6 +701,8 @@ async def run_cuts(rig: Rig, report: dict[str, Any], target: int) -> None:
           committed=analysis["events_committed"])
     check("cuts: every requested event is accounted as complete or failed",
           analysis["events_complete"] + analysis["events_failed"] == target)
+    check("cuts: no event failed", analysis["events_failed"] == 0,
+          failed=analysis["events_failed"])
     check("cuts: the run stopped cleanly", stopped is not None and stopped.status_code == 200,
           status=getattr(stopped, "status_code", None))
     check("cuts: evidence is labelled software and the optical gate stays MISSING",
@@ -850,12 +852,11 @@ async def run_suspend(rig: Rig, report: dict[str, Any]) -> None:
               commits_after_step={k: len(v) for k, v in committed_after.items()},
               green_draws={k: len(v) for k, v in painted_green.items()})
         centre_end = [await surface_centre(page) for page, _ in pages]
-        visible = ["last committed still" if pixel_close(end, CUT_COLOURS["red"])
-                   else "persisted scene" if pixel_close(end, CUT_COLOURS["idle"]) else "other"
+        visible = ["persisted scene" if pixel_close(end, CUT_COLOURS["idle"])
+                   else "last committed still" if pixel_close(end, CUT_COLOURS["red"]) else "other"
                    for end in centre_end]
-        check("suspend: the wall shows the last committed still or the persisted scene after the cancel, "
-              "never the cancelled cut", "other" not in visible and not any(
-                  pixel_close(end, CUT_COLOURS["green"]) for end in centre_end),
+        check("suspend: the wall returns to the persisted scene after the cancel, "
+              "never the cancelled cut", all(label == "persisted scene" for label in visible),
               at_stop=centre_at_stop, at_end=centre_end, visible=visible)
 
         # The persisted static scene is not exposed over HTTP while the layout
@@ -897,7 +898,7 @@ async def run_suspend(rig: Rig, report: dict[str, Any]) -> None:
             "renewals_after_stop": leaked,
             "visible_at_stop": centre_at_stop, "visible_at_end": centre_end,
             "visible_state": visible,
-            "product_note": "_abort_playback sends only a playback-stopped frame and the client's stopPlayback "
+            "product_note": "_abort_playback must send the persisted render after the stopped frame and the client must restore it; a last still is not accepted. "
                             "only clears timers, so a screen keeps its last committed still until a reload or "
                             "a new wall/render frame; the persisted scene is not re-sent on abort",
             "reload_paints_persisted_scene": scene_back,
