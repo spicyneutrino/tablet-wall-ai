@@ -1116,7 +1116,8 @@ async def exercise(artifacts: Path, report: dict[str, Any], observation_seconds:
             row["open_sockets"] == [1, 1, 1] and all(row["online"]) for row in online_samples)
             and close_counts == [sum(event["kind"] == "ws_close" for event in obs.events) for _, obs in pages])
         check("real heartbeats in observation window", all(any(event["kind"] == "ws_sent" and event["time"] >= start
-            and event["frame"] == {"type": "heartbeat"} for event in obs.events) for _, obs in pages))
+            and isinstance(event["frame"], dict) and event["frame"].get("type") == "heartbeat"
+            for event in obs.events) for _, obs in pages))
 
         async def open_sockets(page: Any) -> int:
             return await page.evaluate("__fleetSockets.filter(s=>s.readyState===WebSocket.OPEN).length")

@@ -2177,7 +2177,12 @@
                 },
                 function (err) {
                     pending = false;
-                    warn("wake lock request failed", err);
+                    /* A denied permission is an expected state, not a fault:
+                     * the state is reported and retried, so it must not spam
+                     * the console (or the browser evidence) on every try. */
+                    if (!err || (err.name !== "NotAllowedError" && err.name !== "SecurityError")) {
+                        warn("wake lock request failed", err);
+                    }
                     set("denied");
                 }
             );
