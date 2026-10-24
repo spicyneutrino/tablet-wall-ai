@@ -1475,6 +1475,13 @@
         return n + " B";
     }
 
+    /** 1.0 s .. 600 s: one decimal below ten seconds, whole seconds above. */
+    function fmtDuration(ms) {
+        if (ms === null || !Number.isFinite(ms) || ms <= 0) return "-";
+        const seconds = ms / 1000;
+        return (seconds < 10 ? seconds.toFixed(1) : String(Math.round(seconds))) + " s";
+    }
+
     /* ------------------------------------------------------------------ *
      * Inventory parsing
      *
@@ -1517,22 +1524,34 @@
         const width = pickNumber(raw, ["width", "intrinsicWidth", "intrinsic_width"]);
         const height = pickNumber(raw, ["height", "intrinsicHeight", "intrinsic_height"]);
         const bytes = pickNumber(raw, ["bytes", "byteSize", "byte_size", "size"]);
+        const mime = pickString(raw, ["mime", "mimeType", "mime_type",
+            "content_type", "contentType"]) || "";
+        const rawKind = pickString(raw, ["kind", "assetKind", "asset_kind"]);
+        const kind = rawKind === "video" || mime.indexOf("video/") === 0 ? "video" : "still";
+        const duration = pickNumber(raw, ["durationMs", "duration_ms", "duration"]);
         const thumbRaw = raw.thumbnail;
         const thumbnail = thumbRaw && typeof thumbRaw === "object" && !Array.isArray(thumbRaw)
             ? pickString(thumbRaw, ["url", "href"])
             : null;
+        const posterRaw = raw.poster;
+        const poster = posterRaw && typeof posterRaw === "object" && !Array.isArray(posterRaw)
+            ? pickString(posterRaw, ["url", "href"])
+            : thumbnail;
 
         return {
             id: id,
             name: pickString(raw, ["name", "display_name", "displayName",
                 "filename", "file_name"]) || id,
-            mime: pickString(raw, ["mime", "mimeType", "mime_type",
-                "content_type", "contentType"]) || "",
+            mime: mime,
+            kind: kind,
+            durationMs: kind === "video" && duration !== null && duration > 0
+                ? Math.round(duration) : null,
             width: width !== null && width > 0 ? Math.round(width) : null,
             height: height !== null && height > 0 ? Math.round(height) : null,
             bytes: bytes !== null && bytes >= 0 ? bytes : null,
             url: pickString(raw, ["url", "href"]),
-            thumbnail: thumbnail
+            thumbnail: thumbnail,
+            poster: poster
         };
     }
 
@@ -1667,7 +1686,7 @@
             const data = await requestJson("GET", "/media");
             const list = normalizeAssets(data);
             if (list === null) {
-                throw new Error("the answer was not an image library");
+                throw new Error("the answer was not a file library");
             }
             mediaAssets = list;
             mediaState = "ready";
@@ -1678,7 +1697,7 @@
             if (!quiet) {
                 logStatus(
                     "Uploaded library: " + list.length +
-                        (list.length === 1 ? " image." : " images."),
+                        (list.length === 1 ? " file." : " files."),
                     "ok"
                 );
             }
@@ -1715,7 +1734,7 @@
         if (el.mediaCount) {
             el.mediaCount.textContent = mediaState === "pending"
                 ? ""
-                : mediaAssets.length + (mediaAssets.length === 1 ? " image" : " images");
+                : mediaAssets.length + (mediaAssets.length === 1 ? " file" : " files");
         }
 
         list.textContent = "";
@@ -1731,9 +1750,9 @@
         } else if (mediaState === "error") {
             kind = "err";
             note = "Uploaded library unavailable: " + (mediaError || "unknown error") +
-                (mediaAssets.length > 0 ? ". Showing the images read earlier." : "");
+                (mediaAssets.length > 0 ? ". Showing the files read earlier." : "");
         } else if (mediaAssets.length === 0) {
-            note = "No uploaded images yet.";
+            note = "No uploaded files yet.";
         }
         if (el.mediaNote) {
             el.mediaNote.hidden = note === "";
@@ -1750,14 +1769,17 @@
         row.type = "button";
         row.className = "media-row";
         row.dataset.media = asset.id;
+        row.dataset.kind = asset.kind;
         row.setAttribute("aria-pressed", String(selectedAsset === asset.id));
-        row.title = asset.id + (asset.mime ? " · " + asset.mime : "");
+        row.title = asset.id + (asset.mime ? " · " + asset.mime : "")
+            + (asset.kind === "video" ? " · video: playlist only" : "");
 
         let thumb;
-        if (asset.thumbnail) {
+        const thumbUrl = asset.poster || asset.thumbnail;
+        if (thumbUrl) {
             thumb = document.createElement("img");
             thumb.className = "media-thumb";
-            thumb.src = asset.thumbnail;
+            thumb.src = thumbUrl;
             thumb.alt = "";
             thumb.loading = "lazy";
         } else {
@@ -1770,11 +1792,17 @@
         name.className = "media-name";
         name.textContent = asset.name;
 
+        const kind = document.createElement("span");
+        kind.className = "media-kind";
+        kind.textContent = asset.kind === "video"
+            ? "Video" + (asset.durationMs !== null ? " · " + fmtDuration(asset.durationMs) : "")
+            : "Still";
+
         const size = document.createElement("span");
         size.className = "media-size";
         size.textContent = fmtBytes(asset.bytes);
 
-        row.append(thumb, name, size);
+        row.append(thumb, name, kind, size);
         item.appendChild(row);
         return item;
     }
@@ -1828,7 +1856,7 @@
         if (uploadBusy) return;
         const file = selectedUploadFile();
         if (!file) {
-            setUploadStatus("Choose an image file first.", "err");
+            setUploadStatus("Choose an image or video file first.", "err");
             return;
         }
 
@@ -1931,12 +1959,20 @@
         mediaAssets.push(asset);
         mediaState = "ready";
         mediaError = null;
-        selectedAsset = asset.id;
+        if (asset.kind !== "video") selectedAsset = asset.id;
         if (el.uploadFile) el.uploadFile.value = "";
         if (el.uploadFileName) el.uploadFileName.textContent = "No file chosen";
         renderImagePanel();
-        setUploadStatus("Ready: " + asset.name, "ok");
-        logStatus("Uploaded " + asset.name + ". Press Show on wall to display it.", "ok");
+        if (asset.kind === "video") {
+            setUploadStatus("Ready: " + asset.name + " (video)", "ok");
+            logStatus(
+                "Uploaded " + asset.name + ". Add it to the playlist on the physical page.",
+                "ok"
+            );
+        } else {
+            setUploadStatus("Ready: " + asset.name, "ok");
+            logStatus("Uploaded " + asset.name + ". Press Show on wall to display it.", "ok");
+        }
         refreshMedia(true);
     }
 
@@ -2110,6 +2146,13 @@
     function selectAsset(id) {
         const asset = assetById(id);
         if (!asset) return;
+        if (asset.kind === "video") {
+            logStatus(
+                "Video files play from the playlist on the physical page; they cannot be shown as a still scene.",
+                "info"
+            );
+            return;
+        }
         if (selectedAsset === asset.id) {
             selectedAsset = null;
             logStatus("Asset selection cleared.", "info");
@@ -2188,17 +2231,21 @@
         if (el.btnImageApply) {
             const applying = pendingContent === "image";
             const same = !!selectedAsset && selectedAsset === active;
+            const selected = selectedAsset ? assetById(selectedAsset) : null;
+            const isVideo = !!selected && selected.kind === "video";
             const canApply =
-                wallReady() && !!selectedAsset && !same && pendingContent === null;
+                wallReady() && !!selectedAsset && !same && !isVideo && pendingContent === null;
             el.btnImageApply.disabled = !canApply;
             el.btnImageApply.textContent = applying
                 ? "Applying…"
-                : same ? "Already on the wall" : "Show on wall";
-            el.btnImageApply.title = !selectedAsset
-                ? "Pick an image first. Nothing is sent without a selection."
-                : same
-                    ? "This image is already on the wall."
-                    : "Show this image across the whole wall";
+                : isVideo ? "Video: playlist only" : same ? "Already on the wall" : "Show on wall";
+            el.btnImageApply.title = isVideo
+                ? "A video plays from the playlist on the physical page."
+                : !selectedAsset
+                    ? "Pick an image first. Nothing is sent without a selection."
+                    : same
+                        ? "This image is already on the wall."
+                        : "Show this image across the whole wall";
         }
 
         // The preview follows the selection only: the wall's own copy of the
@@ -2247,6 +2294,14 @@
         const asset = selectedAsset;
         if (!asset) {
             logStatus("Pick an image from the list first.", "err");
+            return;
+        }
+        const entry = assetById(asset);
+        if (entry && entry.kind === "video") {
+            logStatus(
+                "A video plays from the playlist on the physical page; it cannot be applied as a still scene.",
+                "err"
+            );
             return;
         }
         if (asset === activeImageId()) return;

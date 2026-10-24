@@ -7,7 +7,7 @@
     <meta name="description" content="Control panel for a wall of tablets: choose what the wall shows and where each tablet sits.">
     <title>Wall control · tablet-wall-ai</title>
     <link rel="icon" href="favicon.svg" type="image/svg+xml">
-    <link rel="stylesheet" href="controller.css?v=14">
+    <link rel="stylesheet" href="controller.css?v=15">
 </head>
 <body>
 <a class="skip" href="#workspace">Skip to wall</a>
@@ -388,14 +388,15 @@
                         </div>
 
                         <div class="upload-block" id="upload-block" hidden>
-                            <div class="block-head"><h3>Add an image</h3><span class="block-note">JPEG or PNG</span></div>
+                            <div class="block-head"><h3>Add a file</h3><span class="block-note">JPEG, PNG, MP4 or MOV</span></div>
                             <div class="upload-row">
-                                <input class="upload-file" id="upload-file" type="file" accept="image/jpeg,image/png" aria-label="Choose an image to upload">
+                                <input class="upload-file" id="upload-file" type="file" accept="image/jpeg,image/png,video/mp4,video/quicktime" aria-label="Choose an image or video to upload">
                                 <button type="button" id="btn-upload" disabled>Upload</button>
                             </div>
                             <p class="upload-file-name" id="upload-file-name">No file chosen</p>
                             <progress class="upload-progress" id="upload-progress" max="100" value="0" aria-label="Upload progress" hidden></progress>
                             <p class="upload-status" id="upload-status" role="status" aria-live="polite" aria-atomic="true"></p>
+                            <p class="meta">Videos play from the playlist on the physical page; they cannot be shown as a still scene.</p>
                         </div>
 
                         <div class="media-library" id="media-library" hidden>
@@ -616,6 +617,6 @@
 
 <noscript><p class="noscript">This page needs JavaScript. It talks to the server over a live connection.</p></noscript>
 
-<script src="controller.js?v=15"></script>
+<script src="controller.js?v=16"></script>
 </body>
 </html>

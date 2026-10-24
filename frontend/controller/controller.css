@@ -815,6 +815,7 @@ fieldset { border: 0; padding: 0; margin: 0; }
 .media-row[aria-pressed="true"] { background: var(--accent-wash); box-shadow: inset 0 0 0 1px var(--accent); }
 .media-thumb { width: 32px; height: 24px; object-fit: cover; border: 1px solid var(--rule); border-radius: 2px; }
 .media-name { min-width: 0; flex: 1; font-size: 11px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.media-kind { flex: none; color: var(--muted); font-size: 9px; white-space: nowrap; }
 .media-size { color: var(--muted); font-size: 9px; }
 
 /* ---------------------------------------------------------------- *
