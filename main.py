@@ -76,7 +76,7 @@ from tabletwall.protocol import (
 )
 # Curated still-image assets (PROTOCOL.md "Still images"): the directory scan,
 # content IDs, and byte-verified serving behind ``GET /assets``.
-from tabletwall import assets, clock, displays, geometry, media, media_serve, playback, video
+from tabletwall import assets, clock, displays, geometry, media, media_serve, media_video, playback
 from tabletwall import persist
 from tabletwall import writer as writers
 from tabletwall.media_limits import (
@@ -1645,7 +1645,7 @@ async def upload_image(
             content={"detail": "only image/jpeg, image/png, video/mp4 or video/quicktime is accepted"},
             headers={"Cache-Control": "no-store"},
         )
-    if is_video and not video.tools_available():
+    if is_video and not media_video.tools_available():
         return JSONResponse(
             status_code=503,
             content={"detail": "ffmpeg and ffprobe are not installed; video uploads are unavailable"},

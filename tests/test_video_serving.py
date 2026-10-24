@@ -8,6 +8,9 @@ here instead of on a tablet. The second block covers the gaps
 
 import hashlib
 import os
+import subprocess
+import sys
+from pathlib import Path
 
 import pytest
 
@@ -217,8 +220,6 @@ def test_stills_keep_their_whole_body_behaviour_and_gain_head(client):
     buffer = BytesIO()
     Image.new("RGB", (8, 8), (1, 2, 3)).save(buffer, format="JPEG")
     digest = hashlib.sha256(buffer.getvalue()).hexdigest()
-    import main
-
     curated = os.environ["TABLET_WALL_ASSET_DIR"]
     os.makedirs(curated, exist_ok=True)
     with open(os.path.join(curated, f"{digest}.jpg"), "wb") as handle:
@@ -229,4 +230,14 @@ def test_stills_keep_their_whole_body_behaviour_and_gain_head(client):
     assert get.headers["content-type"] == "image/jpeg"
     assert "accept-ranges" not in get.headers
     assert client.head(url).status_code == 200
-    assert main.app  # route table unchanged for the curated path
+
+
+def test_the_server_process_never_loads_the_decoder_worker():
+    """Importing the worker would install Pillow's global warning policy server-wide."""
+    code = (
+        "import sys, warnings, main; "
+        "assert 'tabletwall.media_worker' not in sys.modules; "
+        "assert 'tabletwall.video' not in sys.modules; "
+        "assert not any('DecompressionBomb' in getattr(f[2], '__name__', '') for f in warnings.filters)"
+    )
+    subprocess.run([sys.executable, "-c", code], cwd=Path(__file__).resolve().parents[1], check=True)

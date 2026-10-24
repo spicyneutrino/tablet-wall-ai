@@ -26,7 +26,6 @@ truncated stream under ``-xerror``.
 import hashlib
 import json
 import os
-import shutil
 import stat
 import subprocess
 import sys
@@ -49,6 +48,7 @@ from tabletwall.media_limits import (
     VIDEO_PROFILES,
     VIDEO_TOOL_TIMEOUT_S,
 )
+from tabletwall.media_video import VIDEO_MIME
 from tabletwall.media_worker import (
     Rejected,
     _apply_limits,
@@ -65,7 +65,6 @@ try:
 except ImportError:  # pragma: no cover - the server runs on POSIX
     resource = None
 
-VIDEO_MIME = "video/mp4"
 _MIB = 1024 * 1024
 _MAX_TOP_LEVEL_BOXES = 4096
 _KEPT_AUDIO = ("aac", "mp3")
@@ -105,10 +104,6 @@ _FOREIGN_CONTAINERS = (
     (b"fLaC", "FLAC audio"),
     (b"#EXTM3U", "HLS playlist text"),
 )
-
-
-def tools_available() -> bool:
-    return bool(shutil.which("ffprobe") and shutil.which("ffmpeg"))
 
 
 # ---------------------------------------------------------------------------
@@ -414,34 +409,6 @@ def facts_from_probe(document: dict[str, Any]) -> tuple[dict[str, Any], int, int
         "audio": audio_index is not None,
     }
     return facts, video_index, audio_index
-
-
-def validate_facts(facts: Any) -> dict[str, Any]:
-    """Re-check a worker-reported fact set at the trust boundary."""
-    if not isinstance(facts, dict):
-        raise ValueError("video facts are not an object")
-    expected = {
-        "intrinsicWidth": int, "intrinsicHeight": int, "durationMs": int, "codec": str,
-        "profile": str, "level": str, "pixelFormat": str, "frameRate": (int, float),
-        "bitrate": int, "faststart": bool, "audio": bool,
-    }
-    if set(facts) != set(expected):
-        raise ValueError("video facts have unexpected fields")
-    for key, kind in expected.items():
-        value = facts[key]
-        if isinstance(value, bool) != (kind is bool) or not isinstance(value, kind):
-            raise ValueError(f"video fact {key} has the wrong type")
-    if not MIN_VIDEO_DURATION_MS <= facts["durationMs"] <= MAX_VIDEO_DURATION_MS:
-        raise ValueError("video duration is outside the accepted range")
-    if facts["pixelFormat"] != "yuv420p" or facts["profile"] not in VIDEO_PROFILES:
-        raise ValueError("video format is outside the accepted set")
-    if not facts["faststart"]:
-        raise ValueError("video is not faststart")
-    if facts["intrinsicWidth"] <= 0 or facts["intrinsicHeight"] <= 0 or facts["bitrate"] < 0:
-        raise ValueError("video dimensions or bitrate are invalid")
-    if not 0 < facts["frameRate"] <= MAX_VIDEO_FPS + 0.01:
-        raise ValueError("video frame rate is outside the accepted range")
-    return facts
 
 
 # ---------------------------------------------------------------------------

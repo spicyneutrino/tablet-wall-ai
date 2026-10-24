@@ -225,3 +225,67 @@ def test_a_corrupt_store_object_fails_the_backup_and_publishes_no_snapshot(libra
     ]) != 0
     assert not destination.exists()
     assert not [p for p in tmp_path.iterdir() if "incomplete" in p.name]
+
+
+def _curated_still(source: Path) -> str:
+    from io import BytesIO
+
+    from PIL import Image
+
+    buffer = BytesIO()
+    Image.new("RGB", (8, 8), (9, 9, 9)).save(buffer, format="JPEG")
+    digest = hashlib.sha256(buffer.getvalue()).hexdigest()
+    (source / "assets" / f"{digest}.jpg").write_bytes(buffer.getvalue())
+    return "sha256:" + digest
+
+
+def _add_playlist_to_artifact(path: Path, object_id: str) -> None:
+    """Rewrite a finished artifact the way a pre-playlist tool could have left it.
+
+    The artifact's database gains a playlist row that names ``object_id``, and
+    the manifest's database digest is recomputed, so the artifact stays
+    internally consistent while its scene-only reference set no longer equals
+    the scenes-plus-playlist set.
+    """
+    database = path / "database" / "wall.db"
+    connection = sqlite3.connect(database)
+    connection.execute(
+        "INSERT INTO schema_meta (key, value) VALUES ('playlist', ?)",
+        (json.dumps({"items": [{"asset": object_id, "dwell_ms": 5000}], "loop": False}),),
+    )
+    connection.commit()
+    connection.close()
+    manifest = manifest_of(path)
+    data = database.read_bytes()
+    manifest["database"].update(bytes=len(data), sha256=hashlib.sha256(data).hexdigest())
+    (path / "manifest.json").write_text(json.dumps(manifest))
+
+
+def test_an_older_version_2_artifact_keeps_its_scene_only_meaning(store, tmp_path):
+    still = _curated_still(store)
+    path = snapshot(tmp_path, store)
+    assert manifest_of(path)["manifest_version"] == 2
+    _add_playlist_to_artifact(path, still)
+
+    assert backup.main(["verify", "--src", str(path)]) == 0
+    restored = tmp_path / "restored"
+    restored.mkdir()
+    assert backup.main([
+        "restore", "--src", str(path), "--db", str(restored / "wall.db"),
+        "--assets", str(restored / "assets"), "--media", str(restored / "media"),
+    ]) == 0
+
+
+def test_a_playlist_that_adds_a_reference_makes_a_version_3_snapshot(store, tmp_path):
+    still = _curated_still(store)
+    playlist(still)
+    path = snapshot(tmp_path, store)
+    manifest = manifest_of(path)
+    assert manifest["manifest_version"] == 3
+    assert manifest["references"] == [still]
+    assert [entry["id"] for entry in manifest["assets"]] == [still]
+    assert backup.main(["verify", "--src", str(path)]) == 0
+
+    # A playlist that names nothing the scenes do not already hold changes nothing.
+    persist.save_meta("playlist", {"items": [], "loop": False, "revision": 2})
+    assert manifest_of(snapshot(tmp_path, store, "second"))["manifest_version"] == 2

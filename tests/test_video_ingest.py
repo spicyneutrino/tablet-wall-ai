@@ -13,7 +13,7 @@ from pathlib import Path
 
 import pytest
 
-from tabletwall import video
+from tabletwall import media_video, video
 from tabletwall.media_worker import Rejected
 from video_fixtures import (  # noqa: F401  (make_video and video_dir are fixtures)
     needs_ffmpeg, make_video, packet_md5, probe, video_dir,
@@ -58,7 +58,7 @@ class TestAccepted:
         for entry in objects.values():
             assert entry["filename"].startswith(entry["sha256"])
             assert (job / entry["filename"]).is_file()
-        assert video.validate_facts(result["video"]) == result["video"]
+        assert media_video.validate_facts(result["video"]) == result["video"]
 
     def test_a_non_faststart_file_is_remuxed_losslessly_to_faststart(self, make_video, job):
         source = make_video("nonfaststart.mp4")
@@ -171,7 +171,7 @@ class TestRejected:
 
     def test_a_missing_ffmpeg_is_an_operator_facing_refusal(self, make_video, job, monkeypatch):
         monkeypatch.setenv("PATH", str(job))
-        assert video.tools_available() is False
+        assert media_video.tools_available() is False
         with pytest.raises(Rejected, match="not installed"):
             ingest(make_video("baseline.mp4"), job)
 
@@ -185,11 +185,11 @@ class TestFactValidation:
             ("audio", 1), ("bitrate", True), ("intrinsicWidth", 0),
         ):
             with pytest.raises(ValueError):
-                video.validate_facts({**facts, field: value})
+                media_video.validate_facts({**facts, field: value})
         with pytest.raises(ValueError):
-            video.validate_facts({**facts, "extra": 1})
+            media_video.validate_facts({**facts, "extra": 1})
         with pytest.raises(ValueError):
-            video.validate_facts(None)
+            media_video.validate_facts(None)
 
 
 class TestToolSafety:

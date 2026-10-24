@@ -74,12 +74,13 @@ from typing import Any, Iterator, NoReturn, Sequence
 # anything outside these two prefixes, so a hostile or stale manifest cannot
 # steer verification (or restore) at an arbitrary path.
 #
-# Version 2 is the still-image grammar. Version 3 widens it to video: a media
-# object may be an MP4, and a media asset may be a video asset (roles ``video``
-# and ``thumbnail``). A snapshot is written at the lowest version that can
-# express its closure, so a snapshot without video is byte-compatible with a
-# reader that only knows version 2, and an older reader meeting video says
-# "unsupported manifest version 3" instead of a misleading path error.
+# Version 2 is the still-image grammar with scene-only references. Version 3
+# means two things: media objects may be MP4s and media assets may be video
+# assets (roles ``video`` and ``thumbnail``), and the saved playlist's assets
+# count as references. A snapshot is written at the lowest version that can
+# express its closure, so one that needs neither stays byte-compatible with a
+# reader that only knows version 2, and an older reader meeting either says
+# "unsupported manifest version 3" instead of a misleading closure error.
 MANIFEST_VERSION = 2
 VIDEO_MANIFEST_VERSION = 3
 SUPPORTED_MANIFEST_VERSIONS = (1, 2, 3)
@@ -446,10 +447,15 @@ def _collect_references(document: Any, where: str, out: set[str]) -> None:
             _collect_references(item, where, out)
 
 
-def _read_snapshot(database_path: str) -> tuple[set[str], int | None]:
+def _read_snapshot(
+    database_path: str, *, playlist: bool = False
+) -> tuple[set[str], int | None]:
     """Verify a database file and read its references — from that file alone.
 
-    Returns ``(reference set, revision)``. The order matters: integrity check
+    Returns ``(reference set, revision)``. ``playlist`` adds the saved
+    playlist's references to the scene ones; only a version 3 manifest means
+    that, so older artifacts keep verifying against the scene-only set they
+    were written with. The order matters: integrity check
     first (a file that fails it proves nothing else), then the expected tables
     (a file without them is not this application's database), then the JSON
     documents. Everything is read through the read-only connection, so this
@@ -503,11 +509,11 @@ def _read_snapshot(database_path: str) -> tuple[set[str], int | None]:
             # a schema-0 file has no such table). Its items name content IDs
             # under ``asset`` exactly as a scene does, so a video or still that
             # only a playlist uses is still part of the closure.
-            playlist = (
+            saved_playlist = (
                 connection.execute(
                     "SELECT value FROM schema_meta WHERE key = 'playlist'"
                 ).fetchone()
-                if "schema_meta" in tables
+                if playlist and "schema_meta" in tables
                 else None
             )
         except sqlite3.Error as exc:
@@ -519,9 +525,9 @@ def _read_snapshot(database_path: str) -> tuple[set[str], int | None]:
                 # treats such a snapshot as absent content as well.
                 continue
             _collect_references(document, f"saved scene {name!r}", references)
-        if playlist is not None:
+        if saved_playlist is not None:
             _collect_references(
-                _parse_document(playlist[0], "the saved playlist"),
+                _parse_document(saved_playlist[0], "the saved playlist"),
                 "the saved playlist",
                 references,
             )
@@ -1383,7 +1389,9 @@ def verify_artifact(src: str) -> dict[str, Any]:
             _artifact_file(root, entry["path"]), entry,
             f"media object {entry['object_id']}",
         )
-    references, revision = _read_snapshot(database_path)
+    references, revision = _read_snapshot(
+        database_path, playlist=manifest["manifest_version"] >= 3
+    )
     _check_manifest_closure(database_path, references, manifest)
     if revision != manifest["revision"]:
         _fail(
@@ -1558,7 +1566,8 @@ def cmd_backup(args: argparse.Namespace) -> int:
             _snapshot_database(db_source, snapshot_path)
             # References and managed closure come from the snapshot, never
             # from the live file: they describe exactly the state copied.
-            references, revision = _read_snapshot(snapshot_path)
+            scene_references, revision = _read_snapshot(snapshot_path)
+            references, _revision = _read_snapshot(snapshot_path, playlist=True)
             media_objects, media_assets, omitted = _read_media_closure(
                 snapshot_path, references
             )
@@ -1620,7 +1629,8 @@ def cmd_backup(args: argparse.Namespace) -> int:
             database_digest, database_bytes, _head, _truncated = _hash_file(snapshot_path)
             manifest = {
                 "manifest_version": VIDEO_MANIFEST_VERSION
-                if any(entry["mime"] == VIDEO_MIME for entry in media_objects)
+                if references != scene_references
+                or any(entry["mime"] == VIDEO_MIME for entry in media_objects)
                 else MANIFEST_VERSION,
                 "created_utc": datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"),
                 "schema_version": _schema_version(snapshot_path),
@@ -1770,7 +1780,9 @@ def _check_restored(
 ) -> None:
     """Prove the restored targets stand on their own before reporting."""
     _check_digest_file(db_target, manifest["database"], "restored database")
-    references, revision = _read_snapshot(db_target)
+    references, revision = _read_snapshot(
+        db_target, playlist=manifest["manifest_version"] >= 3
+    )
     _check_manifest_closure(db_target, references, manifest)
     if revision != manifest["revision"]:
         _fail(

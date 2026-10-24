@@ -59,7 +59,7 @@ from tabletwall.media_limits import (
     WORKER_TIMEOUT_S,
 )
 from tabletwall.protocol import ASSET_ID_PREFIX, _asset_url, _is_asset_id
-from tabletwall.video import VIDEO_MIME, validate_facts
+from tabletwall.media_video import VIDEO_MIME, validate_facts
 
 DEFAULT_MEDIA_DIR = "./media"
 STORE_LOCK_NAME = ".store.lock"
