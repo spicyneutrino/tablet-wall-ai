@@ -49,8 +49,8 @@
      * this client can render, so the server may send calibration and image
      * content (PROTOCOL.md "Still images": a device that has not advertised
      * `image` is never sent image content). */
-    var PROTOCOL_VERSION = 2;
-    var CAPS = "calibration,image";
+    var PROTOCOL_VERSION = 3;
+    var CAPS = "calibration,image,physical";
 
     var BACKOFF_MIN_MS = 500;
     var BACKOFF_MAX_MS = 15000;
@@ -346,6 +346,7 @@
     var wallState = null;
     var heldRevision = null;
     var heldGeneration = null;
+    var heldRenderSeq = 0;
 
     /*
      * The image scene's own state, kept apart from `wallState` because it is
@@ -450,6 +451,13 @@
     }
 
     function viewportSize() {
+        var el = document.getElementById("surface");
+        if (el && typeof el.getBoundingClientRect === "function") {
+            var rect = el.getBoundingClientRect();
+            if (rect.width > 0 && rect.height > 0) {
+                return { w: rect.width, h: rect.height };
+            }
+        }
         var w = Number(window.innerWidth);
         var h = Number(window.innerHeight);
         if (!(w > 0) || !(h > 0)) {
@@ -489,6 +497,12 @@
     /* Single entry point for every state change that affects the screen. */
     function render() {
         if (!wallState) return; /* no wall frame yet: colour-only surface */
+
+        if (wallState.physical && !wallState.physical.plan) {
+            showCanvas(true);
+            drawNeedsCalibration();
+            return;
+        }
 
         if (wallState.contentType === "calibration") {
             showCanvas(true);
@@ -1394,7 +1408,80 @@
      *               render;
      *   "size"    — the picture's own dimensions are unusable: a failure.
      */
+    function drawPhysicalImage(vp, entry) {
+        var view = prepareCanvas(vp.w, vp.h);
+        if (!view) return "surface";
+        var physical = wallState.physical;
+        var viewLib = window.TabletWallView;
+        if (!viewLib || !physical || !physical.plan) return "surface";
+        var iw = Number(entry.iw);
+        var ih = Number(entry.ih);
+        if (!Number.isFinite(iw) || iw <= 0 || !Number.isFinite(ih) || ih <= 0) {
+            return "size";
+        }
+        var calibration = {
+            viewport_width: physical.calibration.viewport_width,
+            viewport_height: physical.calibration.viewport_height,
+            quarter_turn: physical.calibration.quarter_turn,
+            panel_offset_mm: physical.calibration.panel_offset_mm,
+            mm_per_css: physical.calibration.mm_per_css,
+            panel_width: physical.plan.active.width,
+            panel_height: physical.plan.active.height,
+        };
+        var result;
+        try {
+            result = viewLib.canvasTransformComponents({
+                backing: [view.ctx.canvas.width, view.ctx.canvas.height],
+                rect: [vp.w, vp.h],
+                calibration: calibration,
+                panel_from_source: physical.plan.panel_from_source,
+                source_size: [iw, ih],
+            });
+        } catch (err) {
+            warn("physical transform failed", err);
+            return "surface";
+        }
+        var ctx = view.ctx;
+        ctx.setTransform(1, 0, 0, 1, 0, 0);
+        ctx.beginPath();
+        ctx.rect(result.clip.x, result.clip.y, result.clip.width, result.clip.height);
+        ctx.clip();
+        ctx.fillStyle = PATTERN.background;
+        ctx.fillRect(0, 0, ctx.canvas.width, ctx.canvas.height);
+        var m = result.matrix;
+        ctx.setTransform(m[0], m[1], m[2], m[3], m[4], m[5]);
+        ctx.drawImage(entry.source, 0, 0, iw, ih);
+        ctx.setTransform(view.dpr, 0, 0, view.dpr, 0, 0);
+        return "painted";
+    }
+
+    function drawNeedsCalibration() {
+        var vp = viewportSize();
+        if (!vp) return;
+        var view = prepareCanvas(vp.w, vp.h);
+        if (!view) return;
+        var ctx = view.ctx;
+        ctx.setTransform(view.dpr, 0, 0, view.dpr, 0, 0);
+        ctx.fillStyle = PATTERN.background;
+        ctx.fillRect(0, 0, vp.w, vp.h);
+        var unit = Math.min(vp.w, vp.h);
+        var size = Math.max(24, unit * 0.12);
+        var note = Math.max(14, unit * 0.045);
+        ctx.textAlign = "center";
+        ctx.textBaseline = "middle";
+        ctx.fillStyle = PATTERN.unplacedNote;
+        ctx.font = "700 " + size + "px " + FONT_STACK;
+        ctx.fillText("NEEDS CALIBRATION", vp.w / 2, vp.h / 2 - size * 0.3);
+        ctx.fillStyle = PATTERN.unplacedHint;
+        ctx.font = note + "px " + FONT_STACK;
+        var reason = wallState.physical && wallState.physical.calibration
+            ? wallState.physical.calibration.reason || ""
+            : "";
+        ctx.fillText(reason, vp.w / 2, vp.h / 2 + size * 0.55);
+    }
+
     function drawWallImage(vp, entry) {
+        if (wallState.physical) return drawPhysicalImage(vp, entry);
         var view = prepareCanvas(vp.w, vp.h);
         if (!view) return "surface";
         var visible = wallState.visible;
@@ -1641,6 +1728,77 @@
         return true;
     }
 
+    /* Version 3: a logical fallback or a server-owned physical plan. The
+     * plan is independent of the wall revision (a viewport change produces a
+     * new plan without a layout mutation), so its own render_seq decides
+     * staleness at an unchanged revision. */
+    function applyRenderFrame(frame) {
+        if (frame.mode !== "physical") return applyWallFrame(frame);
+
+        var revision = frame.revision;
+        if (!Number.isFinite(revision)) return false;
+        var generation =
+            typeof frame.generation === "string" ? frame.generation : null;
+        var wall = frame.wall;
+        if (!wall || typeof wall !== "object") return false;
+        var width = Number(wall.width);
+        var height = Number(wall.height);
+        if (!Number.isFinite(width) || !Number.isFinite(height)) return false;
+        if (width <= 0 || height <= 0) return false;
+
+        var scene = frame.scene;
+        var content =
+            scene && scene.content && typeof scene.content === "object"
+                ? scene.content
+                : null;
+        var contentType =
+            content && typeof content.type === "string" && content.type !== ""
+                ? content.type
+                : "color";
+        var image = null;
+        var imageError = null;
+        if (contentType === "image") {
+            var analysis = analyzeImageContent(content);
+            image = analysis.desc;
+            imageError = analysis.reason;
+        }
+
+        var sequence = Number.isFinite(frame.render_seq) ? frame.render_seq : 0;
+        if (
+            heldRevision !== null &&
+            generation === heldGeneration &&
+            (revision < heldRevision ||
+                (revision === heldRevision && sequence <= heldRenderSeq))
+        ) {
+            return false;
+        }
+        var plan =
+            frame.plan && frame.calibration && frame.calibration.status === "valid"
+                ? frame.plan
+                : null;
+        heldRevision = revision;
+        heldGeneration = generation;
+        heldRenderSeq = sequence;
+        wallState = {
+            width: width,
+            height: height,
+            contentType: contentType,
+            image: image,
+            imageError: imageError,
+            revision: revision,
+            generation: generation,
+            placement: null,
+            visible: plan ? { x: 0, y: 0, w: width, h: height } : null,
+            physical: {
+                plan: plan,
+                calibration: frame.calibration || {},
+                slot: frame.slot || null,
+            },
+        };
+        if (!syncImageScene()) render();
+        return true;
+    }
+
     /* The mapping depends on the viewport, so resize re-renders.
      *
      * It also makes the size we registered stale, and that size is what the
@@ -1651,13 +1809,20 @@
     var RESIZE_REREGISTER_MS = 400;
     var resizeTimer = null;
     var reportedSize = window.innerWidth + "x" + window.innerHeight;
+    var reportedSignature = JSON.stringify(viewportReport());
 
     function onViewportChange() {
         render();
 
         var size = window.innerWidth + "x" + window.innerHeight;
-        if (size === reportedSize) return;
+        var signature = JSON.stringify(viewportReport());
+        if (signature === reportedSignature) return;
+        reportedSignature = signature;
+        // The socket path is what produces a new physical plan; a change that
+        // keeps the same CSS size (a 180-degree flip) only shows up here.
+        sendViewport();
 
+        if (size === reportedSize) return;
         if (resizeTimer !== null) clearTimeout(resizeTimer);
         resizeTimer = setTimeout(function () {
             resizeTimer = null;
@@ -1790,8 +1955,40 @@
     /* WebSocket                                                          */
     /* ------------------------------------------------------------------ */
 
+    var activeSocket = null;
+
+    function orientationAngle() {
+        if (typeof screen !== "undefined" && screen && screen.orientation &&
+            Number.isFinite(screen.orientation.angle)) {
+            return screen.orientation.angle;
+        }
+        return typeof window.orientation === "number" ? window.orientation : 0;
+    }
+
+    function launchMode() {
+        if (document.fullscreenElement) return "fullscreen";
+        if (
+            typeof window.matchMedia === "function" &&
+            window.matchMedia("(display-mode: standalone)").matches
+        ) {
+            return "standalone";
+        }
+        return "tab";
+    }
+
+    function viewportReport() {
+        return {
+            width: window.innerWidth,
+            height: window.innerHeight,
+            dpr: window.devicePixelRatio || 1,
+            orientation: orientationAngle(),
+            mode: launchMode(),
+        };
+    }
+
     function deviceSocketUrl() {
         var scheme = window.location.protocol === "https:" ? "wss:" : "ws:";
+        var report = viewportReport();
         return (
             scheme +
             "//" +
@@ -1801,8 +1998,22 @@
             "&protocol=" +
             PROTOCOL_VERSION +
             "&caps=" +
-            CAPS
+            CAPS +
+            "&w=" + Math.round(report.width) +
+            "&h=" + Math.round(report.height) +
+            "&dpr=" + encodeURIComponent(report.dpr) +
+            "&orientation=" + encodeURIComponent(report.orientation) +
+            "&mode=" + encodeURIComponent(report.mode)
         );
+    }
+
+    function sendViewport() {
+        if (!activeSocket || activeSocket.readyState !== 1) return;
+        try {
+            activeSocket.send(JSON.stringify({ type: "viewport", viewport: viewportReport() }));
+        } catch (err) {
+            warn("could not report the viewport", err);
+        }
     }
 
     var heartbeatTimer = null;
@@ -1858,6 +2069,8 @@
             applyColor(frame.color);
         } else if (frame.type === "wall") {
             applyWallFrame(frame);
+        } else if (frame.type === "render") {
+            applyRenderFrame(frame);
         }
     }
 
@@ -1869,6 +2082,7 @@
             var socket;
             try {
                 socket = new WebSocket(deviceSocketUrl());
+                activeSocket = socket;
             } catch (err) {
                 warn("could not open websocket", err);
                 resolve({ welcomed: false, code: null });
@@ -1890,6 +2104,7 @@
 
             socket.addEventListener("close", function (event) {
                 stopHeartbeat();
+                if (activeSocket === socket) activeSocket = null;
                 resolve({
                     welcomed: welcomed,
                     code: event && typeof event.code === "number" ? event.code : null,
