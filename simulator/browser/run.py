@@ -911,6 +911,11 @@ async def exercise(artifacts: Path, report: dict[str, Any], observation_seconds:
             image = Image.open(io.BytesIO(base64.b64decode(encoded.split(",", 1)[1]))).convert("RGB")
             return image.getpixel((image.width // 2, image.height // 2))
 
+        async def canvas_pixel(page: Any, x: int, y: int) -> tuple[int, int, int]:
+            encoded = await page.locator("#surface").evaluate("c => c.toDataURL('image/png')")
+            image = Image.open(io.BytesIO(base64.b64decode(encoded.split(",", 1)[1]))).convert("RGB")
+            return image.getpixel((x, y))
+
         async def wait_for_colour(page: Any, wanted: tuple[int, int, int]) -> tuple[int, int, int]:
             deadline = time.monotonic() + 10
             seen = (0, 0, 0)
@@ -1032,7 +1037,6 @@ async def exercise(artifacts: Path, report: dict[str, Any], observation_seconds:
                 restored_context = await browser.new_context(
                     viewport={"width": 800, "height": 600}, device_scale_factor=1
                 )
-                resources.append(restored_context)
                 restored_id = str(uuid.uuid4())
                 registration = restored_http.post("/devices/register", json={
                     "device_id": restored_id, "width": 800, "height": 600,
@@ -1073,6 +1077,8 @@ async def exercise(artifacts: Path, report: dict[str, Any], observation_seconds:
             finally:
                 restored_http.close()
         finally:
+            if restored_context is not None:
+                await restored_context.close()
             restored_process.terminate()
             try:
                 restored_process.wait(timeout=5)
@@ -1082,6 +1088,113 @@ async def exercise(artifacts: Path, report: dict[str, Any], observation_seconds:
             restored_listener.close()
 
         report["r1"] = r1
+
+        # ------------------------------------------------------------------
+        # R2: one calibrated physical client paints the hand-derived matrix
+        # ------------------------------------------------------------------
+
+        await controller.close()
+        physical_source = root / "physical.png"
+        physical = Image.new("RGB", (400, 240), (10, 20, 60))
+        physical.paste((220, 20, 20), (80, 120, 120, 160))
+        physical.paste((20, 200, 20), (280, 40, 320, 80))
+        # Case 2 maps source (200,200) to the panel centre at backing (50,30).
+        physical.paste((240, 220, 20), (180, 180, 220, 220))
+        physical.save(physical_source)
+        physical_http = httpx.Client(base_url=base, headers={"Origin": base}, timeout=10)
+        physical_context = None
+        try:
+            uploaded_physical = physical_http.post(
+                "/uploads?name=physical.png", content=physical_source.read_bytes(),
+                headers={"Content-Type": "image/png"},
+            )
+            check("physical fixture uploads", uploaded_physical.status_code == 201,
+                  text=uploaded_physical.text[-500:])
+            physical_asset = uploaded_physical.json()["asset"]["id"]
+            scene = physical_http.put("/scene", json={
+                "content": {"type": "image", "asset": physical_asset, "fit": "cover"},
+            })
+            check("physical fixture scene is set", scene.status_code == 200, text=scene.text)
+
+            physical_context = await browser.new_context(
+                viewport={"width": 300, "height": 180}, device_scale_factor=1
+            )
+            resources.append(physical_context)
+            physical_page, physical_obs = await watch_page(
+                physical_context, ClientSpec("physical", 300, 180, 1), observations
+            )
+            captured_pages.append((physical_page, physical_obs))
+            await physical_page.goto(base + "/client/")
+            physical_obs.device_id = await connected(physical_page)
+
+            config = physical_http.get("/api/v3/config").json()
+            display = physical_http.put(
+                f"/api/v3/displays/{physical_obs.device_id}",
+                json={
+                    "active_width_mm": 100, "active_height_mm": 60,
+                    "bezels": {"left": 0, "top": 0, "right": 0, "bottom": 0},
+                    "label": "physical fixture", "provenance": "hand-derived",
+                },
+                headers={"If-Match": config["etag"]},
+            )
+            check("physical display measurement accepted", display.status_code == 200,
+                  text=display.text[-500:])
+            calibration = physical_http.put(
+                f"/api/v3/calibrations/{physical_obs.device_id}",
+                json={
+                    "profile_revision": 1, "viewport_width": 300,
+                    "viewport_height": 180, "dpr": 1, "orientation": 0,
+                    "mode": "tab", "quarter_turn": 0,
+                    "panel_offset_mm": [0, 0], "mm_per_css": [0.5, 0.5],
+                    "anchor_edge": "top-left", "uncertainty_mm": 0,
+                    "method": "hand-derived",
+                },
+                headers={"If-Match": display.json()["etag"]},
+            )
+            check("physical calibration accepted", calibration.status_code == 200,
+                  text=calibration.text[-500:])
+            layout = physical_http.put(
+                "/api/v3/layout",
+                json={
+                    "bounds": {"x": 0, "y": 0, "width": 200, "height": 120},
+                    "slots": {
+                        physical_obs.device_id: {
+                            "center_x_mm": 100, "center_y_mm": 100,
+                            "mount_angle": 180, "nudge_x_mm": 0, "nudge_y_mm": 0,
+                            "profile_revision": 1, "calibration_revision": 1,
+                            "participating": True,
+                        }
+                    },
+                },
+                headers={"If-Match": calibration.json()["etag"]},
+            )
+            check("physical layout accepted", layout.status_code == 200,
+                  text=layout.text[-500:])
+
+            deadline = time.monotonic() + 10
+            yellow = (0, 0, 0)
+            while time.monotonic() < deadline:
+                yellow = await canvas_pixel(physical_page, 100, 60)
+                if max(abs(a - b) for a, b in zip(yellow, (240, 220, 20))) <= 30:
+                    break
+                await asyncio.sleep(.1)
+            check("calibrated physical client paints the source centre", max(
+                abs(a - b) for a, b in zip(yellow, (240, 220, 20))
+            ) <= 30, colour=yellow)
+            outside = await canvas_pixel(physical_page, 250, 150)
+            check("physical panel clip leaves the rest of the canvas neutral",
+                  max(abs(a - b) for a, b in zip(outside, (11, 17, 32))) <= 12,
+                  colour=outside)
+            report["r2"] = {
+                "client": physical_obs.device_id,
+                "asset": physical_asset,
+                "panel_centre": yellow,
+                "outside_clip": outside,
+                "matrix": "[-1,0,0,-1,300,260] source 400x240 -> backing 300x180; panel clip 0..200 x 0..120",
+            }
+            await physical_page.screenshot(path=str(artifacts / "physical-client.png"))
+        finally:
+            physical_http.close()
 
 
         for observation in observations:
