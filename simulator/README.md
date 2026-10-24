@@ -246,9 +246,10 @@ A default run creates a new artifact directory under `/tmp` and prints its
 `report.json` path. To choose a destination, pass `--artifacts /tmp/my-new-run`.
 The directory must not exist and must resolve outside the repository.
 Existing artifacts are never reused or overwritten. A run normally takes
-about 15 seconds. Exit `0` means all T1 checks passed, including reproduction
-of the known duplicate-tab defect. Exit `1` means a check or execution failed.
-Exit `2` means invalid arguments or an unsafe artifact destination.
+about 30 seconds. Exit `0` means every check passed, including the bounded
+duplicate-identity behavior and the P0 software experiments. Exit `1` means a
+check or execution failed. Exit `2` means invalid arguments or an unsafe
+artifact destination.
 
 The fixed fleet has two independent same-origin contexts in one Chromium
 process and a third endpoint in a separate Chromium process with its own
@@ -263,12 +264,14 @@ a six-second observation window. It also observes real outgoing heartbeats
 and server online state. Process IDs establish that the persistent profile
 runs in a different browser process.
 
-The negative scenario opens a second page in the first context. Current
-client code shares the stored ID, receives `4409`, and reconnects repeatedly.
-The report labels this **BASELINE known issue for T2**. The check requires
-the shared ID, at least two `4409` closes, and at least three welcomes during
-the bounded observation. Absence of contention fails baseline reproduction.
-T2 must replace this expectation when it changes ownership behavior.
+The negative scenario opens a second page in the first context. Both pages
+share the stored ID; the server closes the older socket with `4409`. T2 makes
+that close terminal for the losing page: it stops retrying, reports
+`replaced`, and shows the takeover control. The check requires exactly one
+`4409`, one welcome for the joining page, no reconnect attempt from the loser,
+and a visible control. A second phase clicks that control and asserts
+ownership moves exactly once, with the previous winner becoming the stopped
+page. An automatic replacement storm fails the check.
 
 Pillow creates a deterministic `1600x800` coded PNG in the temporary asset
 directory. The runner sets a `1200x800` wall, placements, and an image scene
@@ -283,12 +286,41 @@ visible rectangle, backing size, viewport, visual viewport, DPR, orientation,
 and launch mode. Current headless fixtures do not reproduce mobile browser
 toolbars or prove a `100lvh` defect.
 
+### P0 evidence matrix
+
+`report.json` carries a `p0` object with one row per required P0 experiment,
+each `PASS`, `FAIL`, or `MISSING` with a reason. The runner asserts that every
+required row is present, that no software experiment failed, and that every
+`MISSING` row names its prerequisite. `p0.status` is `PASS`,
+`PASS_WITH_MISSING_HARDWARE`, or `FAIL`.
+
+| Experiment | How it is measured |
+| --- | --- |
+| `rectangles_tab` | visible `#surface` rectangle equals the viewport; backing equals DPR times the rectangle |
+| `rectangles_fullscreen` | a real click on the client's fullscreen control, `fullscreenElement` observed, rectangle and backing re-measured, then restored and compared with tab mode |
+| `rectangles_standalone` | `MISSING`: no installed standalone launch was tested |
+| `mp4_decode_playback` | a generated 2 s H.264 Constrained Baseline MP4 is served from a temporary loopback HTTP server with single-range support; checks metadata, muted `play()`, advancing media time, decoded-frame counts and callback frames |
+| `mp4_seek` | seek to 1.2 s completes within 0.15 s |
+| `mp4_clip_rotation` | screenshot pixels prove a clipped region and a quarter-turn transform on an asymmetric band fixture |
+| `mp4_loop_gap` | a native loop wrap is observed by requestAnimationFrame sampling; the gap is reported as software sampling, not optical evidence |
+| `tablet_sleep_clock`, `host_suspend_clock` | `MISSING`: no device suspend or host suspend was performed |
+| `physical_ipad`, `physical_android`, `optical_sync` | `MISSING`: hardware is not attached |
+| `two_origin_ingress` | `MISSING`: this runner uses a direct backend, not an ingress proxy |
+| `software_*` rows | mirror the identity, reload, persistent-profile, pixel and ownership checks |
+
+The MP4 row proves decode and compositor behavior for the installed desktop
+Chromium only. It is not iOS Safari, it does not select a production bitrate
+or profile, and the fixture is small enough to be fully buffered. HTTP range
+delivery is exercised by the fixture server only as probe plumbing; production
+range semantics belong to R4.
+
 Reports contain per-page console messages, page errors, HTTP statuses, failed
 requests, socket frames, close codes, pixel checks, collision counts, cleanup
-evidence, versions, and evidence gaps. Unexpected warnings, errors, failed
-requests, HTTP errors, and socket errors fail the run. The expected collision
-closes are scoped to the two contending pages. PNG snapshots read actual
-canvas output without changing the rendering context's readback hints.
+evidence, versions, the tested `HEAD`, a hash of the working diff, and evidence
+gaps. Unexpected warnings, errors, failed requests, HTTP errors, and socket
+errors fail the run. The expected collision closes are scoped to the two
+contending pages. PNG snapshots read actual canvas output without changing the
+rendering context's readback hints.
 
 No server, database, asset, or media target is accepted as an option. The
 runner removes ambient `TABLET_WALL_*` settings from the server environment

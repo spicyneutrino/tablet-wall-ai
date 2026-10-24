@@ -5,6 +5,7 @@ from __future__ import annotations
 import argparse
 import asyncio
 import base64
+import hashlib
 import importlib.metadata
 import io
 import json
@@ -17,6 +18,8 @@ import socket
 import subprocess
 import sys
 import tempfile
+from http.server import SimpleHTTPRequestHandler, ThreadingHTTPServer
+import threading
 import time
 import traceback
 from dataclasses import asdict, dataclass, field
@@ -85,6 +88,144 @@ def write_fixture(path: Path) -> None:
             draw.rectangle((col * 100, row * 100, col * 100 + 99, row * 100 + 99),
                            fill=(15 + col * 13, 20 + row * 27, 25 + col * 5 + row * 11))
     image.save(path)
+
+
+# P0 video probe: horizontal bands make a quarter turn observable (the bands
+# become vertical stripes) and a clip observable (only the top band shows).
+PROBE_BANDS = ((255, 0, 0), (0, 255, 0), (0, 0, 255))
+
+
+def write_probe_source(path: Path) -> None:
+    image = Image.new("RGB", (320, 180))
+    draw = ImageDraw.Draw(image)
+    for index, colour in enumerate(PROBE_BANDS):
+        draw.rectangle((0, index * 60, 319, index * 60 + 59), fill=colour)
+    image.save(path)
+
+
+def build_probe_video(source: Path, target: Path) -> dict[str, Any] | None:
+    """Encode a two-second H.264 baseline MP4; None when ffmpeg is unavailable.
+
+    The command is fixed, uses no shell, and reads only the generated PNG. A
+    capture of the exact argv is returned so the evidence names what ran.
+    """
+    ffmpeg = shutil.which("ffmpeg")
+    if ffmpeg is None:
+        return None
+    argv = [
+        ffmpeg, "-hide_banner", "-loglevel", "error", "-y",
+        "-loop", "1", "-i", str(source),
+        "-t", "2", "-r", "30",
+        "-c:v", "libx264", "-profile:v", "baseline", "-level", "3.0",
+        "-pix_fmt", "yuv420p", "-movflags", "+faststart", "-an",
+        str(target),
+    ]
+    try:
+        completed = subprocess.run(argv, capture_output=True, text=True, timeout=60)
+    except (OSError, subprocess.TimeoutExpired) as error:
+        return {"ok": False, "argv": argv, "error": str(error)}
+    if completed.returncode != 0:
+        return {"ok": False, "argv": argv, "error": completed.stderr.strip()[-2000:]}
+    return {
+        "ok": True,
+        "argv": argv,
+        "sha256": hashlib.sha256(target.read_bytes()).hexdigest(),
+        "bytes": target.stat().st_size,
+    }
+
+
+def probe_metadata(path: Path) -> dict[str, Any] | None:
+    """ffprobe's view of the fixture: codec, profile, size, rate, duration."""
+    ffprobe = shutil.which("ffprobe")
+    if ffprobe is None:
+        return None
+    completed = subprocess.run(
+        [ffprobe, "-v", "error", "-select_streams", "v:0",
+         "-show_entries", "stream=codec_name,profile,width,height,r_frame_rate,pix_fmt",
+         "-show_entries", "format=duration", "-of", "json", str(path)],
+        capture_output=True, text=True, timeout=30,
+    )
+    if completed.returncode != 0:
+        return {"error": completed.stderr.strip()[-2000:]}
+    return json.loads(completed.stdout)
+
+
+def start_probe_server(directory: Path) -> tuple[ThreadingHTTPServer, threading.Thread, str]:
+    """Serve the probe page and MP4 from one temporary loopback origin.
+
+    No range support is claimed: this fixture is small and fully buffered, and
+    the report records that delivery limitation.
+    """
+    class Handler(SimpleHTTPRequestHandler):
+        def __init__(self, *args: Any, **kwargs: Any) -> None:
+            super().__init__(*args, directory=str(directory), **kwargs)
+
+        def log_message(self, *_args: Any) -> None:
+            pass
+
+        def do_GET(self) -> None:  # noqa: N802 - http.server's spelling
+            path = self.translate_path(self.path)
+            if not os.path.isfile(path):
+                super().do_GET()
+                return
+            size = os.path.getsize(path)
+            value = self.headers.get("Range", "")
+            start, end, partial = 0, size - 1, False
+            if value.startswith("bytes=") and "-" in value:
+                first, last = value.removeprefix("bytes=").split("-", 1)
+                try:
+                    if first:
+                        start = int(first)
+                        end = int(last) if last else size - 1
+                    else:
+                        start = max(0, size - int(last))
+                    end = min(end, size - 1)
+                except ValueError:
+                    start, end = 0, size - 1
+                if start > end or start >= size:
+                    self.send_error(416)
+                    return
+                partial = True
+            length = end - start + 1
+            self.send_response(206 if partial else 200)
+            self.send_header("Content-Type", self.guess_type(path))
+            self.send_header("Accept-Ranges", "bytes")
+            self.send_header("Content-Length", str(length))
+            if partial:
+                self.send_header("Content-Range", f"bytes {start}-{end}/{size}")
+            self.end_headers()
+            with open(path, "rb") as handle:
+                handle.seek(start)
+                self.wfile.write(handle.read(length))
+
+    server = ThreadingHTTPServer(("127.0.0.1", 0), Handler)
+    server.daemon_threads = True
+    thread = threading.Thread(target=server.serve_forever, daemon=True)
+    thread.start()
+    return server, thread, f"http://127.0.0.1:{server.server_address[1]}"
+
+
+PROBE_PAGE = """<!doctype html>
+<meta charset="utf-8">
+<style>
+  html, body { margin: 0; background: #000; overflow: hidden; }
+  #stage { position: relative; width: 240px; height: 240px; background: #000; }
+  #vid { position: absolute; left: 0; top: 0; width: 160px; height: 90px; object-fit: fill; }
+  #clip { position: absolute; left: 200px; top: 0; width: 80px; height: 45px; overflow: hidden; }
+  #clip video { display: block; position: static; width: 160px; height: 90px; }
+</style>
+<div id="stage">
+  <video id="vid" muted playsinline preload="auto" src="/probe.mp4"></video>
+  <div id="clip"><video id="clipvid" muted playsinline preload="auto" src="/probe.mp4"></video></div>
+</div>
+<script>
+  window.probe = {
+    video: document.getElementById('vid'),
+    clipVideo: document.getElementById('clipvid'),
+    stage: document.getElementById('stage')
+  };
+</script>
+"""
 
 
 def expected_pixel(name: str, bx: int, by: int) -> tuple[int, int, int]:
@@ -395,23 +536,355 @@ async def exercise(artifacts: Path, report: dict[str, Any], observation_seconds:
         check("real heartbeats in observation window", all(any(event["kind"] == "ws_sent" and event["time"] >= start
             and event["frame"] == {"type": "heartbeat"} for event in obs.events) for _, obs in pages))
 
+        async def open_sockets(page: Any) -> int:
+            return await page.evaluate("__fleetSockets.filter(s=>s.readyState===WebSocket.OPEN).length")
+
+        async def takeover_state(page: Any) -> dict[str, Any]:
+            return await page.evaluate("""() => ({
+                status: document.querySelector('#status').dataset.state,
+                text: document.querySelector('#status .status-text').textContent,
+                takeover: !document.querySelector('#takeover').hidden,
+            })""")
+
+        def events_since(observation: Observation, since: float) -> list[dict[str, Any]]:
+            return [event for event in observation.events if event["time"] >= since]
+
+        def welcomes(events: list[dict[str, Any]]) -> list[dict[str, Any]]:
+            return [event for event in events
+                    if event["kind"] == "ws_received" and event["frame"].get("type") == "welcome"]
+
+        def replaced_closes(events: list[dict[str, Any]]) -> list[dict[str, Any]]:
+            return [event for event in events if event["kind"] == "ws_close" and event["code"] == 4409]
+
         original, original_obs = pages[0]
         collision_start = time.monotonic()
         duplicate, duplicate_obs = await watch_page(original.context, ClientSpec("duplicate", 800, 600, 1), observations)
         captured_pages.append((duplicate, duplicate_obs))
         await duplicate.goto(base + "/client/")
         duplicate_obs.device_id = await connected(duplicate)
+        # Longer than the client's 500 ms backoff floor: a page that intends to
+        # retry has time to do it, so an observed stop is a real stop.
         await asyncio.sleep(3)
-        collision_events = [event for obs in (original_obs, duplicate_obs) for event in obs.events if event["time"] >= collision_start]
-        closes = [event for event in collision_events if event["kind"] == "ws_close" and event["code"] == 4409]
-        welcomes = [event for event in collision_events if event["kind"] == "ws_received" and event["frame"].get("type") == "welcome"]
-        contention = duplicate_obs.device_id == original_obs.device_id and len(closes) >= 2 and len(welcomes) >= 3
-        report["collision"] = {"status": "BASELINE known issue for T2" if contention else "baseline reproduction FAILED",
-                               "shared_id": duplicate_obs.device_id, "close_4409_count": len(closes),
-                               "welcome_count": len(welcomes), "duration_seconds": time.monotonic() - collision_start,
-                               "expected_future_behavior": "T2 stops automatic ownership contention after 4409"}
-        check("duplicate-page T2 baseline reproduced", contention)
-        await duplicate.screenshot(path=str(artifacts / "duplicate.png"))
+
+        original_events = events_since(original_obs, collision_start)
+        duplicate_events = events_since(duplicate_obs, collision_start)
+        loser = await takeover_state(original)
+        bounded = (
+            duplicate_obs.device_id == original_obs.device_id
+            and len(replaced_closes(original_events + duplicate_events)) == 1
+            and len(welcomes(duplicate_events)) == 1
+            and not [event for event in original_events if event["kind"] == "ws_open"]
+            and await open_sockets(original) == 0
+            and loser == {"status": "replaced", "text": "Showing on another screen", "takeover": True}
+        )
+        report["ownership"] = {
+            "status": "bounded" if bounded else "FAILED",
+            "shared_id": duplicate_obs.device_id,
+            "close_4409_count": len(replaced_closes(original_events + duplicate_events)),
+            "welcome_count": len(welcomes(duplicate_events)),
+            "loser": loser,
+            "duration_seconds": time.monotonic() - collision_start,
+        }
+        check("taken-over page stops retrying and offers an explicit takeover", bounded,
+              loser=loser, close_4409_count=len(replaced_closes(original_events + duplicate_events)),
+              welcome_count=len(welcomes(duplicate_events)))
+        await original.screenshot(path=str(artifacts / "takeover.png"))
+
+        # One deliberate click moves ownership; the previous winner becomes the
+        # stopped page. Nothing here is automatic.
+        takeover_start = time.monotonic()
+        await original.click("#takeover")
+        await original.wait_for_function("document.querySelector('#status').dataset.state === 'connected'")
+        await duplicate.wait_for_function("document.querySelector('#status').dataset.state === 'replaced'")
+        await asyncio.sleep(1)
+        original_after = events_since(original_obs, takeover_start)
+        duplicate_after = events_since(duplicate_obs, takeover_start)
+        duplicate_loser = await takeover_state(duplicate)
+        transferred = (
+            len(replaced_closes(original_after + duplicate_after)) == 1
+            and len(welcomes(original_after)) == 1
+            and not [event for event in duplicate_after if event["kind"] == "ws_open"]
+            and await open_sockets(original) == 1
+            and await open_sockets(duplicate) == 0
+            and duplicate_loser == {"status": "replaced", "text": "Showing on another screen", "takeover": True}
+        )
+        report["ownership"]["takeover"] = {
+            "status": "transferred" if transferred else "FAILED",
+            "close_4409_count": len(replaced_closes(original_after + duplicate_after)),
+            "loser": duplicate_loser,
+        }
+        check("explicit takeover moves ownership exactly once", transferred, loser=duplicate_loser)
+        await duplicate.screenshot(path=str(artifacts / "takeover-loser.png"))
+
+        # ------------------------------------------------------------------
+        # P0: rectangle evidence, fullscreen, and the MP4 decode probe
+        # ------------------------------------------------------------------
+
+        async def measure_mode(page: Any) -> dict[str, Any]:
+            return await page.evaluate("""() => {
+                const c = document.querySelector('#surface');
+                const r = c.getBoundingClientRect();
+                const vv = window.visualViewport;
+                return {
+                    rect: {x: r.x, y: r.y, width: r.width, height: r.height},
+                    backing: [c.width, c.height],
+                    viewport: [innerWidth, innerHeight],
+                    dpr: devicePixelRatio,
+                    visualViewport: vv ? {width: vv.width, height: vv.height, scale: vv.scale,
+                                          offsetLeft: vv.offsetLeft, offsetTop: vv.offsetTop} : null,
+                    fullscreen: document.fullscreenElement ? document.fullscreenElement.tagName : null,
+                    mode: document.fullscreenElement ? 'fullscreen' : 'tab',
+                    surfaceDisplay: getComputedStyle(c).display,
+                };
+            }""")
+
+        mode_page, mode_obs = pages[1]
+        mode_spec = mode_obs.spec
+        rectangles: dict[str, Any] = {"client": mode_spec.name, "status": "FAIL"}
+        try:
+            tab = await measure_mode(mode_page)
+            rectangles["tab"] = tab
+            button_hidden = await mode_page.evaluate(
+                "document.getElementById('fs-toggle').hidden"
+            )
+            if button_hidden:
+                rectangles.update({
+                    "status": "MISSING",
+                    "reason": "the client did not expose a fullscreen control in this engine",
+                })
+            else:
+                # The control hides itself after five seconds and ignores the
+                # pointer while hidden. A real click reveals it, and the next
+                # click supplies the user activation requestFullscreen needs.
+                await mode_page.mouse.click(10, 10)
+                await mode_page.wait_for_selector('#fs-toggle[data-visible="true"]', timeout=5000)
+                await mode_page.click("#fs-toggle")
+                try:
+                    await mode_page.wait_for_function(
+                        "document.fullscreenElement !== null", timeout=5000
+                    )
+                except Exception as error:
+                    rectangles.update({
+                        "status": "MISSING",
+                        "reason": f"engine refused fullscreen: {type(error).__name__}",
+                    })
+                else:
+                    await asyncio.sleep(.2)
+                    fullscreen = await measure_mode(mode_page)
+                    await mode_page.screenshot(path=str(artifacts / "fullscreen.png"))
+                    await mode_page.evaluate("document.exitFullscreen()")
+                    await mode_page.wait_for_function(
+                        "document.fullscreenElement === null", timeout=5000
+                    )
+                    await asyncio.sleep(.2)
+                    restored = await measure_mode(mode_page)
+                    rectangles["fullscreen"] = fullscreen
+                    rectangles["restored"] = restored
+                    exact = (
+                        tab["rect"] == restored["rect"]
+                        and tab["backing"] == restored["backing"]
+                        and tab["viewport"] == restored["viewport"]
+                        and fullscreen["mode"] == "fullscreen"
+                        and fullscreen["surfaceDisplay"] != "none"
+                        and abs(fullscreen["rect"]["width"] - fullscreen["viewport"][0]) <= 2
+                        and abs(fullscreen["rect"]["height"] - fullscreen["viewport"][1]) <= 2
+                        and fullscreen["backing"] == [
+                            math.floor(fullscreen["rect"]["width"] * mode_spec.dpr + .5),
+                            math.floor(fullscreen["rect"]["height"] * mode_spec.dpr + .5),
+                        ]
+                    )
+                    rectangles["status"] = "PASS" if exact else "FAIL"
+        except Exception as error:
+            rectangles.update({
+                "status": "FAIL",
+                "reason": f"{type(error).__name__}: {error}",
+            })
+        report["p0"] = {"rectangles": rectangles, "rows": []}
+        rows: list[dict[str, Any]] = report["p0"]["rows"]
+
+        def p0_row(ident: str, status: str, expected: str, observed: Any,
+                   reason: str = "", **extra: Any) -> None:
+            rows.append({
+                "id": ident, "status": status, "expected": expected,
+                "observed": observed, "reason": reason, **extra,
+            })
+
+        probe_dir = root / "probe"
+        probe_dir.mkdir()
+        probe: dict[str, Any] = {"engine": f"Chromium {browser.version}",
+                                 "delivery": "loopback HTTP with single byte-range support"}
+        video_build = None
+        try:
+            write_probe_source(probe_dir / "bands.png")
+            video_build = build_probe_video(probe_dir / "bands.png", probe_dir / "probe.mp4")
+        except Exception as error:
+            video_build = {"ok": False, "error": f"{type(error).__name__}: {error}"}
+        probe["fixture"] = {
+            "source": "320x180 RGB horizontal bands red/green/blue",
+            "build": video_build,
+            "ffprobe": probe_metadata(probe_dir / "probe.mp4") if video_build and video_build.get("ok") else None,
+        }
+        if video_build is None:
+            p0_row("mp4_decode_playback", "MISSING", "H.264 decode and muted playback",
+                   None, "ffmpeg is not installed; no fixture could be encoded")
+            probe["status"] = "MISSING"
+        elif not video_build.get("ok"):
+            p0_row("mp4_decode_playback", "FAIL", "H.264 fixture encodes",
+                   video_build.get("error"), "ffmpeg failed to encode the fixture")
+            probe["status"] = "FAIL"
+        else:
+            (probe_dir / "probe.html").write_text(PROBE_PAGE, encoding="utf-8")
+            probe_server, probe_thread, probe_origin = start_probe_server(probe_dir)
+            probe_page = None
+            try:
+                probe_page = await browser.new_page(viewport={"width": 420, "height": 320},
+                                                    device_scale_factor=1)
+                await probe_page.goto(probe_origin + "/probe.html")
+                await probe_page.wait_for_function(
+                    "window.probe.video.readyState >= 2 && Number.isFinite(window.probe.video.duration)",
+                    timeout=10000,
+                )
+                metadata = await probe_page.evaluate("""() => {
+                    const v = window.probe.video;
+                    return {readyState: v.readyState, duration: v.duration,
+                            width: v.videoWidth, height: v.videoHeight,
+                            canPlay: v.canPlayType('video/mp4; codecs="avc1.42E01E"')};
+                }""")
+                await probe_page.evaluate("""() => {
+                    const v = window.probe.video;
+                    window.__frames = 0;
+                    if (v.requestVideoFrameCallback) {
+                        const count = () => { window.__frames++; v.requestVideoFrameCallback(count); };
+                        v.requestVideoFrameCallback(count);
+                    }
+                    return v.play();
+                }""")
+                await probe_page.wait_for_function(
+                    "window.probe.video.currentTime > 0.4", timeout=10000
+                )
+                playing = await probe_page.evaluate("""() => {
+                    const v = window.probe.video;
+                    return {currentTime: v.currentTime, paused: v.paused, ended: v.ended,
+                            readyState: v.readyState,
+                            buffered: v.buffered.length ? [v.buffered.start(0), v.buffered.end(0)] : null,
+                            decodedFrames: v.getVideoPlaybackQuality ? v.getVideoPlaybackQuality().totalVideoFrames : null,
+                            callbackFrames: window.__frames};
+                }""")
+                await probe_page.evaluate("window.probe.video.pause()")
+                probe["playback"] = {"metadata": metadata, "playing": playing}
+                playback_ok = (
+                    playing["currentTime"] > 0.4
+                    and not playing["paused"]
+                    and (playing["decodedFrames"] or 0) > 0
+                    and (playing["callbackFrames"] or 0) > 0
+                )
+                p0_row("mp4_decode_playback", "PASS" if playback_ok else "FAIL",
+                       "metadata, resolved muted play, advancing time, decoded frames",
+                       {"metadata": metadata, "playing": playing})
+
+                await probe_page.evaluate("window.probe.video.currentTime = 1.2")
+                try:
+                    await probe_page.wait_for_function(
+                        "Math.abs(window.probe.video.currentTime - 1.2) <= 0.15 "
+                        "&& !window.probe.video.seeking",
+                        timeout=5000,
+                    )
+                except Exception:
+                    pass
+                sought = await probe_page.evaluate(
+                    "({time: window.probe.video.currentTime, seeking: window.probe.video.seeking})"
+                )
+                seek_ok = abs(sought["time"] - 1.2) <= 0.15 and not sought["seeking"]
+                probe["seek"] = {"target": 1.2, "observed": sought}
+                p0_row("mp4_seek", "PASS" if seek_ok else "FAIL",
+                       "seek to 1.2 s completes within 0.15 s", sought)
+
+                async def sample_screenshot(name: str, points: dict[str, tuple[int, int]]) -> dict[str, Any]:
+                    path = artifacts / name
+                    await probe_page.screenshot(path=str(path))
+                    image = Image.open(path).convert("RGB")
+                    return {label: image.getpixel(xy) for label, xy in points.items()}
+
+                unrotated = await sample_screenshot("p0-mp4-bands.png", {
+                    "red": (80, 15), "green": (80, 45), "blue": (80, 75),
+                    "outside": (80, 120), "clipped": (240, 15), "clip-outside": (300, 15),
+                })
+                near = lambda seen, want: all(abs(a - b) <= 40 for a, b in zip(seen, want))
+                clip_ok = (
+                    near(unrotated["red"], PROBE_BANDS[0])
+                    and near(unrotated["green"], PROBE_BANDS[1])
+                    and near(unrotated["blue"], PROBE_BANDS[2])
+                    and max(unrotated["outside"]) <= 24
+                    and near(unrotated["clipped"], PROBE_BANDS[0])
+                    and max(unrotated["clip-outside"]) <= 24
+                )
+                await probe_page.evaluate("""() => {
+                    const v = window.probe.video;
+                    v.style.transformOrigin = '0 0';
+                    v.style.transform = 'translate(0, 160px) rotate(-90deg)';
+                }""")
+                await asyncio.sleep(.2)
+                rotated = await sample_screenshot("p0-mp4-rotated.png", {
+                    "red": (15, 80), "green": (45, 80), "outside": (120, 80),
+                })
+                rotation_ok = (
+                    near(rotated["red"], PROBE_BANDS[0])
+                    and near(rotated["green"], PROBE_BANDS[1])
+                    and max(rotated["outside"]) <= 24
+                )
+                probe["compositor"] = {"unrotated": unrotated, "rotated": rotated}
+                p0_row("mp4_clip_rotation", "PASS" if clip_ok and rotation_ok else "FAIL",
+                       "screenshot pixels prove clip and quarter-turn",
+                       {"unrotated": unrotated, "rotated": rotated})
+
+                loop = await probe_page.evaluate("""() => {
+                    const v = window.probe.video;
+                    v.style.transform = '';
+                    v.loop = true;
+                    v.currentTime = 1.9;
+                    const samples = [];
+                    let last = null;
+                    let lastNow = performance.now();
+                    const started = lastNow;
+                    function tick(now) {
+                        const t = v.currentTime;
+                        samples.push(t);
+                        if (last !== null && t + 0.1 < last) {
+                            window.__wrap = {from: last, to: t, gapMs: now - lastNow,
+                                             samples: samples.length};
+                        }
+                        last = t; lastNow = now;
+                        if (now - started < 3000) requestAnimationFrame(tick);
+                    }
+                    window.__wrap = null;
+                    requestAnimationFrame(tick);
+                    return v.play();
+                }""")
+                await asyncio.sleep(2.6)
+                wrap = await probe_page.evaluate("window.__wrap")
+                loop_ok = bool(wrap) and wrap["gapMs"] <= 250
+                probe["loop"] = {"wrap": wrap, "definition": "rAF sample interval between media-time decrease; software sampling, not optical"}
+                p0_row("mp4_loop_gap", "PASS" if loop_ok else "FAIL",
+                       "a loop wrap is observed and the sampled restart gap is at most 250 ms",
+                       wrap, "not an optical or visible-gap measurement",
+                       sampling="requestAnimationFrame, about 16.7 ms")
+                probe["status"] = "PASS" if (
+                    len([row for row in rows if row["id"].startswith("mp4_")]) == 4
+                    and all(row["status"] == "PASS" for row in rows if row["id"].startswith("mp4_"))
+                ) else "FAIL"
+            except Exception as error:
+                probe["status"] = "FAIL"
+                probe["error"] = f"{type(error).__name__}: {error}"
+                if not any(row["id"].startswith("mp4_") and row["status"] == "PASS" for row in rows):
+                    p0_row("mp4_decode_playback", "FAIL", "H.264 decode probe runs",
+                           probe["error"], "the probe raised before completing")
+            finally:
+                if probe_page is not None:
+                    await probe_page.close()
+                probe_server.shutdown()
+                probe_thread.join(5)
+        report["p0"]["video"] = probe
+
 
         for observation in observations:
             errors = [event for event in observation.events if event["kind"] in ("page_error", "request_failed", "ws_error")
@@ -421,6 +894,91 @@ async def exercise(artifacts: Path, report: dict[str, Any], observation_seconds:
                       and not (event["code"] == 4409 and observation.spec.name in ("landscape", "duplicate")
                                and event["time"] >= collision_start)]
             check(observation.spec.name + " no unexpected browser errors", not errors, errors=errors)
+
+        # ------------------------------------------------------------------
+        # P0 evidence matrix: one row per experiment, PASS / FAIL / MISSING
+        # ------------------------------------------------------------------
+
+        def named(name: str) -> bool:
+            return any(entry["name"] == name and entry["passed"] for entry in checks)
+
+        tab = rectangles.get("tab")
+        tab_ok = bool(tab) and (
+            abs(tab["rect"]["width"] - mode_spec.width) <= 0.5
+            and abs(tab["rect"]["height"] - mode_spec.height) <= 0.5
+            and tab["backing"] == [math.floor(mode_spec.width * mode_spec.dpr + .5),
+                                   math.floor(mode_spec.height * mode_spec.dpr + .5)]
+        )
+        p0_row("rectangles_tab", "PASS" if tab_ok else "FAIL",
+               "visible canvas rect equals the viewport and backing equals DPR times rect",
+               tab)
+        if rectangles["status"] == "PASS":
+            p0_row("rectangles_fullscreen", "PASS",
+                   "fullscreenElement is set and the canvas fills the viewport",
+                   rectangles.get("fullscreen"))
+        else:
+            p0_row("rectangles_fullscreen", rectangles["status"],
+                   "fullscreenElement is set and the canvas fills the viewport",
+                   rectangles.get("fullscreen"), rectangles.get("reason", ""))
+        p0_row("rectangles_standalone", "MISSING",
+               "standalone launch rectangle measured", None,
+               "no installed standalone launch was tested; fullscreen is not standalone")
+        p0_row("tablet_sleep_clock", "MISSING",
+               "browser clock behavior across real tablet suspend", None,
+               "no physical tablet is available to suspend")
+        p0_row("host_suspend_clock", "MISSING",
+               "host suspend behavior of the browser and server clocks", None,
+               "no host suspend was performed")
+        p0_row("physical_ipad", "MISSING", "physical iPad decode, activation and orientation",
+               None, "no physical iPad is attached or inventoried")
+        p0_row("physical_android", "MISSING", "physical Android decode and activation",
+               None, "no physical Android is attached or inventoried")
+        p0_row("optical_sync", "MISSING", "wall-wide optical onset and seam measurement",
+               None, "no camera or capture hardware is attached")
+        p0_row("two_origin_ingress", "MISSING", "requests through both ingress origins",
+               None, "this runner uses one disposable direct backend, not an ingress proxy")
+        p0_row("software_identity", "PASS" if named("three independent same-origin identities") else "FAIL",
+               "three independent contexts hold three identities", 3)
+        p0_row("software_reload", "PASS" if all(
+            named(observation.spec.name + " reload retains ID") for _, observation in pages
+        ) else "FAIL", "reload preserves identity within a context", None)
+        p0_row("software_persistent_profile",
+               "PASS" if named("persistent profile in a separate browser process") else "FAIL",
+               "persistent profile runs in its own browser process", None)
+        p0_row("software_still_pixels", "PASS" if all(
+            named(observation.spec.name + " initial pixels")
+            and named(observation.spec.name + " reload pixels")
+            for _, observation in pages
+        ) else "FAIL", "canvas pixels match the independent oracle", None)
+        p0_row("software_ownership",
+               "PASS" if named("taken-over page stops retrying and offers an explicit takeover")
+               and named("explicit takeover moves ownership exactly once") else "FAIL",
+               "4409 stops the loser and one deliberate click transfers ownership", None)
+        p0_row("software_baseline", "PASS" if all(entry["passed"] for entry in checks) else "FAIL",
+               "every required software check passes", len(checks))
+
+        required_rows = {
+            "rectangles_tab", "rectangles_fullscreen", "rectangles_standalone",
+            "mp4_decode_playback", "mp4_seek", "mp4_clip_rotation", "mp4_loop_gap",
+            "tablet_sleep_clock", "host_suspend_clock", "physical_ipad",
+            "physical_android", "optical_sync", "two_origin_ingress",
+            "software_identity", "software_reload", "software_persistent_profile",
+            "software_still_pixels", "software_ownership", "software_baseline",
+        }
+        present = {row["id"] for row in rows}
+        missing_required = sorted(required_rows - present)
+        check("P0 matrix names every required experiment", not missing_required,
+              missing=missing_required)
+        failed_rows = [row for row in rows if row["status"] == "FAIL"]
+        check("P0 has no failed software experiment", not failed_rows,
+              failed=[{"id": row["id"], "reason": row["reason"]} for row in failed_rows])
+        unexplained = [row["id"] for row in rows
+                       if row["status"] == "MISSING" and not row["reason"].strip()]
+        check("P0 missing rows name their prerequisite", not unexplained, unexplained=unexplained)
+        report["p0"]["status"] = "FAIL" if failed_rows else (
+            "PASS_WITH_MISSING_HARDWARE" if any(row["status"] == "MISSING" for row in rows)
+            else "PASS"
+        )
     except BaseException:
         for page, observation in captured_pages:
             try:
@@ -516,10 +1074,21 @@ def main() -> int:
     except (ValueError, OSError) as error:
         parser.error(str(error))
     started = time.monotonic()
+    head = subprocess.check_output(["git", "rev-parse", "HEAD"], cwd=REPO, text=True).strip()
+    try:
+        diff = subprocess.check_output(["git", "diff", "HEAD"], cwd=REPO)
+        status = subprocess.check_output(
+            ["git", "status", "--porcelain"], cwd=REPO, text=True
+        ).splitlines()
+    except subprocess.CalledProcessError:
+        diff, status = b"", []
     report: dict[str, Any] = {"checks": [], "evidence_gaps": GAPS, "seed": "coded-grid-v1",
         "started_utc": datetime.now(timezone.utc).isoformat(),
-        "app_head": subprocess.check_output(["git", "rev-parse", "HEAD"], cwd=REPO, text=True).strip(),
+        "app_head": head,
+        "worktree": {"dirty": bool(diff), "diff_sha256": hashlib.sha256(diff).hexdigest(),
+                     "status": status},
         "python": sys.version,
+        "platform": sys.platform,
         "shared_resources": ["host scheduler", "GPU", "host clock", "NIC"],
         "mode": "unmodified-clock direct TCP Chromium, tab mode, logical stills"}
 
