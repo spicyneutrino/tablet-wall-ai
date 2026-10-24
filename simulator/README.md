@@ -6,12 +6,13 @@ connecting over WebSocket, receiving per-device `wall` frames, reconnecting,
 and being measured for placement/tiling/visible-rect seam geometry — against
 a temporary database and asset directory, never the operator's data.
 
-**No browser runs here.** No JavaScript, no canvas, no pixels: a green run
+**No browser runs in the TestClient mode.** No JavaScript, no canvas, no pixels: a green run
 proves what the app *sends* and what geometry *follows from the protocol* —
 never what a screen would show. See [Limitations](#limitations-versus-a-real-browser).
 
-Everything here lives under `simulator/`. No production file, schema,
-Makefile target, or README outside this directory is touched.
+The separate [browser runner](#run-the-isolated-browser-experiment) executes
+real client JavaScript and checks canvas pixels. Both modes leave production
+application code and data unchanged.
 
 ## Quick start
 
@@ -220,3 +221,98 @@ Repeated in every report:
 | `test_simulator_selftest.py` | plumbing self-tests, no app needed — `uv run pytest simulator/test_simulator_selftest.py` |
 
 No report file is written unless `--report` names one.
+
+## Run the isolated browser experiment
+
+T1 adds a separate Python Playwright runner in `simulator/browser/run.py`.
+It starts one disposable uvicorn worker over a real loopback TCP socket and
+loads the actual `/client/` and `/controller/` scripts. It does not extend
+the TestClient simulator.
+
+Prerequisites are Linux with `/proc`, the project's Python environment, and
+Playwright's Chromium binaries plus their host libraries. The optional
+`browser` dependency group pins Python Playwright to `1.57.0`. Its browser
+manifest pins Chromium and Chromium headless shell to revision `1200`,
+version `143.0.7499.4`. Install those binaries explicitly before running.
+The runner never installs browsers or changes host libraries.
+
+```bash
+uv sync --group browser
+uv run --group browser playwright install chromium
+uv run --group browser python simulator/browser/run.py
+```
+
+A default run creates a new artifact directory under `/tmp` and prints its
+`report.json` path. To choose a destination, pass `--artifacts /tmp/my-new-run`.
+The directory must not exist and must resolve outside the repository.
+Existing artifacts are never reused or overwritten. A run normally takes
+about 15 seconds. Exit `0` means all T1 checks passed, including reproduction
+of the known duplicate-tab defect. Exit `1` means a check or execution failed.
+Exit `2` means invalid arguments or an unsafe artifact destination.
+
+The fixed fleet has two independent same-origin contexts in one Chromium
+process and a third endpoint in a separate Chromium process with its own
+persistent temporary profile. It uses landscape `800x600` at DPR `1`,
+portrait `600x800` at DPR `1.25`, and `801x601` at DPR `1.5`. These are desktop
+browser viewport fixtures, not claims about physical tablet models. The
+controller uses a fourth independent context.
+
+The runner verifies three distinct IDs, a welcome and wall replay per client,
+identity retention after reload, and one open socket per endpoint throughout
+a six-second observation window. It also observes real outgoing heartbeats
+and server online state. Process IDs establish that the persistent profile
+runs in a different browser process.
+
+The negative scenario opens a second page in the first context. Current
+client code shares the stored ID, receives `4409`, and reconnects repeatedly.
+The report labels this **BASELINE known issue for T2**. The check requires
+the shared ID, at least two `4409` closes, and at least three welcomes during
+the bounded observation. Absence of contention fails baseline reproduction.
+T2 must replace this expectation when it changes ownership behavior.
+
+Pillow creates a deterministic `1600x800` coded PNG in the temporary asset
+directory. The runner sets a `1200x800` wall, placements, and an image scene
+through the API. It then uses the real controller buttons to show calibration,
+select the curated image, and show it on the wall. There is no upload feature
+in the current controller. Each client captures 25 edge and interior canvas
+pixels before and after reload. Hand-derived inverse maps account for the
+200-column global image crop, each placement's cover crop, fractional DPR,
+and rounded backing dimensions. The oracle imports no application renderer
+or simulator geometry code. Screenshots and DOM measurements record the
+visible rectangle, backing size, viewport, visual viewport, DPR, orientation,
+and launch mode. Current headless fixtures do not reproduce mobile browser
+toolbars or prove a `100lvh` defect.
+
+Reports contain per-page console messages, page errors, HTTP statuses, failed
+requests, socket frames, close codes, pixel checks, collision counts, cleanup
+evidence, versions, and evidence gaps. Unexpected warnings, errors, failed
+requests, HTTP errors, and socket errors fail the run. The expected collision
+closes are scoped to the two contending pages. PNG snapshots read actual
+canvas output without changing the rendering context's readback hints.
+
+No server, database, asset, or media target is accepted as an option. The
+runner removes ambient `TABLET_WALL_*` settings from the server environment
+and assigns its own temporary DB, asset, and reserved media paths. The current
+app does not use the reserved media directory. The loopback socket is bound
+before spawning uvicorn and passed by file descriptor, avoiding a port race.
+Temporary profiles, browser processes, server, and data are closed in `finally`
+paths. The report checks the server was reaped, recorded descendant processes
+are gone, and the temporary root was removed. Artifacts remain for review,
+including failure reports, server logs, and available failure screenshots.
+
+Run the focused safety and oracle checks with the browser group installed.
+They cover path rejection, environment isolation, independent pixel anchors,
+process reaping, signal cancellation during cleanup, partial server launch,
+and a real missing-browser failure that still saves a report and cleans up
+its server. SIGINT and SIGTERM cancel the runner task while keeping
+Playwright's event reader alive until browser shutdown finishes.
+
+```bash
+uv run --group browser pytest -q simulator/browser/test_browser.py
+```
+
+Every report explicitly marks physical old/new iPad and Android inventory,
+MP4 decoding, sleep/wake, optical synchronization, and two-origin ingress as
+missing. Independent contexts and processes still share the host scheduler,
+GPU, clock, and NIC. Green T1 evidence establishes current desktop Chromium
+logical-still behavior only. It does not close any physical-device gate.
