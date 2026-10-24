@@ -1736,6 +1736,63 @@ async def put_physical_layout_v3(command: PhysicalLayoutCommand, request: Reques
     return {**payload, "etag": _config_etag(payload)}
 
 
+@app.get("/api/v3/layouts")
+async def list_physical_layouts_v3():
+    entries = [
+        {"name": name, "layout": layout}
+        for name, layout in load_layouts()
+        if isinstance(layout, dict) and layout.get("kind") == "physical"
+    ]
+    return {"layouts": entries}
+
+
+@app.put("/api/v3/layouts/{name}")
+async def save_physical_layout_v3(
+    name: str, request: Request, replace: bool = Query(default=False)
+):
+    _require_config_etag(request)
+    if wall["layout"].get("kind") != "physical":
+        raise HTTPException(status_code=409, detail="the active layout is logical")
+    canonical = _snapshot_name(name)
+    if not save_layout(canonical, deepcopy(wall["layout"]), replace=replace):
+        raise HTTPException(status_code=409, detail="Layout name already exists")
+    return {"saved": True, "name": canonical}
+
+
+@app.post("/api/v3/layouts/{name}/recall")
+async def recall_physical_layout_v3(name: str, request: Request):
+    _require_config_etag(request)
+    canonical = _snapshot_name(name)
+    saved = load_layout(canonical)
+    if saved is None:
+        raise HTTPException(status_code=404, detail="Unknown layout")
+    if not isinstance(saved, dict) or saved.get("kind") != "physical":
+        raise HTTPException(status_code=422, detail="not a physical layout")
+
+    def apply(target: dict[str, Any]) -> None:
+        target["layout"] = deepcopy(saved)
+
+    _commit_wall(apply)
+    for socket in list(controller_sockets):
+        if controller_protocols.get(socket, 1) != 3:
+            controller_sockets.discard(socket)
+            controller_protocols.pop(socket, None)
+            with contextlib.suppress(Exception):
+                await socket.close(code=WS_CLOSE_UNSUPPORTED_PROTOCOL)
+    await _broadcast_wall()
+    payload = _config_payload()
+    return {**payload, "etag": _config_etag(payload)}
+
+
+@app.delete("/api/v3/layouts/{name}")
+async def delete_physical_layout_v3(name: str, request: Request):
+    _require_config_etag(request)
+    canonical = _snapshot_name(name)
+    if not delete_layout(canonical):
+        raise HTTPException(status_code=404, detail="Unknown layout")
+    return {"deleted": True, "name": canonical}
+
+
 # ---------------------------------------------------------------------------
 # WebSockets
 # ---------------------------------------------------------------------------

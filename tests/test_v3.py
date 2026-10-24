@@ -209,3 +209,42 @@ def test_a_missing_calibration_for_a_slot_is_refused():
             "/api/v3/layout", json=body, headers={"If-Match": config["etag"]}
         )
         assert response.status_code == 422
+
+
+def test_physical_layouts_save_recall_and_delete():
+    with TestClient(main.app) as client:
+        setup_measurement()
+        setup_scene(client)
+        config = switch_physical(client)
+        assert client.get("/api/v3/layouts").json() == {"layouts": []}
+
+        saved = client.put(
+            "/api/v3/layouts/lobby",
+            headers={"If-Match": config["etag"]},
+        )
+        assert saved.status_code == 200, saved.text
+        names = [entry["name"] for entry in client.get("/api/v3/layouts").json()["layouts"]]
+        assert names == ["lobby"]
+
+        moved = layout_body()
+        moved["slots"][DEVICE]["center_x_mm"] = 350
+        current = client.get("/api/v3/config").json()
+        changed = client.put(
+            "/api/v3/layout", json=moved, headers={"If-Match": current["etag"]}
+        )
+        assert changed.status_code == 200, changed.text
+        assert changed.json()["layout"]["slots"][DEVICE]["center_x_mm"] == 350
+
+        recalled = client.post(
+            "/api/v3/layouts/lobby/recall",
+            headers={"If-Match": changed.json()["etag"]},
+        )
+        assert recalled.status_code == 200, recalled.text
+        assert recalled.json()["layout"]["slots"][DEVICE]["center_x_mm"] == 300
+
+        deleted = client.delete(
+            "/api/v3/layouts/lobby",
+            headers={"If-Match": recalled.json()["etag"]},
+        )
+        assert deleted.status_code == 200
+        assert client.get("/api/v3/layouts").json() == {"layouts": []}
