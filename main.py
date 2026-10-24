@@ -1917,6 +1917,8 @@ def _playback_status() -> dict[str, Any]:
         "missed": session.missed,
         "held": session.held,
         "hold_deadline_ms": session.hold_deadline_ms,
+        "policy": session.policy,
+        "blocked_reason": session.blocked_reason,
     }
 
 
@@ -2016,7 +2018,7 @@ async def _playback_loop() -> None:
                 if action["type"] == "commit":
                     await _send_commit(session, action)
                     await _prepare_playback(session)
-                if action["type"] in ("commit", "hold", "failed"):
+                if action["type"] in ("commit", "hold", "failed", "blocked"):
                     await _broadcast_playback()
         except asyncio.CancelledError:
             raise
@@ -2078,9 +2080,16 @@ async def get_playback_v3():
     return _playback_status()
 
 
+class PlaybackStartCommand(BaseModel):
+    policy: str = "online"
+
+
 @app.post("/api/v3/playback/start")
-async def start_playback_v3():
+async def start_playback_v3(command: PlaybackStartCommand | None = None):
     global _playback_session
+    policy = command.policy if command is not None else "online"
+    if policy not in playback.POLICIES:
+        raise HTTPException(status_code=422, detail='policy must be "online" or "strict"')
     if _playback_session is not None and _playback_session.state not in ("stopped", "failed"):
         raise HTTPException(status_code=409, detail="playback is already active")
     document = persist.load_meta("playlist")
@@ -2105,6 +2114,7 @@ async def start_playback_v3():
         generation=wall["generation"],
         clock_epoch=_server_clock.epoch if _server_clock else "",
         connections=connections,
+        policy=policy,
     )
     await _prepare_playback(_playback_session)
     await _broadcast_playback()
@@ -2145,6 +2155,28 @@ async def _step_playback(request: Request, delta: int) -> dict[str, Any]:
     session = _require_session_version(request)
     try:
         playback.step(session, delta, _now_ms())
+    except playback.PlaybackError as error:
+        raise HTTPException(status_code=409, detail=str(error)) from error
+    for device_id in session.cohort:
+        socket = device_sockets.get(device_id)
+        if socket is not None:
+            with contextlib.suppress(Exception):
+                await _send_to(socket, {"type": "cancel", **session.lineage(),
+                                        "reason": "superseded"})
+    await _prepare_playback(session)
+    await _broadcast_playback()
+    return _playback_status()
+
+
+@app.post("/api/v3/playback/retry")
+async def retry_playback_v3(request: Request):
+    session = _require_session_version(request)
+    connections = {
+        device_id: devices[device_id].get("connection_id", "")
+        for device_id in session.cohort if device_id in devices
+    }
+    try:
+        playback.retry(session, _now_ms(), connections)
     except playback.PlaybackError as error:
         raise HTTPException(status_code=409, detail=str(error)) from error
     for device_id in session.cohort:

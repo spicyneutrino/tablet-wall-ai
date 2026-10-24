@@ -9,6 +9,10 @@ the same asset used twice is still two occurrences.
 Only one pending preparation exists. A version advance supersedes it; the
 currently displayed occurrence is kept until an accepted commit replaces it.
 The displayed picture is never mutated by preparation or readiness.
+
+``policy`` is ``online`` (a bounded hold, then a partial commit that records
+the miss) or ``strict`` (never commit with a frozen-cohort member missing: at
+the preparation deadline the session is ``blocked`` until Retry or Stop).
 """
 
 import uuid
@@ -22,6 +26,7 @@ MIN_DWELL_MS = 1000
 MAX_DWELL_MS = 600_000
 MAX_ITEMS = 64
 HOLD_CAP_MS = 5000
+POLICIES = ("online", "strict")
 
 
 class PlaybackError(ValueError):
@@ -95,6 +100,8 @@ class Session:
     held: bool = False
     missed: list[str] = field(default_factory=list)
     last_commit_ms: float | None = None
+    policy: str = "online"
+    blocked_reason: str | None = None
 
     def lineage(self) -> dict[str, Any]:
         return {
@@ -152,9 +159,12 @@ def start(
     clock_epoch: str,
     connections: dict[str, str] | None = None,
     playlist_revision: int = 1,
+    policy: str = "online",
 ) -> Session:
     if not cohort:
         raise PlaybackError("a playback session needs at least one participant")
+    if policy not in POLICIES:
+        raise PlaybackError('policy must be "online" or "strict"')
     session = Session(
         id=uuid.uuid4().hex,
         version=1,
@@ -166,6 +176,7 @@ def start(
         cohort=sorted(set(cohort)),
         state="preparing",
         target_ms=now_ms + LEAD_MS,
+        policy=policy,
     )
     session.pending = Preparation(
         id=uuid.uuid4().hex,
@@ -254,6 +265,9 @@ def tick(session: Session, now_ms: float) -> list[dict[str, Any]]:
     if len(valid) == len(session.cohort):
         return _commit(session, valid, pending.effective_ms, now_ms)
 
+    if session.policy == "strict":
+        return _strict_wait(session, pending, valid, now_ms)
+
     if now_ms < pending.effective_ms:
         return []
 
@@ -279,6 +293,27 @@ def tick(session: Session, now_ms: float) -> list[dict[str, Any]]:
                 action["missed"] = missed
         return committed
     return []
+
+
+def _strict_wait(
+    session: Session, pending: Preparation, valid: list[Lease], now_ms: float
+) -> list[dict[str, Any]]:
+    """Strict policy with a member missing: wait, re-anchor, or block.
+
+    A lease only counts when it covers the cut and readiness is refused after
+    the cut, so a late member can only join if the cut moves. Past the cut the
+    effective time slides forward one lead; renewals then cover it. Once the
+    cut and the preparation deadline have both passed the session blocks.
+    """
+    if now_ms < max(pending.effective_ms, pending.deadline_ms):
+        if now_ms >= pending.effective_ms:
+            pending.effective_ms = now_ms + LEAD_MS
+        return []
+    missing = sorted(set(session.cohort) - {lease.device_id for lease in valid})
+    session.state = "blocked"
+    session.blocked_reason = "preparation deadline passed before the cohort was ready"
+    session.missed = missing
+    return [{"type": "blocked", "reason": session.blocked_reason, "missing": missing}]
 
 
 def _commit(
@@ -341,6 +376,7 @@ def pause(session: Session, now_ms: float) -> int | None:
     session.pending = None
     session.held = False
     session.hold_deadline_ms = None
+    session.blocked_reason = None
     session.state = "paused"
     return session.current.item_index
 
@@ -367,6 +403,7 @@ def step(session: Session, delta: int, now_ms: float) -> Preparation:
     session.index = index
     session.version += 1
     session.state = "preparing"
+    session.blocked_reason = None
     session.pending = Preparation(
         id=uuid.uuid4().hex,
         version=session.version,
@@ -381,3 +418,23 @@ def step(session: Session, delta: int, now_ms: float) -> Preparation:
         for device_id in session.cohort
     }
     return session.pending
+
+
+def retry(
+    session: Session, now_ms: float, connections: dict[str, str] | None = None
+) -> Preparation:
+    """Leave ``blocked``: a new version and a fresh preparation of the same cut.
+
+    The frozen cohort is kept. ``connections`` replaces the connection a
+    member must answer on, for a tablet that reconnected while blocked.
+    """
+    if session.state != "blocked" or session.pending is None:
+        raise PlaybackError("only a blocked session can retry")
+    previous = {
+        device_id: lease.connection_id for device_id, lease in session.pending.leases.items()
+    }
+    preparation = step(session, 0, now_ms)
+    session.missed = []
+    for device_id, lease in preparation.leases.items():
+        lease.connection_id = (connections or {}).get(device_id, previous.get(device_id, ""))
+    return preparation

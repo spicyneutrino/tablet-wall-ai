@@ -6,14 +6,18 @@ writer task is the only place a send is awaited. Welcome and the initial
 snapshot are enqueued before the socket is published to broadcasts, so a
 later state frame cannot overtake them.
 
-R2 deliberately does not coalesce. Causal coalescing belongs with the R3
-playback snapshots, where a complete snapshot can safely replace an older
-one.
+Only complete state snapshots coalesce (``COALESCED_TYPES``). A snapshot that
+is still queued when a newer one of the same type arrives is dropped and the
+newer one is appended, so a slow reader sees the latest state without a
+backlog. The queue stays in causal order: prepare, commit, cancel, welcome
+and every other frame are never dropped or reordered, and a snapshot never
+overtakes a frame that was enqueued before it.
 """
 
 import asyncio
 import contextlib
 import json
+from collections import deque
 from typing import Any
 
 from fastapi import WebSocket
@@ -26,6 +30,7 @@ from tabletwall.protocol import (
 MAX_QUEUED_FRAMES = 64
 MAX_QUEUED_BYTES = 1024 * 1024
 SEND_TIMEOUT_S = 5.0
+COALESCED_TYPES = frozenset({"playback_status", "wall_updated", "config_updated"})
 
 # ``{websocket: Writer}``. The endpoint owns attach/detach; hub and main only
 # look a writer up, so an old endpoint cannot send through a replacement's
@@ -48,7 +53,8 @@ class Writer:
         self.frame_budget = frame_budget
         self.byte_budget = byte_budget
         self.timeout = timeout
-        self.queue: asyncio.Queue[tuple[dict[str, Any], Any]] = asyncio.Queue()
+        self.queue: deque[tuple[dict[str, Any], Any, int]] = deque()
+        self._wake = asyncio.Event()
         self.queued_bytes = 0
         self.task: asyncio.Task[None] | None = None
         self.closed = False
@@ -61,12 +67,22 @@ class Writer:
         if self.closed:
             raise ConnectionError("writer is closed")
         size = len(json.dumps(frame, separators=(",", ":")))
-        if self.queue.qsize() >= self.frame_budget:
+        if stamp is None and frame.get("type") in COALESCED_TYPES:
+            self._drop_stale_snapshot(frame["type"])
+        if len(self.queue) >= self.frame_budget:
             await self._overflow("frame queue is full")
         if self.queued_bytes + size > self.byte_budget:
             await self._overflow("byte budget is exhausted")
         self.queued_bytes += size
-        await self.queue.put((frame, stamp))
+        self.queue.append((frame, stamp, size))
+        self._wake.set()
+
+    def _drop_stale_snapshot(self, frame_type: str) -> None:
+        for entry in self.queue:
+            if entry[1] is None and entry[0].get("type") == frame_type:
+                self.queue.remove(entry)
+                self.queued_bytes = max(0, self.queued_bytes - entry[2])
+                return
 
     async def _overflow(self, reason: str) -> None:
         self.closed = True
@@ -76,8 +92,10 @@ class Writer:
 
     async def _run(self) -> None:
         while True:
-            frame, stamp = await self.queue.get()
-            size = len(json.dumps(frame, separators=(",", ":")))
+            while not self.queue:
+                self._wake.clear()
+                await self._wake.wait()
+            frame, stamp, size = self.queue.popleft()
             self.queued_bytes = max(0, self.queued_bytes - size)
             try:
                 if stamp is not None:
@@ -88,8 +106,6 @@ class Writer:
                 with contextlib.suppress(Exception):
                     await self.websocket.close(code=WS_CLOSE_NORMAL)
                 return
-            finally:
-                self.queue.task_done()
 
     async def stop(self) -> None:
         self.closed = True
