@@ -1089,6 +1089,24 @@ async def main(artifacts_arg: Path) -> int:
         check("S6", "the Content tab marks an unsaved playlist and clears after save",
               content_dot_dirty and not content_dot_after,
               dirty=content_dot_dirty, clean=not content_dot_after)
+        content_layout = await controller.evaluate("""() => {
+            const item = document.querySelector('.playlist-item');
+            const body = item && item.querySelector('.playlist-item-body');
+            const picker = document.querySelector('#playlist-library');
+            const controls = item && item.querySelector('.playlist-controls');
+            const width = (node) => node ? node.getBoundingClientRect().width : 0;
+            return {
+                itemWidth: width(item), bodyWidth: width(body),
+                pickerWidth: width(picker),
+                controlsHeight: controls ? controls.getBoundingClientRect().height : 0,
+            };
+        }""")
+        report["content_layout"] = content_layout
+        check("S6", "the playlist rows and library picker fit the 392 px rail",
+              content_layout["bodyWidth"] >= 200
+              and content_layout["pickerWidth"] >= 300
+              and content_layout["controlsHeight"] <= 46,
+              **content_layout)
         await reload_controller()
         await wait_summary("Playing")
         async def live_video_current() -> bool:
