@@ -730,8 +730,8 @@
         });
         if (!target || !target.tab || !target.panel) return false;
 
-        if (el.railPanels && state.tabName && state.tabName !== resolved
-                && !compactView()) {
+        const changed = state.tabName !== resolved;
+        if (changed && el.railPanels && state.tabName && !compactView()) {
             state.tabScroll[state.tabName] = el.railPanels.scrollTop;
         }
         entries.forEach(function (entry) {
@@ -742,7 +742,7 @@
             entry.panel.hidden = !active;
         });
         state.tabName = resolved;
-        if (el.railPanels) {
+        if (changed && el.railPanels) {
             el.railPanels.scrollTop = state.tabScroll[resolved] || 0;
         }
         if (settings.persist && !compactView()) {
