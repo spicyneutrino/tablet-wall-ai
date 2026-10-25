@@ -3189,9 +3189,11 @@
         }
     }
 
-    /* Buffer coverage from the range that CONTAINS the target, with no
-     * rounding up: end is compared at full precision. Near the end of the
-     * clip only the remainder is required. */
+    /* Buffer coverage from the range that CONTAINS the target. The range
+     * endpoints are compared at full precision; the returned coverage is
+     * rounded up because duration is published as a rounded millisecond
+     * count while the media's buffered end is fractional. Near the end of
+     * the clip only the remainder is required. */
     function videoBufferedAheadMs(slot, targetMs) {
         var ranges = slot.el.buffered;
         if (!ranges || !(ranges.length > 0)) return 0;
