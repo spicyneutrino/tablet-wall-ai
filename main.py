@@ -2179,8 +2179,10 @@ def _playback_status() -> dict[str, Any]:
     session = _playback_session
     if session is None:
         return {"state": "stopped"}
-    playback.refresh_display(session, _now_ms())
+    now = _now_ms()
+    playback.refresh_display(session, now)
     return {
+        "now_ms": now,
         "session_id": session.id,
         "version": session.version,
         "generation": session.generation,
@@ -2201,7 +2203,12 @@ def _playback_status() -> dict[str, Any]:
         "video": playback.video_status(session, _now_ms()),
         "members": {
             device_id: {
-                "ready": lease.ready,
+                "ready": bool(
+                    lease.ready
+                    and lease.clock_ok
+                    and lease.lease_expires_ms > now
+                    and lease.lease_expires_ms >= max(now, session.pending.effective_ms)
+                ),
                 "video": lease.video,
             }
             for device_id, lease in (session.pending.leases.items() if session.pending else [])
@@ -2550,6 +2557,22 @@ async def previous_playback_v3(request: Request):
 # ---------------------------------------------------------------------------
 
 
+def _revoke_playback_lease(device_id: str, connection_id: str | None = None) -> None:
+    """A closed or replaced socket can no longer answer for a preparation."""
+    session = _playback_session
+    if session is None or session.pending is None:
+        return
+    lease = session.pending.leases.get(device_id)
+    if lease is None:
+        return
+    if connection_id is not None and lease.connection_id != connection_id:
+        return
+    lease.ready = False
+    lease.evidence_seq = 0
+    lease.lease_expires_ms = 0
+    lease.clock_ok = False
+
+
 async def _device_loop(websocket: WebSocket, device_id: str) -> None:
     """Read frames from a device socket until it goes away."""
     while True:
@@ -2817,6 +2840,7 @@ async def ws_device(
         await writers.detach(websocket)
         if device_sockets.get(key) is websocket:
             device_sockets.pop(key, None)
+            _revoke_playback_lease(key, record.get("connection_id"))
             last_seen = devices.get(key, {}).get("last_seen", _now_iso())
             await _broadcast_offline(key, last_seen)
 

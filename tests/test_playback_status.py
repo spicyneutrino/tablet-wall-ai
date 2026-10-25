@@ -1,0 +1,48 @@
+"""Status and socket-disconnect evidence for an active playback session."""
+
+import main
+from tabletwall import playback
+
+A = "sha256:" + "a" * 64
+B = "sha256:" + "b" * 64
+
+
+def session():
+    return playback.start(
+        [{"asset": A, "dwell_ms": 5000}, {"asset": B, "dwell_ms": 5000}],
+        False, ["dev-1", "dev-2"], 1000, generation="gen", clock_epoch="epoch",
+        connections={"dev-1": "conn-dev-1", "dev-2": "conn-dev-2"},
+        policy="strict",
+    )
+
+
+def test_status_does_not_call_an_expired_lease_ready():
+    main._playback_session = session()
+    pending = main._playback_session.pending
+    lease = pending.leases["dev-1"]
+    lease.ready = True
+    lease.clock_ok = True
+    lease.lease_expires_ms = main._now_ms() + 5000
+    assert main._playback_status()["members"]["dev-1"]["ready"] is True
+    lease.lease_expires_ms = main._now_ms() - 1
+    assert main._playback_status()["members"]["dev-1"]["ready"] is False
+
+
+def test_revoking_a_closed_socket_clears_the_pending_lease():
+    main._playback_session = session()
+    pending = main._playback_session.pending
+    lease = pending.leases["dev-1"]
+    lease.ready = True
+    lease.clock_ok = True
+    lease.lease_expires_ms = main._now_ms() + 5000
+    lease.evidence_seq = 4
+    main._revoke_playback_lease("dev-1", "conn-dev-1")
+    assert lease.ready is False
+    assert lease.clock_ok is False
+    assert lease.evidence_seq == 0
+    assert lease.lease_expires_ms == 0
+    # A strict session cannot commit while a required lease is revoked.
+    main._playback_session.pending.leases["dev-2"].ready = True
+    main._playback_session.pending.leases["dev-2"].clock_ok = True
+    main._playback_session.pending.leases["dev-2"].lease_expires_ms = 32000
+    assert playback.tick(main._playback_session, 1500) == []
