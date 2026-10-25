@@ -102,3 +102,20 @@ other runners in Phase 1.
 - Preserve IDs used by runners: playback status/buttons/details/facts,
   playlist library/add/save/items, rebind controls, stage SVG, Apply/Cancel,
   page status.
+
+## Phase 1 status (2026-10-25)
+
+Merged: markup `14ae2ef`/`30c52f8`, JS `b5c03f9`/`b1e63f8`, CSS `70e27ea`,
+tests `ddfc840`. The controller runner passes **77/77 checks and 13/13
+scenarios** on two clean runs. Verified: no role/aria-live on
+`#playback-status`; countdown lives in the aria-hidden
+`#playback-countdown`; paused countdown stable after 2.4 s; one page-status
+mutation per state change; readiness ordered by display number and says
+`preparing next`; one-line cohort; exclusions hidden with zero exclusions;
+local Apply/Cancel mirrors the draft; 390 px card 182.6 px, no page overflow,
+fitted stage, More disclosure; axe 0 for the idle page. Mobile full forms are
+still deferred to the later authenticated controller tablet.
+
+The existing video, transitions, field, group recovery and base runners still
+pass. One recovery-acceptance run hit a pre-existing cap-timing flake; the
+immediate rerun was 88/88 and 5/5.

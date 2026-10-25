@@ -817,6 +817,23 @@ recovery at the playhead with all members at the same position, a second drop
 during that recovery spending no extra attempt, visible resumption, and no
 auto-rejoin while paused, final or excluded. Software evidence only.
 
+## Console Phase 1 (2026-10-25)
+
+The single-console plan from Claude Sonnet 5.5 High is
+`docs/design/controller-v2/PLAN.md`. Phase 1 is merged: the console is retitled,
+the live-region countdown is split out, the cohort is one line, next-cut
+readiness is ordered by display number and says `preparing next`, the stage
+scroll region is keyboard-accessible, the selected tablet has a local
+Apply/Cancel, selection uses ink, side stripes are gone, utility type is 13 px,
+and the 390 px playback card is compact with a More disclosure.
+
+Commits: markup `14ae2ef`, `30c52f8`; JS `b5c03f9`, `b1e63f8`; CSS
+`70e27ea`; tests `ddfc840`; asset/label `36e66c1`; merge `70acc6b`.
+`controller_run.py` passes **77/77 checks and 13/13 scenarios** on two clean
+runs. Video 35/35, transitions 51/51, field 12/12 and group recovery 19/19
+still pass. One recovery-acceptance run hit its cap-timing flake; the rerun
+passed 88/88 and 5/5. Phase 2 (tabbed rail) is next.
+
 ## Hardware/deployment validation kit (2026-10-25)
 
 The operator asked to work the eight remaining gates. No tablets, camera, AP,
