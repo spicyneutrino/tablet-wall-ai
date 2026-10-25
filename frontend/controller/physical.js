@@ -2838,10 +2838,9 @@
             observed = liveNumber(status.paused_at_ms);
             if (observed === null) return null;
         } else {
-            const explicit = status.remaining_dwell_ms !== undefined
-                ? status.remaining_dwell_ms : status.dwell_remaining_ms;
-            const value = Number(explicit);
-            if (Number.isFinite(value)) return value;
+            const explicit = liveNumber(status.remaining_dwell_ms !== undefined
+                ? status.remaining_dwell_ms : status.dwell_remaining_ms);
+            if (explicit !== null) return explicit;
             observed = statusNow(status);
         }
         if (observed === null) return null;
