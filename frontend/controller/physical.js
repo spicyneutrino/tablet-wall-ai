@@ -4919,6 +4919,7 @@
                 if (el.playbackCard) {
                     el.playbackCard.dataset.expanded = expanded ? "false" : "true";
                 }
+                el.playbackMore.textContent = expanded ? "More" : "Less";
             });
         }
 
