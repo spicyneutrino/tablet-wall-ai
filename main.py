@@ -2558,6 +2558,21 @@ async def previous_playback_v3(request: Request):
 # ---------------------------------------------------------------------------
 
 
+def _claim_device_socket(
+    device_id: str, websocket: Any, record: dict[str, Any]
+) -> Any:
+    """Take the one socket slot, revoking the old connection's lease first.
+
+    The replacement is visible to the playback loop immediately. Any await
+    before the old lease is cleared would let a tick commit to a preparation
+    the new page never saw, so the revocation is synchronous.
+    """
+    _revoke_playback_lease(device_id, record.get("connection_id"))
+    replaced = device_sockets.get(device_id)
+    device_sockets[device_id] = websocket
+    return replaced
+
+
 def _revoke_missing_leases(session: playback.Session) -> None:
     """Revoke leases for cohort members with no live socket, before a tick."""
     for device_id in session.cohort:
@@ -2770,9 +2785,8 @@ async def ws_device(
     # One socket per device: this one takes over the slot before the first
     # await, and the replaced socket's own task finds it no longer owns the
     # slot, so it closes with 4409 without broadcasting device_offline.
-    replaced = device_sockets.get(key)
-    device_sockets[key] = websocket
     record = devices[key]
+    replaced = _claim_device_socket(key, websocket, record)
     _touch_device(key)
     released = _ensure_device_number(key)
     for old_id in released:

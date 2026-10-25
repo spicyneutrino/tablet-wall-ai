@@ -61,3 +61,21 @@ def test_a_missing_socket_revokes_before_the_next_tick():
     main._revoke_missing_leases(main._playback_session)
     assert pending.leases["dev-1"].ready is False
     assert pending.leases["dev-2"].ready is True
+
+
+def test_replacing_a_socket_revokes_before_a_tick():
+    main._playback_session = session()
+    pending = main._playback_session.pending
+    lease = pending.leases["dev-1"]
+    lease.ready = True
+    lease.clock_ok = True
+    lease.lease_expires_ms = main._now_ms() + 5000
+    record = {"connection_id": "conn-dev-1"}
+    old = object()
+    new = object()
+    main.device_sockets["dev-1"] = old
+    assert main._claim_device_socket("dev-1", new, record) is old
+    assert lease.ready is False
+    assert main.device_sockets["dev-1"] is new
+    main._playback_session.pending.leases["dev-2"].ready = False
+    assert playback.tick(main._playback_session, 1500) == []
