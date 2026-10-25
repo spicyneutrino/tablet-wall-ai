@@ -3751,6 +3751,9 @@
         clearStillPlayback();
         var hadVideo = videoPending || videoArmed || videoActive;
         stopVideoPlayback();
+        /* The next render/wall replay may describe a server state that changed
+         * while this socket was down. A still stays on the glass meanwhile. */
+        playbackOnScreen = false;
         if (hadVideo) restoreStaticScene();
     }
 
