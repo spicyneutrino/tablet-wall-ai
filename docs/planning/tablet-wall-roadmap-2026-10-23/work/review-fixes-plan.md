@@ -151,8 +151,9 @@ Merge D and E after Phase 1. Rerun the full software acceptance set.
 
 ## Phase 3: reconnect and named exclusions
 
-Proposed operator behavior (to be confirmed by the advisor; session-only,
-reversible choices):
+Accepted operator behavior (2026-10-25): automatic reconnect with one normal
+attempt; session-only named exclusions at Start with the persisted static
+scene; blocked-recovery exclusion deferred to Stop/Start.
 
 - **Mid-video reconnect.** If a session is playing and the returning device
   was required, start one group recovery at the server-authoritative playhead,
@@ -171,10 +172,33 @@ reversible choices):
   increment; diagnostics retain the original required set. Saved layouts are
   unchanged.
 
-Implementation split: one server/client worktree for reconnect (F1/F2
-transition reused), one server/controller worktree for Start-time exclusions.
-Merge sequentially because both touch `main.py`/`playback.py` start/socket
-paths. Durable browser tests and docs land with each feature.
+Implementation split (accepted): one server worktree for reconnect and the
+start-exclusion API, one controller worktree for the session-only exclusion
+picker. The server owns `main.py`, `tabletwall/playback.py`, `PROTOCOL.md` and
+the playback tests. The controller owns `frontend/controller/physical.*` and
+the controller runner. Merge server then controller, then add one browser
+runner for reconnect and exclusions.
+
+Start API: `POST /api/v3/playback/start` accepts optional
+`exclusions: [uuid]`. Every id must name a participating layout slot; an
+all-excluded request is `409`. The session records the original required set,
+the excluded set and the effective cohort. Strict readiness and content
+bounds use the effective cohort; excluded tablets receive a stopped frame and
+show the persisted scene. `GET /api/v3/playback` reports `required`,
+`excluded` and `cohort` separately. Resume retains the frozen selection.
+
+Reconnect: after a device socket replacement during an active session, if the
+session is `recovering`, resend the existing prepare to the replacement
+without a new attempt or deadline. If it is `preparing`/`armed`, resend the
+current pending prepare. If a video is `playing`, not final, with at least
+250 ms of media left and fewer than three attempts on the occurrence, start
+one group recovery at the server playhead with reason `reconnect` and one
+normal attempt; this freezes the reachable cohort and commits a fresh common
+anchor. A reconnect for the same device within 2 s of that recovery's start
+does not start a second attempt. Paused, blocked, failed, final and
+near-end/last-video sessions do not auto-rejoin; the tablet shows the
+persisted scene until the operator acts. Reconnect never revives an old epoch
+or monotonic anchor.
 
 ## Verification
 
