@@ -21,9 +21,10 @@ tablet, iPad, camera, AP or installed-trust session was available
 | Full Python | `pytest -q` | **990 passed** (3 deprecation warnings). |
 
 Artifacts were written outside the checkout; they are bounded and hash-listed
-in each report. Each runner's own cleanup check is recorded in its report.
-The optical synthetic reports are intentionally not `complete`; the analyzer
-must not invent the 100-event hardware sample.
+in each report. The server/browser runners record their own cleanup checks;
+the optical and calibration tools have no server or browser to clean up. The
+optical synthetic reports are intentionally not `complete`; the analyzer must
+not invent the 100-event hardware sample.
 
 ## What this proves
 
