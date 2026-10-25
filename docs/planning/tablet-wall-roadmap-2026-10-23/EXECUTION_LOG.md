@@ -736,7 +736,7 @@ treating advisor review as product acceptance.
 | F3 pause rendering | Fixed | `925556b`: `remainingDwell` checks `pending` before converting or dereferencing it and uses `paused_at_ms` as the observation time, so the paused countdown stops and the status poll stays healthy. |
 | F4 live item identity | Fixed | `925556b`: status publishes `playlist_revision` and `live.current/displayed/pending` from the frozen session. The controller renders live name, kind and duration from that data, hides the editable `Now` marker when revisions differ, and a later Start uses the saved revision. |
 | F5 evidence gaps | Fixed | `video_run.py` now fails on unexpected page/console/request errors and requires visible advancing pictures. `video_transitions_run.py` adds the F1 transitions and the real following cut. `controller_run.py` adds durable pause and live-identity coverage. `recovery_acceptance_run.py` adds live strict/online caps, terminal hold, operator Retry, Stop, timeout, multi-fault ordering and final-item recovery; two runs recorded 88/88 checks and 5/5 scenarios. `group_recovery_run.py` now has 19/19 live checks plus 1/1 fixture copy check. |
-| F6 docs/evidence schemas | Partially landed | Current capability, historical scope, evidence kinds and acceptance gaps are reconciled here and in `README.md`, `RECOVERY.md`, `RECOVERY-CONTRACT.md` and `simulator/README.md`. `PROTOCOL.md` now qualifies Retry as strict-blocked and Start again as online-failed. Report-summary normalization is still in flight. |
+| F6 docs/evidence schemas | Fixed | Current capability, historical scope, evidence kinds and acceptance gaps are reconciled here and in `README.md`, `RECOVERY.md`, `RECOVERY-CONTRACT.md` and `simulator/README.md`. `PROTOCOL.md` now qualifies Retry as strict-blocked and Start again as online-failed. `simulator/browser/report.py` normalizes one report at a time to runner, head/dirty, browser, evidence kind, check/scenario counts, failure reasons and validation problems; its CLI exits 1 for contradictions. 15 adapter tests pass. |
 
 ### Repairs and durable browser evidence
 
@@ -751,6 +751,8 @@ Two consecutive green runs each recorded:
 - `video_run.py` v2: 35/35 checks.
 - `recovery_acceptance_run.py`: 88/88 checks, 5/5 scenarios.
 - `group_recovery_run.py`: 19/19 live checks plus 1/1 fixture copy check.
+- `simulator/browser/report.py`: 15 adapter tests; CLI normalization on the
+  recovery-acceptance, controller and restore reports exits 0.
 
 Baseline failure proofs:
 

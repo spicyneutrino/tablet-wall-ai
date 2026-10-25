@@ -249,8 +249,14 @@ report. No row closes a physical, optical, iOS, CA, Wi-Fi, kiosk or soak gate.
 | `recovery_acceptance_run.py` | Live strict/online caps, terminal hold, operator Retry, Stop, timeout, multi-fault ordering and final-item recovery | Desktop Chromium software; v1, 88/88 checks and 5/5 scenarios on two consecutive runs. No fourth prepare is claimed only from the live frame capture. |
 
 This table is an index, not a sum: the suites overlap in setup and must not be
-added together. Counts labelled "last recorded" were not rerun for the
-2026-10-25 review-fix round.
+added together. `simulator/browser/report.py` is not a runner; it normalizes
+one report at a time (top-level or restore-style) to a common summary with
+runner, head/dirty, browser, evidence kind, check/scenario counts, failure
+reasons and validation problems. Run
+`python -m simulator.browser.report PATH ...`; it exits 1 for an inconsistent
+report and never sums overlapping suites. `test_report.py` has 15 adapter
+tests. Counts labelled "last recorded" were not rerun for the 2026-10-25
+review-fix round.
 
 Prerequisites are Linux with `/proc`, the project's Python environment, and
 Playwright's Chromium binaries plus their host libraries. The optional
