@@ -2207,6 +2207,7 @@ def _playback_status() -> dict[str, Any]:
         "blocked_reason": session.blocked_reason,
         "final": session.final,
         "paused_at_ms": session.paused_at_ms,
+        "recovery": playback.recovery_status(session, now),
         "video": playback.video_status(session, _now_ms()),
         "members": {
             device_id: {
@@ -2273,6 +2274,7 @@ async def _send_prepare(
     }
     if pending.media is not None:
         frame["media"] = pending.media
+        frame["start_media_ms"] = pending.start_media_ms
     await _send_to(socket, frame)
     return True
 
@@ -2358,8 +2360,11 @@ async def _playback_loop() -> None:
             for action in actions:
                 if action["type"] == "commit":
                     await _send_commit(session, action)
+                if action["type"] in ("commit", "recover"):
                     await _prepare_playback(session)
-                if action["type"] in ("commit", "hold", "failed", "blocked", "reanchor"):
+                if action["type"] in (
+                    "commit", "hold", "failed", "blocked", "reanchor", "recover",
+                ):
                     await _broadcast_playback()
         except asyncio.CancelledError:
             raise
@@ -2737,6 +2742,25 @@ async def _device_loop(websocket: WebSocket, device_id: str) -> None:
             ):
                 if _now_ms() - _last_sample_broadcast_ms >= 1000:
                     _last_sample_broadcast_ms = _now_ms()
+                    await _broadcast_playback()
+        elif isinstance(payload, dict) and payload.get("type") == "video_fault":
+            session = _playback_session
+            record = devices.get(device_id)
+            if (
+                session is not None
+                and record is not None
+                and device_sockets.get(device_id) is websocket
+            ):
+                result = playback.accept_fault(
+                    session,
+                    device_id=device_id,
+                    payload=payload,
+                    now_ms=_now_ms(),
+                    connections=_playback_connections(session.cohort),
+                )
+                if result == "preparing":
+                    await _prepare_playback(session)
+                if result != "ignored":
                     await _broadcast_playback()
         elif isinstance(payload, dict) and payload.get("type") == "heartbeat":
             # A replaced socket must not keep the new one alive.

@@ -878,9 +878,9 @@ session and restores static content.
 
 `playback_status` reports the lineage, state, `current` (last committed),
 `displayed`, `current_effective_ms`, `pending`, policy, cohort, ready/missed
-members, `final`, and per-device `video` samples. `members` carries each
-pending lease's `ready` and video evidence so a blocked clip names its failed
-gate.
+members, `final`, the `recovery` record, and per-device `video` samples.
+`members` carries each pending lease's `ready` and video evidence so a blocked
+clip names its failed gate.
 
 ### Prerecorded video (R4)
 
@@ -926,22 +926,88 @@ prepare_timeout_ms:30000}`. Its `ready.video` evidence is
 rvfc}`. A video lease is ready only with metadata and seek true, `play_ok` yes,
 and contiguous `buffered_ahead_ms >= min(goal, duration - start)`; a later
 report that fails clears readiness. `commit.start_media_ms` is 0 for a fresh
-occurrence. The client never sets the native `loop` attribute; every loop is a
-new server occurrence. After the commit the client sends
+occurrence and the recovery `position_ms` for a recovery commit. The client
+never sets the native `loop` attribute; every loop is a new server occurrence.
+After the commit the client sends
 `{ "type": "video_sample", "session_id": "…", "version": 4,
 "occurrence": {...}, "media_ms": 1200, "target_ms": 1200,
 "drift_ms": 0.4, "rate": 1.0, "source": "rvfc"|"time" }` at most once per
 1000 ms. Only the current socket, session, version, occurrence and a playing
 device are accepted; values are bounded and the latest sample is kept for 5 s.
 
+### Bounded group video recovery (R4.1)
+
+A playing video occurrence is re-prepared for the whole cohort when one of
+these is true:
+
+- the client sends `video_fault` after its own bounded local recovery is
+  exhausted or after `play_ok` is `"no"`;
+- the server's last accepted `video_sample` for a playing device is older
+  than 3000 ms;
+- the client reports the committed occurrence stopped with `ended: false`.
+
+Ordinary drift inside 250 ms stays local and never starts a recovery.
+
+```json
+{ "type": "video_fault", "session_id": "…", "version": 4,
+  "occurrence": {"playlist_revision": 1, "item_index": 2, "loop": 0},
+  "position_ms": 2400, "reason": "stalled"|"play_failed"|"buffer_lost" }
+```
+
+The frame is accepted only from the current socket, a device in `playing`,
+the current occurrence and the current version; `position_ms` is bounded
+`0..duration_ms`. A duplicate fault while a recovery is active is ignored.
+
+`playback_status.state` becomes `recovering` and `recovery` is one record:
+
+```json
+"recovery": {
+  "id": "…", "occurrence": {...}, "position_ms": 2400,
+  "reason": "stalled", "device_id": "<uuid>", "attempts": 1,
+  "started_ms": 123, "deadline_ms": 456, "degraded_ms": 789,
+  "state": "preparing"|"playing"|"blocked"|"failed", "missing": ["<uuid>"]
+}
+```
+
+`degraded_ms` is the time since the occurrence was first degraded, capped at
+the recovery commit anchor once the state is `playing`. `missing` names the
+members that were not ready when a recovery blocked.
+
+The pending next occurrence is cancelled, the cohort is frozen and not
+shrunk, and the current occurrence is prepared again at a fresh version and
+the common anchor `now + LEAD_MS`. The recovery `prepare` carries
+`start_media_ms = position_ms`; `ready.video.buffered_ahead_ms` is measured
+from that position and the required buffer is
+`min(buffer_goal_ms, duration_ms - position_ms)`. The commit carries the same
+`start_media_ms`, and the next boundary is `effective_server_ms +
+(duration_ms - position_ms)`, not the full duration. A final non-looping
+occurrence stays final after the recovery commit.
+
+A recovery commits only with the whole frozen cohort. At the preparation
+deadline a strict session becomes `blocked` with
+`blocked_reason: "recovery_timeout"` and keeps the recovery for Retry; an
+online session becomes `failed` with reason `recovery_failed`. Retry from a
+blocked recovery re-prepares the same occurrence and position at a new
+version and anchor. At most three recovery attempts are allowed per
+occurrence; a fourth enters `blocked`/`failed` without another prepare.
+
+Stop, a mapping/calibration/layout/rebind change and a clock epoch change
+cancel the recovery. A replaced device socket revokes the old connection's
+recovery lease before the recovery prepare is sent to the replacement socket;
+a fault from the superseded socket is refused.
+
 The client owns three slots: preparing, armed (commit received) and active. A
-routine next preparation replaces only the preparing slot. Drift correction
-uses a 50 ms deadband, a rate within 0.98..1.02 inside 50..250 ms, and one seek
-per 5 s above 250 ms. Pause freezes; Start resumes by restarting the displayed
-item; Stop restores the persisted render. Group rebuffer with a new common
-anchor, named exclusions, and mid-video reconnect recovery are not implemented
-and are not claimed. Optical timing, physical decode/suspend, iOS Safari and
-soak remain MISSING.
+routine next preparation replaces only the preparing slot. On a recovery
+trigger the client freezes the active picture, releases pending and armed
+work, and prepares the occurrence from the position. It keeps the previous
+picture until the recovery commit, then starts at `start_media_ms`; the next
+natural boundary is the remaining duration. A recovery that times out shows
+the normal blocked/failed state with Retry and Stop available. Drift
+correction uses a 50 ms deadband, a rate within 0.98..1.02 inside 50..250 ms,
+and one seek per 5 s above 250 ms. Pause freezes; Start resumes by restarting
+the displayed item; Stop restores the persisted render. Named exclusions
+within a recovery cohort are not claimed. Optical timing, physical
+decode/suspend, iOS Safari and soak remain MISSING.
 
 The browser evidence measures software canvas/DOM timing only. No optical
 onset, physical sleep or mixed-model claim follows from it.
