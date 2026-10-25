@@ -486,11 +486,13 @@ five are fixed and covered by tests:
 - pause resumes the displayed item; stop and abort restore the persisted render.
 
 Evidence: 100/100 software cuts, three calibrated clients, 0 failed events,
-0 degradation windows. The final isolated run reported p50/p95/max
-0.2/0.9/1.1 ms. An earlier run that overlapped a controller Playwright run had
-one 17 ms event; p95 stayed 1.2 ms. That is software draw timing, not optical. Suspend injection cancels the
-session, stops renewals, paints no cancelled cut and returns both clients to
-the persisted scene. Optical gate: MISSING.
+0 degradation windows. The isolated run reported p50/p95/max
+0.2/0.9/1.1 ms. A later run that overlapped the independent review had p95
+1.0 ms with one 11.4 ms event. Check counts vary by one because three
+per-device placement checks carry device UUIDs in their names. That is
+software draw timing, not optical. Suspend injection cancels the session,
+stops renewals, paints no cancelled cut and returns both clients to the
+persisted scene. Optical gate: MISSING.
 
 ### R4 native video
 
@@ -532,7 +534,7 @@ scene restore. No optical or physical decode claim.
 - Python: 811 passed.
 - Client JS: 41 passed. View JS: 12 passed. Wake lock: 10/10.
 - Browser base: 106/106.
-- Browser 100 cuts + suspend: 131/131 (p50/p95/max 0.2/0.9/1.1 ms).
+- Browser 100 cuts + suspend: 130-131/130-131 (UUID-named checks), p50/p95/max 0.2/0.9-1.0/1.1 ms isolated.
 - Video browser: 19/19.
 - Field browser: 12/12.
 - Recovery browser: 20/20.
