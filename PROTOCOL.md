@@ -943,7 +943,8 @@ these is true:
 - the client sends `video_fault` after its own bounded local recovery is
   exhausted or after `play_ok` is `"no"`;
 - the server's last accepted `video_sample` for a playing device is older
-  than 3000 ms;
+  than 3000 ms, unless the playhead is within 250 ms of the clip's natural
+  end (that sample is not a stall);
 - the client reports the committed occurrence stopped with `ended: false`.
 
 Ordinary drift inside 250 ms stays local and never starts a recovery.
@@ -956,7 +957,8 @@ Ordinary drift inside 250 ms stays local and never starts a recovery.
 
 The frame is accepted only from the current socket, a device in `playing`,
 the current occurrence and the current version; `position_ms` is bounded
-`0..duration_ms`. A duplicate fault while a recovery is active is ignored.
+`0..duration_ms - 1`, because a position at the exact end has nothing left to
+play. A duplicate fault while a recovery is active is ignored.
 
 `playback_status.state` becomes `recovering` and `recovery` is one record:
 
@@ -988,8 +990,11 @@ deadline a strict session becomes `blocked` with
 `blocked_reason: "recovery_timeout"` and keeps the recovery for Retry; an
 online session becomes `failed` with reason `recovery_failed`. Retry from a
 blocked recovery re-prepares the same occurrence and position at a new
-version and anchor. At most three recovery attempts are allowed per
-occurrence; a fourth enters `blocked`/`failed` without another prepare.
+version and anchor. At most three automatic recovery attempts are allowed per
+occurrence; a fourth fault enters `blocked`/`failed` without another prepare.
+An operator Retry after that cap starts one fresh episode at the same
+occurrence and position, with `attempts` reset to 1; the fresh episode is
+bounded by the same three-attempt cap.
 
 Stop, a mapping/calibration/layout/rebind change and a clock epoch change
 cancel the recovery. A replaced device socket revokes the old connection's

@@ -621,9 +621,52 @@ Worktree reconciliation:
   uncommitted drafts were preserved first under `recovered/`.
 - only the active UX worktrees remain.
 
+## Bounded group recovery and current evidence (2026-10-24)
+
+The feature Sol's fallback plan named next is implemented, merged and proven
+at the software boundary. HEAD `c23d37d`.
+
+- `2c9571c` server model: one recovery record per occurrence, fault intake
+  from a playing device, three automatic attempts, strict cohort freeze,
+  position-aware prepare and commit, remaining-duration next boundary,
+  degraded interval, and mapping/layout/epoch aborts.
+- `4e9030e` client: fault once per occurrence/position, freeze on a recovery
+  prepare, position-aware buffer/probe/commit/samples, and stale callbacks
+  cannot paint.
+- `917ab79` end-of-clip and operator-retry fixes: stale detection stops
+  250 ms before the natural end, a fault at the exact end is refused, and a
+  Retry after the automatic cap gets one fresh episode reset to attempt 1.
+- `829f5f0` restored-video and real Caddy ingress evidence.
+- `c23d37d` controller recovery text/facts and the group recovery browser
+  runner.
+
+Browser recovery proof (`simulator/browser/group_recovery_run.py`): one
+client's active video is frozen with a hanging play promise, its local
+retries exhaust, one `video_fault` is accepted, the server starts one
+recovery at the live playhead, both calibrated clients prepare there, one
+common commit resumes the clip, and the next boundary is the remaining
+duration. 6/6 checks at `c23d37d`; the run is software evidence only.
+
+Verification at `c23d37d`:
+- Python 839 passed (full suite).
+- Client 58, view 12, wake lock 10.
+- Browser base 105/105; video 20/20; field 12/12; group recovery 6/6;
+  restored video 41/41.
+- Caddy + ingress + backup video: 13 passed, including the real Caddy skip
+  path.
+- Worktrees and branches for the recovery/evidence workers were removed
+  after merge; `main` is the only worktree and branch.
+
+Claude Opus 5.5 review was retried once on 2026-10-24 at max effort and failed
+again with `Claude API rate limit reached`. No Opus findings were produced for
+this pass; the independent DeepSeek red-team review of the recovery feature
+is recorded separately.
+
 ## Next actions
 
-DeepSeek's rendered design review is in `work/frontend-design-review.md`.
-The controller and tablet UX work is running in two worktrees. The remaining
-product work is optical/physical validation and the deferred group recovery,
-named exclusions and mid-video reconnect.
+The remaining product work is hardware and deployment evidence: optical cut
+timing, physical decode/suspend, iOS Safari, mixed-model calibration,
+installed local-CA trust, real Wi-Fi/OS behavior, kiosk and soak. Software
+follow-ups that stay in scope are named exclusions, mid-video reconnect
+reusing the recovery model, and any credible red-team findings. None of the
+hardware gates may be inferred from the software evidence above.

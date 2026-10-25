@@ -87,6 +87,24 @@ recovery prepare to the replacement socket.
 - A recovery that times out shows the normal blocked/failed state; Retry and
   Stop stay available.
 
+## Implementation notes (2026-10-24)
+
+Three points the first draft left ambiguous, resolved in the merged code and
+recorded here rather than rewritten in place:
+
+- `position_ms` is accepted in `0..duration_ms - 1`. A fault at the exact end
+  has no resumable media left and is ignored. Stale-sample detection also
+  stops 250 ms before the natural end, so a clip that simply finished is not a
+  stall.
+- A socket replacement does not delete the recovery episode. It revokes the
+  old connection's recovery lease and sends the recovery prepare to the
+  replacement socket; a fault from the superseded socket is refused.
+- "At most three attempts" bounds automatic recovery. An operator Retry after
+  the cap is allowed once and resets `attempts` to 1 for that fresh episode;
+  the fresh episode is bounded by the same cap. `Session.recovery` is retained
+  with `state: "failed"` on an online-session failure, in addition to the
+  `preparing|playing|blocked` states above.
+
 ## Evidence
 
 Model tests: trigger bounds, duplicate suppression, strict missing, timeout,
