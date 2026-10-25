@@ -850,7 +850,8 @@ slots are not counted as synchronized participants: they receive no
 preparation, and each reachable excluded socket receives one isolated
 `playback` stopped frame with reason `"excluded"` so it shows the persisted
 scene. Strict readiness
-and the effective content bounds use `cohort` only. `start` on a paused
+uses `cohort` only; the physical content bounds and each remaining member's
+plan are unchanged. `start` on a paused
 session resumes the displayed item at a new anchor and keeps the frozen
 `required`, `excluded` and `cohort` selection. `pause/stop/next/previous/retry`
 require `If-Match` with the current session version (`428` missing, `412`
