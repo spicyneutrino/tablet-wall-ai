@@ -1,90 +1,104 @@
-# Controller v2: final plan
+# Single operator console: frontend stage 6
 
-## What this is
+Source: Claude Sonnet 5.5 High, 2026-10-25. Planning only; this file records
+the approved direction for implementation.
 
-A redesign of the tablet-wall controller from a stack of cards into a wall-first editor. The wall is the document. The left rail is the roster, the centre is the wall, and the right rail is one context panel for the selected tablet, the wall content, or the layout. The design is restrained, mineral, and green-accented rather than a generic dashboard.
+## What the plan found
 
-This plan is the synthesis of four independent design rounds and two cross-reviews. The design round hit account limits, so the final plan was completed from the artifacts and transcripts, not from a fresh Opus run. The process is recorded in `REVIEWS.md`.
+- `physical.html`/`physical.js` and `index.html`/`controller.js` are two
+  different state models, not two skins. The logical page uses the WebSocket,
+  `PUT /wall`, `PUT /scene` and `/assets`; the physical page uses
+  `/api/v3/config`, layout, playlist and playback. Uploads exist only in
+  `controller.js`.
+- Playlist items carry asset and dwell only. Per-item fit/transition is not in
+  the playlist API, so Content v1 covers library, upload, order, dwell and
+  loop; fit and transitions need a backend change.
+- `#playback-status` already has a second live region; `announce()` writes
+  state changes to `#page-status`.
+- Readiness rows say `waiting` during healthy playback because they describe
+  the next cut, and are sorted lexicographically, so `#2` can precede `#1`.
 
-## Design rounds and what survived
+## Target
 
-| Lead | Artifact | What survived |
-|---|---|---|
-| Sonnet | Mockups complete, docs rate-limited | Wall-as-document, direct placement, the tiled-grid overlay with numbered cells and click-to-swap, the honest request count, the physical bezel treatment |
-| Opus | Desktop mockup complete, mobile/docs quota-limited | Continuous single image across the wall, the right context rail with Tablet/Content/Layout, the shelf of tablets, the exact shape-mismatch explanation and Match screen shape |
-| Sol | Complete design, mockups, 22 interaction checks, final synthesis mockups produced before a quota stop | Three-region frame, selection sync, exact geometry inspector, move-first mobile inspector, undo model, honest tile write model, capability map |
-| Astra | Mockups complete, docs quota-limited | Mineral sage/cream palette, type hierarchy, stable roster, layout thumbnails, browse-then-apply content flow |
+One page, `physical.html`, retitled **Wall console**. Keep the filename because
+runners and tests hard-code it. The stage is always visible. A sticky right
+rail has four tabs:
 
-The cross-review rejected a permanent bottom dock plus a left rail, a fixed mobile status bar, and a number-only device name system. It kept the left roster, the wall-first centre, one context rail, and a real mobile task bar.
+| Tab | Contents |
+| --- | --- |
+| Show | transport, one-line cohort, exclusions when present, next-cut readiness, Details |
+| Tablet | tablet list, selected inspector, profile and calibration |
+| Content | library, upload (later), playlist order, dwell, loop, Save playlist |
+| System | wall bounds, saved layouts, diagnostics, rebind |
 
-## Final layout
+Default tab is Show when idle/playing/paused and blocked/failed/recovering.
+A stage selection opens Tablet and focuses the inspector. Tabs are view-only
+state and never dirty the draft. A compact transport strip stays in the
+topbar so Stop is always reachable. `index.html` stays a linked logical mode
+until the operator confirms it can be retired.
 
-Desktop at 1440:
+## Phases
 
-```text
-┌──────────────────────────────────────────────────────────────────────────────┐
-│ Tablet wall   Live  3/4 online        Tablet address  Copy   Physical setup  │ 54
-├──────────────┬──────────────────────────────────────────┬────────────────────┤
-│ Tablets   4  │ Wall   1800 × 800 units        Tile      │ Tablet Content     │
-│ 3 placed     │ On the wall  image.png  Change           │ Layout             │
-│ 1 unplaced   │ Snap  Grid 20     Undo Redo 2x Keys      │                    │
-│              │                                          │ selected ID        │
-│  [rows]      │        wall canvas with rulers           │ position / size    │
-│              │        physical bezels, handles          │ shape + match      │
-│  Saved       │                                          │ move / bezel       │
-│  layouts     │ legend · coordinates · warnings          │ colour / details   │
-│              │                                          │ remove / place     │
-├──────────────┴──────────────────────────────────────────┴────────────────────┤
-│ 10:35:12  status message                         Revision 71  Session 8617f74a│ 34
-└──────────────────────────────────────────────────────────────────────────────┘
-```
+1. **Low-risk fixes on the current page.** Live-region split, one-line cohort,
+   transport order, `waiting` -> `preparing next`, display-number sort,
+   keyboard stage scroll, local Apply/Cancel, selection/warning color split,
+   no side stripes, type floor and measure, mobile playback cap and retitle.
+2. **Single-console rail.** Add the four tabs, topbar transport, local Apply
+   footer, selection-opens-Tablet, mobile compact view.
+3. **Content and legacy.** Port upload from `controller.js`, promote library,
+   playlist and slideshow; link or later redirect the logical mode. Defer the
+   authenticated controller tablet and backend fit/transition controls.
 
-- Left rail: 204px. Tablets, placed/unplaced groups, saved spots, saved layouts.
-- Centre: flexible. Wall size, actual content, snap/grid, undo/redo, zoom, keys, canvas, legend, warnings.
-- Right rail: 308px. Tablet, Content, Layout.
-- At 901-1200px: 190px / flexible / 292px.
-- At 900px and below: task bar Wall, Tablets, Content, Layout; one task at a time; fitted wall plus a contained 2x zoom; selected inspector below the wall.
+## Phase 1 first PR
 
-## Interaction decisions
+Files: `physical.html`, `physical.css`, `physical.js`,
+`simulator/browser/controller_run.py`, cache-bust query strings.
 
-- **One selection.** Wall footprint and roster row select the same device. The inspector follows. Focus stays visible after a re-render.
-- **Move.** Pointer drag on the wall; snap to grid, wall edges, and other footprints; Alt disables snap; Escape cancels; live coordinates.
-- **Resize.** Four corner handles; exact W/H; visible-aspect lock; Match screen shape sets the height that matches the screen.
-- **Place.** Drag an unplaced row onto the wall, or press Place. The keyboard/mobile fallback is the inspector's Place action, which finds the first free footprint.
-- **Remove.** One action in the inspector header or via drag back to the roster. Undo, not a confirmation dialog. Delete also works.
-- **Tile.** Scope, order, columns, rows, gap, shape policy. The wall shows numbered preview cells. Click two cells to swap. Apply is blocked on capacity or a retained-spot conflict. Custom tiling writes placements one after another and reports partial failure; it never claims atomicity.
-- **Undo.** Local placement history for move, resize, place, remove, and tile. Undo is a persistent button, not only a toast. History clears on a session/generation change.
-- **Content.** Colour and Calibration are direct mode switches. Image selection is separate from applying, because an image needs a file first. The header always reports the actual wall. The image preview shows the active image even before a replacement is selected.
-- **Mobile.** Wall first. Task tabs. Tap selects and reveals the inspector. The inspector puts 44px move arrows before numeric fields. No page-level horizontal scroll.
+1. Remove `role="status"` and `aria-live` from `#playback-status`. Add
+   `#playback-countdown` with `aria-hidden="true"`. Move the remaining-time
+   text out of the state sentence. Keep `#page-status` as the state
+   announcement.
+2. Put transport actions directly below the status line in an active session.
+   Make the cohort a one-line summary. Move the long exclusion explanation
+   into a collapsed disclosure.
+3. Rename "Readiness" to "Next cut". Show `preparing next` instead of
+   `waiting` while the current picture is healthy. Sort rows by display
+   number.
+4. Add `id="stage-scroll"`, `tabindex="0"`, `role="region"` and a label. At
+   ≤719 px scale the SVG to fit and remove the horizontal scroll.
+5. Add `#btn-apply-local` and `#btn-cancel-local` to a sticky footer in the
+   Selected tablet card. They proxy `#btn-apply`/`#btn-cancel` and share their
+   disabled state. Selecting a slot scrolls the inspector into view and focuses
+   `#selected-title` (add `tabindex="-1"`), but not during a pointer drag.
+6. Use ink for selection, keep orange for primary/focus/warning, remove
+   side-stripe borders, raise utility type to 13 px, cap prose at 62ch, and
+   retitle to "Wall console".
+7. At ≤719 px cap the sticky playback card at about 190 px: state, countdown,
+   transport and a More disclosure. Hide the rest until More expands.
+8. Update `controller_run.py` countdown assertions and add checks for the
+   live region, readiness order/text, one-line cohort, and mobile stage fit.
 
-## Implementation
+## File ownership
 
-The existing data layer is kept. The tile template stays in the DOM as the hidden exact-field source so `savePlacement()`, protocol handling, and the browser evidence runner keep working. The new stage layer adds selection, drag, resize, tiling, undo, and mobile task state around it.
+| Owner | Files |
+| --- | --- |
+| A | `physical.html` only |
+| B | `physical.css`, `physical-legacy.css`, cache query in HTML agreed with A |
+| C | `physical.js` only |
+| D | `simulator/browser/controller_run.py`, new console runner if needed |
 
-`physical.html` keeps the previous shared styles under `physical-legacy.css`, so the controller redesign does not break the physical editor.
+A and C agree on IDs first. B reads CSS class names from A. D updates
+assertions after C lands. Do not touch `controller.js`, `controller.css`, or
+other runners in Phase 1.
 
-## Calibration and identity
+## Acceptance
 
-Every tablet gets a small display number, lowest free over the in-memory roster. The controller shows it in the roster, the wall label, and the inspector. The calibration scene draws the same number large on the tablet and previews each tablet's grid and number on the controller map, so a person can match a physical screen to a row without decoding a UUID.
-
-The number is leased for 15 minutes after the tablet goes offline. A replacement can take an expired number; the old record loses it and the controller is told. The number is process-local, but a returning browser remembers it in localStorage and asks for it on registration; after a server restart it reclaims its previous number while it is free. That is documented in PROTOCOL.md.
-
-The image preview in the controller now uses the same centered cover geometry as the client. The map and the roster thumbnail both use the image origin, not its negative offset.
-
-## Verification
-
-- Browser evidence: 106/106 checks passed, `/tmp/opencode/tablet-wall-final-reclaim/report.json`.
-- Python: 647 passed.
-- Client JS: 28 passed.
-- View JS: 8 passed.
-- Deployment guards: 3 passed.
-- Manual: 1440, 1280, and 390 layouts; no horizontal overflow; selection, drag move, corner resize, place, remove, undo/redo, tile apply, tile undo, content switching, and mobile tasks exercised.
-- Manual feature test: four simulated tablets kept #1–#4 across a server restart, reconnected within one second, and the controller logged each connect and disconnect. A tablet taken offline for 18 seconds showed Reconnecting, released its socket, and returned as #1.
-
-## Known limits
-
-- Custom tiling is sequential by design. A mid-run failure can leave earlier writes applied; the UI reports the count and offers undo.
-- Undo replays placements through the existing per-device API. It is not atomic and can be beaten by another controller.
-- The wall map is a diagram. It maps the active image and bezels, not an optical measurement.
-- The physical setup page keeps its existing visual language; only its shared stylesheet dependency was separated.
-- Mobile does not support pointer-dragging a mounted tablet; it uses tap, Place, and stepping. This avoids scroll conflicts.
+- Existing `controller_run.py` scenarios still pass.
+- New checks: no live-region countdown updates; `#page-status` one mutation
+  per state change; readiness says `preparing next` and sorts by display
+  number; cohort one line; local Apply visible after selection; 390 px no page
+  overflow and stage fits; axe no serious/critical issues at 1440 and 390.
+- No horizontal page overflow at 1440, 1280, 1024, 390. No console errors.
+- Preserve IDs used by runners: playback status/buttons/details/facts,
+  playlist library/add/save/items, rebind controls, stage SVG, Apply/Cancel,
+  page status.
