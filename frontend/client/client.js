@@ -1854,6 +1854,7 @@
             visible: visible,
         };
         persistedWall = state;
+        if (playbackOnScreen) return true;
         wallState = state;
         /* Image scenes carry asynchronous work: reconcile it with the frame
          * we just accepted — it starts the load, and paints the outcome if
@@ -1933,6 +1934,7 @@
             },
         };
         persistedWall = renderState;
+        if (playbackOnScreen) return true;
         wallState = renderState;
         if (!syncImageScene()) render();
         return true;
@@ -2310,6 +2312,9 @@
     var clockRefreshTimer = null;
     var playbackToken = 0;
     var playbackPrepared = null;
+    /* True once a committed occurrence is on the glass. A wall/render frame
+     * during a show updates the persisted scene but must not paint over it. */
+    var playbackOnScreen = false;
     var playbackTimer = null;
     var playbackEvidence = 0;
     var playbackRenewTimer = null;
@@ -2478,6 +2483,7 @@
         imageStatus = "ready";
         imageFailure = null;
         wallState = shown;
+        playbackOnScreen = true;
         render();
         /* A still replaces the videos that are already on the wall. The
          * PENDING preparation is the next occurrence: the server sends it
@@ -2544,6 +2550,7 @@
     function stopPlayback() {
         clearStillPlayback();
         stopVideoPlayback();
+        playbackOnScreen = false;
         restoreStaticScene();
     }
 
@@ -2564,6 +2571,7 @@
     function discardPlayback() {
         clearStillPlayback();
         stopVideoPlayback();
+        playbackOnScreen = false;
     }
 
     function restoreStaticScene() {
@@ -3412,6 +3420,7 @@
         slot.phase = "playing";
         slot.needsGesture = false;
         videoActive = slot;
+        playbackOnScreen = true;
         if (videoArmed === slot) videoArmed = null;
         if (videoPending === slot) videoPending = null;
         slot.layer.style.visibility = "visible";

@@ -3135,6 +3135,31 @@ test("video: buffer coverage is exact, ranged and only the remainder near the en
     assert.strictEqual(el.playCalls, 1, "the remainder is enough");
 });
 
+test("video: a wall frame during playback does not paint over it", async () => {
+    const h = await startVideoHarness(VP);
+    h.setFetch(route({ [ASSET_A]: okResponse(assetBlob("A", 400, 400)) }));
+    h.emit(wallFrame());
+    await drain();
+    h.emit(videoPrepare());
+    await drain();
+    const el = playerVideos(h)[0];
+    await driveVideoReady(h, el);
+    const commit = videoCommit(h);
+    h.emit(commit);
+    await activateAt(h, commit.effective_server_ms);
+    await drain();
+    assert.strictEqual(visibleLayers(h).length, 1, "the video is visible");
+
+    h.emit(wallFrame({ revision: 2, generation: "gen-1" }));
+    await drain();
+    assert.strictEqual(visibleLayers(h).length, 1, "the video stays on screen");
+
+    h.emit({ type: "playback", state: "stopped" });
+    await drain();
+    assert.strictEqual(visibleLayers(h).length, 0, "stop leaves the video");
+    assert.strictEqual(h.texts().includes("NO PLACEMENT"), false);
+});
+
 test("video: a duplicate still commit cannot remove the playing video", async () => {
     const h = await startVideoHarness(VP);
     h.setFetch(route({ [ASSET_A]: okResponse(assetBlob("A", 400, 400)) }));
