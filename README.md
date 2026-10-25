@@ -16,7 +16,11 @@ This project began as a copy of `tablet-wall`. New development happens here.
 > show stills on the logical wall, measure and calibrate physical panels, place
 > bodies with an accessible editor, and run hard-cut still/video playlists with
 > a sampled server clock, leased readiness, buffer evidence, pause/resume and
-> drift samples. Schema 3 and protocol 3 are live; v1/v2 remain compatible.
+> drift samples. A session can exclude named tablets at Start (session-only;
+> excluded screens keep the persisted scene and are not counted as
+> synchronized), and a tablet that reconnects during a playing video rejoins
+> through one bounded group recovery with a fresh common anchor. Schema 3 and
+> protocol 3 are live; v1/v2 remain compatible.
 > Physical seams, real tablet decode/suspend, optical timing, mixed-model
 > calibration and soak are not claimed — see
 > [Known limitations](#known-limitations).

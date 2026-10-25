@@ -123,6 +123,28 @@ recorded here rather than rewritten in place:
 - A fault before the current commit anchor is ignored. An occurrence that is
   armed but not yet on the glass cannot have stalled there.
 
+## Reconnect and session exclusions
+
+A device socket replacement during an active session rejoins automatically.
+If a recovery or an ordinary preparation is already in flight, the pending
+prepare is re-sent under the new connection with no new attempt and no
+deadline change. A playing video with more than 250 ms left and fewer than
+three attempts spent starts one group recovery at the server playhead with
+reason `reconnect`; it consumes one normal attempt. A second reconnect for the
+same device within 2 s of that recovery's start does not start another. Paused,
+blocked, failed, final and near-end sessions do not rejoin automatically; the
+tablet stays on the persisted scene until the operator acts. A reconnect never
+revives an old epoch, version or anchor.
+
+A Start may name session-only exclusions. `required` is every participating
+physical slot, `excluded` is the operator's choice, and `cohort` is the
+effective set. Excluded slots receive no prepare, get one stopped frame so
+they show the persisted scene, are not counted as synchronized participants,
+and are ignored by strict readiness. Content bounds and each remaining
+member's physical plan are unchanged. Exclusions are not saved in the layout
+and there is no live exclusion command; Stop, change the selection, Start
+again. Resume keeps the frozen sets.
+
 ## Evidence
 
 Durable, committed evidence:

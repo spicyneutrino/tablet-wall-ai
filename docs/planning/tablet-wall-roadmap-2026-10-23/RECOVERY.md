@@ -5,8 +5,10 @@
 > `EXECUTION_LOG.md`. Software release approval remains closed. F1-F4 are
 > repaired. Durable browser coverage includes video transitions, controller
 > pause/live identity, and the recovery acceptance runner (88/88 checks,
-> 5/5 scenarios, twice). All optical/physical, deployment, Wi-Fi/OS, kiosk and
-> soak gates remain MISSING.
+> 5/5 scenarios, twice). Phase 3 sessions now support Start-time named
+> exclusions and automatic mid-video reconnect; its browser runner is landing.
+> All optical/physical, deployment, Wi-Fi/OS, kiosk and soak gates remain
+> MISSING.
 
 ## Current software counts (2026-10-25)
 
@@ -18,6 +20,8 @@
   88/88 checks and 5/5 scenarios, twice; `field_run` 12/12 and `restore_run`
   41/41 rerun on the merged tree.
 - Base `run.py` 106/106 on the merged tree. Do not sum overlapping suites.
+- Phase 3 server/controller are merged; Python 865. The reconnect/exclusion
+  browser acceptance runner is pending and has no count yet.
 
 This page is a historical record of the 2026-10-24 recovery, preserved in
 place. It was recovered from the interrupted Claude Agent session
