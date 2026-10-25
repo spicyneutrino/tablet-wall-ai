@@ -152,6 +152,18 @@ async def main(artifacts: Path) -> int:
         report["before"] = before
         await pages[0][0].screenshot(path=str(artifacts / "before-fault.png"))
 
+        controller = await browser.new_page(viewport={"width": 1440, "height": 1000})
+        await controller.goto(base + "/controller/physical.html", wait_until="networkidle")
+        try:
+            await controller.wait_for_function(
+                "document.querySelector('#playback-status')?.dataset.state === 'playing'",
+                timeout=15000,
+            )
+            controller_playing = True
+        except Exception:
+            controller_playing = False
+        check("the controller sees the live session before the fault", controller_playing)
+
         froze = await pages[0][0].evaluate("""() => {
             const v = [...document.querySelectorAll('video')].find(v => v.getClientRects().length);
             if (!v) return false;
@@ -186,6 +198,18 @@ async def main(artifacts: Path) -> int:
             return True
 
         await wait_until(resumed, 30, "the group did not resume after recovery")
+
+        async def sampled() -> bool:
+            status = http.get("/api/v3/playback").json()
+            video = status.get("video") or {}
+            if len(video) != len(pages):
+                return False
+            return all(
+                sample.get("age_ms", 99999) < 1500
+                and sample.get("media_ms", 0) >= recovery["position_ms"] - 250
+                for sample in video.values()
+            )
+
         final = http.get("/api/v3/playback").json()
         report["after"] = final
         check("one recovery record survives the commit",
@@ -200,8 +224,30 @@ async def main(artifacts: Path) -> int:
               current=final.get("current_effective_ms"),
               pending=final.get("pending", {}).get("effective_server_ms"),
               remaining=video["durationMs"] - recovery["position_ms"])
+
+        await wait_until(sampled, 10, "the recovered clients did not report samples")
+        sampled_status = http.get("/api/v3/playback").json()
+        report["after_samples"] = sampled_status.get("video")
         check("both calibrated clients show the recovered picture",
-              len(final.get("video", {})) == len(pages), video=final.get("video"))
+              len(sampled_status.get("video", {})) == len(pages),
+              video=sampled_status.get("video"))
+
+        try:
+            await controller.wait_for_function(
+                "document.querySelector('#playback-status')?.dataset.state === 'playing'",
+                timeout=15000,
+            )
+            await controller.evaluate(
+                "document.querySelector('#playback-details').open = true"
+            )
+            facts = await controller.locator("#playback-facts").inner_text()
+        except Exception:
+            facts = ""
+        report["controller_facts"] = facts
+        check("the controller keeps the recovery record after the commit",
+              "Recovery" in facts and "attempt 1" in facts, facts=facts[:500])
+        await controller.screenshot(path=str(artifacts / "controller-recovered.png"))
+        await controller.close()
         await pages[0][0].screenshot(path=str(artifacts / "after-recovery.png"))
         http.post("/api/v3/playback/stop",
                   headers={"If-Match": str(http.get("/api/v3/playback").json()["version"])})

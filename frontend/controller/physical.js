@@ -2755,6 +2755,20 @@
         );
         const now = statusNow(status);
         if (!item || !Number.isFinite(effective) || now === null) return null;
+        const pending = status.pending;
+        const pendingEffective = Number(pending && pending.effective_server_ms);
+        if (Number.isFinite(pendingEffective) && pending.occurrence
+                && !sameOccurrence(pending.occurrence, occurrence)) {
+            return pendingEffective - now;
+        }
+        const recovery = status.recovery;
+        const recoveryAt = Number(recovery && recovery.position_ms);
+        if (recovery && sameOccurrence(recovery.occurrence, occurrence)) {
+            if (recovery.state === "preparing") return null;
+            if (Number.isFinite(recoveryAt)) {
+                return effective + itemDurationMs(item) - recoveryAt - now;
+            }
+        }
         return effective + itemDurationMs(item) - now;
     }
 
@@ -3135,6 +3149,14 @@
         return /[.!?]$/.test(value) ? value : value + ".";
     }
 
+    function recoveryReasonText(reason) {
+        const value = String(reason || "").trim();
+        if (value === "stalled") return "a stalled video";
+        if (value === "play_failed") return "a failed play";
+        if (value === "buffer_lost") return "lost buffering";
+        return "a video stall";
+    }
+
     function renderPlayback() {
         const status = state.playback;
         const stateName = status && typeof status.state === "string"
@@ -3275,7 +3297,7 @@
             text = "Recovering " + occurrenceText(status.current && (status.current.occurrence
                 || status.current))
                 + (Number.isFinite(at) ? " at " + formatDuration(at) : "")
-                + " after " + sentence(recovery.reason || "a stall")
+                + " after " + recoveryReasonText(recovery.reason)
                 + (recovery.device_id
                     ? " on " + numberedLabel(recovery.device_id, latestProfile(recovery.device_id))
                     : "")
@@ -3385,7 +3407,7 @@
         if (status.recovery && typeof status.recovery === "object") {
             const recovery = status.recovery;
             facts.push(["Recovery",
-                sentence(recovery.reason || "stall")
+                String(recovery.reason || "stall").replace(/_/g, " ")
                 + " at " + formatDuration(recovery.position_ms)
                 + " · attempt " + recovery.attempts
                 + (recovery.degraded_ms !== undefined
