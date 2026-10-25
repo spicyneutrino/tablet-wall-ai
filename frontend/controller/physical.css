@@ -1981,3 +1981,315 @@
         scroll-behavior: auto !important;
     }
 }
+
+/* ---------------------------------------------------------------- *
+ * Phase 2: topbar transport and the single-console rail
+ * ---------------------------------------------------------------- */
+
+/* The brand keeps its space; the transport is a compact, wrapping unit. */
+.physical .topbar {
+    align-content: center;
+    column-gap: 14px;
+    row-gap: 8px;
+}
+
+.physical .brand {
+    flex: 0 0 auto;
+    min-width: 0;
+    margin-right: 0;
+    white-space: nowrap;
+}
+
+.physical .topbar-note {
+    flex: 1 1 220px;
+    line-height: 1.35;
+}
+
+.physical .topbar-transport {
+    display: inline-flex;
+    flex: 0 1 auto;
+    flex-wrap: wrap;
+    align-items: center;
+    justify-content: flex-end;
+    gap: 6px;
+    min-width: 0;
+    margin-left: auto;
+}
+
+.physical .topbar-playback {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    color: var(--ink-3);
+    font-size: var(--fs-util);
+    font-weight: 700;
+    line-height: 1.2;
+    white-space: nowrap;
+}
+
+.physical .topbar-playback::before {
+    content: "";
+    flex: none;
+    width: 7px;
+    height: 7px;
+    border-radius: 50%;
+    background: currentColor;
+}
+
+.physical .topbar-playback[data-state="playing"] {
+    color: var(--ok);
+}
+
+.physical .topbar-playback[data-state="preparing"],
+.physical .topbar-playback[data-state="armed"] {
+    color: var(--accent);
+}
+
+.physical .topbar-playback[data-state="paused"],
+.physical .topbar-playback[data-state="unknown"] {
+    color: var(--warn);
+}
+
+.physical .topbar-playback[data-state="blocked"],
+.physical .topbar-playback[data-state="failed"] {
+    color: var(--bad);
+}
+
+.physical .topbar-transport .btn {
+    flex: none;
+    min-height: 44px;
+    padding: 0 12px;
+}
+
+.physical .topbar > a.btn {
+    flex: 0 0 auto;
+    min-height: 44px;
+    white-space: nowrap;
+}
+
+/* One card owns the rail; its sections are divided by hairlines. */
+.physical .rail {
+    display: flex;
+    flex-direction: column;
+    gap: 0;
+    min-width: 0;
+    padding: 0;
+    border: 1px solid var(--line);
+    border-radius: var(--radius);
+    background: var(--panel);
+    overflow: hidden;
+}
+
+.physical .rail-tabs {
+    position: sticky;
+    top: 0;
+    z-index: 3;
+    display: grid;
+    flex: none;
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+    min-width: 0;
+    border-bottom: 1px solid var(--line);
+    background: var(--panel);
+}
+
+.physical .rail-tab {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 4px;
+    min-width: 0;
+    min-height: 44px;
+    padding: 0 8px;
+    border: 0;
+    border-bottom: 2px solid transparent;
+    border-radius: 0;
+    background: transparent;
+    color: var(--ink-3);
+    font: inherit;
+    font-size: var(--fs-util);
+    font-weight: 650;
+    line-height: 1.2;
+    white-space: nowrap;
+    cursor: pointer;
+}
+
+.physical .rail-tab:hover {
+    background: var(--raised);
+    color: var(--ink);
+}
+
+.physical .rail-tab[aria-selected="true"] {
+    border-bottom-color: var(--ink);
+    background: var(--select-soft);
+    color: var(--ink);
+    font-weight: 700;
+}
+
+.physical .rail-tab:focus-visible,
+.physical .rail-tabs:focus-visible {
+    outline: 2px solid var(--accent);
+    outline-offset: -3px;
+}
+
+.physical .tab-dot {
+    flex: none;
+    width: 6px;
+    height: 6px;
+    border-radius: 50%;
+    background: var(--accent);
+}
+
+.physical .rail-panels {
+    flex: 1 1 auto;
+    min-height: 0;
+    overflow-y: auto;
+    overscroll-behavior: contain;
+    scrollbar-color: var(--line-2) transparent;
+    scrollbar-width: thin;
+}
+
+.physical .rail-panel {
+    min-width: 0;
+}
+
+.physical .rail-panel:focus-visible {
+    outline: 2px solid var(--accent);
+    outline-offset: -3px;
+}
+
+.physical .rail-panel > .playback-card {
+    padding: 16px;
+}
+
+.physical .rail-panel .card {
+    padding-right: 16px;
+    padding-left: 16px;
+    border: 0;
+    border-radius: 0;
+    background: transparent;
+    box-shadow: none;
+}
+
+.physical .rail-panel > .card {
+    padding-top: 16px;
+    padding-bottom: 16px;
+}
+
+.physical .rail-panel > .card + .card {
+    border-top: 1px solid var(--line);
+}
+
+/* Desktop: the stage keeps the left column and the rail scrolls alone. */
+@media (min-width: 1000px) {
+    .physical .layout {
+        grid-template-columns: minmax(0, 1fr) 392px;
+        align-items: start;
+    }
+
+    .physical .main {
+        grid-column: 1;
+        grid-row: 1;
+    }
+
+    .physical .rail {
+        grid-column: 2;
+        grid-row: 1;
+        position: sticky;
+        top: calc(var(--topbar-h) + 20px);
+        max-height: calc(100dvh - var(--topbar-h) - 40px);
+        overflow: hidden;
+    }
+
+    .physical .rail-panel .inspector-footer {
+        bottom: 0;
+        margin: 16px -16px -16px;
+        padding: 12px 16px;
+    }
+}
+
+@media (min-width: 1000px) and (max-width: 1199.98px) {
+    .physical .layout {
+        grid-template-columns: minmax(0, 1fr) 340px;
+    }
+}
+
+/* Tablet: stage first, then a full-width, non-sticky rail. */
+@media (max-width: 999.98px) {
+    .physical .layout {
+        display: grid;
+        grid-template-columns: minmax(0, 1fr);
+        gap: 16px;
+    }
+
+    .physical .main {
+        grid-column: 1;
+        grid-row: 1;
+    }
+
+    .physical .rail {
+        grid-column: 1;
+        grid-row: 2;
+        position: static;
+        top: auto;
+        max-height: none;
+        overflow: hidden;
+    }
+
+    .physical .rail-tabs {
+        position: static;
+    }
+
+    .physical .rail-panels {
+        max-height: none;
+        overflow: visible;
+    }
+
+    .physical .rail-panel .inspector-footer {
+        margin: 16px -16px -16px;
+        padding: 12px 16px;
+    }
+}
+
+/* Phone: stage first, then only the compact Show card. */
+@media (max-width: 719px) {
+    .physical .topbar-note,
+    .physical .topbar > a.btn,
+    .physical .skip-controls {
+        display: none;
+    }
+
+    .physical .topbar {
+        column-gap: 12px;
+        row-gap: 8px;
+    }
+
+    .physical .topbar-transport {
+        margin-left: auto;
+    }
+
+    .physical .rail-tabs {
+        display: none;
+    }
+
+    .physical .rail {
+        border: 0;
+        border-radius: 0;
+        background: transparent;
+        overflow: visible;
+    }
+
+    .physical #rail-panels > .rail-panel {
+        display: none;
+    }
+
+    .physical #rail-panels > #panel-show {
+        display: block !important;
+    }
+
+    .physical .rail-panel > .playback-card {
+        padding: 9px 12px;
+        border: 1px solid var(--line);
+        border-radius: var(--radius);
+        background: var(--panel);
+    }
+}
