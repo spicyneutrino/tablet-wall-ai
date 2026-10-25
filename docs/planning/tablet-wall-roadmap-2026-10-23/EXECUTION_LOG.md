@@ -753,6 +753,8 @@ Two consecutive green runs each recorded:
 - `group_recovery_run.py`: 19/19 live checks plus 1/1 fixture copy check.
 - `simulator/browser/report.py`: 15 adapter tests; CLI normalization on the
   recovery-acceptance, controller and restore reports exits 0.
+- `simulator/browser/reconnect_exclusions_run.py`: 21/21 checks, 5/5
+  scenarios, twice (Phase 3).
 
 Baseline failure proofs:
 
@@ -761,18 +763,59 @@ Baseline failure proofs:
 - `video_run.py` at `8df56f6`: 34/35, failing on repeated controller page
   errors `Cannot read properties of null (reading 'occurrence')` from F3.
 
-Verification on the merged tree: Python 851; client 71; view 12; wake lock 10;
-base browser 106/106; `field_run` 12/12 and `restore_run` 41/41. Do not add
-counts across overlapping browser suites.
+Verification after the review repairs: Python 865; client 71; view 12; wake
+lock 10; base browser 106/106; `field_run` 12/12 and `restore_run` 41/41;
+report adapter 15 tests. Do not add counts across overlapping browser suites.
 
 Still pending:
 
-- Phase 3: the operator accepted automatic mid-video reconnect with one normal
-  attempt, session-only named exclusions at Start with the persisted static
-  scene, and no live exclusion command. Implementation is next; neither is
-  claimed yet.
-- Report-summary normalization, physical/optical validation, iOS Safari,
-  installed CA trust, real Wi-Fi/OS, kiosk and soak.
+- Physical/optical validation, iOS Safari, installed CA trust, real Wi-Fi/OS,
+  kiosk and soak. Phase 3 and report normalization are recorded below.
+
+## Phase 3: session exclusions and reconnect (2026-10-25)
+
+The operator accepted the advisor's safe defaults: automatic mid-video
+reconnect with one normal recovery attempt, session-only named exclusions at
+Start with the persisted static scene, and no live exclusion command (a
+blocked recovery is changed by Stop, select, Start). The binding plan is
+`work/review-fixes-plan.md`.
+
+Server and API (`dbdd7c6`, correction `3e575b3`, merge `ee02577`, protocol
+`9d33170`):
+- `POST /api/v3/playback/start` accepts `exclusions`. Unknown, duplicate or
+  non-participating ids are 422; an all-excluded request is 409. The session
+  freezes `required`, `excluded` and the effective `cohort`; strict readiness
+  uses the cohort while content bounds and each remaining member's plan are
+  unchanged. Excluded sockets receive one stopped frame and no prepare.
+- A paused Start is a Resume of the frozen sets; a stale or all-excluded
+  request cannot block it.
+- After a device socket replacement, a pending recovery/preparation is
+  re-sent under the new connection with no new attempt or deadline. A playing
+  video with more than 250 ms left and fewer than three attempts starts one
+  recovery at the server playhead with reason `reconnect`; a second drop for
+  the same device within 2 s does not start another. Paused, blocked, failed,
+  final, near-end and excluded sessions do not auto-rejoin.
+- A stale-session guard drops a reconnect that races a new session
+  (`ab1a89e`).
+
+Controller (`6c49920`, merge `3ab1b14`, reason copy `3c7e0ee`):
+- A session-only "Exclude from this show" picker lists participating tablets
+  with `#N`, short id and online state. Selection lives in tab
+  `sessionStorage`, is pruned against the saved layout, and is sent as
+  `exclusions` on Start. All-excluded disables Start. Active, paused and
+  blocked sessions hide the picker and show the frozen required/excluded/
+  cohort sets; failed sessions reopen it for Start again.
+- Excluded rows read "excluded / not in the synchronized cohort"; content
+  bounds, the playlist and the saved layout are untouched. The reconnect
+  recovery summary names "a reconnected tablet".
+
+Browser acceptance (`facda4e`): `simulator/browser/reconnect_exclusions_run.py`
+with three calibrated clients, 21/21 checks and 5/5 scenarios on two
+consecutive runs. It covers excluded static scene and no prepare, the frozen
+sets on pause/resume, all-excluded and unknown refusals, one reconnect
+recovery at the playhead with all members at the same position, a second drop
+during that recovery spending no extra attempt, visible resumption, and no
+auto-rejoin while paused, final or excluded. Software evidence only.
 
 ## Next actions
 

@@ -247,6 +247,7 @@ report. No row closes a physical, optical, iOS, CA, Wi-Fi, kiosk or soak gate.
 | `restore_run.py` | Upload, backup while running, restore to new paths, replayed video | Desktop Chromium software; 41/41 last recorded. No Caddy ingress, TLS or real host. |
 | `recovery_run.py` | 20 offline/online trials until reconnect and repaint | One Chromium context network emulation; 20/20 last recorded. Not Wi-Fi, radio or OS behavior. |
 | `recovery_acceptance_run.py` | Live strict/online caps, terminal hold, operator Retry, Stop, timeout, multi-fault ordering and final-item recovery | Desktop Chromium software; v1, 88/88 checks and 5/5 scenarios on two consecutive runs. No fourth prepare is claimed only from the live frame capture. |
+| `reconnect_exclusions_run.py` | Session-only Start exclusions (static excluded tablets, frozen sets, all-excluded/unknown refusals) and one-attempt mid-video reconnect with coalescing and paused/final/excluded no-rejoin | Desktop Chromium software; v1, 21/21 checks and 5/5 scenarios on two consecutive runs. |
 
 This table is an index, not a sum: the suites overlap in setup and must not be
 added together. `simulator/browser/report.py` is not a runner; it normalizes

@@ -178,6 +178,12 @@ Durable, committed evidence:
   versus editable playlist identity across save, reorder and reload, and a
   saved draft during a real recovery. Software browser evidence on one host
   clock.
+- `simulator/browser/reconnect_exclusions_run.py`: Start exclusions keep the
+  excluded tablet on the persisted scene and out of readiness, the frozen sets
+  survive pause/resume, and a deliberate device-socket close during a playing
+  video starts one reconnect recovery at the playhead. A second drop during
+  that recovery spends no extra attempt; paused, final and excluded sessions
+  do not auto-rejoin. Software browser evidence on one host clock.
 
 The disposable probes from the 2026-10-25 review are not counted as durable
 acceptance; the committed runners above supersede them.
