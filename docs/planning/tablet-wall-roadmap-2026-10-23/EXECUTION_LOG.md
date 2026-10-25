@@ -467,3 +467,86 @@ Temporary server, loopback admission, no operator data. Real Chromium.
 - Screenshot: `/tmp/opencode/stages35-r5-browser/client-after-rebind.png`.
 - Missing: an operator surface for diagnostics/rebind, and every physical
   gate (iPad/Android, real suspend, iOS decode, two-hour soak).
+
+## Stages 3-5 completion (2026-10-24)
+
+### R3 corrections
+
+The Sol review reproduced five model defects in the committed R3 code. All
+five are fixed and covered by tests:
+
+- the next cut now uses the committed item's dwell (5/11/17 s gives 2/7/18 s);
+- `Session.index` stays on the active occurrence, so Next no longer skips one;
+- a non-looping last item reaches `final` after its cut, not `stopped` before it;
+- leases are checked against the actual accepted cut and the current time, so
+  a lease that expired before a hold cannot commit;
+- strict start includes every participating slot, including offline members;
+- ready reports must match the preparation occurrence, connection, calibration
+  revision and a fresh clock, and a still must be decoded;
+- pause resumes the displayed item; stop and abort restore the persisted render.
+
+Evidence: 100/100 software cuts, three calibrated clients, 0 failed events,
+0 degradation windows; p95 1.0-1.2 ms and max 1.3 ms in isolated runs. The
+final 100-cut run overlapped a controller Playwright run and had one 17 ms
+event; p95 stayed 1.2 ms. That is software draw timing, not optical. Suspend injection cancels the
+session, stops renewals, paints no cancelled cut and returns both clients to
+the persisted scene. Optical gate: MISSING.
+
+### R4 native video
+
+- Ingest/serving/backup were already merged (schema 3, faststart remux,
+  ranges, ETag, backup closure).
+- Server: video playlist dwell from metadata, prepare media, ready evidence,
+  commit start anchor, bounded 1 s samples, per-device drift status, video
+  policy default strict.
+- Client: pending/armed/active slots, exact ranged buffer coverage, bounded
+  probe and activation promises, rVFC drift with the 50/250 ms rules, pause,
+  resume, stop, epoch restore, no native loop.
+- Controller: media-library playlist authoring, video badge/duration, live
+  status (1 s poll), policy selector, member/buffer/drift evidence, field card
+  with diagnostics and rebind, wake-lock roster state.
+
+Browser evidence: a real 4 s H.264 MP4 uploaded through the operator route and
+played by two calibrated Chromium clients. 18/18 checks: descriptor, strict
+default, visible video with coded size, advancing media time, per-device rVFC
+samples, pause, resume, a looped occurrence, no native loop, stop and persisted
+scene restore, and the controller page. No optical or physical decode claim.
+
+### R5 closeout
+
+- `field_run.py`: 12/12 checks. Diagnostics shape and admission, wake-lock
+  state, a real origin/storage loss, rebind through the operator form, number
+  and placement moved, old identity removed, new page online and connected.
+- `recovery_run.py`: 20/20 trials. Each trial drops one Chromium context until
+  the server's 15 s presence timeout, restores it, and measures reconnection
+  plus the persisted still. All within the 10 s gate; final p50 0.98 s, max
+  1.95 s. Network emulation, not Wi-Fi.
+- Diagnostics/rebind/wake-lock are rendered in the physical editor. Local-CA
+  trust, real tablet Wi-Fi/OS behavior, kiosk, device matrix and soak remain
+  MISSING.
+
+### Verification
+
+- Python: 811 passed.
+- Client JS: 41 passed. View JS: 12 passed. Wake lock: 10/10.
+- Browser base: 106/106.
+- Browser 100 cuts + suspend: 131/131.
+- Video browser: 18/18.
+- Field browser: 12/12.
+- Recovery browser: 20/20.
+- Simulator: 23 scenarios, 1075 checks.
+- Deployment guards: 3 passed.
+- Controller worker's Playwright run: 38 checks, 0 failures, 1280 and 390 px,
+  44 px targets, no horizontal overflow.
+
+Commits: `3611119`, `32272af`, `38a883c`, `a6203c5`, `e24ccad`, `5ab6434`,
+`d6b59d7`, `ee5eb80`. Worker commits `0f9bb83` and `2dfaaf8` were integrated
+by content; their worktrees are clean.
+
+### Explicit deferrals
+
+Group rebuffer with a new common anchor, named partial-video exclusions,
+mid-video reconnect recovery and automatic lower-quality fallback are not
+implemented. A stalled committed video reports samples but is not group-paused.
+These are marked MISSING, not passed. Optical timing, physical suspend, iOS
+decode, local-CA device trust and soak remain MISSING.
