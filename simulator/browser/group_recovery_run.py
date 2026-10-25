@@ -246,6 +246,17 @@ async def main(artifacts: Path) -> int:
         report["controller_facts"] = facts
         check("the controller keeps the recovery record after the commit",
               "Recovery" in facts and "attempt 1" in facts, facts=facts[:500])
+        dwell = None
+        for line in facts.splitlines():
+            if line.strip().endswith("left") and "s left" in line:
+                try:
+                    dwell = float(line.strip().split()[0])
+                except ValueError:
+                    dwell = None
+        remaining_s = (video["durationMs"] - recovery["position_ms"]) / 1000
+        check("the controller dwell does not exceed the recovered remainder",
+              dwell is not None and dwell <= remaining_s + 0.5,
+              dwell=dwell, remainder=remaining_s, facts=facts[-300:])
         await controller.screenshot(path=str(artifacts / "controller-recovered.png"))
         await controller.close()
         await pages[0][0].screenshot(path=str(artifacts / "after-recovery.png"))
