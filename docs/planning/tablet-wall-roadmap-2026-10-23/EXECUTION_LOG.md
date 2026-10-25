@@ -542,8 +542,8 @@ scene restore. No optical or physical decode claim.
   44 px targets, no horizontal overflow.
 
 Commits: `3611119`, `32272af`, `38a883c`, `a6203c5`, `e24ccad`, `5ab6434`,
-`d6b59d7`, `ee5eb80`. Worker commits `0f9bb83` and `2dfaaf8` were integrated
-by content; their worktrees are clean.
+`d6b59d7`, `ee5eb80`, `174af4f`, `ac92954`, `bb31ba1`. Worker commits
+`0f9bb83` and `2dfaaf8` were integrated by content; their worktrees are clean.
 
 ### Explicit deferrals
 
