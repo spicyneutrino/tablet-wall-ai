@@ -2567,8 +2567,12 @@
         if (!current) return null;
         const occurrence = current.occurrence || current;
         const item = playlistItemFor(occurrence);
-        const effective = Number(current.effective_server_ms !== undefined
-            ? current.effective_server_ms : status.effective_server_ms);
+        const effective = Number(
+            current.current_effective_ms !== undefined ? current.current_effective_ms
+                : status.current_effective_ms !== undefined ? status.current_effective_ms
+                    : current.effective_server_ms !== undefined ? current.effective_server_ms
+                        : status.effective_server_ms
+        );
         const now = statusNow(status);
         if (!item || !Number.isFinite(effective) || now === null) return null;
         return effective + itemDurationMs(item) - now;
@@ -2841,8 +2845,7 @@
         }
         if (el.btnPlaybackStop) el.btnPlaybackStop.disabled = busy || !hasSession;
         if (el.btnPlaybackRetry) {
-            el.btnPlaybackRetry.disabled = busy
-                || (stateName !== "blocked" && stateName !== "failed");
+            el.btnPlaybackRetry.disabled = busy || stateName !== "blocked";
         }
         if (el.btnPlaybackPrevious) el.btnPlaybackPrevious.disabled = busy || !hasSession;
         if (el.btnPlaybackNext) el.btnPlaybackNext.disabled = busy || !hasSession;
@@ -2863,7 +2866,7 @@
                 || "the cohort was not ready before the preparation deadline") + " Retry or Stop.";
         } else if (stateName === "failed") {
             text = "Failed: " + (status.blocked_reason || status.failure
-                || "the session stopped after a failure") + " Retry or Stop.";
+                || "the session stopped after a failure") + " Stop, then start again.";
         } else if (stateName === "paused") {
             text = "Paused on " + occurrenceText(status.current && (status.current.occurrence
                 || status.current)) + ". Resume restarts the item at a new anchor.";
@@ -2926,8 +2929,13 @@
         }
 
         if (currentOccurrence) {
-            const effective = Number(current && current.effective_server_ms !== undefined
-                ? current.effective_server_ms : status.effective_server_ms);
+            const effective = Number(
+                status.current_effective_ms !== undefined ? status.current_effective_ms
+                    : current && current.current_effective_ms !== undefined
+                        ? current.current_effective_ms
+                        : current && current.effective_server_ms !== undefined
+                            ? current.effective_server_ms : status.effective_server_ms
+            );
             const future = status.state === "armed"
                 || (statusNow(status) !== null && Number.isFinite(effective)
                     && statusNow(status) < effective);
