@@ -8,7 +8,7 @@
     <title>Physical setup · tablet-wall-ai</title>
     <link rel="icon" href="favicon.svg" type="image/svg+xml">
     <link rel="stylesheet" href="physical-legacy.css?v=1">
-    <link rel="stylesheet" href="physical.css?v=2">
+    <link rel="stylesheet" href="physical.css?v=3">
 </head>
 <body class="physical">
 <a class="skip" href="#stage-title">Skip to the wall stage</a>
@@ -20,6 +20,74 @@
 </header>
 
 <div class="layout">
+    <aside class="side" aria-label="Playback">
+        <section class="card playback-card" id="playback-card" aria-labelledby="playback-title">
+            <div class="playback-head">
+                <h2 id="playback-title">Playback</h2>
+                <span class="chip playback-stale" id="playback-stale" data-kind="warn" hidden>stale</span>
+                <span class="playback-state" id="playback-state-word" data-state="stopped" aria-hidden="true">stopped</span>
+            </div>
+
+            <p class="playback-status" id="playback-status" role="status" aria-live="polite">
+                Playback is stopped.
+            </p>
+
+            <p class="playback-preflight" id="playback-preflight">Checking the saved playlist and layout…</p>
+
+            <div class="playback-actions">
+                <button type="button" class="btn btn-primary" id="btn-playback-start">Start</button>
+                <button type="button" class="btn" id="btn-playback-pause" hidden>Pause</button>
+                <button type="button" class="btn" id="btn-playback-retry" hidden>Retry</button>
+                <span class="playback-action-gap" aria-hidden="true"></span>
+                <button type="button" class="btn playback-stop" id="btn-playback-stop" hidden>Stop</button>
+            </div>
+
+            <div class="playback-steps" id="playback-steps" hidden>
+                <button type="button" class="btn btn-ghost btn-sm" id="btn-playback-previous">Previous</button>
+                <button type="button" class="btn btn-ghost btn-sm" id="btn-playback-next">Next</button>
+            </div>
+
+            <p class="form-msg" id="playback-msg" hidden></p>
+
+            <div class="playback-session" id="playback-session" hidden>
+                <div class="playback-section">
+                    <h3>Readiness</h3>
+                    <ul class="playback-members" id="playback-members" aria-label="Playback readiness"></ul>
+                    <p class="empty-note" id="playback-members-empty" hidden>No wall tablets are online.</p>
+                </div>
+            </div>
+
+            <details class="playback-details" id="playback-details">
+                <summary>Details</summary>
+                <p class="hint">
+                    The server prepares the next item and commits it at a common effective
+                    time. Software evidence only; optical synchronization is not claimed.
+                </p>
+                <p class="hint">The policy applies to the next Start; a Resume keeps the frozen policy.</p>
+                <div class="playback-policy" id="playback-policy-block">
+                    <label class="field">
+                        <span class="label" for="playback-policy">Policy</span>
+                        <select class="inp" id="playback-policy">
+                            <option value="">Server default</option>
+                            <option value="strict">Strict: every required tablet ready</option>
+                            <option value="online">Online: hold, then record misses</option>
+                        </select>
+                    </label>
+                    <p class="playback-effective" id="playback-effective-policy">Effective policy: unknown</p>
+                </div>
+                <div class="playback-section">
+                    <h3>Session</h3>
+                    <dl class="playback-facts" id="playback-facts"></dl>
+                </div>
+                <div class="playback-section">
+                    <h3>Preparation</h3>
+                    <dl class="playback-facts" id="playback-pending"></dl>
+                </div>
+                <p class="hint playback-poll" id="playback-poll-note">Waiting for the first status read.</p>
+            </details>
+        </section>
+    </aside>
+
     <main class="main">
 
         <section class="card stage-card" aria-labelledby="stage-title">
@@ -77,216 +145,11 @@
         <section class="card devices-card" aria-labelledby="devices-title">
             <div class="sec-head">
                 <h2 id="devices-title">Tablets</h2>
-                <span class="sec-count" id="device-count">0</span>
+                <span class="sec-count" id="device-count">0 online</span>
             </div>
-            <p class="hint">Label, short device id, active panel size, and the newest profile and calibration revisions. A tablet with no slot can be added once it has a profile and a matching calibration.</p>
+            <p class="hint">Display number, online state, short device id, active panel size, and the newest profile and calibration revisions. A released, denied, or insecure wake lock is a warning; unsupported is normal on plain HTTP. A tablet with no slot can be added once it has a profile and a matching calibration.</p>
             <ul class="dev-list" id="device-list" aria-label="Tablets known to this server"></ul>
-            <p class="empty-note" id="device-empty" hidden>No tablets are registered yet. Open the tablet page on a tablet, then reload this page.</p>
-        </section>
-
-        <section class="card bounds-card" aria-labelledby="bounds-title">
-            <h2 id="bounds-title">Wall bounds</h2>
-            <p class="hint">The rectangle every slot is placed inside. Values are millimetres, measured from the top-left corner of the wall as the audience sees it.</p>
-            <div class="bounds-grid">
-                <div class="field">
-                    <label class="label" for="bounds-x">X (mm)</label>
-                    <input class="inp" id="bounds-x" type="number" step="any" inputmode="decimal" autocomplete="off">
-                </div>
-                <div class="field">
-                    <label class="label" for="bounds-y">Y (mm)</label>
-                    <input class="inp" id="bounds-y" type="number" step="any" inputmode="decimal" autocomplete="off">
-                </div>
-                <div class="field">
-                    <label class="label" for="bounds-width">Width (mm)</label>
-                    <input class="inp" id="bounds-width" type="number" min="1" step="any" inputmode="decimal" autocomplete="off">
-                </div>
-                <div class="field">
-                    <label class="label" for="bounds-height">Height (mm)</label>
-                    <input class="inp" id="bounds-height" type="number" min="1" step="any" inputmode="decimal" autocomplete="off">
-                </div>
-            </div>
-            <p class="hint" id="bounds-note"></p>
-        </section>
-
-        <section class="card playlist-card" aria-labelledby="playlist-title">
-            <div class="sec-head">
-                <h2 id="playlist-title">Playlist</h2>
-                <span class="sec-count" id="playlist-count">0 items</span>
-            </div>
-            <p class="hint">
-                Build the hard-cut order from uploaded files. A still keeps your dwell; a video's
-                dwell is its clip length. Add files on <a href="index.html">Wall control</a>.
-            </p>
-
-            <div class="playlist-add">
-                <label class="field playlist-pick">
-                    <span class="label" id="playlist-library-label">Media library</span>
-                    <select class="inp" id="playlist-library" aria-labelledby="playlist-library-label">
-                        <option value="">Loading the library…</option>
-                    </select>
-                </label>
-                <button type="button" class="btn" id="btn-playlist-add" disabled>Add to playlist</button>
-                <button type="button" class="btn btn-ghost" id="btn-playlist-library-refresh">Refresh library</button>
-            </div>
-            <p class="form-msg" id="playlist-library-msg" role="status" aria-live="polite" hidden></p>
-
-            <ul class="playlist-list" id="playlist-items" aria-label="Playlist order"></ul>
-            <p class="empty-note" id="playlist-empty" hidden>No items yet. Add a file from the library.</p>
-
-            <div class="playlist-foot">
-                <label class="check"><input type="checkbox" id="playlist-loop" checked> Loop</label>
-                <span class="playlist-hint" id="playlist-hint">At least one item.</span>
-                <button type="button" class="btn btn-primary" id="btn-playlist-save">Save playlist</button>
-            </div>
-            <p class="form-msg" id="playlist-msg" role="status" aria-live="polite" hidden></p>
-
-            <details class="playlist-raw">
-                <summary>Add by content id</summary>
-                <div class="playlist-raw-row">
-                    <div class="field">
-                        <label class="label" for="playlist-raw-id">Content id</label>
-                        <input class="inp" id="playlist-raw-id" type="text" spellcheck="false"
-                               autocomplete="off" placeholder="sha256:…">
-                    </div>
-                    <div class="field">
-                        <label class="label" for="playlist-raw-dwell">Dwell (ms)</label>
-                        <input class="inp" id="playlist-raw-dwell" type="number" min="1000"
-                               max="600000" step="100" value="5000" inputmode="numeric">
-                    </div>
-                    <button type="button" class="btn" id="btn-playlist-raw-add">Add</button>
-                </div>
-                <p class="hint">A video's play length is always its clip length, whatever the dwell says.</p>
-            </details>
-        </section>
-
-        <section class="card saved-card" aria-labelledby="saved-title">
-            <div class="sec-head">
-                <h2 id="saved-title">Saved physical layouts</h2>
-                <button type="button" class="btn btn-ghost btn-sm" id="btn-layouts-refresh">Refresh</button>
-            </div>
-            <p class="hint">Saving keeps the committed layout, not the draft. Apply the draft first to save its changes under a new name.</p>
-
-            <form class="saved-form" id="layout-save-form" novalidate>
-                <div class="field">
-                    <label class="label" for="layout-name">Name</label>
-                    <input class="inp" id="layout-name" type="text" maxlength="64" autocomplete="off"
-                           spellcheck="false" placeholder="Lobby, 3 across" aria-describedby="layout-msg">
-                </div>
-                <button type="submit" class="btn" id="btn-layout-save">Save committed layout</button>
-            </form>
-
-            <p class="form-msg" id="layout-msg" role="status" aria-live="polite" hidden></p>
-            <ul class="saved-list" id="saved-layouts" aria-label="Saved physical layouts"></ul>
-            <p class="empty-note" id="saved-empty" hidden>No saved physical layouts yet.</p>
-        </section>
-
-        <section class="card field-card" aria-labelledby="field-title">
-            <div class="sec-head">
-                <h2 id="field-title">Field check</h2>
-                <span class="chip" id="diag-state" data-kind="info">loading</span>
-            </div>
-            <p class="hint">
-                Operator-only storage, identity and wake-lock state. Diagnostics are unavailable
-                while uploads are disabled. This is software evidence, not a device-trust claim.
-            </p>
-            <div class="field-actions">
-                <button type="button" class="btn" id="btn-diag-refresh">Refresh diagnostics</button>
-                <button type="button" class="btn btn-ghost" id="btn-diag-verify">Verify object bytes</button>
-            </div>
-            <p class="form-msg" id="diag-msg" role="status" aria-live="polite" hidden></p>
-            <dl class="diag-grid" id="diag-grid"></dl>
-
-            <div class="diag-integrity" id="diag-integrity" hidden>
-                <h3>Object integrity</h3>
-                <p class="diag-integrity-text" id="diag-integrity-text"></p>
-                <ul class="diag-problems" id="diag-problems" aria-label="Damaged objects"></ul>
-            </div>
-
-            <form class="rebind-form" id="rebind-form" novalidate>
-                <h3>Rebind a tablet</h3>
-                <p class="hint">
-                    A tablet that changed origin registered under a new id. Point the new
-                    registration at the id the wall remembers. The replaced device must be offline.
-                    Saved layouts keep the old id, so recall and save them again afterwards.
-                </p>
-                <div class="rebind-grid">
-                    <div class="field">
-                        <label class="label" for="rebind-new">New device id</label>
-                        <input class="inp" id="rebind-new" type="text" spellcheck="false"
-                               autocomplete="off" placeholder="00000000-0000-4000-8000-000000000000">
-                    </div>
-                    <div class="field">
-                        <label class="label" for="rebind-replaces">Replaces device id</label>
-                        <input class="inp" id="rebind-replaces" type="text" spellcheck="false"
-                               autocomplete="off" placeholder="00000000-0000-4000-8000-000000000000">
-                    </div>
-                    <div class="field">
-                        <label class="label" for="rebind-number">Display number (optional)</label>
-                        <input class="inp" id="rebind-number" type="number" min="1" max="512" step="1"
-                               inputmode="numeric" autocomplete="off">
-                    </div>
-                </div>
-                <p class="form-msg" id="rebind-msg" role="status" aria-live="polite" hidden></p>
-                <button type="submit" class="btn btn-primary" id="btn-rebind">Rebind tablet</button>
-            </form>
-        </section>
-    </main>
-
-    <aside class="side" aria-label="Selected tablet and measurements">
-
-        <section class="card playback-card" aria-labelledby="playback-title">
-            <div class="saved-head">
-                <h2 id="playback-title">Playback</h2>
-                <button type="button" class="btn btn-ghost btn-sm" id="btn-playback-refresh">Refresh</button>
-            </div>
-            <p class="hint">
-                The server prepares the next item and commits it at a common effective time.
-                Software evidence only; optical synchronization is not claimed.
-            </p>
-
-            <div class="playback-policy">
-                <label class="field">
-                    <span class="label" for="playback-policy">Policy</span>
-                    <select class="inp" id="playback-policy">
-                        <option value="">Server default</option>
-                        <option value="strict">Strict: every required tablet ready</option>
-                        <option value="online">Online: hold, then record misses</option>
-                    </select>
-                </label>
-                <p class="playback-effective" id="playback-effective-policy">Effective policy: unknown</p>
-                <p class="hint">The policy applies to the next Start; a Resume keeps the frozen policy.</p>
-            </div>
-
-            <div class="playback-actions">
-                <button type="button" class="btn btn-primary" id="btn-playback-start">Start</button>
-                <button type="button" class="btn" id="btn-playback-pause">Pause</button>
-                <button type="button" class="btn" id="btn-playback-stop">Stop</button>
-                <button type="button" class="btn" id="btn-playback-retry">Retry</button>
-                <button type="button" class="btn btn-ghost" id="btn-playback-previous">Previous</button>
-                <button type="button" class="btn btn-ghost" id="btn-playback-next">Next</button>
-            </div>
-
-            <p class="form-msg" id="playback-msg" role="status" aria-live="polite" hidden></p>
-
-            <p class="playback-status" id="playback-status" role="status" aria-live="polite">
-                Playback is stopped.
-            </p>
-            <dl class="playback-facts" id="playback-facts"></dl>
-
-            <div class="playback-section">
-                <h3>Preparation</h3>
-                <dl class="playback-facts" id="playback-pending"></dl>
-            </div>
-
-            <div class="playback-section">
-                <h3>Tablets</h3>
-                <ul class="playback-members" id="playback-members" aria-label="Playback members"></ul>
-                <p class="empty-note" id="playback-members-empty" hidden>No preparation is active.</p>
-            </div>
-
-            <p class="hint playback-poll" id="playback-poll-note">
-                Waiting for the first status read.
-            </p>
+            <p class="empty-note" id="device-empty" hidden>No tablets are registered yet. Open <a href="/client/">/client/</a> on a tablet on the same LAN, then reload this page.</p>
         </section>
 
         <section class="card inspector" aria-labelledby="inspector-title">
@@ -297,7 +160,10 @@
                 <div class="insp-head">
                     <div class="insp-name">
                         <h3 id="selected-title">–</h3>
-                        <code id="selected-id">–</code>
+                        <p class="insp-id-line">
+                            <code id="selected-id">–</code>
+                            <button type="button" class="btn btn-ghost btn-sm" id="btn-copy-selected-id">Copy full id</button>
+                        </p>
                     </div>
                     <span class="chip" id="selected-state" data-kind="ok">On the wall</span>
                 </div>
@@ -358,11 +224,8 @@
             <p class="empty-note" id="device-card-empty">Select a tablet to edit its measurements.</p>
 
             <div id="device-card-body" hidden>
-                <div class="insp-head">
-                    <div class="insp-name">
-                        <h3 id="device-card-name">–</h3>
-                        <code id="device-card-id">–</code>
-                    </div>
+                <div class="device-card-head">
+                    <p class="device-card-subject" id="device-card-name">–</p>
                     <span class="chip" id="device-card-cal" data-kind="info">–</span>
                 </div>
 
@@ -524,7 +387,162 @@
                 </form>
             </div>
         </section>
-    </aside>
+        <section class="card bounds-card" aria-labelledby="bounds-title">
+            <h2 id="bounds-title">Wall bounds</h2>
+            <p class="hint">The rectangle every slot is placed inside. Values are millimetres, measured from the top-left corner of the wall as the audience sees it.</p>
+            <div class="bounds-grid">
+                <div class="field">
+                    <label class="label" for="bounds-x">X (mm)</label>
+                    <input class="inp" id="bounds-x" type="number" step="any" inputmode="decimal" autocomplete="off">
+                </div>
+                <div class="field">
+                    <label class="label" for="bounds-y">Y (mm)</label>
+                    <input class="inp" id="bounds-y" type="number" step="any" inputmode="decimal" autocomplete="off">
+                </div>
+                <div class="field">
+                    <label class="label" for="bounds-width">Width (mm)</label>
+                    <input class="inp" id="bounds-width" type="number" min="1" step="any" inputmode="decimal" autocomplete="off">
+                </div>
+                <div class="field">
+                    <label class="label" for="bounds-height">Height (mm)</label>
+                    <input class="inp" id="bounds-height" type="number" min="1" step="any" inputmode="decimal" autocomplete="off">
+                </div>
+            </div>
+            <p class="hint" id="bounds-note"></p>
+        </section>
+
+        <section class="card playlist-card" aria-labelledby="playlist-title">
+            <div class="sec-head">
+                <h2 id="playlist-title">Playlist</h2>
+                <span class="sec-count" id="playlist-count">0 items</span>
+            </div>
+            <p class="hint">
+                Build the hard-cut order from uploaded files. A still keeps your dwell; a video's
+                dwell is its clip length. Add files on <a href="index.html">Wall control</a>.
+            </p>
+
+            <div class="playlist-add">
+                <label class="field playlist-pick">
+                    <span class="label" id="playlist-library-label">Media library</span>
+                    <select class="inp" id="playlist-library" aria-labelledby="playlist-library-label">
+                        <option value="">Loading the library…</option>
+                    </select>
+                </label>
+                <button type="button" class="btn" id="btn-playlist-add" disabled>Add to playlist</button>
+                <button type="button" class="btn btn-ghost" id="btn-playlist-library-refresh">Refresh library</button>
+            </div>
+            <p class="form-msg" id="playlist-library-msg" role="status" aria-live="polite" hidden></p>
+
+            <ul class="playlist-list" id="playlist-items" aria-label="Playlist order"></ul>
+            <p class="empty-note" id="playlist-empty" hidden>No items yet. Add a file from the library.</p>
+
+            <div class="playlist-foot">
+                <label class="check"><input type="checkbox" id="playlist-loop" checked> Loop</label>
+                <span class="playlist-hint" id="playlist-hint">At least one item.</span>
+                <button type="button" class="btn btn-ghost btn-sm" id="playlist-undo" hidden>Undo remove</button>
+                <button type="button" class="btn btn-primary" id="btn-playlist-save">Save playlist</button>
+            </div>
+            <p class="form-msg" id="playlist-msg" role="status" aria-live="polite" hidden></p>
+
+            <details class="playlist-raw">
+                <summary>Add by content id</summary>
+                <div class="playlist-raw-row">
+                    <div class="field">
+                        <label class="label" for="playlist-raw-id">Content id</label>
+                        <input class="inp" id="playlist-raw-id" type="text" spellcheck="false"
+                               autocomplete="off" placeholder="sha256:…">
+                    </div>
+                    <div class="field">
+                        <label class="label" for="playlist-raw-dwell">Dwell (ms)</label>
+                        <input class="inp" id="playlist-raw-dwell" type="number" min="1000"
+                               max="600000" step="100" value="5000" inputmode="numeric">
+                    </div>
+                    <button type="button" class="btn" id="btn-playlist-raw-add">Add</button>
+                </div>
+                <p class="hint">A video's play length is always its clip length, whatever the dwell says.</p>
+            </details>
+        </section>
+
+        <section class="card saved-card" aria-labelledby="saved-title">
+            <div class="sec-head">
+                <h2 id="saved-title">Saved physical layouts</h2>
+                <button type="button" class="btn btn-ghost btn-sm" id="btn-layouts-refresh">Refresh</button>
+            </div>
+            <p class="hint">Saving keeps the committed layout, not the draft. Apply the draft first to save its changes under a new name.</p>
+
+            <form class="saved-form" id="layout-save-form" novalidate>
+                <div class="field">
+                    <label class="label" for="layout-name">Name</label>
+                    <input class="inp" id="layout-name" type="text" maxlength="64" autocomplete="off"
+                           spellcheck="false" placeholder="Lobby, 3 across" aria-describedby="layout-msg">
+                </div>
+                <button type="submit" class="btn" id="btn-layout-save">Save committed layout</button>
+            </form>
+
+            <p class="form-msg" id="layout-msg" role="status" aria-live="polite" hidden></p>
+            <ul class="saved-list" id="saved-layouts" aria-label="Saved physical layouts"></ul>
+            <p class="empty-note" id="saved-empty" hidden>No saved physical layouts yet.</p>
+        </section>
+
+        <section class="card field-card" aria-labelledby="field-title">
+            <div class="sec-head">
+                <h2 id="field-title">Field check</h2>
+                <span class="chip" id="diag-state" data-kind="info">loading</span>
+            </div>
+            <p class="hint">
+                Operator-only storage, identity and wake-lock state. Diagnostics are unavailable
+                while uploads are disabled. This is software evidence, not a device-trust claim.
+            </p>
+            <div class="field-actions">
+                <button type="button" class="btn" id="btn-diag-refresh">Refresh diagnostics</button>
+                <button type="button" class="btn btn-ghost" id="btn-diag-verify">Verify object bytes</button>
+            </div>
+            <p class="form-msg" id="diag-msg" role="status" aria-live="polite" hidden></p>
+            <dl class="diag-grid" id="diag-grid"></dl>
+
+            <div class="diag-integrity" id="diag-integrity" hidden>
+                <h3>Object integrity</h3>
+                <p class="diag-integrity-text" id="diag-integrity-text"></p>
+                <ul class="diag-problems" id="diag-problems" aria-label="Damaged objects"></ul>
+            </div>
+
+            <form class="rebind-form" id="rebind-form" novalidate>
+                <h3>Rebind a tablet</h3>
+                <p class="hint">
+                    A tablet that changed origin registered under a new id. Choose the new
+                    registration and the tablet it replaces. The replaced tablet must be
+                    offline. Its wall slot and display number move to the new id. Saved
+                    layouts keep the old id, so recall and save them again afterwards.
+                </p>
+                <div class="rebind-grid">
+                    <div class="field">
+                        <label class="label" for="rebind-new">New registration</label>
+                        <select class="inp" id="rebind-new">
+                            <option value="">Loading tablets…</option>
+                        </select>
+                        <p class="field-note" id="rebind-new-note"></p>
+                    </div>
+                    <div class="field">
+                        <label class="label" for="rebind-replaces">Replaces</label>
+                        <select class="inp" id="rebind-replaces">
+                            <option value="">Loading tablets…</option>
+                        </select>
+                        <p class="field-note" id="rebind-replaces-note"></p>
+                    </div>
+                    <div class="field">
+                        <label class="label" for="rebind-number">Display number</label>
+                        <input class="inp" id="rebind-number" type="number" min="1" max="512" step="1"
+                               inputmode="numeric" autocomplete="off">
+                        <p class="field-note" id="rebind-number-note">Keep the old number.</p>
+                    </div>
+                </div>
+                <p class="rebind-summary" id="rebind-summary" hidden></p>
+                <p class="form-msg" id="rebind-msg" role="status" aria-live="polite" hidden></p>
+                <button type="submit" class="btn btn-primary" id="btn-rebind">Rebind tablet</button>
+            </form>
+        </section>
+    </main>
+
 </div>
 
 <footer class="statusbar">
@@ -536,6 +554,6 @@
     <p class="noscript">This page needs JavaScript. It talks to the server over plain HTTP.</p>
 </noscript>
 
-<script src="physical.js?v=2"></script>
+<script src="physical.js?v=3"></script>
 </body>
 </html>
