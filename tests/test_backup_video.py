@@ -16,9 +16,10 @@ from fastapi.testclient import TestClient
 import main
 from deploy import backup
 from tabletwall import media, persist
-from video_fixtures import fabricate_video
+from video_fixtures import _ensure, fabricate_video, needs_ffmpeg
 
 BIG = 24 * 1024 * 1024
+OPERATOR_CREDENTIAL = "test-backup-video-credential-0123456789"
 WALL = {
     "layout": {"width": 1000, "height": 500, "placements": {}},
     "scene": {"content": {"type": "color"}, "layout": "active"},
@@ -289,3 +290,112 @@ def test_a_playlist_that_adds_a_reference_makes_a_version_3_snapshot(store, tmp_
     # A playlist that names nothing the scenes do not already hold changes nothing.
     persist.save_meta("playlist", {"items": [], "loop": False, "revision": 2})
     assert manifest_of(snapshot(tmp_path, store, "second"))["manifest_version"] == 2
+
+
+def _still_bytes() -> bytes:
+    from io import BytesIO
+
+    from PIL import Image
+
+    buffer = BytesIO()
+    Image.new("RGB", (48, 32), (20, 120, 200)).save(buffer, format="JPEG")
+    return buffer.getvalue()
+
+
+def _operator_headers(monkeypatch) -> dict[str, str]:
+    monkeypatch.setenv("TABLET_WALL_UPLOAD_MODE", "proxy")
+    monkeypatch.setenv("TABLET_WALL_OPERATOR_ORIGIN", "http://testserver")
+    monkeypatch.setenv("TABLET_WALL_OPERATOR_CREDENTIAL", OPERATOR_CREDENTIAL)
+    return {"Origin": "http://testserver", "X-Tablet-Wall-Operator": OPERATOR_CREDENTIAL}
+
+
+@needs_ffmpeg
+def test_a_real_h264_upload_restores_with_its_playlist_descriptor_and_bytes(
+    store, tmp_path, monkeypatch
+):
+    """The real encoder round trip through backup and restore, at HTTP level.
+
+    The decoded-browser proof is ``simulator/browser/restore_run.py``; this
+    test keeps the same descriptor, closure and byte facts in the ordinary
+    suite without launching Chromium.
+    """
+    clip = _ensure("baseline.mp4", tmp_path).read_bytes()
+    headers = _operator_headers(monkeypatch)
+
+    with TestClient(main.app) as client:
+        uploaded = client.post(
+            "/uploads?name=clip.mp4", content=clip,
+            headers={**headers, "Content-Type": "video/mp4"},
+        )
+        assert uploaded.status_code == 201, uploaded.text
+        video = uploaded.json()["asset"]
+        still_reply = client.post(
+            "/uploads?name=still.jpg", content=_still_bytes(),
+            headers={**headers, "Content-Type": "image/jpeg"},
+        )
+        assert still_reply.status_code == 201, still_reply.text
+        still = still_reply.json()["asset"]
+        etag = client.get("/api/v3/playlist").json()["etag"]
+        saved = client.put(
+            "/api/v3/playlist",
+            json={
+                "items": [
+                    {"asset": video["id"], "dwell_ms": 5000},
+                    {"asset": still["id"], "dwell_ms": 5000},
+                ],
+                "loop": False,
+            },
+            headers={**headers, "If-Match": etag},
+        )
+        assert saved.status_code == 200, saved.text
+        document = saved.json()["playlist"]
+        assert document["items"][0]["dwell_ms"] == video["durationMs"]
+
+    path = snapshot(tmp_path, store)
+    manifest = manifest_of(path)
+    objects = {entry["object_id"]: entry for entry in manifest["media_objects"]}
+    assert manifest["manifest_version"] == 3
+    assert video["id"] in manifest["references"] and still["id"] in manifest["references"]
+    assert {video["id"], video["poster"]["id"], still["id"]} <= set(objects)
+    assert objects[video["id"]]["bytes"] == video["bytes"]
+    assert objects[video["id"]]["sha256"] == video["id"].split(":", 1)[1]
+    assert backup.main(["verify", "--src", str(path)]) == 0
+
+    restored = tmp_path / "restored"
+    restored.mkdir()
+    assert backup.main([
+        "restore", "--src", str(path), "--db", str(restored / "wall.db"),
+        "--assets", str(restored / "assets"), "--media", str(restored / "media"),
+    ]) == 0
+    assert (restored / objects[video["id"]]["path"]).read_bytes() == (
+        store / objects[video["id"]]["path"]
+    ).read_bytes()
+
+    monkeypatch.setenv("TABLET_WALL_DB", str(restored / "wall.db"))
+    monkeypatch.setenv("TABLET_WALL_MEDIA_DIR", str(restored / "media"))
+    monkeypatch.setenv("TABLET_WALL_ASSET_DIR", str(restored / "assets"))
+    with TestClient(main.app) as client:
+        library = client.get("/media", headers=headers)
+        assert library.status_code == 200, library.text
+        entry = next(item for item in library.json()["assets"] if item["id"] == video["id"])
+        assert (entry["kind"], entry["mime"], entry["bytes"]) == (
+            "video", "video/mp4", video["bytes"],
+        )
+        assert (entry["intrinsicWidth"], entry["intrinsicHeight"]) == (
+            video["intrinsicWidth"], video["intrinsicHeight"],
+        )
+        playlist = client.get("/api/v3/playlist").json()["playlist"]
+        assert playlist["items"] == document["items"] and playlist["loop"] is False
+
+        whole = client.get(video["url"])
+        assert whole.status_code == 200
+        assert hashlib.sha256(whole.content).hexdigest() == video["id"].split(":", 1)[1]
+        ranged = client.get(video["url"], headers={"Range": "bytes=0-99"})
+        assert ranged.status_code == 206
+        assert ranged.content == whole.content[:100]
+        assert ranged.headers["content-range"] == f"bytes 0-99/{video['bytes']}"
+        head = client.head(video["url"])
+        assert head.status_code == 200 and head.content == b""
+        assert head.headers["content-length"] == str(video["bytes"])
+        assert client.get(video["poster"]["url"]).status_code == 200
+        assert client.get(still["url"]).status_code == 200
