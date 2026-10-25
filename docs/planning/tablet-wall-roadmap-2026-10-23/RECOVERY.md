@@ -108,7 +108,7 @@ wake-lock state reaches the controller roster, check the local-CA/origin
 migration docs against what actually ships, and record the software-only
 limits. There is no controller surface for diagnostics or rebind yet.
 
-## Completion state (2026-10-24, HEAD bae3280)
+## Completion state (2026-10-24, HEAD b1e7037)
 
 R3, R4 and R5 software scope is implemented and verified. Counts at HEAD:
 Python 839; client 58; view 12; wake lock 10; browser base 106/106; video
