@@ -3272,13 +3272,15 @@
         } else if (stateName === "blocked") {
             const recovery = status.recovery && typeof status.recovery === "object"
                 ? status.recovery : null;
-            text = "Blocked: " + sentence(status.blocked_reason
+            const reason = String(status.blocked_reason
                 || "the cohort was not ready before the preparation deadline")
+                .trim().replace(/[.!?]+$/, "");
+            text = "Blocked: " + reason
                 + (recovery && recovery.position_ms !== undefined
                     ? " at " + formatDuration(recovery.position_ms)
                         + " (attempt " + recovery.attempts + ")"
                     : "")
-                + " Retry this item, or Stop to end the session.";
+                + ". Retry this item, or Stop to end the session.";
         } else if (stateName === "failed") {
             text = "Failed: " + sentence(failureText(status))
                 + " Start begins a new session; Stop clears the failed session.";
