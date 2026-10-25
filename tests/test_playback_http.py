@@ -623,7 +623,7 @@ def test_paused_start_keeps_the_frozen_required_and_excluded_sets():
         assert after["cohort"] == before["cohort"] == [A]
 
 
-def test_paused_start_still_validates_supplied_exclusions():
+def test_paused_start_ignores_supplied_exclusions():
     with TestClient(main.app) as client:
         prepare_physical(client)
         started = client.post(
@@ -638,25 +638,25 @@ def test_paused_start_still_validates_supplied_exclusions():
         assert paused.status_code == 200, paused.text
         paused_version = paused.json()["version"]
 
-        unknown = client.post(
-            "/api/v3/playback/start",
-            json={"exclusions": ["5c6d7e8f-9012-4a3b-8c4d-5e6f708192a3"]},
-        )
-        assert unknown.status_code == 422, unknown.text
-        duplicate = client.post(
-            "/api/v3/playback/start", json={"exclusions": [A, A]}
-        )
-        assert duplicate.status_code == 422, duplicate.text
-        all_excluded = client.post(
-            "/api/v3/playback/start",
-            json={"exclusions": [A, B]},
-        )
-        assert all_excluded.status_code == 409, all_excluded.text
-        session = main._playback_session
-        assert session is not None and session.state == "paused"
-        assert session.version == paused_version
-        assert session.required == sorted([A, B])
-        assert session.excluded == [B] and session.cohort == [A]
+        # A paused Start is a Resume: the frozen required/excluded/cohort
+        # selection wins, and a stale or all-excluded request is ignored.
+        for exclusions in ([A, B], ["5c6d7e8f-9012-4a3b-8c4d-5e6f708192a3"]):
+            resumed = client.post(
+                "/api/v3/playback/start", json={"exclusions": exclusions}
+            )
+            assert resumed.status_code == 200, resumed.text
+            session = main._playback_session
+            assert session is not None
+            assert session.required == sorted([A, B])
+            assert session.excluded == [B] and session.cohort == [A]
+            assert session.version == paused_version + 1
+            paused_version = session.version
+            paused = client.post(
+                "/api/v3/playback/pause",
+                headers={"If-Match": str(session.version)},
+            )
+            assert paused.status_code == 200, paused.text
+            paused_version = paused.json()["version"]
 
 
 def test_a_returning_video_device_starts_one_reconnect_recovery():

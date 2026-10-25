@@ -2546,6 +2546,15 @@ async def start_playback_v3(command: PlaybackStartCommand | None = None):
     explicit = command.policy if supplied else None
     if supplied and explicit not in playback.POLICIES:
         raise HTTPException(status_code=422, detail='policy must be "online" or "strict"')
+    session = _playback_session
+    if session is not None and session.state == "paused":
+        # A paused Start is a Resume of the frozen selection. Exclusions are a
+        # Start-time choice and are ignored here, so a stale picker or a
+        # changed layout cannot block the resume.
+        playback.resume(session, _now_ms(), _playback_connections(session.cohort))
+        await _prepare_playback(session)
+        await _broadcast_playback()
+        return _playback_status()
     exclusions = list(command.exclusions) if command is not None else []
     document = persist.load_meta("playlist")
     if not isinstance(document, dict):
@@ -2579,12 +2588,6 @@ async def start_playback_v3(command: PlaybackStartCommand | None = None):
         )
 
     session = _playback_session
-    if session is not None and session.state == "paused":
-        playback.resume(session, _now_ms(), _playback_connections(session.cohort))
-        await _prepare_playback(session)
-        await _broadcast_playback()
-        return _playback_status()
-
     if session is not None and session.state not in ("stopped", "failed"):
         raise HTTPException(status_code=409, detail="playback is already active")
 
