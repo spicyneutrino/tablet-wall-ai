@@ -229,6 +229,29 @@ It starts one disposable uvicorn worker over a real loopback TCP socket and
 loads the actual `/client/` and `/controller/` scripts. It does not extend
 the TestClient simulator.
 
+### Durable browser acceptance runners
+
+Every runner below starts a disposable server on temporary paths and a free
+loopback port, drives the real pages in desktop Chromium, and writes a new
+artifact directory outside the checkout. The evidence kind is part of the
+report. No row closes a physical, optical, iOS, CA, Wi-Fi, kiosk or soak gate.
+
+| Runner | What it covers | Evidence kind and current count |
+| --- | --- | --- |
+| `run.py` | Base T1/T2 identity, still wall, pixel, fullscreen and ownership checks; opt-in `--cuts` and `--suspend` | Desktop Chromium software; P0 fixture MP4 decode; 106/106 last recorded (one conditional API line can make it 105/105). Physical/optical rows remain MISSING. |
+| `video_run.py` | R4 video preparation, commit, samples, Stop and controller page health | Desktop Chromium software, not optical or physical; v2, 35/35 on two consecutive runs. |
+| `video_transitions_run.py` | F1 consecutive videos, one-video loop, routine prepare during active video, recovery at zero, and the real following cut | Desktop Chromium software; v1, 51/51 on two consecutive runs. The injected `video_fault` exercises the server path, not the natural tablet detector. |
+| `group_recovery_run.py` | One hung play promise, group recovery at the live playhead, one common commit, remaining-duration next boundary | Desktop Chromium software; 10/10 last recorded. The blocked copy is fixture-rendered, not a live cap. |
+| `controller_run.py` | F3/F4 pause summary and stable dwell, Resume, mobile layout, live identity across a saved/reordered draft during playback, pause and recovery, controller reload, Stop and new Start | Desktop Chromium software on one host clock; v1, 54/54 checks and 11/11 scenarios on two consecutive runs. |
+| `field_run.py` | Diagnostics admission, wake-lock roster state, rebind after origin/storage loss | Desktop Chromium software; 12/12 last recorded. No physical device, CA trust, Wi-Fi or soak. |
+| `restore_run.py` | Upload, backup while running, restore to new paths, replayed video | Desktop Chromium software; 41/41 last recorded. No Caddy ingress, TLS or real host. |
+| `recovery_run.py` | 20 offline/online trials until reconnect and repaint | One Chromium context network emulation; 20/20 last recorded. Not Wi-Fi, radio or OS behavior. |
+| `recovery_acceptance_run.py` | Planned closure for timeout, live strict/online caps, multi-fault ordering and final-item recovery | Not yet committed in this round; no count is claimed. Do not cite it as acceptance evidence until it lands and passes. |
+
+This table is an index, not a sum: the suites overlap in setup and must not be
+added together. Counts labelled "last recorded" were not rerun for the
+2026-10-25 review-fix round.
+
 Prerequisites are Linux with `/proc`, the project's Python environment, and
 Playwright's Chromium binaries plus their host libraries. The optional
 `browser` dependency group pins Python Playwright to `1.57.0`. Its browser

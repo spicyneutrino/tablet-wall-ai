@@ -8,17 +8,22 @@ they show.
 
 This project began as a copy of `tablet-wall`. New development happens here.
 
-> **Status: R1-R5 software scope implemented; all physical and optical
-> validation pending.** Tablets self-register, hold a live WebSocket,
-> heartbeat, reconnect, and stop fighting over one identity. The operator can
-> upload stills and H.264 MP4 clips (when an admission mode is configured),
+> **Status: R1-R5 software scope implemented and the 2026-10-25 playback and
+> controller review repairs merged; all physical and optical validation
+> pending.** Tablets self-register, hold a live WebSocket, heartbeat,
+> reconnect, and stop fighting over one identity. The operator can upload
+> JPEG/PNG stills and H.264 MP4 clips (when an admission mode is configured),
 > show stills on the logical wall, measure and calibrate physical panels, place
 > bodies with an accessible editor, and run hard-cut still/video playlists with
-> clock compensation, leased readiness, buffer evidence, pause/resume and
+> a sampled server clock, leased readiness, buffer evidence, pause/resume and
 > drift samples. Schema 3 and protocol 3 are live; v1/v2 remain compatible.
 > Physical seams, real tablet decode/suspend, optical timing, mixed-model
 > calibration and soak are not claimed — see
 > [Known limitations](#known-limitations).
+>
+> The current evidence record, acceptance gaps and review-fix commits are in
+> the [review-fix round](docs/planning/tablet-wall-roadmap-2026-10-23/EXECUTION_LOG.md#review-fix-round-2026-10-25)
+> and the [durable browser runners](simulator/README.md#durable-browser-acceptance-runners).
 
 ## Requirements
 
@@ -210,13 +215,22 @@ node tests/client_image.test.js
   **vacant reservation** and can be released by hand; it is deliberately *not*
   discarded, because a tablet that returns should reclaim the slot it had.
   Authentication and unattended operations are not in yet.
-- **Bezels are abstract units, not millimetres.** Wall units are a layout
-  convenience, deliberately not physical measurement: panel sizes, browser
-  chrome, and zoom all make millimetres unreliable from a browser. A
-  well-aligned wall needs a calibration pass, not a spec sheet.
-- **Images are curated stills only.** JPEG and PNG are supported, with
-  centered `cover` across the whole logical wall. There is no video, upload,
-  or clock synchronisation. The image
+- **Bezel units depend on the mode.** In a logical wall, bezels are abstract
+  wall units, not millimetres: panel size, browser chrome, and zoom all make
+  millimetres unreliable from a browser. In a physical wall, the controller
+  records measured display profiles and calibration in millimetres and places
+  panels from those operator measurements; they are not browser-inferred
+  physical proof. A well-aligned wall still needs a calibration pass, not a
+  spec sheet.
+- **Media support is bounded.** Curated JPEG/PNG stills are supported; a
+  configured admission mode also accepts JPEG/PNG uploads and H.264 MP4
+  clips. Stills render as one centered `cover` image across the whole logical
+  wall. Video runs in hard-cut still/video playlists with a sampled server
+  clock, leased readiness, buffer evidence, pause/resume and drift samples.
+  Browser evidence is desktop Chromium software evidence on one host: it does
+  not prove optical onset, physical decode/suspend, iOS Safari, mixed-model
+  timing, installed CA trust, real Wi-Fi/OS, kiosk operation or soak. There is
+  no arbitrary-media or cross-device optical clock claim. The still/video
   seam and failure/reconnect behaviour have been checked in desktop Chromium;
   physical iPad/Safari and Android/Chrome validation is still pending.
 - **The aspect ratio compares against what the tablet reports.** The client
