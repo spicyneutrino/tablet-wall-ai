@@ -834,11 +834,30 @@ skipped/unobserved intervals, artifact hashes and completion, and always keeps
 `hardware_gate_status = MISSING`. The gate matrix is
 `docs/validation/HARDWARE-VALIDATION.md`.
 
-The kit workstreams are optical capture analysis (synthetic fixtures first),
-device decode/suspend probe (desktop Chromium/WebKit smoke), trust/origin and
-calibration checkers, and fleet/network/kiosk harnesses. Their tool counts and
-dry-run results are recorded after merge. No synthetic, desktop-browser,
-loopback-Caddy or simulated-fleet result is a hardware result.
+The kit is merged:
+- Optical (`3615e06`, merge `27420b3`): 35 analyzer tests; 19 synthetic cases,
+  0 errors, covering known offsets, threshold boundaries, subframe phases,
+  rolling shutter, exposure blur, noise, partial/wrong/missing targets,
+  repeated colours, variable timing, dropped/duplicated frames, truncated
+  captures and early cuts. The reports stay incomplete until 100 real events;
+  synthetic fixtures validate only the analyzer.
+- Device probe (`ccb37e3`, merge `3f10cff`): 40/40 checks; desktop Chromium and
+  WebKit passed; iOS Safari is recorded unsupported. The probe captures
+  rVFC/currentTime/readyState, media events, page/reload lineage and bounded
+  pre-suspend evidence. Headless wake-lock/fullscreen are informational only.
+- Trust/calibration (`1a05954`, merge `f6db9fa`): 51 tests; disposable Caddy
+  trust run 72/72 checks and 8/8 scenarios with a supplied local CA; verified
+  TLS and route matrix, not installed tablet trust. Calibration synthetic run
+  1/1; the 2 mm rule is pass/fail/inconclusive with uncertainty and photos.
+- Fleet/network (`635f399`, merge `008f399`): 27 tests; 4-client 60 s fleet dry
+  run 22/22 checks and 6/6 scenarios; network dry mode 7/7 checks and 20/20
+  trials. Shared-host limitations and the non-Wi-Fi nature are recorded.
+- Kiosk: browser/OS checklist only; no physical device.
+
+Full Python after these merges: 990 passed. Every report keeps
+`hardware_gate_status = MISSING` and `hardware_claim = false`. No synthetic,
+desktop-browser, loopback-Caddy or simulated-fleet result is a hardware
+result.
 
 ## Next actions
 
