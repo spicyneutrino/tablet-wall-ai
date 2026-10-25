@@ -27,8 +27,25 @@
     };
     const MIN_DWELL_MS = 1000;
     const MAX_DWELL_MS = 600000;
+    const TAB_STORAGE_KEY = "tablet-wall-console-tab-v1";
+    const TAB_NAMES = ["show", "tablet", "content", "system"];
 
     const el = {
+        railTabs: document.getElementById("rail-tabs"),
+        tabShow: document.getElementById("tab-show"),
+        tabTablet: document.getElementById("tab-tablet"),
+        tabContent: document.getElementById("tab-content"),
+        tabSystem: document.getElementById("tab-system"),
+        panelShow: document.getElementById("panel-show"),
+        panelTablet: document.getElementById("panel-tablet"),
+        panelContent: document.getElementById("panel-content"),
+        panelSystem: document.getElementById("panel-system"),
+        tabTabletDot: document.getElementById("tab-tablet-dot"),
+        tabContentDot: document.getElementById("tab-content-dot"),
+        topbarPlaybackState: document.getElementById("topbar-playback-state"),
+        btnTopbarStart: document.getElementById("btn-topbar-start"),
+        btnTopbarPause: document.getElementById("btn-topbar-pause"),
+        btnTopbarStop: document.getElementById("btn-topbar-stop"),
         wallRevision: document.getElementById("wall-revision"),
         wallGeneration: document.getElementById("wall-generation"),
         etagValue: document.getElementById("etag-value"),
@@ -240,7 +257,9 @@
         diagnosticsState: "pending",
         diagnosticsError: null,
         diagnosticsLoading: false,
-        rebindBusy: false
+        rebindBusy: false,
+        tabDecided: false,
+        playbackSettled: false
     };
 
     const profileCache = new Map();
@@ -665,6 +684,142 @@
         });
     }
 
+    /* ---------------------------------------------------------------- *
+     * Rail tabs and the topbar transport
+     * ---------------------------------------------------------------- */
+
+    function tabEntries() {
+        return [
+            { name: "show", tab: el.tabShow, panel: el.panelShow },
+            { name: "tablet", tab: el.tabTablet, panel: el.panelTablet },
+            { name: "content", tab: el.tabContent, panel: el.panelContent },
+            { name: "system", tab: el.tabSystem, panel: el.panelSystem }
+        ];
+    }
+
+    function readStoredTab() {
+        try {
+            const stored = window.sessionStorage.getItem(TAB_STORAGE_KEY);
+            return TAB_NAMES.indexOf(stored) === -1 ? null : stored;
+        } catch (error) {
+            return null;
+        }
+    }
+
+    function storeTab(name) {
+        try { window.sessionStorage.setItem(TAB_STORAGE_KEY, name); }
+        catch (error) { /* The current view still switches. */ }
+    }
+
+    function showTab(name, options) {
+        const settings = options || {};
+        const entries = tabEntries();
+        let target = null;
+        entries.forEach(function (entry) {
+            if (entry.name === name) target = entry;
+        });
+        if (!target || !target.tab || !target.panel) return false;
+
+        entries.forEach(function (entry) {
+            if (!entry.tab || !entry.panel) return;
+            const active = entry.name === name;
+            entry.tab.setAttribute("aria-selected", active ? "true" : "false");
+            entry.tab.tabIndex = active ? 0 : -1;
+            entry.panel.hidden = !active;
+        });
+        if (settings.persist) {
+            storeTab(name);
+            state.tabDecided = true;
+        }
+        if (settings.focus) {
+            try { target.tab.focus({ preventScroll: true }); }
+            catch (error) { target.tab.focus(); }
+        }
+        return true;
+    }
+
+    function onTabKeyDown(event) {
+        if (event.altKey || event.ctrlKey || event.metaKey) return;
+        const entries = tabEntries();
+        const target = event.target && event.target.closest
+            ? event.target.closest('[role="tab"]') : null;
+        let current = -1;
+        for (let index = 0; index < entries.length; index += 1) {
+            if (entries[index].tab === target) {
+                current = index;
+                break;
+            }
+        }
+        if (current === -1) return;
+
+        let next = null;
+        if (event.key === "ArrowLeft") next = (current - 1 + entries.length) % entries.length;
+        else if (event.key === "ArrowRight") next = (current + 1) % entries.length;
+        else if (event.key === "Home") next = 0;
+        else if (event.key === "End") next = entries.length - 1;
+        if (next === null) return;
+
+        event.preventDefault();
+        showTab(entries[next].name, { focus: true, persist: true });
+    }
+
+    function activePlaybackSession() {
+        const status = state.playback;
+        const name = status && typeof status.state === "string"
+            ? status.state : "stopped";
+        return Boolean(status) && name !== "stopped" && name !== "unknown";
+    }
+
+    function physicalSlotCount() {
+        const slots = state.base && state.base.slots ? state.base.slots : {};
+        return Object.keys(slots).length;
+    }
+
+    function maybeChooseInitialTab() {
+        if (state.tabDecided) return;
+        if (!state.configLoaded || !state.playbackSettled) return;
+        state.tabDecided = true;
+        const name = activePlaybackSession() || physicalSlotCount() > 0
+            ? "show" : "tablet";
+        showTab(name, { persist: false });
+    }
+
+    function syncTabDots() {
+        if (el.tabTabletDot) {
+            el.tabTabletDot.hidden = !(isDirty()
+                || state.profileDirty || state.calDirty);
+        }
+        if (el.tabContentDot) {
+            el.tabContentDot.hidden = !state.playlistDirty;
+        }
+    }
+
+    function syncTopbarTransport() {
+        const stateWord = el.playbackStateWord;
+        if (el.topbarPlaybackState) {
+            setTextIfChanged(el.topbarPlaybackState, stateWord && stateWord.textContent
+                ? stateWord.textContent : "stopped");
+            el.topbarPlaybackState.dataset.state = stateWord && stateWord.dataset.state
+                ? stateWord.dataset.state : "stopped";
+        }
+        mirrorTransportButton(el.btnPlaybackStart, el.btnTopbarStart);
+        mirrorTransportButton(el.btnPlaybackPause, el.btnTopbarPause);
+        mirrorTransportButton(el.btnPlaybackStop, el.btnTopbarStop);
+        if (el.btnPlaybackPause && el.btnTopbarPause) {
+            el.btnTopbarPause.classList.toggle("btn-primary",
+                el.btnPlaybackPause.classList.contains("btn-primary"));
+        }
+    }
+
+    function mirrorTransportButton(rail, topbar) {
+        if (!rail || !topbar) return;
+        topbar.hidden = rail.hidden;
+        topbar.disabled = rail.disabled;
+        setTextIfChanged(topbar, rail.textContent);
+        if (rail.title) topbar.title = rail.title;
+        else topbar.removeAttribute("title");
+    }
+
     function showError(text) {
         el.errorText.textContent = text;
         el.errorText.hidden = false;
@@ -828,6 +983,7 @@
         ensureSelection();
         hideConflict();
         renderAll();
+        maybeChooseInitialTab();
     }
 
     function ensureSelection() {
@@ -957,6 +1113,7 @@
             syncLocalDraftActions();
             updateSavedButtons();
             syncInspector();
+            syncTabDots();
             return;
         }
 
@@ -987,6 +1144,7 @@
         syncBoundsInputs();
         updateSavedButtons();
         syncInspector();
+        syncTabDots();
     }
 
     function pushUndo(before) {
@@ -1415,6 +1573,7 @@
     function revealInspector() {
         if (state.drag) return;
         if (!el.inspectorBody || el.inspectorBody.hidden) return;
+        showTab("tablet", { persist: true });
         const card = el.inspectorBody.closest(".inspector") || el.inspectorBody;
         if (card && typeof card.scrollIntoView === "function") {
             let behavior = "smooth";
@@ -1444,10 +1603,12 @@
             syncInspector();
             renderStage();
             populateDeviceCard(true);
+            syncTabDots();
         } else {
             syncDeviceRows();
             syncInspector();
         }
+        showTab("tablet", { persist: true });
         if (options && options.reveal) revealInspector();
     }
 
@@ -2735,6 +2896,7 @@
             ? playlistSignature(state.playlist) !== playlistSignature(saved)
             : state.playlist.items.length > 0;
         syncPlaylistFooter();
+        syncTabDots();
         const gate = playbackPreflight();
         renderPlaybackPreflight(gate);
         renderPlaybackButtons(state.playback, gate);
@@ -2856,6 +3018,7 @@
             state.playlistSaving = false;
             renderPlaylist();
             renderPlayback();
+            syncTabDots();
         }
         return savedOk;
     }
@@ -3123,6 +3286,10 @@
         } finally {
             state.playbackFetching = false;
             renderPlaybackPollNote();
+            if (!state.playbackSettled) {
+                state.playbackSettled = true;
+                maybeChooseInitialTab();
+            }
         }
     }
 
@@ -3716,6 +3883,7 @@
         if (el.btnPlaybackPrevious) el.btnPlaybackPrevious.disabled = busy || !hasSession;
         if (el.btnPlaybackNext) el.btnPlaybackNext.disabled = busy || !hasSession;
         if (el.playbackPolicy) el.playbackPolicy.disabled = busy || hasSession;
+        syncTopbarTransport();
     }
 
     function renderPlaybackCountdown(status, stateName) {
@@ -4786,6 +4954,14 @@
     }
 
     function bindEvents() {
+        tabEntries().forEach(function (entry) {
+            if (!entry.tab) return;
+            entry.tab.addEventListener("click", function () {
+                showTab(entry.name, { persist: true });
+            });
+        });
+        if (el.railTabs) el.railTabs.addEventListener("keydown", onTabKeyDown);
+
         el.btnUndo.addEventListener("click", undoDraft);
         el.btnRedo.addEventListener("click", redoDraft);
         el.btnApply.addEventListener("click", applyLayout);
@@ -4861,10 +5037,22 @@
 
         el.profileForm.addEventListener("submit", saveProfile);
         el.calibrationForm.addEventListener("submit", saveCalibration);
-        el.profileForm.addEventListener("input", function () { state.profileDirty = true; });
-        el.calibrationForm.addEventListener("input", function () { state.calDirty = true; });
-        el.profileForm.addEventListener("change", function () { state.profileDirty = true; });
-        el.calibrationForm.addEventListener("change", function () { state.calDirty = true; });
+        el.profileForm.addEventListener("input", function () {
+            state.profileDirty = true;
+            syncTabDots();
+        });
+        el.calibrationForm.addEventListener("input", function () {
+            state.calDirty = true;
+            syncTabDots();
+        });
+        el.profileForm.addEventListener("change", function () {
+            state.profileDirty = true;
+            syncTabDots();
+        });
+        el.calibrationForm.addEventListener("change", function () {
+            state.calDirty = true;
+            syncTabDots();
+        });
 
         el.layoutSaveForm.addEventListener("submit", saveLayout);
         if (el.btnPlaylistAdd) {
@@ -4928,14 +5116,29 @@
                 playbackAction("start");
             });
         }
+        if (el.btnTopbarStart) {
+            el.btnTopbarStart.addEventListener("click", function () {
+                if (el.btnPlaybackStart) el.btnPlaybackStart.click();
+            });
+        }
         if (el.btnPlaybackPause) {
             el.btnPlaybackPause.addEventListener("click", function () {
                 playbackAction(actionFromPauseButton());
             });
         }
+        if (el.btnTopbarPause) {
+            el.btnTopbarPause.addEventListener("click", function () {
+                if (el.btnPlaybackPause) el.btnPlaybackPause.click();
+            });
+        }
         if (el.btnPlaybackStop) {
             el.btnPlaybackStop.addEventListener("click", function () {
                 playbackAction("stop");
+            });
+        }
+        if (el.btnTopbarStop) {
+            el.btnTopbarStop.addEventListener("click", function () {
+                if (el.btnPlaybackStop) el.btnPlaybackStop.click();
             });
         }
         if (el.btnPlaybackRetry) {
@@ -5005,6 +5208,11 @@
     }
 
     function init() {
+        const storedTab = readStoredTab();
+        if (storedTab) {
+            showTab(storedTab, { persist: false });
+            state.tabDecided = true;
+        }
         bindEvents();
         syncMeta();
         syncDraftUi();
