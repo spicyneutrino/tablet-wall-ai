@@ -46,3 +46,18 @@ def test_revoking_a_closed_socket_clears_the_pending_lease():
     main._playback_session.pending.leases["dev-2"].clock_ok = True
     main._playback_session.pending.leases["dev-2"].lease_expires_ms = 32000
     assert playback.tick(main._playback_session, 1500) == []
+
+
+def test_a_missing_socket_revokes_before_the_next_tick():
+    main._playback_session = session()
+    pending = main._playback_session.pending
+    for device_id in ("dev-1", "dev-2"):
+        lease = pending.leases[device_id]
+        lease.ready = True
+        lease.clock_ok = True
+        lease.lease_expires_ms = main._now_ms() + 5000
+    main.device_sockets.pop("dev-1", None)
+    main.device_sockets["dev-2"] = object()
+    main._revoke_missing_leases(main._playback_session)
+    assert pending.leases["dev-1"].ready is False
+    assert pending.leases["dev-2"].ready is True

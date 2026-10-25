@@ -2333,6 +2333,7 @@ async def _playback_loop() -> None:
             session = _playback_session
             if session is None:
                 continue
+            _revoke_missing_leases(session)
             actions = playback.tick(session, _now_ms())
             for action in actions:
                 if action["type"] == "commit":
@@ -2555,6 +2556,13 @@ async def previous_playback_v3(request: Request):
 # ---------------------------------------------------------------------------
 # WebSockets
 # ---------------------------------------------------------------------------
+
+
+def _revoke_missing_leases(session: playback.Session) -> None:
+    """Revoke leases for cohort members with no live socket, before a tick."""
+    for device_id in session.cohort:
+        if device_id not in device_sockets:
+            _revoke_playback_lease(device_id)
 
 
 def _revoke_playback_lease(device_id: str, connection_id: str | None = None) -> None:
@@ -2837,10 +2845,13 @@ async def ws_device(
     except WebSocketDisconnect:
         pass
     finally:
+        # Revoke before the first await: a playback tick queued on the loop
+        # must not see a ready lease for a socket that has already gone.
+        if device_sockets.get(key) is websocket:
+            _revoke_playback_lease(key, record.get("connection_id"))
         await writers.detach(websocket)
         if device_sockets.get(key) is websocket:
             device_sockets.pop(key, None)
-            _revoke_playback_lease(key, record.get("connection_id"))
             last_seen = devices.get(key, {}).get("last_seen", _now_iso())
             await _broadcast_offline(key, last_seen)
 
