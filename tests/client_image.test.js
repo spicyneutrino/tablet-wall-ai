@@ -2821,6 +2821,9 @@ function videoPrepare(overrides) {
             plan: VIDEO_PLAN,
             calibration: VIDEO_CALIBRATION,
             connection_id: "conn-1",
+            /* The real server's ordinary video prepare carries the commit
+             * start position, which is zero. It is not a recovery marker. */
+            start_media_ms: 0,
         },
         overrides
     );
@@ -2844,13 +2847,15 @@ function videoCommit(harness, overrides) {
 }
 
 /* The recovery contract's fixture: the same occurrence re-prepared at a
- * media position after a fault. */
+ * media position after a fault. The explicit id is the only recovery
+ * marker; start_media_ms only supplies the position. */
 function videoRecoveryPrepare(overrides) {
     return videoPrepare(
         Object.assign(
             {
                 version: 5,
                 preparation_id: "prep-recovery",
+                recovery_id: "recovery-1",
                 start_media_ms: 2400,
             },
             overrides
@@ -3712,6 +3717,359 @@ test("video: a play promise that never settles is bounded and recovered", async 
 /* at the position and starts the recovery commit there.              */
 /* ------------------------------------------------------------------ */
 
+test("video: a routine zero-start prepare leaves the active picture playing", async () => {
+    const h = await startVideoHarness(VP);
+    h.emit(videoPrepare());
+    await drain();
+    const first = playerVideos(h)[0];
+    await driveVideoReady(h, first);
+    const commit = videoCommit(h, { effective_server_ms: h.now() + 400 });
+    h.emit(commit);
+    await activateAt(h, commit.effective_server_ms);
+    assert.strictEqual(first.paused, false, "the first video is playing");
+    const firstLayer = layerOf(h, first);
+    assert.strictEqual(firstLayer.style.visibility, "visible");
+
+    /* The server's ordinary next prepare carries the same zero start field
+     * a commit carries. Presence of that field is not recovery evidence. */
+    h.emit(
+        videoPrepare({
+            version: 5,
+            preparation_id: "prep-next",
+            occurrence: { playlist_revision: 1, item_index: 1, loop: 0 },
+            start_media_ms: 0,
+        })
+    );
+    await drain();
+
+    assert.strictEqual(first.paused, false, "the active video kept playing");
+    assert.strictEqual(first.playCalls, 2, "it was not restarted");
+    assert.strictEqual(
+        firstLayer.style.visibility,
+        "visible",
+        "its picture stayed on the wall"
+    );
+    const next = playerVideos(h).find((video) => video !== first);
+    assert.ok(next, "the next occurrence has its own element");
+    assert.strictEqual(
+        layerOf(h, next).style.visibility,
+        "hidden",
+        "the routine preparation is not painted early"
+    );
+    assert.strictEqual(visibleLayers(h).length, 1, "one picture");
+});
+
+test("video: video-to-video and one-video loop preparations never interrupt", async () => {
+    const h = await startVideoHarness(VP);
+    h.emit(videoPrepare());
+    await drain();
+    const first = playerVideos(h)[0];
+    await driveVideoReady(h, first);
+    const firstCommit = videoCommit(h, { effective_server_ms: h.now() + 200 });
+    h.emit(firstCommit);
+    await activateAt(h, firstCommit.effective_server_ms);
+
+    /* Consecutive videos: the next preparation arrives before the cut and
+     * must not stop the one already playing. */
+    h.emit(
+        videoPrepare({
+            version: 5,
+            preparation_id: "prep-second",
+            occurrence: { playlist_revision: 1, item_index: 1, loop: 0 },
+        })
+    );
+    await drain();
+    assert.strictEqual(
+        first.paused,
+        false,
+        "video-to-video left the first picture playing"
+    );
+    const second = playerVideos(h).find((video) => video !== first);
+    assert.ok(second, "the second video is preparing");
+    await driveVideoReady(h, second);
+    const secondCommit = videoCommit(h, {
+        version: 6,
+        prepared_at_version: 5,
+        preparation_id: "prep-second",
+        occurrence: { playlist_revision: 1, item_index: 1, loop: 0 },
+        effective_server_ms: h.now() + 200,
+    });
+    h.emit(secondCommit);
+    await activateAt(h, secondCommit.effective_server_ms);
+    assert.strictEqual(second.playCalls, 2, "the second video started");
+    assert.strictEqual(
+        layerOf(h, first),
+        undefined,
+        "the first was released at the cut"
+    );
+
+    /* A single video looping: the next occurrence is the same item, and its
+     * preparation must also leave the active picture alone. */
+    h.emit(
+        videoPrepare({
+            version: 7,
+            preparation_id: "prep-loop",
+            occurrence: { playlist_revision: 1, item_index: 0, loop: 1 },
+        })
+    );
+    await drain();
+    assert.strictEqual(
+        second.paused,
+        false,
+        "the single-video loop kept playing"
+    );
+    assert.strictEqual(second.playCalls, 2, "it was not restarted");
+    assert.strictEqual(
+        layerOf(h, second).style.visibility,
+        "visible",
+        "the loop's current picture stayed on the wall"
+    );
+    const loop = playerVideos(h).find(
+        (video) => video !== first && video !== second
+    );
+    assert.ok(loop, "the loop preparation has its own element");
+    assert.strictEqual(
+        layerOf(h, loop).style.visibility,
+        "hidden",
+        "the loop preparation is not painted early"
+    );
+});
+
+test("video recovery: a recovery at zero freezes and prepares at zero", async () => {
+    const h = await startVideoHarness(VP);
+    h.emit(videoPrepare());
+    await drain();
+    const first = playerVideos(h)[0];
+    await driveVideoReady(h, first);
+    const firstCommit = videoCommit(h, { effective_server_ms: h.now() + 200 });
+    h.emit(firstCommit);
+    await activateAt(h, firstCommit.effective_server_ms);
+    h.advance(1500);
+    first.currentTime = 1.5;
+    first.seeking = false;
+    const firstLayer = layerOf(h, first);
+
+    /* Zero is a valid recovery position: the explicit id, not the value,
+     * makes this a recovery. */
+    h.emit(
+        videoRecoveryPrepare({
+            version: 5,
+            preparation_id: "prep-zero",
+            recovery_id: "recovery-zero",
+            start_media_ms: 0,
+        })
+    );
+    await drain();
+    assert.strictEqual(first.paused, true, "the active picture froze");
+    assert.strictEqual(
+        firstLayer.style.visibility,
+        "visible",
+        "and stayed on the wall"
+    );
+    const recovery = playerVideos(h).find((video) => video !== first);
+    assert.ok(recovery, "the recovery has its own element");
+    recovery.metadata(6);
+    await drain();
+    assert.ok(
+        recovery.seekAssignments.includes(0),
+        "the recovery prepared at zero"
+    );
+    await driveVideoReady(h, recovery);
+    const recoveryCommit = videoRecoveryCommit(h, {
+        version: 6,
+        prepared_at_version: 5,
+        preparation_id: "prep-zero",
+        start_media_ms: 0,
+        effective_server_ms: h.now() + 200,
+    });
+    h.emit(recoveryCommit);
+    await activateAt(h, recoveryCommit.effective_server_ms);
+    assert.strictEqual(recovery.playCalls, 2, "the zero-position recovery started");
+    assert.strictEqual(
+        Math.round(recovery.currentTime * 1000),
+        0,
+        "it started at zero"
+    );
+    assert.strictEqual(visibleLayers(h).length, 1, "one picture after the commit");
+});
+
+test("video recovery: only the top-level id marks a recovery; invalid markers are inert", async () => {
+    const h = await startVideoHarness(VP);
+    h.emit(videoPrepare());
+    await drain();
+    const first = playerVideos(h)[0];
+    await driveVideoReady(h, first);
+    const commit = videoCommit(h, { effective_server_ms: h.now() + 200 });
+    h.emit(commit);
+    await activateAt(h, commit.effective_server_ms);
+    const count = playerVideos(h).length;
+
+    /* A media-level marker is not recovery identity: this is an ordinary
+     * next prepare, even though it also carries a start position. */
+    h.emit(
+        videoPrepare({
+            version: 5,
+            preparation_id: "prep-media-marker",
+            media: {
+                kind: "video",
+                duration_ms: 6000,
+                buffer_goal_ms: 5000,
+                start_lead_ms: 1000,
+                prepare_timeout_ms: 30000,
+                recovery_id: "media-only",
+                start_media_ms: 2400,
+            },
+        })
+    );
+    await drain();
+    assert.strictEqual(
+        first.paused,
+        false,
+        "a media-only marker left the active picture playing"
+    );
+    assert.strictEqual(
+        playerVideos(h).length,
+        count + 1,
+        "it became an ordinary pending preparation"
+    );
+
+    /* A present but invalid top-level id is rejected before any freeze. */
+    h.emit(
+        videoPrepare({
+            version: 6,
+            preparation_id: "prep-invalid-id",
+            recovery_id: "",
+        })
+    );
+    await drain();
+    assert.strictEqual(first.paused, false, "an invalid id did not freeze");
+    assert.strictEqual(
+        playerVideos(h).length,
+        count + 1,
+        "and created no player"
+    );
+    assert.ok(
+        h.warnings.some((w) =>
+            String(w.message).includes("video recovery id is invalid")
+        ),
+        "the invalid marker was named"
+    );
+
+    /* A valid id with an out-of-range position is inert too. */
+    h.emit(
+        videoRecoveryPrepare({
+            version: 7,
+            preparation_id: "prep-invalid-position",
+            recovery_id: "recovery-invalid-position",
+            start_media_ms: 6000,
+        })
+    );
+    await drain();
+    assert.strictEqual(
+        first.paused,
+        false,
+        "an invalid position did not freeze"
+    );
+    assert.strictEqual(
+        playerVideos(h).length,
+        count + 1,
+        "and created no player"
+    );
+
+    /* Once the id establishes recovery, media.start_media_ms may supply the
+     * position when the top-level field is absent. */
+    h.emit(
+        videoPrepare({
+            version: 8,
+            preparation_id: "prep-media-position",
+            recovery_id: "recovery-media-position",
+            start_media_ms: undefined,
+            media: {
+                kind: "video",
+                duration_ms: 6000,
+                buffer_goal_ms: 5000,
+                start_lead_ms: 1000,
+                prepare_timeout_ms: 30000,
+                start_media_ms: 2400,
+            },
+        })
+    );
+    await drain();
+    assert.strictEqual(first.paused, true, "the recovery froze the picture");
+    const recovery = playerVideos(h).find(
+        (video) => video !== first && video.src !== ""
+    );
+    assert.ok(recovery, "the recovery has its own element");
+    recovery.metadata(6);
+    await drain();
+    assert.ok(
+        recovery.seekAssignments.includes(2.4),
+        "the recovery took its position from media.start_media_ms"
+    );
+});
+
+test("video recovery: a routine prepare after the recovery keeps it playing", async () => {
+    const h = await startVideoHarness(VP);
+    h.emit(videoPrepare());
+    await drain();
+    const first = playerVideos(h)[0];
+    await driveVideoReady(h, first);
+    const firstCommit = videoCommit(h, { effective_server_ms: h.now() + 200 });
+    h.emit(firstCommit);
+    await activateAt(h, firstCommit.effective_server_ms);
+
+    h.emit(
+        videoRecoveryPrepare({
+            version: 5,
+            preparation_id: "prep-recovered",
+            recovery_id: "recovery-routine",
+            start_media_ms: 2400,
+        })
+    );
+    await drain();
+    const recovery = playerVideos(h).find((video) => video !== first);
+    await driveVideoReady(h, recovery);
+    const recoveryCommit = videoRecoveryCommit(h, {
+        version: 6,
+        prepared_at_version: 5,
+        preparation_id: "prep-recovered",
+        effective_server_ms: h.now() + 200,
+    });
+    h.emit(recoveryCommit);
+    await activateAt(h, recoveryCommit.effective_server_ms);
+    assert.strictEqual(recovery.playCalls, 2, "the recovery is playing");
+    const recoveryLayer = layerOf(h, recovery);
+    assert.strictEqual(recoveryLayer.style.visibility, "visible");
+
+    /* The server prepares the next occurrence immediately after the
+     * recovery commit. That routine prepare must not release the recovered
+     * picture. */
+    h.emit(
+        videoPrepare({
+            version: 7,
+            preparation_id: "prep-after-recovery",
+            occurrence: { playlist_revision: 1, item_index: 1, loop: 0 },
+        })
+    );
+    await drain();
+    assert.strictEqual(recovery.paused, false, "the recovered video kept playing");
+    assert.strictEqual(recovery.playCalls, 2, "it was not restarted");
+    assert.strictEqual(
+        recoveryLayer.style.visibility,
+        "visible",
+        "the recovered picture stayed on the wall"
+    );
+    const next = playerVideos(h).find(
+        (video) => video !== first && video !== recovery
+    );
+    assert.ok(next, "the next occurrence has its own element");
+    assert.strictEqual(
+        layerOf(h, next).style.visibility,
+        "hidden",
+        "the preparation after recovery is not painted early"
+    );
+});
+
 test("video recovery: play_ok no sends one fault per occurrence", async () => {
     const h = await startVideoHarness(VP);
     h.emit(videoPrepare());
@@ -4122,7 +4480,12 @@ test("video recovery: a state frame after the prepare keeps the recovery", async
 
 test("video recovery: coverage is measured from the recovery position", async () => {
     const h = await startVideoHarness(VP);
-    h.emit(videoPrepare({ start_media_ms: 2400 }));
+    h.emit(
+        videoPrepare({
+            recovery_id: "recovery-coverage",
+            start_media_ms: 2400,
+        })
+    );
     await drain();
     const el = playerVideos(h)[0];
 
@@ -4172,7 +4535,12 @@ test("video recovery: coverage is measured from the recovery position", async ()
 
 test("video recovery: a commit that loses its buffer faults at its start", async () => {
     const h = await startVideoHarness(VP);
-    h.emit(videoPrepare({ start_media_ms: 2400 }));
+    h.emit(
+        videoPrepare({
+            recovery_id: "recovery-buffer-lost",
+            start_media_ms: 2400,
+        })
+    );
     await drain();
     const el = playerVideos(h)[0];
     await driveVideoReady(h, el);
@@ -4212,7 +4580,12 @@ test("video recovery: a commit without start_media_ms still starts at zero", asy
 
 test("video recovery: the next natural boundary is the remaining duration", async () => {
     const h = await startVideoHarness(VP);
-    h.emit(videoPrepare({ start_media_ms: 2400 }));
+    h.emit(
+        videoPrepare({
+            recovery_id: "recovery-boundary",
+            start_media_ms: 2400,
+        })
+    );
     await drain();
     const el = playerVideos(h)[0];
     await driveVideoReady(h, el);
@@ -4379,6 +4752,415 @@ test("video recovery: a superseded recovery and late callbacks never paint", asy
     assert.strictEqual(layerOf(h, fresh).style.visibility, "visible");
     assert.strictEqual(layerOf(h, first), undefined, "the frozen picture was released");
     assert.strictEqual(visibleLayers(h).length, 1);
+});
+
+test("video recovery: a blocked terminal hold keeps the picture until Stop", async () => {
+    const h = await startVideoHarness(VP);
+    h.setFetch(route({ [ASSET_A]: okResponse(assetBlob("A", 400, 400)) }));
+    h.emit(wallFrame());
+    await drain();
+    const painted = h.named("drawImage").length;
+
+    h.emit(videoPrepare());
+    await drain();
+    const el = playerVideos(h)[0];
+    await driveVideoReady(h, el);
+    const commit = videoCommit(h, { effective_server_ms: h.now() + 400 });
+    h.emit(commit);
+    await activateAt(h, commit.effective_server_ms);
+    assert.strictEqual(el.paused, false, "the video is playing");
+    const layer = layerOf(h, el);
+    assert.strictEqual(layer.style.visibility, "visible");
+    const samples = h.sent("video_sample").length;
+    const pendingFrame = el.rvfc[0];
+
+    const hold = {
+        type: "playback",
+        state: "blocked",
+        session_id: "sess-1",
+        version: 5,
+        generation: "gen-1",
+        reason: "recovery attempts exhausted",
+    };
+    h.emit(hold);
+    await drain();
+    assert.strictEqual(el.paused, true, "the held picture froze");
+    assert.strictEqual(
+        layer.style.visibility,
+        "visible",
+        "and stayed on the wall"
+    );
+    assert.strictEqual(visibleLayers(h).length, 1, "exactly the held picture");
+
+    /* Idempotent: a repeated hold neither releases nor freezes it twice. */
+    const pauses = el.pauseCalls;
+    h.emit(hold);
+    await drain();
+    assert.strictEqual(el.pauseCalls, pauses, "the second hold did nothing");
+    assert.strictEqual(
+        layer.style.visibility,
+        "visible",
+        "the picture is still attached"
+    );
+
+    /* A wall replay updates the persisted scene, never the held picture. */
+    h.emit(wallFrame({ revision: 2 }));
+    await drain();
+    assert.strictEqual(
+        layer.style.visibility,
+        "visible",
+        "the wall frame did not paint over the hold"
+    );
+    assert.strictEqual(
+        h.named("drawImage").length,
+        painted,
+        "the canvas was not repainted"
+    );
+
+    /* A frame callback armed before the hold reports nothing and paints
+     * nothing after it. */
+    assert.ok(pendingFrame, "a frame callback was armed before the hold");
+    pendingFrame.callback(1234, {
+        mediaTime: 1.234,
+        expectedDisplayTime: 1234,
+        presentationTime: 1234,
+    });
+    await drain();
+    assert.strictEqual(
+        h.sent("video_sample").length,
+        samples,
+        "a late frame reported nothing"
+    );
+
+    /* Stop is still an explicit end: the held picture goes and the
+     * persisted scene is what remains. */
+    h.emit({
+        type: "playback",
+        state: "stopped",
+        session_id: "sess-1",
+        version: 6,
+    });
+    await drain();
+    assert.strictEqual(layerOf(h, el), undefined, "stop released the picture");
+    assert.strictEqual(visibleLayers(h).length, 0, "nothing is held any more");
+    assertCloseAll(
+        lastDrawImage(h).slice(1),
+        COVER_400,
+        "stop left the persisted scene"
+    );
+});
+
+test("video recovery: a failed terminal state also holds the picture", async () => {
+    const h = await startVideoHarness(VP);
+    h.emit(videoPrepare());
+    await drain();
+    const el = playerVideos(h)[0];
+    await driveVideoReady(h, el);
+    const commit = videoCommit(h, { effective_server_ms: h.now() + 200 });
+    h.emit(commit);
+    await activateAt(h, commit.effective_server_ms);
+    const layer = layerOf(h, el);
+
+    h.emit({
+        type: "playback",
+        state: "failed",
+        session_id: "sess-1",
+        version: 5,
+        reason: "online cohort lost",
+    });
+    await drain();
+    assert.strictEqual(el.paused, true, "the online terminal state froze it too");
+    assert.strictEqual(layer.style.visibility, "visible", "and kept the picture");
+    assert.strictEqual(visibleLayers(h).length, 1);
+});
+
+test("video recovery: a stale terminal hold after Retry does not freeze it", async () => {
+    const h = await startVideoHarness(VP);
+    h.emit(videoPrepare());
+    await drain();
+    const first = playerVideos(h)[0];
+    await driveVideoReady(h, first);
+    const commit = videoCommit(h, { effective_server_ms: h.now() + 200 });
+    h.emit(commit);
+    await activateAt(h, commit.effective_server_ms);
+
+    h.emit({
+        type: "playback",
+        state: "blocked",
+        session_id: "sess-1",
+        version: 5,
+    });
+    await drain();
+    assert.strictEqual(first.paused, true, "the cap held the old picture");
+
+    /* Retry advances the session version and prepares the same occurrence
+     * again, exactly as the server's strict Retry does. */
+    h.emit({
+        type: "cancel",
+        session_id: "sess-1",
+        version: 6,
+        reason: "superseded",
+    });
+    h.emit(
+        videoRecoveryPrepare({
+            version: 7,
+            preparation_id: "prep-retry",
+            recovery_id: "retry-recovery",
+            start_media_ms: 1200,
+        })
+    );
+    await drain();
+    const retry = playerVideos(h).find((video) => video !== first);
+    assert.ok(retry, "the retry prepared its own element");
+    assert.notStrictEqual(retry.src, "", "the retry source is attached");
+
+    /* A duplicate of the old cap frame arrives late: it must not release
+     * or freeze the retry that the new version owns. */
+    h.emit({
+        type: "playback",
+        state: "failed",
+        session_id: "sess-1",
+        version: 5,
+    });
+    await drain();
+    assert.notStrictEqual(
+        retry.src,
+        "",
+        "the stale hold did not release the retry"
+    );
+    assert.ok(layerOf(h, retry), "the retry layer survived");
+
+    await driveVideoReady(h, retry);
+    const retryCommit = videoRecoveryCommit(h, {
+        version: 8,
+        prepared_at_version: 7,
+        preparation_id: "prep-retry",
+        start_media_ms: 1200,
+        effective_server_ms: h.now() + 200,
+    });
+    h.emit(retryCommit);
+    await activateAt(h, retryCommit.effective_server_ms);
+    assert.strictEqual(retry.playCalls, 2, "the retry started");
+    assert.strictEqual(
+        layerOf(h, retry).style.visibility,
+        "visible",
+        "the retry is on the wall"
+    );
+});
+
+test("video recovery: an old session's hold cannot freeze a new session", async () => {
+    const h = await startVideoHarness(VP);
+    h.emit(videoPrepare());
+    await drain();
+    const first = playerVideos(h)[0];
+    await driveVideoReady(h, first);
+    const firstCommit = videoCommit(h, { effective_server_ms: h.now() + 200 });
+    h.emit(firstCommit);
+    await activateAt(h, firstCommit.effective_server_ms);
+
+    /* The old session stops; a new session starts and plays. */
+    h.emit({
+        type: "playback",
+        state: "stopped",
+        session_id: "sess-1",
+        version: 5,
+    });
+    await drain();
+    h.emit(
+        videoPrepare({
+            session_id: "sess-2",
+            version: 1,
+            preparation_id: "prep-session-2",
+            occurrence: { playlist_revision: 2, item_index: 0, loop: 0 },
+        })
+    );
+    await drain();
+    const second = playerVideos(h).find((video) => video !== first);
+    assert.ok(second, "the new session prepared its own element");
+    await driveVideoReady(h, second);
+    const secondCommit = videoCommit(h, {
+        session_id: "sess-2",
+        version: 2,
+        prepared_at_version: 1,
+        preparation_id: "prep-session-2",
+        occurrence: { playlist_revision: 2, item_index: 0, loop: 0 },
+        effective_server_ms: h.now() + 200,
+    });
+    h.emit(secondCommit);
+    await activateAt(h, secondCommit.effective_server_ms);
+    assert.strictEqual(second.paused, false, "the new session is playing");
+
+    /* An old hold with a larger version still belongs to the old session:
+     * it must not freeze the new picture. */
+    h.emit({
+        type: "playback",
+        state: "blocked",
+        session_id: "sess-1",
+        version: 9,
+    });
+    await drain();
+    assert.strictEqual(second.paused, false, "the old hold was ignored");
+    assert.strictEqual(
+        layerOf(h, second).style.visibility,
+        "visible",
+        "the new session's picture is untouched"
+    );
+
+    /* The new lineage is intact: its own hold still works. */
+    h.emit({
+        type: "playback",
+        state: "blocked",
+        session_id: "sess-2",
+        version: 3,
+    });
+    await drain();
+    assert.strictEqual(second.paused, true, "the current session's hold applies");
+});
+
+test("video recovery: a terminal hold from another generation or epoch is ignored", async () => {
+    const h = await startVideoHarness(VP);
+    h.emit({ type: "clock_bootstrap", epoch: "clock-1" });
+    await drain();
+    h.emit(
+        videoPrepare({
+            generation: "gen-1",
+            clock_epoch: "clock-1",
+        })
+    );
+    await drain();
+    const el = playerVideos(h)[0];
+    await driveVideoReady(h, el);
+    const commit = videoCommit(h, {
+        generation: "gen-1",
+        clock_epoch: "clock-1",
+        effective_server_ms: h.now() + 200,
+    });
+    h.emit(commit);
+    await activateAt(h, commit.effective_server_ms);
+    assert.strictEqual(el.paused, false, "the video is playing");
+
+    h.emit({
+        type: "playback",
+        state: "blocked",
+        session_id: "sess-1",
+        version: 5,
+        generation: "gen-1",
+        clock_epoch: "clock-2",
+    });
+    await drain();
+    assert.strictEqual(el.paused, false, "another clock epoch is not this hold");
+
+    h.emit({
+        type: "playback",
+        state: "blocked",
+        session_id: "sess-1",
+        version: 5,
+        generation: "gen-2",
+        clock_epoch: "clock-1",
+    });
+    await drain();
+    assert.strictEqual(el.paused, false, "another generation is not this hold");
+
+    h.emit({
+        type: "playback",
+        state: "blocked",
+        session_id: "sess-1",
+        version: 5,
+        generation: "gen-1",
+        clock_epoch: "clock-1",
+    });
+    await drain();
+    assert.strictEqual(el.paused, true, "the matching lineage applies the hold");
+});
+
+test("video recovery: a replaced socket cannot resurrect or freeze playback", async () => {
+    const h = await startVideoHarness(VP);
+    h.setFetch(route({ [ASSET_A]: okResponse(assetBlob("A", 400, 400)) }));
+    h.emit(wallFrame());
+    await drain();
+
+    h.emit(videoPrepare());
+    await drain();
+    const first = playerVideos(h)[0];
+    await driveVideoReady(h, first);
+    const firstCommit = videoCommit(h, { effective_server_ms: h.now() + 200 });
+    h.emit(firstCommit);
+    await activateAt(h, firstCommit.effective_server_ms);
+    assert.strictEqual(visibleLayers(h).length, 1, "the first picture is up");
+    const oldSocket = h.socket();
+
+    h.closeSocket(1006);
+    await drain();
+    assert.strictEqual(visibleLayers(h).length, 0, "the close restored the scene");
+    await waitFor(
+        () => h.socketCount() === 2,
+        "the client reopens its device socket"
+    );
+    h.socket().readyState = 1;
+
+    /* A queued prepare on the socket that already failed must not start a
+     * player again. */
+    const videosBefore = h.videos.length;
+    oldSocket.emit("message", {
+        data: JSON.stringify(
+            videoPrepare({
+                version: 9,
+                preparation_id: "prep-old-socket",
+                occurrence: { playlist_revision: 1, item_index: 1, loop: 0 },
+            })
+        ),
+    });
+    await drain();
+    assert.strictEqual(
+        h.videos.length,
+        videosBefore,
+        "the replaced socket started nothing"
+    );
+
+    /* The replacement owns the new picture. */
+    h.emit(
+        videoPrepare({
+            version: 9,
+            preparation_id: "prep-new-socket",
+        })
+    );
+    await drain();
+    const fresh = playerVideos(h).find((video) => video !== first);
+    assert.ok(fresh, "the new socket prepared its own element");
+    await driveVideoReady(h, fresh);
+    const freshCommit = videoCommit(h, {
+        version: 10,
+        prepared_at_version: 9,
+        preparation_id: "prep-new-socket",
+        effective_server_ms: h.now() + 200,
+    });
+    h.emit(freshCommit);
+    await activateAt(h, freshCommit.effective_server_ms);
+    assert.strictEqual(fresh.paused, false, "the new picture is playing");
+    const freshLayer = layerOf(h, fresh);
+    assert.strictEqual(freshLayer.style.visibility, "visible");
+
+    /* Even with the current lineage, the old socket cannot freeze a
+     * picture it does not own. */
+    oldSocket.emit("message", {
+        data: JSON.stringify({
+            type: "playback",
+            state: "blocked",
+            session_id: "sess-1",
+            version: 10,
+        }),
+    });
+    await drain();
+    assert.strictEqual(
+        fresh.paused,
+        false,
+        "the replaced socket did not freeze the new picture"
+    );
+    assert.strictEqual(
+        freshLayer.style.visibility,
+        "visible",
+        "its picture is untouched"
+    );
 });
 
 /* ------------------------------------------------------------------ */
@@ -4575,7 +5357,7 @@ test("client shell: cache versions, HUD markup and the 56 px CSS pill", () => {
     const css = fs.readFileSync(CLIENT_CSS, "utf8");
 
     assert.match(html, /client\.css\?v=4/, "the stylesheet version was bumped");
-    assert.match(html, /client\.js\?v=9/, "the script version was bumped");
+    assert.match(html, /client\.js\?v=10/, "the script version was bumped");
     assert.match(html, /id="hud"/, "the HUD has static markup");
     assert.match(html, /id="video-unavailable"/, "the failure notice has static markup");
 

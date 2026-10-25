@@ -2451,6 +2451,11 @@
     var playbackEvidence = 0;
     var playbackRenewTimer = null;
     var playbackCommitSeq = 0;
+    /* The lineage of the session this client is holding. A terminal hold is
+     * applied only to the lineage it names: Retry advances the version and a
+     * new session changes the id, so an old hold cannot freeze a newer
+     * picture. */
+    var playbackLineage = null;
 
     function sendClockSample() {
         if (!activeSocket || activeSocket.readyState !== 1) return;
@@ -2525,6 +2530,7 @@
         releaseVideoSlot(videoPending);
         var content = preparedContent(frame.asset);
         if (!content) return;
+        notePlaybackLineage(frame);
         var token = ++playbackToken;
         var prepared = {
             token: token,
@@ -2646,6 +2652,7 @@
         }
         var target = Number(frame.effective_server_ms);
         if (!Number.isFinite(target)) return;
+        notePlaybackLineage(frame);
         var offset = clockOffset === null ? 0 : clockOffset;
         if (playbackRenewTimer !== null) clearInterval(playbackRenewTimer);
         playbackRenewTimer = null;
@@ -2706,6 +2713,101 @@
         playbackOnScreen = false;
     }
 
+    /* Remember the session identity an accepted prepare or commit names. A
+     * new session starts a new lineage even when its version is lower; within
+     * one session the version only moves forward. */
+    function notePlaybackLineage(frame) {
+        if (!frame || typeof frame !== "object") return;
+        var sessionChanged =
+            playbackLineage !== null &&
+            frame.session_id !== undefined &&
+            frame.session_id !== null &&
+            playbackLineage.sessionId !== undefined &&
+            playbackLineage.sessionId !== null &&
+            frame.session_id !== playbackLineage.sessionId;
+        if (playbackLineage === null || sessionChanged) {
+            playbackLineage = {
+                sessionId: null,
+                version: null,
+                generation: null,
+                clockEpoch: null,
+            };
+        }
+        if (frame.session_id !== undefined && frame.session_id !== null) {
+            playbackLineage.sessionId = frame.session_id;
+        }
+        if (frame.version !== undefined && frame.version !== null) {
+            var version = Number(frame.version);
+            if (
+                Number.isFinite(version) &&
+                (!Number.isFinite(playbackLineage.version) ||
+                    version >= playbackLineage.version)
+            ) {
+                playbackLineage.version = version;
+            }
+        }
+        if (frame.generation !== undefined && frame.generation !== null) {
+            playbackLineage.generation = frame.generation;
+        }
+        if (frame.clock_epoch !== undefined && frame.clock_epoch !== null) {
+            playbackLineage.clockEpoch = frame.clock_epoch;
+        }
+    }
+
+    /* A terminal hold that names an older session, version, generation or
+     * clock epoch lost its race with Retry or a new session. */
+    function playbackFrameIsStale(frame) {
+        if (!playbackLineage) return false;
+        if (
+            frame.session_id !== undefined &&
+            frame.session_id !== null &&
+            playbackLineage.sessionId !== undefined &&
+            playbackLineage.sessionId !== null &&
+            frame.session_id !== playbackLineage.sessionId
+        ) {
+            return true;
+        }
+        var version = Number(frame.version);
+        if (
+            frame.version !== undefined &&
+            frame.version !== null &&
+            Number.isFinite(version) &&
+            Number.isFinite(playbackLineage.version) &&
+            version < playbackLineage.version
+        ) {
+            return true;
+        }
+        if (frame.generation !== undefined && frame.generation !== null) {
+            var generation =
+                playbackLineage.generation !== undefined &&
+                playbackLineage.generation !== null
+                    ? playbackLineage.generation
+                    : heldGeneration;
+            if (
+                generation !== undefined &&
+                generation !== null &&
+                frame.generation !== generation
+            ) {
+                return true;
+            }
+        }
+        if (frame.clock_epoch !== undefined && frame.clock_epoch !== null) {
+            var epoch =
+                playbackLineage.clockEpoch !== undefined &&
+                playbackLineage.clockEpoch !== null
+                    ? playbackLineage.clockEpoch
+                    : clockEpoch;
+            if (
+                epoch !== undefined &&
+                epoch !== null &&
+                frame.clock_epoch !== epoch
+            ) {
+                return true;
+            }
+        }
+        return false;
+    }
+
     function restoreStaticScene() {
         if (!persistedWall || wallState === persistedWall) return;
         wallState = persistedWall;
@@ -2755,8 +2857,8 @@
     var videoArmed = null;
     var videoActive = null;
     /* The last video_fault sent: { sessionId, key }. The key is the
-     * occurrence and position together, so a stalled video reports once
-     * until a new commit moves either of them. */
+     * occurrence and position together. A recovery commit clears it even at
+     * the same position, because a new commit is a new attempt. */
     var lastVideoFault = null;
     var enableDisplayEl = null;
     var enableDisplaySlot = null;
@@ -2896,26 +2998,28 @@
             return; /* a stale preparation cannot replace a newer one */
         }
         /*
-         * A recovery re-prepares the occurrence it is already showing, at a
-         * media position: `start_media_ms` is how the server names it. The
-         * picture on the glass stays until the recovery commit, so freeze it
-         * and drop the pending/armed work it would have cut to.
+         * A recovery re-prepares the occurrence already on the glass at a
+         * media position, and only the server's top-level `recovery_id` says
+         * so. A routine prepare for the next occurrence may carry
+         * `start_media_ms: 0`; it is still routine and must leave the
+         * armed/active picture alone.
          */
-        var recoveryMs = null;
-        if (
-            frame.start_media_ms !== undefined &&
-            frame.start_media_ms !== null
-        ) {
-            recoveryMs = Number(frame.start_media_ms);
-        } else if (
-            frame.media &&
-            frame.media.start_media_ms !== undefined &&
-            frame.media.start_media_ms !== null
-        ) {
-            recoveryMs = Number(frame.media.start_media_ms);
-        }
-        var recovery = recoveryMs !== null;
+        var recoveryId = frame.recovery_id;
+        var recovery = recoveryId !== undefined;
+        var recoveryMs = 0;
         if (recovery) {
+            if (typeof recoveryId !== "string" || recoveryId === "") {
+                warn("video recovery id is invalid");
+                return;
+            }
+            var requestedMs = frame.start_media_ms;
+            if (requestedMs === undefined || requestedMs === null) {
+                requestedMs = media.start_media_ms;
+            }
+            recoveryMs =
+                requestedMs === undefined || requestedMs === null
+                    ? NaN
+                    : Math.round(Number(requestedMs));
             if (
                 !Number.isFinite(recoveryMs) ||
                 recoveryMs < 0 ||
@@ -2924,7 +3028,6 @@
                 warn("video recovery position is outside the clip");
                 return;
             }
-            recoveryMs = Math.round(recoveryMs);
             /* A replayed recovery prepare from an older lineage must not
              * freeze the picture a newer one already put on the wall. */
             if (
@@ -3013,6 +3116,7 @@
             warn("video layout failed");
             return;
         }
+        notePlaybackLineage(frame);
         videoPending = slot;
         layer.appendChild(el);
         document.body.appendChild(layer);
@@ -3654,6 +3758,7 @@
 
     function commitVideo(frame, slot) {
         if (!videoSlotLive(slot)) return;
+        notePlaybackLineage(frame);
         var target = Number(frame.effective_server_ms);
         var start = Number(frame.start_media_ms);
         /* A recovery commit that lost the field still starts where the
@@ -4116,6 +4221,19 @@
         freezeVideoSlot(videoActive);
     }
 
+    /* The terminal recovery state: the attempt cap is spent, so no further
+     * preparation will arrive for this occurrence. Hold the picture that is
+     * already on the glass, drop the work a cut still owned, and keep
+     * playback ownership so a wall/render replay cannot paint over it. */
+    function holdPlaybackTerminal(frame) {
+        if (playbackFrameIsStale(frame)) return;
+        notePlaybackLineage(frame);
+        clearStillPlayback();
+        releaseVideoSlot(videoPending);
+        releaseVideoSlot(videoArmed);
+        freezeVideoSlot(videoActive);
+    }
+
     /* Stop/epoch/socket close: everything goes, nothing keeps running. */
     function stopVideoPlayback() {
         releaseVideoSlot(videoPending);
@@ -4130,12 +4248,12 @@
      * reconnect prepares the current item when the session is still live. */
     function onSocketClosed() {
         clearStillPlayback();
-        var hadVideo = videoPending || videoArmed || videoActive;
         stopVideoPlayback();
         /* The next render/wall replay may describe a server state that changed
-         * while this socket was down. A still stays on the glass meanwhile. */
+         * while this socket was down. Until then the persisted scene is the
+         * only picture the server still owns. */
         playbackOnScreen = false;
-        if (hadVideo) restoreStaticScene();
+        restoreStaticScene();
     }
 
     if (typeof document.addEventListener === "function") {
@@ -4154,6 +4272,9 @@
             return; // unrecognised frames are ignored, not fatal
         }
         if (!frame || typeof frame !== "object") return;
+        /* A replaced socket is history: its queued frames must not start,
+         * paint or freeze work the new connection owns. */
+        if (socket !== activeSocket) return;
 
         if (frame.type === "welcome") {
             welcomedOnce = true;
@@ -4211,6 +4332,11 @@
                  * already in flight; clear everything a routine cut owned. */
                 clearStillPlayback();
                 holdVideoForRecovery();
+            } else if (
+                frame.state === "blocked" ||
+                frame.state === "failed"
+            ) {
+                holdPlaybackTerminal(frame);
             } else {
                 stopPlayback();
             }
