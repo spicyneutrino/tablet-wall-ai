@@ -3164,7 +3164,7 @@
                     if (!retried && error instanceof ApiError && error.status === 412
                             && action !== "start" && action !== "resume") {
                         retried = true;
-                        await loadPlayback();
+                        await refreshPlayback(false);
                         continue;
                     }
                     throw error;
