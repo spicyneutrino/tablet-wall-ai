@@ -3248,8 +3248,14 @@
         } else if (stateName === "stopped") {
             text = "Playback is stopped.";
         } else if (stateName === "blocked") {
+            const recovery = status.recovery && typeof status.recovery === "object"
+                ? status.recovery : null;
             text = "Blocked: " + sentence(status.blocked_reason
                 || "the cohort was not ready before the preparation deadline")
+                + (recovery && recovery.position_ms !== undefined
+                    ? " at " + formatDuration(recovery.position_ms)
+                        + " (attempt " + recovery.attempts + ")"
+                    : "")
                 + " Retry this item, or Stop to end the session.";
         } else if (stateName === "failed") {
             text = "Failed: " + sentence(failureText(status))
@@ -3262,6 +3268,18 @@
         } else if (stateName === "armed") {
             text = "Armed: " + occurrenceText(status.current && (status.current.occurrence
                 || status.current)) + " is committed for the next cut.";
+        } else if (stateName === "recovering") {
+            const recovery = status.recovery && typeof status.recovery === "object"
+                ? status.recovery : {};
+            const at = Number(recovery.position_ms);
+            text = "Recovering " + occurrenceText(status.current && (status.current.occurrence
+                || status.current))
+                + (Number.isFinite(at) ? " at " + formatDuration(at) : "")
+                + " after " + sentence(recovery.reason || "a stall")
+                + (recovery.device_id
+                    ? " on " + numberedLabel(recovery.device_id, latestProfile(recovery.device_id))
+                    : "")
+                + ". Waiting for the group buffer and a common anchor.";
         } else {
             const current = status.current && (status.current.occurrence || status.current);
             const pending = status.pending && status.pending.occurrence;
@@ -3364,6 +3382,17 @@
         const remaining = ["blocked", "failed", "final"].indexOf(status.state) !== -1
             ? null : remainingDwell(status);
         if (remaining !== null) facts.push(["Remaining dwell", remainingText(remaining)]);
+        if (status.recovery && typeof status.recovery === "object") {
+            const recovery = status.recovery;
+            facts.push(["Recovery",
+                sentence(recovery.reason || "stall")
+                + " at " + formatDuration(recovery.position_ms)
+                + " · attempt " + recovery.attempts
+                + (recovery.degraded_ms !== undefined
+                    ? " · degraded " + formatDuration(recovery.degraded_ms) : "")
+                + (recovery.missing && recovery.missing.length
+                    ? " · missing " + recovery.missing.length : "")]);
+        }
         if (status.hold_deadline_ms !== undefined && status.hold_deadline_ms !== null
                 && status.held) {
             facts.push(["Hold deadline", msLabel(status.hold_deadline_ms)]);
