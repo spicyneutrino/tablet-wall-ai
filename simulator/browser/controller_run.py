@@ -1,4 +1,5 @@
-"""Durable controller acceptance for F3 (pause) and F4 (live identity).
+"""Durable controller acceptance for F3 (pause), F4 (live identity) and the
+tabbed console shell.
 
     .venv/bin/python -m simulator.browser.controller_run --artifacts /tmp/...
 
@@ -6,6 +7,11 @@ Starts a disposable real server on a free port with temporary storage, two
 calibrated Chromium clients and a 20 s video plus a still. It then drives the
 physical controller UI rather than only reading ``data-state``:
 
+* The console opens on Show with four tabs and exactly one visible panel. Arrow
+  keys move the roving tabindex without dirtying a draft or writing a layout,
+  a reload restores the last manual tab, and 390x844 hides the tab strip while
+  keeping Show selected. The topbar transport mirrors the rail and starts
+  playback; the legacy index.html link lives only in System.
 * Pause must render ``Paused`` with the live item name, the paused countdown must
   not age, the status poll must stay healthy, Resume must advance the clients
   and Stop must restore the persisted scene.
@@ -86,6 +92,7 @@ SCENARIOS = {
     "S11": "no unexpected page errors, console errors or failed requests",
     "S12": "local Apply/Cancel mirror the draft without writing a layout",
     "S13": "one session exclusion shows the cohort and hides the excluded tablet",
+    "S14": "the tabbed console switches, persists and keeps its drafts",
 }
 DWELL_RE = re.compile(r"\b\d+(?:\.\d+)? s left")
 EXPECTED_EVENT_REASONS = {
@@ -404,20 +411,24 @@ async def main(artifacts_arg: Path) -> int:
                 ".startsWith(prefix)", arg=prefix, timeout=timeout)
 
         async def add_asset(asset_id: str) -> None:
+            await open_tab("content")
             await controller.select_option("#playlist-library", asset_id)
             await controller.wait_for_function(
                 "() => !document.querySelector('#btn-playlist-add').disabled", timeout=5000)
             await controller.click("#btn-playlist-add")
 
         async def move_up(index: int) -> None:
+            await open_tab("content")
             await controller.click(
                 f'.playlist-item[data-index="{index}"] [data-action="up"]')
 
         async def remove_row(index: int) -> None:
+            await open_tab("content")
             await controller.click(
                 f'.playlist-item[data-index="{index}"] [data-action="remove"]')
 
         async def save_playlist(expected_revision: int) -> None:
+            await open_tab("content")
             await controller.click("#btn-playlist-save")
             await wait_until(
                 lambda: saved_playlist().get("revision") == expected_revision, 10,
@@ -426,8 +437,9 @@ async def main(artifacts_arg: Path) -> int:
                 "() => (document.querySelector('#playlist-msg')?.textContent || '')"
                 ".startsWith('Playlist saved')", timeout=10000)
 
-        async def reload_controller() -> None:
+        async def reload_controller(tab: str = "show") -> None:
             await controller.reload(wait_until="networkidle")
+            await open_tab(tab)
             await controller.evaluate("document.querySelector('#playback-details').open = true")
             await controller.wait_for_function(
                 "() => !document.querySelector('#btn-playback-start').disabled"
@@ -436,6 +448,89 @@ async def main(artifacts_arg: Path) -> int:
             await controller.wait_for_function(
                 "() => (document.querySelector('#playlist-hint')?.textContent || '')"
                 " === 'Saved on the server.'", timeout=15000)
+
+        async def shell_state() -> dict[str, Any]:
+            return await controller.evaluate("""() => {
+                const tabs = [...document.querySelectorAll('#rail-tabs [role="tab"]')];
+                const panels = [...document.querySelectorAll(
+                    '#rail-panels [role="tabpanel"]')];
+                const transport = document.querySelector('#topbar-transport');
+                const legacy = document.querySelector(
+                    '#panel-system a[href="index.html"]');
+                return {
+                    tabs: tabs.map(node => ({
+                        id: node.id,
+                        selected: node.getAttribute('aria-selected'),
+                        tabindex: node.getAttribute('tabindex'),
+                        controls: node.getAttribute('aria-controls'),
+                    })),
+                    panels: panels.map(node => ({
+                        id: node.id,
+                        hidden: node.hidden,
+                        visible: !node.hidden && node.getClientRects().length > 0,
+                        labelledby: node.getAttribute('aria-labelledby'),
+                    })),
+                    selected: (tabs.find(
+                        node => node.getAttribute('aria-selected') === 'true')
+                        || {}).id || null,
+                    visiblePanels: panels.filter(
+                        node => !node.hidden && node.getClientRects().length > 0)
+                        .map(node => node.id),
+                    focused: document.activeElement ? document.activeElement.id : null,
+                    stored: (() => {
+                        try {
+                            return window.sessionStorage.getItem(
+                                'tablet-wall-console-tab-v1');
+                        } catch (error) {
+                            return null;
+                        }
+                    })(),
+                    stageVisible: (() => {
+                        const stage = document.querySelector('#stage-svg');
+                        return !!stage && stage.getClientRects().length > 0
+                            && stage.getBoundingClientRect().width > 0;
+                    })(),
+                    topbarIndexLinks: document.querySelectorAll(
+                        '.topbar a[href="index.html"]').length,
+                    topbarTransportVisible: !!transport
+                        && transport.getClientRects().length > 0,
+                    legacyLink: legacy ? legacy.textContent.trim() : null,
+                };
+            }""")
+
+        def valid_tab_shell(snapshot: dict[str, Any], expected: str) -> bool:
+            panels = {panel["id"]: panel for panel in snapshot["panels"]}
+            selected = [tab["id"] for tab in snapshot["tabs"]
+                        if tab["selected"] == "true"]
+            return (
+                snapshot["selected"] == f"tab-{expected}"
+                and selected == [f"tab-{expected}"]
+                and snapshot["visiblePanels"] == [f"panel-{expected}"]
+                and all(tab["controls"] in panels for tab in snapshot["tabs"])
+                and all(panels[tab["controls"]]["labelledby"] == tab["id"]
+                        for tab in snapshot["tabs"])
+                and all(panels[tab["controls"]]["visible"]
+                        == (tab["selected"] == "true")
+                        for tab in snapshot["tabs"])
+                and [tab["tabindex"] for tab in snapshot["tabs"]
+                     if tab["selected"] == "true"] == ["0"]
+                and all(tab["tabindex"] == "-1" for tab in snapshot["tabs"]
+                        if tab["selected"] != "true"))
+
+        async def open_tab(name: str) -> None:
+            await controller.click(f"#tab-{name}")
+            await controller.wait_for_function("""(name) => {
+                const tab = document.querySelector('#tab-' + name);
+                const panel = document.querySelector('#panel-' + name);
+                const visible = [...document.querySelectorAll(
+                    '#rail-panels [role="tabpanel"]')].filter(
+                    node => !node.hidden && node.getClientRects().length > 0);
+                return !!tab && !!panel
+                    && tab.getAttribute('aria-selected') === 'true'
+                    && tab.getAttribute('tabindex') === '0'
+                    && !panel.hidden && panel.getClientRects().length > 0
+                    && visible.length === 1 && visible[0] === panel;
+            }""", arg=name, timeout=5000)
 
         def healthy_poll(text: str) -> bool:
             return "Live status, read at" in text and "Status unavailable" not in text
@@ -475,8 +570,112 @@ async def main(artifacts_arg: Path) -> int:
                     return False
             return True
 
+        initial_shell = await shell_state()
+        check("S1", "the tabbed console opens on Show with four tabs, one panel and the stage",
+              valid_tab_shell(initial_shell, "show")
+              and [tab["id"] for tab in initial_shell["tabs"]]
+              == ["tab-show", "tab-tablet", "tab-content", "tab-system"]
+              and [panel["id"] for panel in initial_shell["panels"]]
+              == ["panel-show", "panel-tablet", "panel-content", "panel-system"]
+              and initial_shell["stageVisible"]
+              and initial_shell["stored"] is None,
+              tabs=[tab["id"] for tab in initial_shell["tabs"]],
+              panels=initial_shell["visiblePanels"],
+              stage=initial_shell["stageVisible"], stored=initial_shell["stored"])
+
+        phase["id"] = "S14"
+        check("S14", "the topbar has no legacy link and the System panel holds the legacy view",
+              initial_shell["topbarIndexLinks"] == 0
+              and initial_shell["legacyLink"] == "Logical wall (legacy)",
+              topbar_links=initial_shell["topbarIndexLinks"],
+              legacy=initial_shell["legacyLink"])
+        draft_before = await controller.evaluate("""() => ({
+            flag: document.querySelector('#draft-flag').textContent,
+            dirty: document.querySelector('#draft-flag').dataset.dirty,
+            tabletDot: !document.querySelector('#tab-tablet-dot').hidden,
+            contentDot: !document.querySelector('#tab-content-dot').hidden,
+            playlistHint: document.querySelector('#playlist-hint').textContent,
+        })""")
+        layout_before_switch = http.get("/api/v3/config").json().get("revision")
+        await open_tab("show")
+        transitions = (
+            ("ArrowRight", "tablet",
+             "ArrowRight moves Show to Tablet with a roving tabindex"),
+            ("ArrowRight", "content",
+             "ArrowRight moves Tablet to Content with a roving tabindex"),
+            ("ArrowLeft", "tablet",
+             "ArrowLeft moves Content back to Tablet with a roving tabindex"),
+            ("Home", "show", "Home selects Show with a roving tabindex"),
+            ("End", "system", "End selects System with a roving tabindex"),
+            ("ArrowRight", "show",
+             "ArrowRight wraps System back to Show with a roving tabindex"),
+        )
+        tab_transitions = []
+        current = "show"
+        for key, expected, name in transitions:
+            await controller.locator(f"#tab-{current}").focus()
+            await controller.keyboard.press(key)
+            snapshot = await shell_state()
+            tab_transitions.append({
+                "key": key, "expected": expected, "selected": snapshot["selected"],
+                "visible": snapshot["visiblePanels"], "focused": snapshot["focused"],
+                "tabindex": {tab["id"]: tab["tabindex"] for tab in snapshot["tabs"]},
+            })
+            check("S14", name,
+                  valid_tab_shell(snapshot, expected)
+                  and snapshot["focused"] == f"tab-{expected}",
+                  selected=snapshot["selected"], visible=snapshot["visiblePanels"],
+                  focused=snapshot["focused"])
+            current = expected
+        report["tab_transitions"] = tab_transitions
+        draft_after = await controller.evaluate("""() => ({
+            flag: document.querySelector('#draft-flag').textContent,
+            dirty: document.querySelector('#draft-flag').dataset.dirty,
+            tabletDot: !document.querySelector('#tab-tablet-dot').hidden,
+            contentDot: !document.querySelector('#tab-content-dot').hidden,
+            playlistHint: document.querySelector('#playlist-hint').textContent,
+        })""")
+        layout_after_switch = http.get("/api/v3/config").json().get("revision")
+        check("S14", "switching tabs neither dirties a draft nor writes the layout",
+              draft_after == draft_before
+              and layout_after_switch == layout_before_switch,
+              draft_before=draft_before, draft_after=draft_after,
+              layout_before=layout_before_switch, layout_after=layout_after_switch)
+        await open_tab("system")
+        await controller.screenshot(
+            path=str(artifacts / "tabs-system-desktop.png"), full_page=True)
+        await controller.locator("#panel-system .legacy-card").screenshot(
+            path=str(artifacts / "system-legacy-desktop.png"))
+        await open_tab("content")
+        content_shell = await shell_state()
+        check("S14", "the topbar transport stays visible outside the Show panel",
+              content_shell["topbarTransportVisible"]
+              and content_shell["selected"] == "tab-content"
+              and content_shell["stored"] == "content",
+              visible=content_shell["topbarTransportVisible"],
+              selected=content_shell["selected"], stored=content_shell["stored"])
+        await controller.screenshot(
+            path=str(artifacts / "tabs-content-desktop.png"), full_page=True)
+        await controller.reload(wait_until="networkidle")
+        await controller.wait_for_function(
+            "() => document.querySelector('#tab-content')?.getAttribute('aria-selected')"
+            " === 'true' && !document.querySelector('#panel-content')?.hidden",
+            timeout=15000)
+        restored_shell = await shell_state()
+        check("S14", "a reload restores the last manually chosen tab",
+              valid_tab_shell(restored_shell, "content")
+              and restored_shell["stored"] == "content",
+              selected=restored_shell["selected"],
+              visible=restored_shell["visiblePanels"],
+              stored=restored_shell["stored"])
+        report["tab_shell"] = {"initial": initial_shell, "restored": restored_shell}
+
         phase["id"] = "S1"
-        await controller.click("#btn-playback-start")
+        await open_tab("show")
+        await open_details()
+        await controller.wait_for_function(
+            "() => !document.querySelector('#btn-topbar-start').disabled", timeout=15000)
+        await controller.click("#btn-topbar-start")
         await wait_until(lambda: status().get("state") in ("playing", "preparing"), 15,
                          "the Start never began a session")
         await wait_until(lambda: status().get("state") == "playing", 25,
@@ -484,6 +683,43 @@ async def main(artifacts_arg: Path) -> int:
         await wait_until(clients_advancing, 25, "the clients never advanced the video")
         report["session"] = status()
         check("S1", "Start from the controller begins a playing session on both clients", True)
+        await controller.wait_for_function(
+            "() => document.querySelector('#topbar-playback-state')?.dataset.state"
+            " === 'playing'", timeout=15000)
+        transport = await controller.evaluate("""() => {
+            const pairs = ['start', 'pause', 'stop'].map(name => {
+                const rail = document.querySelector('#btn-playback-' + name);
+                const top = document.querySelector('#btn-topbar-' + name);
+                return {
+                    name: name,
+                    railHidden: rail.hidden, topHidden: top.hidden,
+                    railDisabled: rail.disabled, topDisabled: top.disabled,
+                    railText: rail.textContent.trim(), topText: top.textContent.trim(),
+                };
+            });
+            const word = document.querySelector('#playback-state-word');
+            const topbar = document.querySelector('#topbar-playback-state');
+            return {
+                railState: word.textContent.trim(), railData: word.dataset.state,
+                topbarState: topbar.textContent.trim(), topbarData: topbar.dataset.state,
+                pairs: pairs,
+            };
+        }""")
+        report["topbar_transport"] = transport
+        check("S1", "the topbar transport mirrors the rail state and its Start began playback",
+              status().get("state") == "playing"
+              and transport["railState"] == transport["topbarState"] == "playing"
+              and transport["railData"] == transport["topbarData"] == "playing"
+              and all(pair["railHidden"] == pair["topHidden"]
+                      and pair["railDisabled"] == pair["topDisabled"]
+                      and pair["railText"] == pair["topText"]
+                      for pair in transport["pairs"])
+              and transport["pairs"][0]["topHidden"]
+              and not transport["pairs"][1]["topHidden"]
+              and not transport["pairs"][2]["topHidden"]
+              and transport["pairs"][1]["topText"] == "Pause",
+              rail=transport["railState"], topbar=transport["topbarState"],
+              buttons=transport["pairs"])
 
         phase["id"] = "S2"
         await wait_summary("Playing")
@@ -591,6 +827,7 @@ async def main(artifacts_arg: Path) -> int:
         await controller.screenshot(path=str(artifacts / "controller-playing.png"), full_page=True)
 
         phase["id"] = "S3"
+        await open_tab("show")
         await video_window()
         mark = len(events)
         # Start the pause just after a completed poll, so an in-flight status
@@ -660,6 +897,10 @@ async def main(artifacts_arg: Path) -> int:
             const extra = document.querySelector('#playback-extra');
             const stage = document.querySelector('#stage-scroll');
             const svg = document.querySelector('#stage-svg');
+            const tabs = [...document.querySelectorAll('#rail-tabs [role="tab"]')];
+            const panels = [...document.querySelectorAll(
+                '#rail-panels [role="tabpanel"]')];
+            const railTabs = document.querySelector('#rail-tabs');
             return {
                 innerWidth: window.innerWidth,
                 documentScrollWidth: document.documentElement.scrollWidth,
@@ -680,6 +921,24 @@ async def main(artifacts_arg: Path) -> int:
                 stageScrollWidth: stage.scrollWidth,
                 stageClientWidth: stage.clientWidth,
                 svgWidth: svg.getBoundingClientRect().width,
+                railTabsDisplay: getComputedStyle(railTabs).display,
+                railTabsVisible: !!railTabs.getClientRects().length,
+                tabs: tabs.map(node => ({
+                    id: node.id,
+                    selected: node.getAttribute('aria-selected'),
+                    tabindex: node.getAttribute('tabindex'),
+                    controls: node.getAttribute('aria-controls'),
+                })),
+                panels: panels.map(node => ({
+                    id: node.id, hidden: node.hidden,
+                    visible: !node.hidden && node.getClientRects().length > 0,
+                })),
+                selectedTab: (tabs.find(
+                    node => node.getAttribute('aria-selected') === 'true')
+                    || {}).id || null,
+                visiblePanels: panels.filter(
+                    node => !node.hidden && node.getClientRects().length > 0)
+                    .map(node => node.id),
             };
         }""")
         report["mobile"] = mobile_state
@@ -687,6 +946,25 @@ async def main(artifacts_arg: Path) -> int:
               mobile_state["documentScrollWidth"] - mobile_state["documentClientWidth"] <= 1,
               width=mobile_state["documentScrollWidth"],
               viewport=mobile_state["documentClientWidth"])
+        mobile_panels = {panel["id"]: panel for panel in mobile_state["panels"]}
+        mobile_tabs_consistent = (
+            mobile_state["selectedTab"] == "tab-show"
+            and mobile_state["visiblePanels"] == ["panel-show"]
+            and all(mobile_panels[tab["controls"]]["visible"]
+                    == (tab["selected"] == "true")
+                    for tab in mobile_state["tabs"]))
+        check("S5", "390x844 hides the tab strip and keeps Show as the only visible panel",
+              mobile_state["railTabsDisplay"] == "none"
+              and not mobile_state["railTabsVisible"]
+              and mobile_tabs_consistent
+              and [tab["tabindex"] for tab in mobile_state["tabs"]
+                   if tab["selected"] == "true"] == ["0"]
+              and all(tab["tabindex"] == "-1" for tab in mobile_state["tabs"]
+                      if tab["selected"] != "true"),
+              display=mobile_state["railTabsDisplay"],
+              tabs_visible=mobile_state["railTabsVisible"],
+              selected=mobile_state["selectedTab"],
+              panels=mobile_state["visiblePanels"])
         check("S5", "the mobile paused summary fits, stays readable and names the video",
               mobile_state["summaryLeft"] >= 0
               and mobile_state["summaryRight"] <= mobile_state["innerWidth"] + 1
@@ -762,6 +1040,7 @@ async def main(artifacts_arg: Path) -> int:
         check("S3", "the poll stays healthy while paused", await poll_is_healthy(), poll=poll_two)
 
         phase["id"] = "S4"
+        await open_tab("show")
         await controller.click("#btn-playback-pause")
         await wait_until(lambda: status().get("state") in ("preparing", "playing"), 15,
                          "Resume did not leave paused")
@@ -787,6 +1066,9 @@ async def main(artifacts_arg: Path) -> int:
         session_revision = status()["playlist_revision"]
         await add_asset(assets["green"])
         await wait_rows(3)
+        await controller.wait_for_function(
+            "() => document.querySelector('#tab-content-dot').hidden === false", timeout=5000)
+        content_dot_dirty = await controller.locator("#tab-content-dot").is_visible()
         await move_up(2)
         await move_up(1)
         await remove_row(1)
@@ -796,11 +1078,17 @@ async def main(artifacts_arg: Path) -> int:
         check("S6", "the draft can be edited and reordered down to the new green still",
               preview_rows == ["controller-green.png"], rows=preview_rows)
         await save_playlist(2)
+        await controller.wait_for_function(
+            "() => document.querySelector('#tab-content-dot').hidden === true", timeout=5000)
+        content_dot_after = await controller.locator("#tab-content-dot").is_visible()
         saved_two = saved_playlist()
         check("S6", "the saved playlist advanced to revision 2 with only the new still",
               saved_two.get("revision") == 2
               and [item["asset"] for item in saved_two["items"]] == [assets["green"]],
               saved=saved_two)
+        check("S6", "the Content tab marks an unsaved playlist and clears after save",
+              content_dot_dirty and not content_dot_after,
+              dirty=content_dot_dirty, clean=not content_dot_after)
         await reload_controller()
         await wait_summary("Playing")
         async def live_video_current() -> bool:
@@ -845,6 +1133,7 @@ async def main(artifacts_arg: Path) -> int:
             path=str(artifacts / "live-vs-editable-desktop.png"), full_page=True)
 
         phase["id"] = "S7"
+        await open_tab("show")
         await video_window(max_elapsed_ms=10000)
         await controller.click("#btn-playback-pause")
         await wait_until(lambda: status().get("state") == "paused", 10,
@@ -913,6 +1202,7 @@ async def main(artifacts_arg: Path) -> int:
         await controller.screenshot(
             path=str(artifacts / "paused-after-save-desktop.png"), full_page=True)
         phase["id"] = "S7"
+        await open_tab("show")
         await controller.click("#btn-playback-pause")
         await wait_until(lambda: status().get("state") == "playing", 25,
                          "the second Resume never reached playing")
@@ -1053,6 +1343,7 @@ async def main(artifacts_arg: Path) -> int:
               live=(recovered.get("live") or {}).get("current"))
 
         phase["id"] = "S9"
+        await open_tab("show")
         await controller.click("#btn-playback-stop")
         await wait_until(lambda: status().get("state") == "stopped", 10, "Stop did not stick")
         await controller.wait_for_function(
@@ -1079,6 +1370,7 @@ async def main(artifacts_arg: Path) -> int:
               final_rows == ["controller-green.png"], rows=final_rows)
         await save_playlist(5)
         saved_five = saved_playlist()
+        await open_tab("show")
         await controller.wait_for_function(
             "() => !document.querySelector('#btn-playback-start').disabled", timeout=10000)
         await controller.click("#btn-playback-start")
@@ -1132,6 +1424,11 @@ async def main(artifacts_arg: Path) -> int:
             "() => !document.querySelector('#inspector-body').hidden"
             " && document.querySelector('#selected-title').textContent !== '–'",
             timeout=10000)
+        tablet_shell = await shell_state()
+        check("S12", "selecting a stage slot opens the Tablet panel",
+              valid_tab_shell(tablet_shell, "tablet"),
+              selected=tablet_shell["selected"], visible=tablet_shell["visiblePanels"])
+        await open_tab("tablet")
         local_before = await controller.evaluate("""() => ({
             localVisible: !!document.querySelector('#btn-apply-local').getClientRects().length,
             localCancelVisible: !!document.querySelector('#btn-cancel-local').getClientRects().length,
@@ -1157,6 +1454,9 @@ async def main(artifacts_arg: Path) -> int:
         await controller.wait_for_function(
             "() => !document.querySelector('#btn-apply-local').disabled"
             " && !document.querySelector('#btn-apply').disabled", timeout=5000)
+        await controller.wait_for_function(
+            "() => document.querySelector('#tab-tablet-dot').hidden === false", timeout=5000)
+        tablet_dot_dirty = await controller.locator("#tab-tablet-dot").is_visible()
         nudged = await controller.evaluate("""() => ({
             localDisabled: document.querySelector('#btn-apply-local').disabled,
             globalDisabled: document.querySelector('#btn-apply').disabled,
@@ -1177,6 +1477,9 @@ async def main(artifacts_arg: Path) -> int:
         await controller.wait_for_function(
             "() => document.querySelector('#btn-apply-local').disabled"
             " && document.querySelector('#btn-apply').disabled", timeout=5000)
+        await controller.wait_for_function(
+            "() => document.querySelector('#tab-tablet-dot').hidden === true", timeout=5000)
+        tablet_dot_after = await controller.locator("#tab-tablet-dot").is_visible()
         cancelled = await controller.evaluate("""() => ({
             localDisabled: document.querySelector('#btn-apply-local').disabled,
             globalDisabled: document.querySelector('#btn-apply').disabled,
@@ -1197,15 +1500,24 @@ async def main(artifacts_arg: Path) -> int:
         check("S12", "local Cancel and the nudge did not write the layout",
               layout_revision_after == layout_revision_before,
               before=layout_revision_before, after=layout_revision_after)
+        check("S12", "the Tablet tab marks the layout draft and clears after local Cancel",
+              tablet_dot_dirty and not tablet_dot_after,
+              dirty=tablet_dot_dirty, clean=not tablet_dot_after)
         await controller.screenshot(
             path=str(artifacts / "local-apply-cancel-desktop.png"), full_page=True)
 
         phase["id"] = "S13"
+        await open_tab("show")
         excluded_id = pages[1][1].device_id
         await controller.wait_for_function(
             "() => !document.querySelector('#playback-exclusions').hidden"
             " && !!document.querySelector('#playback-exclusion-list input')",
             timeout=10000)
+        show_shell = await shell_state()
+        check("S13", "the exclusion controls sit in the visible Show panel",
+              valid_tab_shell(show_shell, "show")
+              and await controller.locator("#playback-exclusions").is_visible(),
+              selected=show_shell["selected"], visible=show_shell["visiblePanels"])
         await controller.check(
             f'#playback-exclusion-list input[data-device-id="{excluded_id}"]')
         await controller.wait_for_function(
