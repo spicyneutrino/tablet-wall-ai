@@ -34,6 +34,12 @@ MAX_ITEMS = 64
 HOLD_CAP_MS = 5000
 POLICIES = ("online", "strict")
 FINAL = "final"
+STALE_SAMPLE_MS = 3000
+RECOVERY_ATTEMPTS = 3
+FAULT_REASONS = ("stalled", "play_failed", "buffer_lost")
+RECOVERY_TIMEOUT_REASON = "recovery_timeout"
+RECOVERY_FAILED_REASON = "recovery_failed"
+RECOVERY_LIMIT_REASON = "recovery attempt limit reached"
 
 
 class PlaybackError(ValueError):
@@ -77,6 +83,8 @@ class Preparation:
     effective_ms: float
     leases: dict[str, Lease] = field(default_factory=dict)
     media: dict[str, Any] | None = None
+    start_media_ms: int = 0
+    recovery_id: str | None = None
 
     def as_frame(self) -> dict[str, Any]:
         frame = {
@@ -89,7 +97,25 @@ class Preparation:
         }
         if self.media is not None:
             frame["media"] = self.media
+            frame["start_media_ms"] = self.start_media_ms
         return frame
+
+
+@dataclass
+class Recovery:
+    """One bounded group re-preparation of a playing video occurrence."""
+
+    id: str
+    occurrence: Occurrence
+    position_ms: int
+    reason: str
+    device_id: str
+    started_ms: float
+    deadline_ms: float
+    attempts: int
+    degraded_since_ms: float
+    missing: list[str] = field(default_factory=list)
+    state: str = "preparing"
 
 
 @dataclass
@@ -122,8 +148,13 @@ class Session:
     final: bool = False
     videos: dict[str, int] = field(default_factory=dict)
     current_media: dict[str, Any] | None = None
+    current_start_media_ms: int = 0
+    current_connections: dict[str, str] = field(default_factory=dict)
     playing: list[str] = field(default_factory=list)
     samples: dict[str, dict[str, Any]] = field(default_factory=dict)
+    recovery: Recovery | None = None
+    recovery_occurrence: Occurrence | None = None
+    recovery_attempts: int = 0
 
     def lineage(self) -> dict[str, Any]:
         return {
@@ -214,6 +245,9 @@ def _preparation(
     now_ms: float,
     effective_ms: float,
     connections: dict[str, str] | None,
+    *,
+    start_media_ms: int = 0,
+    recovery_id: str | None = None,
 ) -> Preparation:
     """The one place a preparation is built, so no path forgets a field."""
     media = None
@@ -237,6 +271,8 @@ def _preparation(
         deadline_ms=effective_ms + timeout,
         effective_ms=effective_ms,
         media=media,
+        start_media_ms=int(start_media_ms),
+        recovery_id=recovery_id,
     )
     preparation.leases = {
         device_id: Lease(device_id, (connections or {}).get(device_id, ""))
@@ -306,7 +342,7 @@ def accept_ready(
     revision the preparation was built with; a different report is stale.
     """
     pending = session.pending
-    if pending is None or session.state not in ("preparing", "armed", "playing"):
+    if pending is None or session.state not in ("preparing", "armed", "playing", "recovering"):
         return False
     if pending.id != preparation_id or pending.version != version:
         return False
@@ -333,7 +369,7 @@ def accept_ready(
     if pending.media is not None:
         evidence = _video_evidence(video)
         lease.video = evidence
-        if not _video_ready(pending.media, evidence):
+        if not _video_ready(pending.media, evidence, pending.start_media_ms):
             lease.ready = False
             return False
     elif not decoded:
@@ -368,10 +404,13 @@ def _video_evidence(raw: Any) -> dict[str, Any] | None:
     }
 
 
-def _video_ready(media: dict[str, Any], video: dict[str, Any] | None) -> bool:
+def _video_ready(
+    media: dict[str, Any], video: dict[str, Any] | None, start_media_ms: int = 0
+) -> bool:
     if video is None:
         return False
-    required = min(int(media["buffer_goal_ms"]), int(media["duration_ms"]))
+    remaining = max(0, int(media["duration_ms"]) - int(start_media_ms))
+    required = min(int(media["buffer_goal_ms"]), remaining)
     return (
         video["metadata"]
         and video["seeked"]
@@ -393,14 +432,248 @@ def _valid_leases(session: Session, now_ms: float, cut_ms: float) -> list[Lease]
     ]
 
 
+def _pending_connections(session: Session) -> dict[str, str]:
+    if session.pending is None:
+        return {}
+    return {
+        device_id: lease.connection_id
+        for device_id, lease in session.pending.leases.items()
+    }
+
+
+def _recovery_attempts_for(session: Session, occurrence: Occurrence) -> int:
+    if session.recovery_occurrence == occurrence:
+        return session.recovery_attempts
+    return 0
+
+
+def _playhead_ms(session: Session, now_ms: float) -> int:
+    """The committed video position at ``now_ms``, bounded by its duration."""
+    duration = int(session.current_media["duration_ms"])
+    elapsed = 0.0
+    if session.current_effective_ms is not None:
+        elapsed = max(0.0, now_ms - session.current_effective_ms)
+    return int(min(duration, session.current_start_media_ms + elapsed))
+
+
+def stalled_device(session: Session, now_ms: float) -> tuple[str, int] | None:
+    """The first playing device with no accepted sample for over 3 seconds.
+
+    Returns ``(device_id, position_ms)``; the position is the occurrence's
+    playhead, so the recovery re-prepares from where the glass should be.
+    """
+    if session.state not in ("playing", FINAL):
+        return None
+    if session.current is None or session.current_media is None:
+        return None
+    if session.current_effective_ms is None or now_ms < session.current_effective_ms:
+        return None
+    for device_id in sorted(session.playing):
+        sample = session.samples.get(device_id)
+        last_ms = sample["at_ms"] if sample is not None else session.current_effective_ms
+        if now_ms - last_ms > STALE_SAMPLE_MS:
+            return device_id, _playhead_ms(session, now_ms)
+    return None
+
+
+def _start_recovery(
+    session: Session,
+    occurrence: Occurrence,
+    position_ms: int,
+    reason: str,
+    device_id: str,
+    now_ms: float,
+    connections: dict[str, str] | None = None,
+) -> Preparation:
+    """Freeze the cohort and re-prepare the current occurrence at a position."""
+    if connections is None:
+        connections = dict(session.current_connections)
+        connections.update(_pending_connections(session))
+    recovery_id = uuid.uuid4().hex
+    attempts = _recovery_attempts_for(session, occurrence) + 1
+    session.version += 1
+    session.state = "recovering"
+    session.held = False
+    session.hold_deadline_ms = None
+    session.blocked_reason = None
+    session.missed = []
+    session.final = False
+    pending = _preparation(
+        session, occurrence, now_ms, now_ms + LEAD_MS, connections,
+        start_media_ms=position_ms, recovery_id=recovery_id,
+    )
+    session.pending = pending
+    session.recovery = Recovery(
+        id=recovery_id,
+        occurrence=occurrence,
+        position_ms=int(position_ms),
+        reason=reason,
+        device_id=device_id,
+        started_ms=now_ms,
+        deadline_ms=pending.deadline_ms,
+        attempts=attempts,
+        degraded_since_ms=now_ms,
+    )
+    session.recovery_occurrence = occurrence
+    session.recovery_attempts = attempts
+    return pending
+
+
+def _recovery_failure(
+    session: Session,
+    occurrence: Occurrence,
+    position_ms: int,
+    reason: str,
+    device_id: str,
+    now_ms: float,
+) -> None:
+    """The attempt cap is spent: stop preparing and expose the failed state."""
+    attempts = _recovery_attempts_for(session, occurrence) + 1
+    state = "blocked" if session.policy == "strict" else "failed"
+    session.pending = None
+    session.state = state
+    session.held = False
+    session.hold_deadline_ms = None
+    session.final = False
+    session.missed = []
+    session.recovery = Recovery(
+        id=uuid.uuid4().hex,
+        occurrence=occurrence,
+        position_ms=int(position_ms),
+        reason=reason,
+        device_id=device_id,
+        started_ms=now_ms,
+        deadline_ms=now_ms,
+        attempts=attempts,
+        degraded_since_ms=now_ms,
+        state=state,
+    )
+    session.recovery_occurrence = occurrence
+    session.recovery_attempts = attempts
+    session.blocked_reason = (
+        RECOVERY_LIMIT_REASON if state == "blocked" else RECOVERY_FAILED_REASON
+    )
+
+
+def accept_fault(
+    session: Session,
+    *,
+    device_id: str,
+    payload: Any,
+    now_ms: float,
+    connections: dict[str, str] | None = None,
+) -> str:
+    """Accept one ``video_fault`` and start its recovery.
+
+    Returns ``"preparing"`` when a recovery preparation was built,
+    ``"blocked"``/``"failed"`` when the occurrence has spent its attempts, and
+    ``"ignored"`` for a duplicate, stale or malformed fault. The frame is
+    accepted only from a playing device, for the current occurrence at the
+    current version, from ``position_ms`` inside the clip.
+    """
+    occurrence = session.current
+    if (
+        session.state not in ("playing", FINAL)
+        or occurrence is None
+        or session.current_media is None
+        or device_id not in session.playing
+        or not isinstance(payload, dict)
+    ):
+        return "ignored"
+    if payload.get("session_id") != session.id:
+        return "ignored"
+    version = payload.get("version")
+    if type(version) is not int or version != session.version:
+        return "ignored"
+    if payload.get("occurrence") != occurrence.as_dict():
+        return "ignored"
+    reason = payload.get("reason")
+    if not isinstance(reason, str) or reason not in FAULT_REASONS:
+        return "ignored"
+    duration = int(session.current_media["duration_ms"])
+    position_ms = payload.get("position_ms")
+    if not _bounded(position_ms, 0, duration):
+        return "ignored"
+    if _recovery_attempts_for(session, occurrence) >= RECOVERY_ATTEMPTS:
+        _recovery_failure(
+            session, occurrence, position_ms, reason, device_id, now_ms
+        )
+        return session.state
+    _start_recovery(
+        session, occurrence, position_ms, reason, device_id, now_ms, connections
+    )
+    return "preparing"
+
+
+def _recovery_tick(session: Session, now_ms: float) -> list[dict[str, Any]]:
+    """Commit a recovery only with the whole frozen cohort, else fail at the deadline."""
+    recovery = session.recovery
+    pending = session.pending
+    if recovery is None or pending is None:
+        return []
+    valid = _valid_leases(session, now_ms, pending.effective_ms)
+    if len(valid) == len(session.cohort):
+        cut = pending.effective_ms
+        if now_ms >= cut:
+            cut = now_ms + LEAD_MS
+            valid = _valid_leases(session, now_ms, cut)
+        if len(valid) == len(session.cohort):
+            return _commit(session, valid, cut, now_ms)
+    missing = sorted(set(session.cohort) - {lease.device_id for lease in valid})
+    if now_ms < pending.deadline_ms:
+        return []
+    recovery.missing = missing
+    session.missed = missing
+    if session.policy == "strict":
+        session.state = "blocked"
+        recovery.state = "blocked"
+        session.blocked_reason = RECOVERY_TIMEOUT_REASON
+        return [{
+            "type": "blocked", "reason": RECOVERY_TIMEOUT_REASON, "missing": missing,
+        }]
+    session.state = "failed"
+    recovery.state = "failed"
+    session.blocked_reason = RECOVERY_FAILED_REASON
+    return [{"type": "failed", "reason": RECOVERY_FAILED_REASON}]
+
+
 def tick(session: Session, now_ms: float) -> list[dict[str, Any]]:
     """Advance the model and return the actions to send.
 
-    An action is ``commit``, ``hold``, ``reanchor``, ``blocked`` or ``failed``.
-    The caller must re-check the real clock immediately before sending a
-    commit. A cut whose effective time already passed is re-anchored forward;
-    it is never committed in the past.
+    An action is ``commit``, ``hold``, ``reanchor``, ``recover``, ``blocked``
+    or ``failed``. The caller must re-check the real clock immediately before
+    sending a commit. A cut whose effective time already passed is re-anchored
+    forward; it is never committed in the past.
     """
+    if session.state in ("playing", FINAL):
+        stalled = stalled_device(session, now_ms)
+        if stalled is not None:
+            occurrence = session.current
+            assert occurrence is not None
+            device_id, position_ms = stalled
+            if _recovery_attempts_for(session, occurrence) >= RECOVERY_ATTEMPTS:
+                _recovery_failure(
+                    session, occurrence, position_ms, "stalled", device_id, now_ms
+                )
+                if session.state == "blocked":
+                    return [{
+                        "type": "blocked", "reason": RECOVERY_LIMIT_REASON,
+                        "missing": [],
+                    }]
+                return [{"type": "failed", "reason": RECOVERY_FAILED_REASON}]
+            _start_recovery(
+                session, occurrence, position_ms, "stalled", device_id, now_ms
+            )
+            return [{
+                "type": "recover",
+                "occurrence": occurrence.as_dict(),
+                "position_ms": position_ms,
+                "reason": "stalled",
+                "device_id": device_id,
+                "version": session.version,
+            }]
+    if session.state == "recovering":
+        return _recovery_tick(session, now_ms)
     if session.state not in ("preparing", "armed", "playing"):
         return []
     pending = session.pending
@@ -506,14 +779,31 @@ def _commit(
         "connections": {lease.device_id: lease.connection_id for lease in leases},
     }
     if pending.media is not None:
-        commit["start_media_ms"] = 0
+        commit["start_media_ms"] = pending.start_media_ms
     session.current_media = pending.media
+    session.current_start_media_ms = pending.start_media_ms
+    session.current_connections = {
+        device_id: lease.connection_id
+        for device_id, lease in pending.leases.items()
+    }
     session.playing = [lease.device_id for lease in leases]
     session.samples = {}
     session.index = occurrence.item_index
     session.loop_count = occurrence.loop
     next_step = session.next_index()
     session.pending = None
+    recovery = session.recovery
+    if (
+        pending.recovery_id is not None
+        and recovery is not None
+        and recovery.id == pending.recovery_id
+    ):
+        recovery.state = "playing"
+        recovery.missing = []
+    else:
+        session.recovery = None
+        session.recovery_occurrence = None
+        session.recovery_attempts = 0
     if next_step is None:
         session.final = True
         session.state = FINAL
@@ -521,7 +811,10 @@ def _commit(
     session.final = False
     index, loop_count = next_step
     next_occurrence = Occurrence(session.playlist_revision, index, loop_count)
-    dwell = int(session.items[occurrence.item_index]["dwell_ms"])
+    if pending.media is not None:
+        dwell = max(0, int(pending.media["duration_ms"]) - pending.start_media_ms)
+    else:
+        dwell = int(session.items[occurrence.item_index]["dwell_ms"])
     session.pending = _preparation(
         session, next_occurrence, now_ms, effective_ms + dwell,
         {device_id: lease.connection_id for device_id, lease in pending.leases.items()},
@@ -537,6 +830,9 @@ def pause(session: Session, now_ms: float) -> int | None:
     session.held = False
     session.hold_deadline_ms = None
     session.blocked_reason = None
+    session.recovery = None
+    session.recovery_occurrence = None
+    session.recovery_attempts = 0
     session.state = "paused"
     session.paused_at_ms = now_ms
     return session.displayed.item_index if session.displayed is not None else None
@@ -559,6 +855,9 @@ def resume(
     session.missed = []
     session.paused_at_ms = None
     session.final = False
+    session.recovery = None
+    session.recovery_occurrence = None
+    session.recovery_attempts = 0
     session.pending = _preparation(
         session, occurrence, now_ms, now_ms + LEAD_MS, connections
     )
@@ -573,6 +872,9 @@ def stop(session: Session, now_ms: float) -> None:
     session.state = "stopped"
     session.final = False
     session.paused_at_ms = None
+    session.recovery = None
+    session.recovery_occurrence = None
+    session.recovery_attempts = 0
 
 
 def _target_occurrence(
@@ -619,6 +921,9 @@ def step(
     session.missed = []
     session.paused_at_ms = None
     session.final = False
+    session.recovery = None
+    session.recovery_occurrence = None
+    session.recovery_attempts = 0
     session.pending = _preparation(
         session, occurrence, now_ms, now_ms + LEAD_MS, connections
     )
@@ -629,6 +934,37 @@ def retry(
     session: Session, now_ms: float, connections: dict[str, str] | None = None
 ) -> Preparation:
     """Leave ``blocked``: a new version of the same blocked occurrence."""
+    recovery = session.recovery
+    if session.state == "blocked" and recovery is not None and recovery.state == "blocked":
+        if recovery.attempts >= RECOVERY_ATTEMPTS:
+            raise PlaybackError("recovery attempt limit reached")
+        if session.pending is None:
+            raise PlaybackError("only a blocked session can retry")
+        occurrence = recovery.occurrence
+        previous = {
+            device_id: lease.connection_id
+            for device_id, lease in session.pending.leases.items()
+        }
+        merged = dict(previous)
+        merged.update(connections or {})
+        session.version += 1
+        session.state = "recovering"
+        session.blocked_reason = None
+        session.missed = []
+        session.final = False
+        recovery.attempts += 1
+        recovery.started_ms = now_ms
+        recovery.state = "preparing"
+        recovery.missing = []
+        session.recovery_occurrence = occurrence
+        session.recovery_attempts = recovery.attempts
+        pending = _preparation(
+            session, occurrence, now_ms, now_ms + LEAD_MS, merged,
+            start_media_ms=recovery.position_ms, recovery_id=recovery.id,
+        )
+        recovery.deadline_ms = pending.deadline_ms
+        session.pending = pending
+        return pending
     if session.state != "blocked" or session.pending is None:
         raise PlaybackError("only a blocked session can retry")
     occurrence = session.pending.occurrence
@@ -645,6 +981,29 @@ def retry(
         session, occurrence, now_ms, now_ms + LEAD_MS, merged
     )
     return session.pending
+
+
+def recovery_status(session: Session, now_ms: float) -> dict[str, Any] | None:
+    """The active or last recovery record, including its degraded interval."""
+    recovery = session.recovery
+    if recovery is None:
+        return None
+    end_ms = now_ms
+    if recovery.state == "playing" and session.current_effective_ms is not None:
+        end_ms = min(now_ms, session.current_effective_ms)
+    return {
+        "id": recovery.id,
+        "occurrence": recovery.occurrence.as_dict(),
+        "position_ms": recovery.position_ms,
+        "reason": recovery.reason,
+        "device_id": recovery.device_id,
+        "attempts": recovery.attempts,
+        "started_ms": recovery.started_ms,
+        "deadline_ms": recovery.deadline_ms,
+        "degraded_ms": max(0, round(end_ms - recovery.degraded_since_ms)),
+        "state": recovery.state,
+        "missing": sorted(recovery.missing),
+    }
 
 
 def video_status(session: Session, now_ms: float) -> dict[str, dict[str, Any]]:

@@ -74,6 +74,42 @@ def socket_url(device_id: str) -> str:
             "&caps=calibration,image,physical&w=240&h=160&dpr=1&orientation=0&mode=tab")
 
 
+def video_asset_id() -> str:
+    from tabletwall import assets
+    return assets.list_assets()[0]["id"]
+
+
+def playing_video_session(asset_id: str, connections: dict[str, str]) -> playback.Session:
+    """A committed video occurrence, as if the server had already cut it."""
+    now = main._now_ms()
+    session = playback.start(
+        [{"asset": asset_id, "dwell_ms": 1000}, {"asset": asset_id, "dwell_ms": 5000}],
+        False, [A, B], now, generation=main.wall["generation"],
+        clock_epoch=main._server_clock.epoch, connections=connections,
+        policy="strict", videos={asset_id: 4000},
+    )
+    media = session.pending.media
+    session.version = 2
+    session.state = "playing"
+    session.current = session.occurrence_at(0)
+    session.displayed = session.current
+    session.current_effective_ms = now
+    session.current_media = media
+    session.current_connections = dict(connections)
+    session.playing = [A, B]
+    session.pending = None
+    return session
+
+
+def video_fault(session: playback.Session, position_ms: int = 1500) -> dict:
+    return {
+        "type": "video_fault", "session_id": session.id,
+        "version": session.version,
+        "occurrence": session.current.as_dict(),
+        "position_ms": position_ms, "reason": "stalled",
+    }
+
+
 def prepare_physical(client: TestClient) -> None:
     register(client, A)
     register(client, B)
@@ -202,3 +238,101 @@ def test_rebind_aborts_an_active_session():
             )
             assert response.status_code == 200, response.text
             assert client.get("/api/v3/playback").json() == {"state": "stopped"}
+
+
+def test_a_video_fault_over_the_socket_prepares_the_group_at_its_position():
+    with TestClient(main.app) as client:
+        prepare_physical(client)
+        asset_id = video_asset_id()
+        with client.websocket_connect(socket_url(A)) as socket:
+            socket.receive_json()  # welcome
+            socket.receive_json()  # clock bootstrap
+            socket.receive_json()  # render
+            connections = {
+                device_id: main.devices[device_id].get("connection_id", "")
+                for device_id in (A, B) if device_id in main.devices
+            }
+            session = playing_video_session(asset_id, connections)
+            main._playback_session = session
+            sent_at = main._now_ms()
+            socket.send_json(video_fault(session))
+            frame = socket.receive_json()
+            assert frame["type"] == "prepare"
+            assert frame["occurrence"] == session.current.as_dict()
+            assert frame["start_media_ms"] == 1500
+            assert frame["media"]["kind"] == "video"
+            assert frame["effective_server_ms"] >= sent_at + 900
+            assert session.state == "recovering"
+            assert session.pending.occurrence == session.current
+            assert session.pending.start_media_ms == 1500
+            assert session.recovery.attempts == 1
+            # A duplicate for the active recovery prepares nothing again.
+            version = session.version
+            socket.send_json(video_fault(session, position_ms=1400))
+            assert main._playback_status()["recovery"]["attempts"] == 1
+            assert session.version == version
+            assert session.pending.start_media_ms == 1500
+
+
+def test_a_layout_change_aborts_a_recovery():
+    with TestClient(main.app) as client:
+        prepare_physical(client)
+        session = playing_video_session(video_asset_id(), {})
+        main._playback_session = session
+        assert playback.accept_fault(
+            session, device_id=A, payload=video_fault(session),
+            now_ms=session.current_effective_ms,
+        ) == "preparing"
+        assert client.get("/api/v3/playback").json()["state"] == "recovering"
+
+        config = client.get("/api/v3/config").json()
+        changed = layout()
+        changed["bounds"]["width"] = 210
+        headers = {"If-Match": config["etag"]}
+        if os.environ.get("TABLET_WALL_OPERATOR_ORIGIN"):
+            headers["Origin"] = os.environ["TABLET_WALL_OPERATOR_ORIGIN"]
+        response = client.put("/api/v3/layout", json=changed, headers=headers)
+        assert response.status_code == 200, response.text
+        assert client.get("/api/v3/playback").json() == {"state": "stopped"}
+        assert main._playback_session is None
+        assert session.state == "stopped" and session.recovery is None
+
+
+def test_a_mapping_change_aborts_a_recovery():
+    with TestClient(main.app) as client:
+        prepare_physical(client)
+        session = playing_video_session(video_asset_id(), {})
+        main._playback_session = session
+        assert playback.accept_fault(
+            session, device_id=A, payload=video_fault(session),
+            now_ms=session.current_effective_ms,
+        ) == "preparing"
+        config = client.get("/api/v3/config").json()
+        headers = {"If-Match": config["etag"]}
+        if os.environ.get("TABLET_WALL_OPERATOR_ORIGIN"):
+            headers["Origin"] = os.environ["TABLET_WALL_OPERATOR_ORIGIN"]
+        response = client.put(f"/api/v3/displays/{A}", json={
+            "active_width_mm": 101, "active_height_mm": 60,
+            "bezels": {"left": 13, "top": 13, "right": 7, "bottom": 17},
+            "label": "changed", "provenance": "hand-derived",
+        }, headers=headers)
+        assert response.status_code == 200, response.text
+        assert main._playback_session is None
+        assert session.state == "stopped" and session.recovery is None
+
+
+def test_a_host_suspend_epoch_change_aborts_a_recovery():
+    import asyncio
+
+    with TestClient(main.app) as client:
+        prepare_physical(client)
+        session = playing_video_session(video_asset_id(), {})
+        main._playback_session = session
+        assert playback.accept_fault(
+            session, device_id=A, payload=video_fault(session),
+            now_ms=session.current_effective_ms,
+        ) == "preparing"
+        asyncio.run(main._abort_playback("host suspend"))
+        assert main._playback_session is None
+        assert client.get("/api/v3/playback").json() == {"state": "stopped"}
+        assert session.state == "stopped" and session.recovery is None
