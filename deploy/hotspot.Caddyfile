@@ -48,7 +48,7 @@ https://{$WALL_HOTSPOT_IP}:8443 {
 	}
 
 	@asset_bytes {
-		method GET
+		method GET HEAD
 		path_regexp ^/assets/sha256:[0-9a-f]{64}$
 	}
 	handle @asset_bytes {

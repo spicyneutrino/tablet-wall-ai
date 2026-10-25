@@ -60,6 +60,8 @@ def test_tablet_ingress_strips_the_operator_credential():
     assert "header_up X-Tablet-Wall-Operator {env.WALL_OPERATOR_CREDENTIAL}" in operator
     for path in ("/uploads", "/media", "/diagnostics", "/rebind"):
         assert path not in tablet
+    assert re.search(r"@asset_bytes\s*\{[^}]*method GET HEAD", tablet, re.S), \
+        "the exact published-asset route accepts HEAD as well as GET"
 
 
 def test_frontend_declares_no_external_static_resources():
