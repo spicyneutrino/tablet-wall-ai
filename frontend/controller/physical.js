@@ -44,6 +44,7 @@
         panelSystem: document.getElementById("panel-system"),
         tabTabletDot: document.getElementById("tab-tablet-dot"),
         tabContentDot: document.getElementById("tab-content-dot"),
+        railPanels: document.getElementById("rail-panels"),
         topbarPlaybackState: document.getElementById("topbar-playback-state"),
         btnTopbarStart: document.getElementById("btn-topbar-start"),
         btnTopbarPause: document.getElementById("btn-topbar-pause"),
@@ -261,6 +262,8 @@
         diagnosticsLoading: false,
         rebindBusy: false,
         tabDecided: false,
+        tabName: null,
+        tabScroll: {},
         playbackSettled: false
     };
 
@@ -727,6 +730,10 @@
         });
         if (!target || !target.tab || !target.panel) return false;
 
+        if (el.railPanels && state.tabName && state.tabName !== resolved
+                && !compactView()) {
+            state.tabScroll[state.tabName] = el.railPanels.scrollTop;
+        }
         entries.forEach(function (entry) {
             if (!entry.tab || !entry.panel) return;
             const active = entry.name === resolved;
@@ -734,6 +741,10 @@
             entry.tab.tabIndex = active ? 0 : -1;
             entry.panel.hidden = !active;
         });
+        state.tabName = resolved;
+        if (el.railPanels) {
+            el.railPanels.scrollTop = state.tabScroll[resolved] || 0;
+        }
         if (settings.persist && !compactView()) {
             storeTab(name);
             state.tabDecided = true;
