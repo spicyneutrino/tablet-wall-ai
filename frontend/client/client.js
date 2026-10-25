@@ -87,6 +87,13 @@
         replaced: "Showing on another screen",
     };
 
+    /* The identity HUD is deliberately quiet: five seconds after a welcome,
+     * reconnect, tap or re-bind, then it fades off the wall. */
+    var HUD_VISIBLE_MS = 5000;
+    /* A blocked prepared video says so locally for a few seconds; it never
+     * replaces the scene the server persisted. */
+    var VIDEO_UNAVAILABLE_VISIBLE_MS = 6000;
+
     /* Calibration pattern geometry, in wall units. */
     var PATTERN_BLOCK = 1000; /* alternating tint block              */
     var PATTERN_GRID = 100; /* minor grid spacing                  */
@@ -139,6 +146,13 @@
         ? statusEl.querySelector(".status-text")
         : null;
     var takeoverEl = document.getElementById("takeover");
+    var hudEl = document.getElementById("hud");
+    var hudIdentityEl = document.getElementById("hud-identity");
+    var hudStateEl = document.getElementById("hud-state");
+    var videoUnavailableEl = document.getElementById("video-unavailable");
+    var hudTimer = null;
+    var videoUnavailableTimer = null;
+    var socketConnected = false;
 
     function setStatus(state) {
         if (!statusEl || !statusTextEl) return;
@@ -318,6 +332,106 @@
     }
 
     var deviceNumber = readStoredDeviceNumber();
+
+    /* ------------------------------------------------------------------ */
+    /* Identity HUD                                                       */
+    /* ------------------------------------------------------------------ */
+
+    /* The server's number is what a person matches against the controller;
+     * the short id is the fallback when no number has arrived. */
+    function tabletNumberText() {
+        return deviceNumberValid(deviceNumber)
+            ? "#" + deviceNumber
+            : "this tablet";
+    }
+
+    /* A logical wall carries a placement; a physical one carries its slot.
+     * Either is enough to tell the person this tablet is placed. */
+    function hasPlacement(state) {
+        if (!state || typeof state !== "object") return false;
+        if (state.placement) return true;
+        if (state.visible) return true;
+        return !!(state.physical && state.physical.slot);
+    }
+
+    /* What a re-bind changes on this side: the placement. Revision and
+     * generation are deliberately not part of it. */
+    function placementSignature(state) {
+        if (!state) return "";
+        if (state.physical) {
+            var slot = state.physical.slot;
+            if (!slot) return "physical:none";
+            return (
+                "physical:" +
+                [slot.center_x_mm, slot.center_y_mm, slot.mount_angle].join("|")
+            );
+        }
+        var visible = state.visible;
+        if (!visible) return "logical:none";
+        return "logical:" + [visible.x, visible.y, visible.w, visible.h].join("|");
+    }
+
+    function hudStateText(state) {
+        if (!socketConnected) return "Offline";
+        var held = state || wallState || persistedWall;
+        /* Welcome arrives before the wall replay; until that replay lands,
+         * "Connected" is the honest state and "Not placed" would be a guess. */
+        if (!held) return "Connected";
+        return hasPlacement(held) ? "Connected" : "Not placed";
+    }
+
+    function updateHudText(state) {
+        if (!hudEl) return;
+        var identity = deviceNumberValid(deviceNumber)
+            ? "#" + deviceNumber + " \u00b7 " + shortDeviceId()
+            : "Tablet " + shortDeviceId();
+        if (hudIdentityEl && hudIdentityEl.textContent !== identity) {
+            hudIdentityEl.textContent = identity;
+        }
+        var status = hudStateText(state);
+        if (hudStateEl && hudStateEl.textContent !== status) {
+            hudStateEl.textContent = status;
+        }
+        hudEl.setAttribute(
+            "data-placed",
+            status === "Not placed" ? "false" : "true"
+        );
+    }
+
+    function hideHud() {
+        hudTimer = null;
+        if (hudEl) hudEl.setAttribute("data-visible", "false");
+    }
+
+    function showHud(state) {
+        if (!hudEl) return;
+        updateHudText(state);
+        hudEl.setAttribute("data-visible", "true");
+        if (hudTimer !== null) clearTimeout(hudTimer);
+        hudTimer = setTimeout(hideHud, HUD_VISIBLE_MS);
+    }
+
+    /* A wall frame that lands while the HUD is up corrects its placement
+     * state without restarting the five seconds. */
+    function refreshHud(state) {
+        if (hudEl && hudEl.getAttribute("data-visible") === "true") {
+            updateHudText(state);
+        }
+    }
+
+    /* Any touch, not just the failure-panel tap: the HUD is how a person
+     * standing at the wall confirms which tablet they are holding. */
+    if (typeof document.addEventListener === "function") {
+        ["pointerdown", "touchstart", "mousedown"].forEach(function (type) {
+            document.addEventListener(
+                type,
+                function () {
+                    showHud();
+                },
+                true
+            );
+        });
+    }
 
     /* ------------------------------------------------------------------ */
     /* HTTP                                                               */
@@ -1840,6 +1954,7 @@
         if (heldGeneration !== null && generation !== heldGeneration) {
             discardPlayback();
         }
+        var previousPlacement = placementSignature(persistedWall);
         heldRevision = revision;
         heldGeneration = generation;
         var state = {
@@ -1854,6 +1969,14 @@
             visible: visible,
         };
         persistedWall = state;
+        if (
+            previousPlacement !== "" &&
+            previousPlacement !== placementSignature(state)
+        ) {
+            showHud(state);
+        } else {
+            refreshHud(state);
+        }
         if (playbackOnScreen) return true;
         wallState = state;
         /* Image scenes carry asynchronous work: reconcile it with the frame
@@ -1914,6 +2037,7 @@
         if (heldGeneration !== null && generation !== heldGeneration) {
             discardPlayback();
         }
+        var previousPlacement = placementSignature(persistedWall);
         heldRevision = revision;
         heldGeneration = generation;
         heldRenderSeq = sequence;
@@ -1934,6 +2058,14 @@
             },
         };
         persistedWall = renderState;
+        if (
+            previousPlacement !== "" &&
+            previousPlacement !== placementSignature(renderState)
+        ) {
+            showHud(renderState);
+        } else {
+            refreshHud(renderState);
+        }
         if (playbackOnScreen) return true;
         wallState = renderState;
         if (!syncImageScene()) render();
@@ -3083,6 +3215,7 @@
             }
             slot.evidence.play_ok = "yes";
             showEnableDisplay(null);
+            hideVideoUnavailable();
             /* Play moved the position: reseek and prove coverage again
              * before the slot may become ready. */
             slot.phase = "reseeking";
@@ -3105,6 +3238,7 @@
         slot.evidence.play_ok = "no";
         slot.phase = "blocked";
         showEnableDisplay(null);
+        showVideoUnavailable();
         slot.lastReportAt = -Infinity;
         reportVideoReady(slot);
     }
@@ -3135,6 +3269,7 @@
         haltVideoSlot(slot);
         slot.lastReportAt = -Infinity;
         reportVideoReady(slot);
+        showVideoUnavailable();
     }
 
     /* Bounded recovery before the commit: reload and prepare again, three
@@ -3177,6 +3312,7 @@
                 );
                 slot.phase = "blocked";
                 slot.evidence.play_ok = "no";
+                showVideoUnavailable();
             }
             return;
         }
@@ -3195,26 +3331,65 @@
         startVideoPlayback(slot, slot.startAttempt);
     }
 
+    /* A prepared video that lands blocked is a local, transient statement:
+     * the persisted scene underneath is untouched, so a stop, epoch or
+     * reconnect still returns to it. */
+    function videoUnavailableText() {
+        return "Video unavailable, " + tabletNumberText();
+    }
+
+    function hideVideoUnavailable() {
+        videoUnavailableTimer = null;
+        if (videoUnavailableEl) {
+            videoUnavailableEl.setAttribute("data-visible", "false");
+        }
+    }
+
+    function showVideoUnavailable() {
+        if (!videoUnavailableEl) return;
+        videoUnavailableEl.textContent = videoUnavailableText();
+        videoUnavailableEl.setAttribute("data-visible", "true");
+        if (videoUnavailableTimer !== null) {
+            clearTimeout(videoUnavailableTimer);
+        }
+        videoUnavailableTimer = setTimeout(
+            hideVideoUnavailable,
+            VIDEO_UNAVAILABLE_VISIBLE_MS
+        );
+    }
+
     /* The local Enable display action: a tap is the user gesture play() was
-     * waiting for. One button is reused for whichever slot needs it. */
+     * waiting for. One button is reused for whichever slot needs it. Styled
+     * by client.css as a 56 px high-contrast pill; focus and its own label
+     * are what announce it. */
     function showEnableDisplay(slot) {
         enableDisplaySlot = slot;
         if (slot && !enableDisplayEl) {
             enableDisplayEl = document.createElement("button");
+            enableDisplayEl.hidden = true;
             enableDisplayEl.setAttribute("type", "button");
             enableDisplayEl.setAttribute("id", "enable-display");
-            enableDisplayEl.textContent = "Enable display";
-            enableDisplayEl.style.position = "fixed";
-            enableDisplayEl.style.left = "50%";
-            enableDisplayEl.style.bottom = "12%";
-            enableDisplayEl.style.transform = "translateX(-50%)";
-            enableDisplayEl.style.zIndex = "3";
-            enableDisplayEl.style.padding = "16px 24px";
-            enableDisplayEl.style.fontSize = "20px";
             enableDisplayEl.addEventListener("click", onEnableDisplay);
             document.body.appendChild(enableDisplayEl);
         }
-        if (enableDisplayEl) enableDisplayEl.hidden = !slot;
+        if (!enableDisplayEl) return;
+        if (!slot) {
+            enableDisplayEl.hidden = true;
+            return;
+        }
+        var label = deviceNumberValid(deviceNumber)
+            ? "Tap to allow video, tablet #" + deviceNumber
+            : "Tap to allow video, this tablet";
+        enableDisplayEl.textContent = label;
+        enableDisplayEl.setAttribute("aria-label", label);
+        enableDisplayEl.hidden = false;
+        if (typeof enableDisplayEl.focus === "function") {
+            try {
+                enableDisplayEl.focus();
+            } catch (err) {
+                warn("could not focus the Enable display control", err);
+            }
+        }
     }
 
     function onEnableDisplay(event) {
@@ -3412,6 +3587,7 @@
             slot.evidence.play_ok = "no";
             slot.lastReportAt = -Infinity;
             reportVideoReady(slot);
+            showVideoUnavailable();
             releaseVideoSlot(slot);
             return;
         }
@@ -3421,6 +3597,7 @@
         slot.needsGesture = false;
         videoActive = slot;
         playbackOnScreen = true;
+        hideVideoUnavailable();
         if (videoArmed === slot) videoArmed = null;
         if (videoPending === slot) videoPending = null;
         slot.layer.style.visibility = "visible";
@@ -3742,6 +3919,7 @@
         releaseVideoSlot(videoPending);
         releaseVideoSlot(videoArmed);
         releaseVideoSlot(videoActive);
+        hideVideoUnavailable();
     }
 
     /* A dropped socket cannot promise the server still owns this video, so
@@ -3782,10 +3960,15 @@
             resetBackoff();
             startHeartbeat(socket, frame.heartbeat_interval_ms);
             setStatus("connected");
+            socketConnected = true;
             /* The welcome can change the number on a reconnect while the
              * wall replay is dropped as the same revision. Repaint the
              * current state so the badge is never stale. */
             if (wallState) render();
+            if (enableDisplayEl && !enableDisplayEl.hidden && enableDisplaySlot) {
+                showEnableDisplay(enableDisplaySlot);
+            }
+            showHud();
             onWelcome();
         } else if (frame.type === "set_color") {
             applyColor(frame.color);
@@ -3855,6 +4038,8 @@
                 stopHeartbeat();
                 if (activeSocket === socket) {
                     activeSocket = null;
+                    socketConnected = false;
+                    refreshHud();
                     onSocketClosed();
                 }
                 resolve({

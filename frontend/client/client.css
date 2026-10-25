@@ -135,6 +135,140 @@ body {
 }
 
 /*
+ * Identity HUD: welcome, reconnect, a wall tap and a re-bind show the display
+ * number, the short id and whether the server has placed this tablet. It fades
+ * after five seconds and never takes a tap; top-left keeps it off the
+ * full-screen control (top-right) and the status pill (bottom).
+ */
+#hud {
+    position: fixed;
+    top: 16px; /* fallback for browsers without max() */
+    top: max(16px, env(safe-area-inset-top));
+    left: 16px;
+    left: max(16px, env(safe-area-inset-left));
+    z-index: 30;
+    display: flex;
+    flex-direction: column;
+    gap: 0.1em;
+    max-width: min(52vw, 420px);
+    padding: 0.5em 0.85em;
+    border-radius: 14px;
+    background: rgba(15, 23, 42, 0.88);
+    border: 1px solid rgba(226, 232, 240, 0.3);
+    color: #e2e8f0;
+    font-size: 18px; /* fallback for browsers without clamp() */
+    font-size: clamp(15px, 2.4vh, 22px);
+    font-weight: 700;
+    letter-spacing: 0.02em;
+    line-height: 1.3;
+    white-space: nowrap;
+    pointer-events: none;
+    opacity: 0;
+    visibility: hidden;
+    transition: opacity 0.35s ease, visibility 0s linear 0.35s;
+}
+
+#hud[data-visible="true"] {
+    opacity: 1;
+    visibility: visible;
+    transition: opacity 0.25s ease;
+}
+
+#hud .hud-identity {
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+#hud .hud-state {
+    color: #94a3b8;
+    font-size: 0.82em;
+    font-weight: 600;
+}
+
+#hud[data-placed="false"] .hud-state {
+    color: #fbbf24;
+}
+
+/*
+ * The local video failure state. Transient and separate from the scene: the
+ * persisted wall stays exactly as it was underneath, so a stop or reconnect
+ * still returns to it. Above the status pill and clear of the safe areas.
+ */
+#video-unavailable {
+    position: fixed;
+    left: 50%;
+    bottom: calc(16px + 3.2em); /* clears the status pill */
+    bottom: calc(max(16px, env(safe-area-inset-bottom)) + 3.2em);
+    transform: translateX(-50%);
+    z-index: 25;
+    max-width: min(90vw, 560px);
+    padding: 0.65em 1.1em;
+    border-radius: 12px;
+    background: #7f1d1d;
+    border: 1px solid #fca5a5;
+    color: #fef2f2;
+    font-size: 18px; /* fallback for browsers without clamp() */
+    font-size: clamp(15px, 2.4vh, 22px);
+    font-weight: 700;
+    letter-spacing: 0.02em;
+    line-height: 1.3;
+    text-align: center;
+    pointer-events: none;
+    opacity: 0;
+    visibility: hidden;
+    transition: opacity 0.35s ease, visibility 0s linear 0.35s;
+}
+
+#video-unavailable[data-visible="true"] {
+    opacity: 1;
+    visibility: visible;
+    transition: opacity 0.25s ease;
+}
+
+/*
+ * The local video-enable action. A finger-sized, high-contrast pill so it can
+ * be found and pressed from a distance when the browser withheld activation.
+ * client.js owns its visibility, label and focus.
+ */
+#enable-display {
+    position: fixed;
+    left: 50%;
+    bottom: 12%; /* fallback for browsers without max() */
+    bottom: max(12%, calc(env(safe-area-inset-bottom) + 24px));
+    transform: translateX(-50%);
+    z-index: 30;
+    box-sizing: border-box;
+    min-height: 56px;
+    max-width: calc(100vw - 32px);
+    max-width: calc(
+        100vw - 32px - env(safe-area-inset-left) - env(safe-area-inset-right)
+    );
+    padding: 0 28px;
+    border-radius: 999px;
+    border: 2px solid #0f172a;
+    background: #f8fafc;
+    color: #0f172a;
+    font: inherit;
+    font-size: 20px;
+    font-weight: 700;
+    letter-spacing: 0.01em;
+    line-height: 1.15;
+    text-align: center;
+    cursor: pointer;
+    box-shadow: 0 10px 30px rgba(2, 6, 23, 0.5);
+    -webkit-tap-highlight-color: transparent;
+}
+
+#enable-display[hidden] {
+    display: none;
+}
+
+#enable-display:focus-visible {
+    outline: 3px solid #22d3ee;
+    outline-offset: 4px;
+}
+
+/*
  * Ownership takeover. When another page claims this tablet identity the
  * losing socket is closed with 4409; the client stops retrying and offers one
  * deliberate action instead of racing the winner. A large target, always

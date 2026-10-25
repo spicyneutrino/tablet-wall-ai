@@ -64,6 +64,8 @@ const { webcrypto } = require("node:crypto");
 
 const CLIENT_JS = path.join(__dirname, "..", "frontend", "client", "client.js");
 const CLIENT_SOURCE = fs.readFileSync(CLIENT_JS, "utf8");
+const CLIENT_HTML = path.join(__dirname, "..", "frontend", "client", "index.html");
+const CLIENT_CSS = path.join(__dirname, "..", "frontend", "client", "client.css");
 const view = require("../frontend/client/view.js");
 
 const ORIGIN = "http://wall.test";
@@ -202,9 +204,13 @@ function createHarness(opts = {}) {
             children: [],
             parentNode: null,
             hidden: false,
+            focused: false,
             textContent: "",
             attributes: {},
             listeners: {},
+            focus() {
+                this.focused = true;
+            },
             setAttribute(name, value) {
                 this.attributes[name] = String(value);
             },
@@ -260,6 +266,19 @@ function createHarness(opts = {}) {
         child.parentNode = null;
         return child;
     };
+
+    /* The static identity HUD and local video-failure notice from
+     * index.html. client.js only writes their text and data-visible. */
+    const hud = makeElement("div");
+    hud.setAttribute("id", "hud");
+    hud.setAttribute("data-visible", "false");
+    const hudIdentity = makeElement("span");
+    hudIdentity.setAttribute("id", "hud-identity");
+    const hudState = makeElement("span");
+    hudState.setAttribute("id", "hud-state");
+    const videoUnavailable = makeElement("div");
+    videoUnavailable.setAttribute("id", "video-unavailable");
+    videoUnavailable.setAttribute("data-visible", "false");
 
     function timeRanges(ranges) {
         const list = Array.isArray(ranges) ? ranges : [];
@@ -396,6 +415,10 @@ function createHarness(opts = {}) {
             if (id === "surface") return canvas;
             if (id === "status") return status;
             if (id === "takeover") return takeover;
+            if (id === "hud") return hud;
+            if (id === "hud-identity") return hudIdentity;
+            if (id === "hud-state") return hudState;
+            if (id === "video-unavailable") return videoUnavailable;
             return null;
         },
         documentElement: {
@@ -710,6 +733,21 @@ function createHarness(opts = {}) {
         videos,
         elements,
         bodyChildren,
+        hud() {
+            return hud;
+        },
+        hudIdentity() {
+            return hudIdentity;
+        },
+        hudState() {
+            return hudState;
+        },
+        videoUnavailable() {
+            return videoUnavailable;
+        },
+        tap() {
+            for (const fn of docListeners.pointerdown || []) fn({});
+        },
         now() {
             return perfNow;
         },
@@ -3255,8 +3293,9 @@ test("video: a fractional frame duration matches the published millisecond", asy
     assert.strictEqual(el.playCalls, 1, "2.066667 s of a 2.067 s clip is enough");
 });
 
-test("video: activation denial shows one Enable display and asks for a gesture", async () => {
+test("video: activation denial shows one focused Enable display pill", async () => {
     const h = await startVideoHarness(VP);
+    h.emit({ type: "welcome", heartbeat_interval_ms: 5000, protocol: 3, number: 5 });
     h.emit(videoPrepare());
     await drain();
     const el = playerVideos(h)[0];
@@ -3293,7 +3332,17 @@ test("video: activation denial shows one Enable display and asks for a gesture",
     );
     assert.strictEqual(buttons.length, 1, "exactly one Enable display button");
     assert.strictEqual(buttons[0].hidden, false, "the button is shown");
-    assert.strictEqual(buttons[0].textContent, "Enable display");
+    assert.strictEqual(
+        buttons[0].textContent,
+        "Tap to allow video, tablet #5",
+        "the pill names the action and the tablet"
+    );
+    assert.strictEqual(
+        buttons[0].attributes["aria-label"],
+        "Tap to allow video, tablet #5",
+        "its accessible name is the same copy"
+    );
+    assert.strictEqual(buttons[0].focused, true, "focus moves to it, so it is announced");
 
     /* The tap is the gesture: probe again, then finish the reseek. */
     deny = false;
@@ -3623,6 +3672,220 @@ test("video: a play promise that never settles is bounded and recovered", async 
     hung.resolve();
     await drain();
     assert.strictEqual(el.playCalls, 3, "the late resolution played nothing");
+});
+
+/* ------------------------------------------------------------------ */
+/* Identity HUD and local video failure                               */
+/* ------------------------------------------------------------------ */
+
+test("hud: welcome, tap and re-bind show #N, short id and placement, then fade", async () => {
+    const h = await startHarness(VP);
+    const shortId = h.storage["tablet-wall-device-id"].slice(0, 8);
+
+    h.emit({ type: "welcome", heartbeat_interval_ms: 5000, protocol: 3, number: 4 });
+    await drain();
+
+    assert.strictEqual(
+        h.hud().attributes["data-visible"],
+        "true",
+        "the welcome brings the HUD up"
+    );
+    assert.strictEqual(
+        h.hudIdentity().textContent,
+        "#4 \u00b7 " + shortId,
+        "it names the number and the short id"
+    );
+    assert.strictEqual(
+        h.hudState().textContent,
+        "Connected",
+        "before the wall replay it claims the connection, not a placement"
+    );
+
+    /* The replay says this tablet has no placement yet. The HUD, already up,
+     * corrects itself without restarting its five seconds. */
+    h.emit(
+        wallFrame({
+            revision: 1,
+            placement: null,
+            scene: { content: { type: "color" }, layout: "active" },
+        })
+    );
+    await drain();
+    assert.strictEqual(h.hudState().textContent, "Not placed");
+    assert.strictEqual(h.hud().attributes["data-placed"], "false");
+
+    assert.ok(
+        h.fireTimers((timer) => timer.delay === 5000) >= 1,
+        "the HUD armed its five-second deadline"
+    );
+    assert.strictEqual(
+        h.hud().attributes["data-visible"],
+        "false",
+        "and it faded by itself"
+    );
+
+    /* A tap is the other way to ask "which tablet is this?" — and to be told
+     * that it is not on the wall yet. */
+    h.tap();
+    assert.strictEqual(
+        h.hud().attributes["data-visible"],
+        "true",
+        "a tap brings the HUD back"
+    );
+    assert.strictEqual(h.hudState().textContent, "Not placed");
+
+    /* A placement arrives, as it does after an operator places or re-binds
+     * this tablet: the HUD updates and stays up for its full window. */
+    h.emit(
+        wallFrame({
+            revision: 2,
+            placement: { x: 0, y: 0, w: 1000, h: 1000, bezel: ZERO_BEZEL },
+            scene: { content: { type: "color" }, layout: "active" },
+        })
+    );
+    await drain();
+    assert.strictEqual(h.hudState().textContent, "Connected");
+    assert.strictEqual(h.hud().attributes["data-placed"], "true");
+    assert.strictEqual(h.hud().attributes["data-visible"], "true");
+
+    /* A re-bind can also hand over a new number; the reconnect welcome is
+     * where the tablet learns it. */
+    h.emit({ type: "welcome", heartbeat_interval_ms: 5000, protocol: 3, number: 9 });
+    await drain();
+    assert.strictEqual(h.hudIdentity().textContent, "#9 \u00b7 " + shortId);
+
+    h.fireTimers((timer) => timer.delay === 5000);
+    assert.strictEqual(
+        h.hud().attributes["data-visible"],
+        "false",
+        "five seconds after the last trigger the wall is clean again"
+    );
+});
+
+test("video: an activation refusal shows a transient Video unavailable, #N", async () => {
+    const h = await startVideoHarness(VP);
+    h.setFetch(route({ [ASSET_A]: okResponse(assetBlob("A", 400, 400)) }));
+    h.emit({ type: "welcome", heartbeat_interval_ms: 5000, protocol: 3, number: 2 });
+    h.emit(wallFrame());
+    await drain();
+    assertCloseAll(
+        lastDrawImage(h).slice(1),
+        COVER_400,
+        "the persisted picture is on the wall"
+    );
+    const paints = h.named("drawImage").length;
+
+    h.emit(videoPrepare());
+    await drain();
+    const el = playerVideos(h)[0];
+    el.playImpl = () => Promise.reject(new Error("decoder refused"));
+    el.metadata(6);
+    el.settleSeek();
+    el.progress([[0, 6000]]);
+    await drain();
+
+    assert.strictEqual(
+        h.videoUnavailable().textContent,
+        "Video unavailable, #2",
+        "the local state names the failure and the tablet"
+    );
+    assert.strictEqual(
+        h.videoUnavailable().attributes["data-visible"],
+        "true",
+        "it is visible"
+    );
+    assert.strictEqual(
+        h.named("drawImage").length,
+        paints,
+        "the persisted scene was not repainted or replaced"
+    );
+    assertCloseAll(
+        lastDrawImage(h).slice(1),
+        COVER_400,
+        "the persisted picture is still the one on the wall"
+    );
+    assert.strictEqual(
+        visibleLayers(h).length,
+        0,
+        "the failed video never became visible"
+    );
+
+    h.fireTimers((timer) => timer.delay === 6000);
+    assert.strictEqual(
+        h.videoUnavailable().attributes["data-visible"],
+        "false",
+        "the failure state is transient"
+    );
+
+    /* Stop still restores the persisted scene, because the failure notice
+     * never touched it. */
+    h.emit({ type: "playback", state: "stopped" });
+    await drain();
+    assertCloseAll(
+        lastDrawImage(h).slice(1),
+        COVER_400,
+        "stop returns to the untouched persisted picture"
+    );
+});
+
+test("video: repeated preparation failures end in Video unavailable", async () => {
+    const h = await startVideoHarness(VP);
+    h.emit({ type: "welcome", heartbeat_interval_ms: 5000, protocol: 3, number: 3 });
+    h.emit(videoPrepare());
+    await drain();
+    const el = playerVideos(h)[0];
+
+    /* Three bounded recoveries, then the fourth failure blocks the slot. */
+    for (let i = 0; i < 4; i++) {
+        el.emit("error");
+        await drain();
+    }
+
+    assert.ok(
+        h.warnings.some((w) =>
+            String(w.message).includes("video blocked after 3 recoveries")
+        ),
+        "the recovery budget was spent: " +
+            JSON.stringify(h.warnings.map((w) => w.message))
+    );
+    assert.strictEqual(
+        h.videoUnavailable().textContent,
+        "Video unavailable, #3",
+        "the local state says the video is unavailable"
+    );
+    assert.strictEqual(
+        h.videoUnavailable().attributes["data-visible"],
+        "true",
+        "and it is shown"
+    );
+    const lastReady = readyFrames(h, "prep-1").pop();
+    assert.ok(lastReady, "the blocked slot still reported its evidence");
+    assert.strictEqual(lastReady.video.play_ok, "no");
+});
+
+test("client shell: cache versions, HUD markup and the 56 px CSS pill", () => {
+    const html = fs.readFileSync(CLIENT_HTML, "utf8");
+    const css = fs.readFileSync(CLIENT_CSS, "utf8");
+
+    assert.match(html, /client\.css\?v=4/, "the stylesheet version was bumped");
+    assert.match(html, /client\.js\?v=9/, "the script version was bumped");
+    assert.match(html, /id="hud"/, "the HUD has static markup");
+    assert.match(html, /id="video-unavailable"/, "the failure notice has static markup");
+
+    const pill = css.match(/#enable-display\s*\{[\s\S]*?\}/);
+    assert.ok(pill, "the Enable display pill is styled in CSS");
+    assert.match(pill[0], /min-height:\s*56px/, "the pill is 56 px high");
+    const hud = css.match(/#hud\s*\{[\s\S]*?\}/);
+    assert.ok(hud, "the HUD is styled in CSS");
+    assert.match(
+        hud[0],
+        /env\(safe-area-inset-top\)/,
+        "the HUD respects the top safe area"
+    );
+    assert.ok(
+        !CLIENT_SOURCE.includes("enableDisplayEl.style"),
+        "the Enable display pill keeps no inline styles"
+    );
 });
 
 /* ------------------------------------------------------------------ */
