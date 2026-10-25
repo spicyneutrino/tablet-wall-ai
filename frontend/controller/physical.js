@@ -4916,6 +4916,9 @@
             el.playbackMore.addEventListener("click", function () {
                 const expanded = el.playbackMore.getAttribute("aria-expanded") === "true";
                 el.playbackMore.setAttribute("aria-expanded", expanded ? "false" : "true");
+                if (el.playbackCard) {
+                    el.playbackCard.dataset.expanded = expanded ? "false" : "true";
+                }
             });
         }
 
