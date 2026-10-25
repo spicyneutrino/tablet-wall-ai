@@ -552,3 +552,30 @@ mid-video reconnect recovery and automatic lower-quality fallback are not
 implemented. A stalled committed video reports samples but is not group-paused.
 These are marked MISSING, not passed. Optical timing, physical suspend, iOS
 decode, local-CA device trust and soak remain MISSING.
+
+## Final independent review (Sol xhigh)
+
+Sol reviewed committed HEAD after the first completion and found six further
+defects. All are fixed and covered:
+
+1. **P1 short video never ready.** The client floored the buffered end while
+   the server published a rounded duration (2066 vs 2067 ms). Coverage now
+   rounds up; a fractional-duration fixture passes.
+2. **P1 strict commit after a required tablet disconnects.** Closing a device
+   socket now revokes its pending lease, so the full cohort check fails and
+   strict does not commit to a socket that is gone.
+3. **P2 duplicate still commit removed a playing video.** Applied still
+   preparations are consumed; a replayed commit is ignored.
+4. **P2 status reported expired leases ready.** Status derives readiness from
+   the same expiry and clock checks as the commit.
+5. **P2 controller timing fields.** The server now publishes `now_ms`; the
+   controller reads `current_effective_ms`, so anchors and future commits are
+   real. The browser video run checks a timed anchor.
+6. **P2 Retry on a failed session.** Retry is enabled only for `blocked`,
+   matching the server; failed says Stop and start again.
+
+Two findings were already fixed concurrently: a rejected Previous no longer
+cancels the armed cut, and the 412 retry calls the real status refresh.
+Final counts: Python 815, client 43, view 12, wake lock 10. Video browser
+20/20. Sol's verdict was "not merge-ready" before these fixes; the fixes are
+committed (`3c2d5ee`, `3511055`, `7d7143b`, `d53b128`, `a29ac6d`).
