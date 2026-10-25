@@ -6,9 +6,17 @@ Starts a disposable real server on a free port with temporary storage, two
 calibrated Chromium clients and a 20 s video plus a still. It then drives the
 physical controller UI rather than only reading ``data-state``:
 
-* Pause must render ``Paused`` with the live item name, the paused dwell must
+* Pause must render ``Paused`` with the live item name, the paused countdown must
   not age, the status poll must stay healthy, Resume must advance the clients
   and Stop must restore the persisted scene.
+* Remaining time lives in ``#playback-countdown`` only. ``#playback-status`` is
+  not a live region, its playing text is stable, and a state change announces
+  once on ``#page-status``.
+* Active readiness sorts by display number, says ``preparing next``, and the
+  cohort summary is one line. A session with no exclusions hides the exclusion
+  controls; one exclusion shows them.
+* Selecting a tablet shows the local Apply/Cancel footer, a nudge enables both
+  copies of Apply, and local Cancel clears the draft without writing.
 * While the frozen video session keeps playing, a different playlist is edited,
   reordered and saved from the controller. A reload must keep the live name,
   kind, duration and dwell from the frozen session, show the new still in the
@@ -16,7 +24,8 @@ physical controller UI rather than only reading ``data-state``:
   differ. The same save is repeated while paused and while a real recovery is
   in progress.
 * A new Start after Stop must use the newly saved still.
-* 390x844 must have no horizontal overflow and a readable pause summary.
+* 390x844 must have no horizontal overflow, a compact paused playback card, a
+  visible More control and a stage that fits without horizontal scrolling.
 * Unexpected controller/client page errors, console errors and failed
   requests fail the run.
 
@@ -68,13 +77,15 @@ SCENARIOS = {
     "S2": "the controller renders the live playing video",
     "S3": "Pause renders the frozen live name and a stable dwell with healthy polls",
     "S4": "Resume returns to playing and the clients advance",
-    "S5": "390x844 pause summary is readable without horizontal overflow",
+    "S5": "390x844 pause summary is readable with a compact card and fitted stage",
     "S6": "a saved draft during playback keeps the frozen live identity",
     "S7": "a saved draft while paused keeps the live name and the frozen dwell",
     "S8": "a saved draft during recovery keeps the frozen live identity",
     "S9": "Stop restores the persisted scene",
     "S10": "a new Start uses the newly saved still",
     "S11": "no unexpected page errors, console errors or failed requests",
+    "S12": "local Apply/Cancel mirror the draft without writing a layout",
+    "S13": "one session exclusion shows the cohort and hides the excluded tablet",
 }
 DWELL_RE = re.compile(r"\b\d+(?:\.\d+)? s left")
 EXPECTED_EVENT_REASONS = {
@@ -364,6 +375,9 @@ async def main(artifacts_arg: Path) -> int:
         async def summary() -> str:
             return await controller.locator("#playback-status").inner_text()
 
+        async def countdown() -> str:
+            return await controller.locator("#playback-countdown").inner_text()
+
         async def facts() -> str:
             return await controller.locator("#playback-facts").inner_text()
 
@@ -482,37 +496,142 @@ async def main(artifacts_arg: Path) -> int:
               and playing.get("playlist_revision") == 1,
               live=live, playlist_revision=playing.get("playlist_revision"))
         playing_summary = await summary()
+        playing_countdown = await countdown()
         playing_facts = await facts()
-        report["controller_playing"] = {"summary": playing_summary, "facts": playing_facts}
-        check("S2", "the controller summary names the playing video",
+        live_region = await controller.evaluate("""() => {
+            const status = document.querySelector('#playback-status');
+            const countdown = document.querySelector('#playback-countdown');
+            return {
+                role: status.getAttribute('role'),
+                ariaLive: status.getAttribute('aria-live'),
+                countdownAriaHidden: countdown.getAttribute('aria-hidden'),
+            };
+        }""")
+        report["controller_playing"] = {
+            "summary": playing_summary, "countdown": playing_countdown,
+            "facts": playing_facts, "live_region": live_region,
+        }
+        check("S2", "the controller summary names the playing video without its remaining time",
               playing_summary.startswith("Playing:") and "f3-session.mp4" in playing_summary
-              and DWELL_RE.search(playing_summary) is not None,
+              and DWELL_RE.search(playing_summary) is None,
               summary=playing_summary)
+        check("S2", "the countdown carries the playing remaining time and is hidden from assistive tech",
+              DWELL_RE.search(playing_countdown) is not None
+              and live_region["countdownAriaHidden"] == "true",
+              countdown=playing_countdown, aria_hidden=live_region["countdownAriaHidden"])
+        check("S2", "the playback summary is not a live region",
+              live_region["role"] is None and live_region["ariaLive"] is None,
+              role=live_region["role"], aria_live=live_region["ariaLive"])
         check("S2", "the controller facts show the frozen 20 s video kind and duration",
               "Current media" in playing_facts and "video \u00b7 20 s clip" in playing_facts,
               facts=playing_facts)
+
+        stable_summary = await summary()
+        stable_countdown = await countdown()
+        await asyncio.sleep(3.1)
+        later_summary = await summary()
+        later_countdown = await countdown()
+        report["playing_stability"] = {
+            "summary_before": stable_summary, "summary_after": later_summary,
+            "countdown_before": stable_countdown, "countdown_after": later_countdown,
+            "state": status().get("state"),
+        }
+        check("S2", "the playing summary stays stable for three seconds while the countdown advances",
+              report["playing_stability"]["state"] == "playing"
+              and stable_summary == later_summary
+              and DWELL_RE.search(stable_countdown) is not None
+              and later_countdown != stable_countdown,
+              summary_before=stable_summary, summary_after=later_summary,
+              countdown_before=stable_countdown, countdown_after=later_countdown)
+
+        await controller.wait_for_function(
+            "() => document.querySelectorAll('.playback-member').length === 2", timeout=10000)
+        readiness = await controller.evaluate("""() => ({
+            names: [...document.querySelectorAll('.playback-member-name')]
+                .map(node => node.textContent),
+            chips: [...document.querySelectorAll('.playback-member .chip')]
+                .map(node => node.textContent),
+            waiting: document.querySelectorAll(
+                '.playback-member[data-state="waiting"]').length,
+        })""")
+        report["readiness"] = readiness
+        check("S2", "active readiness rows are ordered by display number and say preparing next",
+              len(readiness["names"]) == 2
+              and readiness["names"][0].startswith("#1")
+              and readiness["names"][1].startswith("#2")
+              and readiness["waiting"] >= 1
+              and "preparing next" in readiness["chips"]
+              and "waiting" not in readiness["chips"],
+              names=readiness["names"], chips=readiness["chips"],
+              waiting=readiness["waiting"])
+
+        cohort = await controller.evaluate("""() => {
+            const line = document.querySelector('#playback-cohort-line');
+            const style = getComputedStyle(line);
+            const rect = line.getBoundingClientRect();
+            return {
+                hidden: line.hidden, text: line.textContent,
+                whiteSpace: style.whiteSpace, height: rect.height,
+                fontSize: parseFloat(style.fontSize),
+                exclusionsHidden: document.querySelector('#playback-exclusions').hidden,
+            };
+        }""")
+        report["cohort_line"] = cohort
+        check("S2", "zero exclusions keep the cohort summary one line and hide the exclusion controls",
+              not cohort["hidden"]
+              and "2 required" in cohort["text"]
+              and "0 excluded" in cohort["text"]
+              and "2 in this show" in cohort["text"]
+              and cohort["whiteSpace"] == "nowrap"
+              and cohort["height"] <= cohort["fontSize"] * 2
+              and cohort["exclusionsHidden"] is True,
+              text=cohort["text"], white_space=cohort["whiteSpace"],
+              height=cohort["height"], font=cohort["fontSize"],
+              exclusions_hidden=cohort["exclusionsHidden"])
         await controller.screenshot(path=str(artifacts / "controller-playing.png"), full_page=True)
 
         phase["id"] = "S3"
         await video_window()
         mark = len(events)
+        # Start the pause just after a completed poll, so an in-flight status
+        # read cannot add a second announcement to the transition.
+        poll_before_pause = await poll_note()
+        await controller.wait_for_function(
+            "(before) => (document.querySelector('#playback-poll-note')?.textContent || '')"
+            " !== before", arg=poll_before_pause, timeout=3000)
+        await controller.evaluate("""() => {
+            window.__pageStatusChanges = [];
+            const node = document.querySelector('#page-status');
+            new MutationObserver(() => {
+                window.__pageStatusChanges.push(node.textContent);
+            }).observe(node, {childList: true, characterData: true, subtree: true});
+        }""")
         await controller.click("#btn-playback-pause")
         await wait_until(lambda: status().get("state") == "paused", 10, "pause did not stick")
         await wait_summary("Paused on")
         await asyncio.sleep(.4)
         paused_one = await summary()
+        paused_countdown_one = await countdown()
         paused_facts_one = await facts()
         poll_one = await poll_note()
         paused_status = status()
+        page_status_changes = await controller.evaluate("() => window.__pageStatusChanges")
         report["pause"] = {
-            "status": paused_status, "summary": paused_one, "facts": paused_facts_one,
-            "poll": poll_one,
+            "status": paused_status, "summary": paused_one,
+            "countdown": paused_countdown_one, "facts": paused_facts_one,
+            "poll": poll_one, "page_status_changes": page_status_changes,
         }
-        paused_dwell_before = DWELL_RE.search(paused_one)
+        paused_dwell_before = DWELL_RE.search(paused_countdown_one)
         check("S3", "the pause summary says Paused with the live video name",
-              paused_one.startswith("Paused on") and "f3-session.mp4" in paused_one
-              and paused_dwell_before is not None,
+              paused_one.startswith("Paused on") and "f3-session.mp4" in paused_one,
               summary=paused_one)
+        check("S3", "the paused countdown carries the remaining time and the summary does not",
+              paused_dwell_before is not None
+              and DWELL_RE.search(paused_one) is None,
+              summary=paused_one, countdown=paused_countdown_one)
+        check("S3", "the paused transition announces once on the page status",
+              page_status_changes == ["Playback paused."],
+              changes=page_status_changes)
         check("S3", "the paused facts keep the frozen 20 s video kind and duration",
               "Current media" in paused_facts_one
               and "video \u00b7 20 s clip" in paused_facts_one,
@@ -536,6 +655,11 @@ async def main(artifacts_arg: Path) -> int:
             const style = getComputedStyle(summary);
             const rect = summary.getBoundingClientRect();
             const pause = document.querySelector('#btn-playback-pause');
+            const card = document.querySelector('#playback-card');
+            const more = document.querySelector('#btn-playback-more');
+            const extra = document.querySelector('#playback-extra');
+            const stage = document.querySelector('#stage-scroll');
+            const svg = document.querySelector('#stage-svg');
             return {
                 innerWidth: window.innerWidth,
                 documentScrollWidth: document.documentElement.scrollWidth,
@@ -544,8 +668,18 @@ async def main(artifacts_arg: Path) -> int:
                 summaryLeft: rect.left, summaryRight: rect.right, summaryWidth: rect.width,
                 summaryOverflow: summary.scrollWidth - summary.clientWidth,
                 fontSize: parseFloat(style.fontSize),
+                countdown: document.querySelector('#playback-countdown').textContent,
                 pauseText: pause.textContent,
                 pauseVisible: !!pause.getClientRects().length,
+                cardHeight: card.getBoundingClientRect().height,
+                moreVisible: !!more.getClientRects().length,
+                moreExpanded: more.getAttribute('aria-expanded'),
+                extraVisible: !!extra.getClientRects().length,
+                stageTabIndex: stage.getAttribute('tabindex'),
+                stageRole: stage.getAttribute('role'),
+                stageScrollWidth: stage.scrollWidth,
+                stageClientWidth: stage.clientWidth,
+                svgWidth: svg.getBoundingClientRect().width,
             };
         }""")
         report["mobile"] = mobile_state
@@ -553,16 +687,35 @@ async def main(artifacts_arg: Path) -> int:
               mobile_state["documentScrollWidth"] - mobile_state["documentClientWidth"] <= 1,
               width=mobile_state["documentScrollWidth"],
               viewport=mobile_state["documentClientWidth"])
-        check("S5", "the mobile pause summary fits, stays readable and names the video",
+        check("S5", "the mobile paused summary fits, stays readable and names the video",
               mobile_state["summaryLeft"] >= 0
               and mobile_state["summaryRight"] <= mobile_state["innerWidth"] + 1
               and mobile_state["summaryOverflow"] <= 1
               and mobile_state["fontSize"] >= 12
               and "Paused on" in mobile_state["summary"]
               and "f3-session.mp4" in mobile_state["summary"]
-              and DWELL_RE.search(mobile_state["summary"]) is not None,
+              and DWELL_RE.search(mobile_state["summary"]) is None,
               summary=mobile_state["summary"], font=mobile_state["fontSize"],
               right=mobile_state["summaryRight"], overflow=mobile_state["summaryOverflow"])
+        check("S5", "the mobile paused countdown carries the remaining time",
+              DWELL_RE.search(mobile_state["countdown"]) is not None,
+              countdown=mobile_state["countdown"])
+        check("S5", "the mobile collapsed playback card is compact with More and a hidden extra block",
+              mobile_state["cardHeight"] <= 200
+              and mobile_state["moreVisible"]
+              and mobile_state["moreExpanded"] == "false"
+              and not mobile_state["extraVisible"],
+              height=mobile_state["cardHeight"], more=mobile_state["moreVisible"],
+              expanded=mobile_state["moreExpanded"], extra=mobile_state["extraVisible"])
+        check("S5", "the mobile stage is a fitted, focusable region",
+              mobile_state["stageTabIndex"] == "0"
+              and mobile_state["stageRole"] == "region"
+              and mobile_state["stageScrollWidth"] <= mobile_state["stageClientWidth"] + 1
+              and mobile_state["svgWidth"] <= mobile_state["stageClientWidth"] + 1,
+              tabindex=mobile_state["stageTabIndex"], role=mobile_state["stageRole"],
+              scroll_width=mobile_state["stageScrollWidth"],
+              client_width=mobile_state["stageClientWidth"],
+              svg_width=mobile_state["svgWidth"])
         check("S5", "the mobile pause control offers Resume",
               mobile_state["pauseText"] == "Resume" and mobile_state["pauseVisible"],
               button=mobile_state["pauseText"])
@@ -577,18 +730,28 @@ async def main(artifacts_arg: Path) -> int:
         phase["id"] = "S3"
         await asyncio.sleep(2.4)
         paused_two = await summary()
+        paused_countdown_two = await countdown()
         paused_facts_two = await facts()
         poll_two = await poll_note()
+        page_status_changes_after = await controller.evaluate("() => window.__pageStatusChanges")
         report["pause"]["summary_after_2s"] = paused_two
+        report["pause"]["countdown_after_2s"] = paused_countdown_two
         report["pause"]["facts_after_2s"] = paused_facts_two
         report["pause"]["poll_after_2s"] = poll_two
+        report["pause"]["page_status_changes_after_2s"] = page_status_changes_after
         check("S3", "the pause summary is identical after 2.4 s",
               paused_one == paused_two, before=paused_one, after=paused_two)
-        paused_dwell_after = DWELL_RE.search(paused_two)
-        check("S3", "the paused dwell text does not age",
+        paused_dwell_after = DWELL_RE.search(paused_countdown_two)
+        check("S3", "the paused countdown is identical after 2.4 s",
+              paused_countdown_one == paused_countdown_two,
+              before=paused_countdown_one, after=paused_countdown_two)
+        check("S3", "the paused countdown does not age",
               paused_dwell_before is not None and paused_dwell_after is not None
               and paused_dwell_before.group(0) == paused_dwell_after.group(0),
-              before=paused_one, after=paused_two)
+              before=paused_countdown_one, after=paused_countdown_two)
+        check("S3", "the paused transition did not announce again during the wait",
+              page_status_changes_after == ["Playback paused."],
+              changes=page_status_changes_after)
         facts_dwell_one = [line for line in paused_facts_one.splitlines()
                            if DWELL_RE.search(line)]
         facts_dwell_two = [line for line in paused_facts_two.splitlines()
@@ -648,21 +811,24 @@ async def main(artifacts_arg: Path) -> int:
         await wait_until(live_video_current, 15,
                          "the frozen video was not current after the reload")
         live_summary = await summary()
+        live_countdown = await countdown()
         live_facts = await facts()
         live_rows = await rows()
         markers = await now_markers()
         live_status = status()
         report["playing_draft"] = {
-            "summary": live_summary, "facts": live_facts, "rows": live_rows,
-            "markers": markers, "status": live_status, "saved": saved_two,
+            "summary": live_summary, "countdown": live_countdown, "facts": live_facts,
+            "rows": live_rows, "markers": markers, "status": live_status, "saved": saved_two,
         }
-        live_dwell = DWELL_RE.search(live_summary)
         check("S6", "the reloaded summary still names the frozen video, not the new still",
               live_summary.startswith("Playing:")
               and "f3-session.mp4" in live_summary
               and "controller-green.png" not in live_summary
-              and live_dwell is not None,
+              and DWELL_RE.search(live_summary) is None,
               summary=live_summary)
+        check("S6", "the reloaded countdown keeps the frozen video's remaining dwell",
+              DWELL_RE.search(live_countdown) is not None,
+              countdown=live_countdown)
         check("S6", "the reloaded facts keep the frozen 20 s video and its remaining dwell",
               "Current media" in live_facts and "video \u00b7 20 s clip" in live_facts
               and "Remaining dwell" in live_facts
@@ -687,12 +853,14 @@ async def main(artifacts_arg: Path) -> int:
         await open_details()
         await asyncio.sleep(.4)
         paused_before_save = await summary()
+        paused_countdown_before_save = await countdown()
         paused_facts_before_save = await facts()
-        check("S7", "the second pause again names the frozen video with a paused dwell",
+        check("S7", "the second pause again names the frozen video with a paused countdown",
               paused_before_save.startswith("Paused on")
               and "f3-session.mp4" in paused_before_save
-              and DWELL_RE.search(paused_before_save) is not None,
-              summary=paused_before_save)
+              and DWELL_RE.search(paused_before_save) is None
+              and DWELL_RE.search(paused_countdown_before_save) is not None,
+              summary=paused_before_save, countdown=paused_countdown_before_save)
         await add_asset(assets["yellow"])
         await wait_rows(2)
         await move_up(1)
@@ -708,12 +876,15 @@ async def main(artifacts_arg: Path) -> int:
         await wait_rows(2)
         await asyncio.sleep(.5)
         paused_after_save = await summary()
+        paused_countdown_after_save = await countdown()
         paused_facts_after_save = await facts()
         paused_rows_after = await rows()
         paused_markers = await now_markers()
         paused_status_after = status()
         report["paused_draft"] = {
             "summary_before": paused_before_save, "summary_after": paused_after_save,
+            "countdown_before": paused_countdown_before_save,
+            "countdown_after": paused_countdown_after_save,
             "facts_before": paused_facts_before_save, "facts_after": paused_facts_after_save,
             "rows": paused_rows_after, "markers": paused_markers,
             "saved": saved_three, "status": paused_status_after,
@@ -721,6 +892,9 @@ async def main(artifacts_arg: Path) -> int:
         check("S7", "the paused summary is unchanged by saving another playlist",
               paused_after_save == paused_before_save,
               before=paused_before_save, after=paused_after_save)
+        check("S7", "the paused countdown is unchanged by saving another playlist",
+              paused_countdown_after_save == paused_countdown_before_save,
+              before=paused_countdown_before_save, after=paused_countdown_after_save)
         check("S7", "the paused facts keep the frozen video and the same dwell",
               "Current media" in paused_facts_after_save
               and "video \u00b7 20 s clip" in paused_facts_after_save
@@ -941,6 +1115,161 @@ async def main(artifacts_arg: Path) -> int:
                                     full_page=True)
         http.post("/api/v3/playback/stop",
                   headers={"If-Match": str(status().get("version"))})
+        await wait_until(lambda: status().get("state") == "stopped", 10,
+                         "the final Stop did not stick")
+        await controller.wait_for_function(
+            "() => (document.querySelector('#playback-status')?.textContent || '')"
+            " === 'Playback is stopped.'", timeout=15000)
+
+        phase["id"] = "S12"
+        layout_document = http.get("/api/v3/config").json()
+        layout_revision_before = layout_document.get("revision")
+        selected_id = pages[0][1].device_id
+        await controller.wait_for_selector(
+            f'#stage-svg .slot[data-device-id="{selected_id}"]', timeout=10000)
+        await controller.click(f'#stage-svg .slot[data-device-id="{selected_id}"]')
+        await controller.wait_for_function(
+            "() => !document.querySelector('#inspector-body').hidden"
+            " && document.querySelector('#selected-title').textContent !== '–'",
+            timeout=10000)
+        local_before = await controller.evaluate("""() => ({
+            localVisible: !!document.querySelector('#btn-apply-local').getClientRects().length,
+            localCancelVisible: !!document.querySelector('#btn-cancel-local').getClientRects().length,
+            localDisabled: document.querySelector('#btn-apply-local').disabled,
+            localCancelDisabled: document.querySelector('#btn-cancel-local').disabled,
+            globalDisabled: document.querySelector('#btn-apply').disabled,
+            globalCancelDisabled: document.querySelector('#btn-cancel').disabled,
+            selected: document.querySelector('#selected-title').textContent,
+        })""")
+        check("S12", "selecting a tablet shows the local Apply and Cancel controls",
+              local_before["localVisible"] and local_before["localCancelVisible"]
+              and local_before["selected"] != "–",
+              selected=local_before["selected"])
+        check("S12", "the local controls mirror the disabled global draft controls",
+              local_before["localDisabled"] is True
+              and local_before["globalDisabled"] is True
+              and local_before["localCancelDisabled"] is True
+              and local_before["globalCancelDisabled"] is True,
+              local=local_before["localDisabled"],
+              global_disabled=local_before["globalDisabled"])
+
+        await controller.click("#btn-nudge-x-plus")
+        await controller.wait_for_function(
+            "() => !document.querySelector('#btn-apply-local').disabled"
+            " && !document.querySelector('#btn-apply').disabled", timeout=5000)
+        nudged = await controller.evaluate("""() => ({
+            localDisabled: document.querySelector('#btn-apply-local').disabled,
+            globalDisabled: document.querySelector('#btn-apply').disabled,
+            localCancelDisabled: document.querySelector('#btn-cancel-local').disabled,
+            globalCancelDisabled: document.querySelector('#btn-cancel').disabled,
+            nudgeX: document.querySelector('#slot-nudge-x').value,
+            draftFlag: document.querySelector('#draft-flag').textContent,
+        })""")
+        check("S12", "a nudge enables both Apply controls and both Cancel controls",
+              nudged["localDisabled"] is False and nudged["globalDisabled"] is False
+              and nudged["localCancelDisabled"] is False
+              and nudged["globalCancelDisabled"] is False
+              and nudged["nudgeX"] == "1",
+              local=nudged["localDisabled"], global_disabled=nudged["globalDisabled"],
+              nudge_x=nudged["nudgeX"])
+
+        await controller.click("#btn-cancel-local")
+        await controller.wait_for_function(
+            "() => document.querySelector('#btn-apply-local').disabled"
+            " && document.querySelector('#btn-apply').disabled", timeout=5000)
+        cancelled = await controller.evaluate("""() => ({
+            localDisabled: document.querySelector('#btn-apply-local').disabled,
+            globalDisabled: document.querySelector('#btn-apply').disabled,
+            nudgeX: document.querySelector('#slot-nudge-x').value,
+            draftFlag: document.querySelector('#draft-flag').textContent,
+        })""")
+        layout_revision_after = http.get("/api/v3/config").json().get("revision")
+        report["local_apply"] = {
+            "before": local_before, "nudged": nudged, "cancelled": cancelled,
+            "layout_revision_before": layout_revision_before,
+            "layout_revision_after": layout_revision_after,
+        }
+        check("S12", "local Cancel clears the draft and disables both Apply controls",
+              cancelled["localDisabled"] is True and cancelled["globalDisabled"] is True
+              and cancelled["nudgeX"] == "0"
+              and cancelled["draftFlag"] == "Matches the committed layout",
+              nudge_x=cancelled["nudgeX"], draft=cancelled["draftFlag"])
+        check("S12", "local Cancel and the nudge did not write the layout",
+              layout_revision_after == layout_revision_before,
+              before=layout_revision_before, after=layout_revision_after)
+        await controller.screenshot(
+            path=str(artifacts / "local-apply-cancel-desktop.png"), full_page=True)
+
+        phase["id"] = "S13"
+        excluded_id = pages[1][1].device_id
+        await controller.wait_for_function(
+            "() => !document.querySelector('#playback-exclusions').hidden"
+            " && !!document.querySelector('#playback-exclusion-list input')",
+            timeout=10000)
+        await controller.check(
+            f'#playback-exclusion-list input[data-device-id="{excluded_id}"]')
+        await controller.wait_for_function(
+            "() => (document.querySelector('#playback-exclusion-summary')?.textContent || '')"
+            ".includes('1 excluded')", timeout=5000)
+        exclusion_summary_before = await controller.locator(
+            "#playback-exclusion-summary").inner_text()
+        check("S13", "one chosen exclusion is visible before Start",
+              "2 required" in exclusion_summary_before
+              and "1 excluded" in exclusion_summary_before
+              and "1 in this show" in exclusion_summary_before,
+              summary=exclusion_summary_before)
+        await controller.click("#btn-playback-start")
+        await wait_until(lambda: status().get("state") == "playing", 25,
+                         "the excluded-cohort Start never played")
+        await wait_summary("Playing", 15000)
+        excluded_state = await controller.evaluate("""() => {
+            const block = document.querySelector('#playback-exclusions');
+            const line = document.querySelector('#playback-cohort-line');
+            return {
+                exclusionsHidden: block.hidden,
+                exclusionsVisible: !!block.getClientRects().length,
+                title: document.querySelector('#playback-exclusions-title').textContent,
+                summary: document.querySelector('#playback-exclusion-summary').textContent,
+                listHidden: document.querySelector('#playback-exclusion-list').hidden,
+                cohortHidden: line.hidden,
+                cohortText: line.textContent,
+            };
+        }""")
+        started_with_exclusion = status()
+        report["excluded_session"] = {
+            "status": started_with_exclusion,
+            "summary": await summary(),
+            "cohort": excluded_state,
+            "exclusion_summary_before": exclusion_summary_before,
+        }
+        check("S13", "an active session with one exclusion shows the frozen exclusion block",
+              not excluded_state["exclusionsHidden"]
+              and excluded_state["exclusionsVisible"]
+              and excluded_state["title"] == "This show's cohort"
+              and "1 excluded" in excluded_state["summary"]
+              and "1 in this show" in excluded_state["summary"]
+              and excluded_state["listHidden"] is True,
+              title=excluded_state["title"], summary=excluded_state["summary"])
+        check("S13", "the excluded session keeps a one-line cohort summary",
+              not excluded_state["cohortHidden"]
+              and "2 required" in excluded_state["cohortText"]
+              and "1 excluded" in excluded_state["cohortText"]
+              and "1 in this show" in excluded_state["cohortText"],
+              cohort=excluded_state["cohortText"])
+        check("S13", "the server froze one excluded member for the show",
+              started_with_exclusion.get("state") == "playing"
+              and len(started_with_exclusion.get("excluded") or []) == 1
+              and started_with_exclusion.get("excluded") == [excluded_id],
+              state=started_with_exclusion.get("state"),
+              excluded=started_with_exclusion.get("excluded"))
+        await controller.screenshot(
+            path=str(artifacts / "excluded-session-desktop.png"), full_page=True)
+        await controller.click("#btn-playback-stop")
+        await wait_until(lambda: status().get("state") == "stopped", 10,
+                         "the excluded-session Stop did not stick")
+        await controller.wait_for_function(
+            "() => (document.querySelector('#playback-status')?.textContent || '')"
+            " === 'Playback is stopped.'", timeout=15000)
 
         phase["id"] = "S11"
         warnings = [event for event in events if event["kind"] == "console.warning"]
