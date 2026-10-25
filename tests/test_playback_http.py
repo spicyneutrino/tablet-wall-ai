@@ -522,3 +522,243 @@ def test_a_capped_video_fault_sends_one_terminal_hold_and_no_prepare(
             assert prepared == []
             assert session.state == state and session.pending is None
             assert session.recovery.attempts == 4
+
+
+def test_start_excludes_a_named_slot_from_the_effective_cohort():
+    with TestClient(main.app) as client:
+        prepare_physical(client)
+        with client.websocket_connect(socket_url(A)) as first, \
+                client.websocket_connect(socket_url(B)) as excluded:
+            for socket in (first, excluded):
+                socket.receive_json()  # welcome
+                socket.receive_json()  # clock bootstrap
+                socket.receive_json()  # render
+            started = client.post(
+                "/api/v3/playback/start",
+                json={"policy": "strict", "exclusions": [B]},
+            )
+            assert started.status_code == 200, started.text
+            status = started.json()
+            assert status["required"] == sorted([A, B])
+            assert status["excluded"] == [B]
+            assert status["cohort"] == [A]
+            assert set(status["members"]) == {A}
+            session = main._playback_session
+            assert session is not None
+            assert session.required == sorted([A, B])
+            assert session.excluded == [B] and session.cohort == [A]
+
+            prepare = first.receive_json()
+            assert prepare["type"] == "prepare"
+            assert prepare["cohort"] == [A]
+            assert prepare["connection_id"] == main.devices[A]["connection_id"]
+            stopped = excluded.receive_json()
+            assert stopped["type"] == "playback"
+            assert stopped["state"] == "stopped"
+            assert stopped["reason"] == "excluded"
+            assert stopped["session_id"] == session.id
+            assert "preparation_id" not in stopped
+
+
+def test_start_exclusion_validation_refuses_unknown_duplicate_and_inactive():
+    with TestClient(main.app) as client:
+        prepare_physical(client)
+        unknown = client.post(
+            "/api/v3/playback/start",
+            json={"policy": "strict", "exclusions": [
+                "5c6d7e8f-9012-4a3b-8c4d-5e6f708192a3"
+            ]},
+        )
+        assert unknown.status_code == 422, unknown.text
+        duplicate = client.post(
+            "/api/v3/playback/start",
+            json={"policy": "strict", "exclusions": [A, A]},
+        )
+        assert duplicate.status_code == 422, duplicate.text
+        all_excluded = client.post(
+            "/api/v3/playback/start",
+            json={"policy": "strict", "exclusions": [A, B]},
+        )
+        assert all_excluded.status_code == 409, all_excluded.text
+        assert main._playback_session is None
+
+        config = client.get("/api/v3/config").json()
+        changed = layout()
+        changed["slots"][B]["participating"] = False
+        saved = client.put(
+            "/api/v3/layout", json=changed, headers={"If-Match": config["etag"]}
+        )
+        assert saved.status_code == 200, saved.text
+        inactive = client.post(
+            "/api/v3/playback/start",
+            json={"policy": "strict", "exclusions": [B]},
+        )
+        assert inactive.status_code == 422, inactive.text
+        assert main._playback_session is None
+
+
+def test_paused_start_keeps_the_frozen_required_and_excluded_sets():
+    with TestClient(main.app) as client:
+        prepare_physical(client)
+        started = client.post(
+            "/api/v3/playback/start",
+            json={"policy": "strict", "exclusions": [B]},
+        )
+        assert started.status_code == 200, started.text
+        before = started.json()
+        paused = client.post(
+            "/api/v3/playback/pause",
+            headers={"If-Match": str(before["version"])},
+        )
+        assert paused.status_code == 200, paused.text
+        resumed = client.post(
+            "/api/v3/playback/start",
+            json={"policy": "online", "exclusions": []},
+        )
+        assert resumed.status_code == 200, resumed.text
+        after = resumed.json()
+        assert after["state"] == "preparing"
+        assert after["required"] == before["required"] == sorted([A, B])
+        assert after["excluded"] == before["excluded"] == [B]
+        assert after["cohort"] == before["cohort"] == [A]
+
+
+def test_paused_start_still_validates_supplied_exclusions():
+    with TestClient(main.app) as client:
+        prepare_physical(client)
+        started = client.post(
+            "/api/v3/playback/start",
+            json={"policy": "strict", "exclusions": [B]},
+        )
+        assert started.status_code == 200, started.text
+        version = started.json()["version"]
+        paused = client.post(
+            "/api/v3/playback/pause", headers={"If-Match": str(version)}
+        )
+        assert paused.status_code == 200, paused.text
+        paused_version = paused.json()["version"]
+
+        unknown = client.post(
+            "/api/v3/playback/start",
+            json={"exclusions": ["5c6d7e8f-9012-4a3b-8c4d-5e6f708192a3"]},
+        )
+        assert unknown.status_code == 422, unknown.text
+        duplicate = client.post(
+            "/api/v3/playback/start", json={"exclusions": [A, A]}
+        )
+        assert duplicate.status_code == 422, duplicate.text
+        all_excluded = client.post(
+            "/api/v3/playback/start",
+            json={"exclusions": [A, B]},
+        )
+        assert all_excluded.status_code == 409, all_excluded.text
+        session = main._playback_session
+        assert session is not None and session.state == "paused"
+        assert session.version == paused_version
+        assert session.required == sorted([A, B])
+        assert session.excluded == [B] and session.cohort == [A]
+
+
+def test_a_returning_video_device_starts_one_reconnect_recovery():
+    with TestClient(main.app) as client:
+        prepare_physical(client)
+        with client.websocket_connect(socket_url(B)) as other:
+            for _ in range(3):
+                other.receive_json()  # welcome, clock bootstrap, render
+            connections = {
+                device_id: main.devices[device_id].get("connection_id", "")
+                for device_id in (A, B)
+            }
+            session = playing_video_session(video_asset_id(), connections)
+            session.current_effective_ms = main._now_ms() - 700
+            main._playback_session = session
+            with client.websocket_connect(socket_url(A)) as socket:
+                socket.receive_json()  # welcome
+                socket.receive_json()  # clock bootstrap
+                socket.receive_json()  # render
+                prepare = socket.receive_json()
+                assert prepare["type"] == "prepare"
+                assert prepare["occurrence"] == session.current.as_dict()
+                assert prepare["recovery_id"] == session.recovery.id
+                assert prepare["media"]["kind"] == "video"
+                assert 650 <= prepare["start_media_ms"] <= 1200
+                assert prepare["cohort"] == sorted([A, B])
+                group = other.receive_json()
+                assert group["type"] == "prepare"
+                assert group["preparation_id"] == prepare["preparation_id"]
+                assert group["recovery_id"] == session.recovery.id
+                assert session.state == "recovering"
+                assert session.recovery.reason == "reconnect"
+                assert session.recovery.device_id == A
+                assert session.recovery.attempts == 1
+                assert main._playback_status()["state"] == "recovering"
+
+
+def test_a_reconnect_during_recovery_resends_the_same_prepare(monkeypatch):
+    import asyncio
+
+    with TestClient(main.app) as client:
+        prepare_physical(client)
+        main._playback_session = playing_video_session(video_asset_id(), {})
+        session = main._playback_session
+        assert playback.accept_reconnect(
+            session, device_id=A, now_ms=main._now_ms(),
+            connections={A: "conn-new", B: "conn-b"},
+        ) == "started"
+        sent = []
+
+        async def send_prepare(_session, pending, device_id):
+            sent.append((pending.id, _session.version, device_id))
+            return True
+
+        monkeypatch.setattr(main, "_send_prepare", send_prepare)
+        pending, version = session.pending.id, session.version
+        asyncio.run(main._playback_after_reconnect(session, A))
+        assert sent == [(pending, version, A)]
+        assert session.version == version
+        assert session.recovery.attempts == 1
+        assert session.pending.id == pending
+
+
+def test_a_reconnect_during_a_playing_still_resends_the_next_prepare(monkeypatch):
+    import asyncio
+
+    with TestClient(main.app) as client:
+        prepare_physical(client)
+        now = main._now_ms()
+        connections = {A: "conn-a", B: "conn-b"}
+        asset = video_asset_id()  # the curated still, not a video duration
+        session = playback.start(
+            [{"asset": asset, "dwell_ms": 5000},
+             {"asset": asset, "dwell_ms": 5000}],
+            False, [A, B], now, generation=main.wall["generation"],
+            clock_epoch=main._server_clock.epoch,
+            connections=connections, policy="strict",
+        )
+        for device_id in (A, B):
+            pending = session.pending
+            assert playback.accept_ready(
+                session, device_id=device_id,
+                connection_id=connections[device_id],
+                preparation_id=pending.id, version=pending.version,
+                evidence_seq=1, mapping_revision=1, clock_ok=True,
+                lease_ms=2000, now_ms=now, decoded=True,
+                occurrence=pending.occurrence.as_dict(),
+            )
+        assert playback.tick(session, now)[0]["type"] == "commit"
+        assert session.state == "playing"
+        assert session.current_media is None
+        assert session.pending is not None
+
+        main._playback_session = session
+        sent = []
+
+        async def send_prepare(_session, pending, device_id):
+            sent.append((pending.id, _session.version, device_id))
+            return True
+
+        monkeypatch.setattr(main, "_send_prepare", send_prepare)
+        pending, version = session.pending.id, session.version
+        asyncio.run(main._playback_after_reconnect(session, A))
+        assert sent == [(pending, version, A)]
+        assert session.version == version and session.state == "playing"

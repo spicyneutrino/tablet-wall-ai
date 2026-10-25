@@ -451,3 +451,186 @@ def test_recovery_status_reports_the_degraded_interval():
     blocked = playback.recovery_status(s, 40000)
     assert blocked["state"] == "blocked" and blocked["degraded_ms"] == 37000
     assert blocked["missing"] == ["dev-1", "dev-2"]
+
+
+# ---------------------------------------------------------------------------
+# Automatic reconnect
+# ---------------------------------------------------------------------------
+
+
+def test_a_reconnect_starts_one_recovery_at_the_server_playhead():
+    s = committed()
+    version = s.version
+    next_pending = s.pending.id
+    assert playback.accept_reconnect(
+        s, device_id="dev-1", now_ms=3000,
+        connections={"dev-1": "conn-new", "dev-2": "conn-dev-2"},
+    ) == "started"
+    assert s.version == version + 1
+    assert s.state == "recovering"
+    # The routine next-item preparation was cancelled by the recovery.
+    assert s.pending.id != next_pending
+    assert s.pending.occurrence == s.current
+    assert s.pending.start_media_ms == 1000  # 3000 ms - the 2000 ms anchor
+    assert s.pending.effective_ms == 4000
+    assert s.pending.leases["dev-1"].connection_id == "conn-new"
+    assert s.recovery is not None
+    assert s.recovery.reason == "reconnect"
+    assert s.recovery.device_id == "dev-1"
+    assert s.recovery.attempts == 1
+    assert s.recovery.started_ms == 3000
+    frame = s.pending.as_frame()
+    assert frame["recovery_id"] == s.recovery.id
+    assert frame["start_media_ms"] == 1000
+
+
+def test_a_second_reconnect_during_recovery_resends_without_a_new_attempt():
+    s = committed()
+    assert playback.accept_reconnect(s, device_id="dev-1", now_ms=3000) == "started"
+    pending, version = s.pending.id, s.version
+    recovery = s.recovery.id
+    # While recovering the caller resends this preparation under the new
+    # connection; no attempt, version or deadline changes.
+    assert playback.accept_reconnect(s, device_id="dev-1", now_ms=3200) == "pending"
+    assert s.pending.id == pending and s.version == version
+    assert s.recovery.id == recovery and s.recovery.attempts == 1
+    assert s.pending.deadline_ms == 34000
+
+    assert ready(s, "dev-1", 3900, seq=2, video=GOOD)
+    assert ready(s, "dev-2", 3900, seq=2, video=GOOD)
+    assert playback.tick(s, 3999)[0]["type"] == "commit"
+    assert s.state == "playing"
+    version = s.version
+    # A reconnect inside the 2 s coalescing window does not spend attempt 2.
+    assert playback.accept_reconnect(s, device_id="dev-1", now_ms=4999) == "ignored"
+    assert s.version == version
+    assert s.recovery.attempts == 1
+    # Exactly 2 s after the recovery started a fresh attempt is allowed.
+    assert playback.accept_reconnect(s, device_id="dev-1", now_ms=5000) == "started"
+    assert s.recovery.attempts == 2
+    assert s.recovery.started_ms == 5000
+
+
+def test_a_reconnect_during_preparation_requests_a_resend():
+    preparing = session()
+    version = preparing.version
+    assert playback.accept_reconnect(
+        preparing, device_id="dev-1", now_ms=1100
+    ) == "pending"
+    assert preparing.state == "preparing" and preparing.version == version
+
+    armed = session(policy="online")
+    assert ready(armed, "dev-1", 2000, video=GOOD)
+    assert playback.tick(armed, 2000)[0]["type"] == "hold"
+    assert armed.state == "armed"
+    assert playback.accept_reconnect(
+        armed, device_id="dev-1", now_ms=2000
+    ) == "pending"
+    assert armed.state == "armed"
+
+
+def test_reconnect_never_auto_joins_paused_blocked_or_final_sessions():
+    paused = committed()
+    playback.pause(paused, 3000)
+    version = paused.version
+    assert playback.accept_reconnect(
+        paused, device_id="dev-1", now_ms=4000
+    ) == "ignored"
+    assert paused.state == "paused" and paused.version == version
+
+    capped = committed()
+    capped.recovery_occurrence = capped.current
+    capped.recovery_attempts = playback.RECOVERY_ATTEMPTS
+    assert playback.accept_reconnect(
+        capped, device_id="dev-1", now_ms=3000
+    ) == "ignored"
+    assert capped.state == "playing" and capped.recovery_attempts == 3
+    assert fault(capped, now=3000) == "blocked"
+    assert playback.accept_reconnect(
+        capped, device_id="dev-1", now_ms=4000
+    ) == "ignored"
+    assert capped.state == "blocked"
+
+    failed = committed(policy="online")
+    failed.recovery_occurrence = failed.current
+    failed.recovery_attempts = playback.RECOVERY_ATTEMPTS
+    assert fault(failed, now=3000) == "failed"
+    assert playback.accept_reconnect(
+        failed, device_id="dev-1", now_ms=4000
+    ) == "ignored"
+    assert failed.state == "failed"
+
+    final = playback.start(
+        [{"asset": A, "dwell_ms": 1000}], False, ["dev-1", "dev-2"], 1000,
+        generation="gen", clock_epoch="epoch",
+        connections={"dev-1": "conn-dev-1", "dev-2": "conn-dev-2"},
+        policy="strict", videos={A: VIDEO_MS},
+    )
+    assert ready(final, "dev-1", 1100, video=GOOD)
+    assert ready(final, "dev-2", 1100, video=GOOD)
+    playback.tick(final, 1000)
+    assert final.state == playback.FINAL
+    assert playback.accept_reconnect(
+        final, device_id="dev-1", now_ms=3000
+    ) == "ignored"
+    assert final.state == playback.FINAL
+
+
+def test_reconnect_does_not_start_in_the_last_250_ms():
+    s = committed()
+    s.current_start_media_ms = VIDEO_MS - 250
+    assert playback.accept_reconnect(
+        s, device_id="dev-1", now_ms=s.current_effective_ms
+    ) == "ignored"
+    s.current_start_media_ms = VIDEO_MS - 251
+    assert playback.accept_reconnect(
+        s, device_id="dev-1", now_ms=s.current_effective_ms
+    ) == "started"
+    assert s.recovery.attempts == 1
+
+
+def test_an_excluded_slot_never_reconnects_into_the_cohort():
+    s = playback.start(
+        [{"asset": A, "dwell_ms": 1000}, {"asset": B, "dwell_ms": 1000}],
+        False, ["dev-1"], 1000, generation="gen", clock_epoch="epoch",
+        connections={"dev-1": "conn-dev-1", "dev-2": "conn-dev-2"},
+        policy="strict", videos={A: VIDEO_MS},
+        required=["dev-1", "dev-2"], excluded=["dev-2"],
+    )
+    assert s.required == ["dev-1", "dev-2"]
+    assert s.excluded == ["dev-2"] and s.cohort == ["dev-1"]
+    assert ready(s, "dev-1", 1100, video=GOOD)
+    playback.tick(s, 1000)
+    assert s.state == "playing"
+    version = s.version
+    assert playback.accept_reconnect(
+        s, device_id="dev-2", now_ms=3000
+    ) == "ignored"
+    assert s.version == version and s.state == "playing"
+    assert playback.accept_reconnect(
+        s, device_id="dev-1", now_ms=3000
+    ) == "started"
+    assert s.pending.leases.keys() == {"dev-1"}
+
+
+def test_an_online_reconnect_keeps_the_online_cohort():
+    s = playback.start(
+        [{"asset": A, "dwell_ms": 1000}, {"asset": B, "dwell_ms": 1000}],
+        False, ["dev-1"], 1000, generation="gen", clock_epoch="epoch",
+        connections={"dev-1": "conn-dev-1"},
+        policy="online", videos={A: VIDEO_MS},
+        required=["dev-1", "dev-2"],
+    )
+    assert s.required == ["dev-1", "dev-2"]
+    assert s.cohort == ["dev-1"] and s.excluded == []
+    assert ready(s, "dev-1", 1100, video=GOOD)
+    playback.tick(s, 1000)
+    assert s.state == "playing"
+    assert playback.accept_reconnect(
+        s, device_id="dev-2", now_ms=3000
+    ) == "ignored"
+    assert playback.accept_reconnect(
+        s, device_id="dev-1", now_ms=3000
+    ) == "started"
+    assert s.cohort == ["dev-1"]
+    assert s.pending.leases.keys() == {"dev-1"}

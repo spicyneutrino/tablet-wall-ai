@@ -2208,6 +2208,8 @@ def _playback_status() -> dict[str, Any]:
             ),
         },
         "cohort": session.cohort,
+        "required": sorted(session.required),
+        "excluded": sorted(session.excluded),
         "missed": session.missed,
         "held": session.held,
         "hold_deadline_ms": session.hold_deadline_ms,
@@ -2289,6 +2291,67 @@ async def _prepare_playback(session: playback.Session) -> None:
     for device_id in session.cohort:
         with contextlib.suppress(Exception):
             await _send_prepare(session, pending, device_id)
+
+
+async def _send_excluded_stopped(session: playback.Session) -> None:
+    """Tell each reachable excluded device to show the persisted scene.
+
+    Excluded slots are not in the effective cohort, so they never receive a
+    prepare. The frame is built once and a broken writer cannot skip another
+    excluded device.
+    """
+    frame = {
+        "type": "playback", "state": "stopped", "reason": "excluded",
+        **session.lineage(),
+    }
+    for device_id in session.excluded:
+        socket = device_sockets.get(device_id)
+        if socket is None:
+            continue
+        try:
+            await _send_to(socket, frame)
+        except Exception:
+            continue
+
+
+async def _playback_after_reconnect(
+    session: playback.Session, device_id: str
+) -> None:
+    """Rejoin one replacement socket to the active session.
+
+    A recovery or ordinary preparation already in flight is only re-sent to
+    this socket; the attempt and deadline stay frozen. A playing video starts
+    one server-authoritative group recovery, while every operator-controlled
+    or near-end state stays on the persisted scene.
+    """
+    if device_id not in session.cohort:
+        return
+    if session.state in ("recovering", "preparing", "armed"):
+        pending = session.pending
+        if pending is not None:
+            with contextlib.suppress(Exception):
+                await _send_prepare(session, pending, device_id)
+        return
+    if (
+        session.state == "playing"
+        and session.current_media is None
+        and session.pending is not None
+    ):
+        # A still occurrence has no video picture to recover. Re-send the
+        # routine next preparation so the replacement can join the next cut.
+        with contextlib.suppress(Exception):
+            await _send_prepare(session, session.pending, device_id)
+        return
+    result = playback.accept_reconnect(
+        session,
+        device_id=device_id,
+        now_ms=_now_ms(),
+        connections=_playback_connections(session.cohort),
+    )
+    if result != "started":
+        return
+    await _prepare_playback(session)
+    await _broadcast_playback()
 
 
 async def _send_terminal_hold(session: playback.Session) -> None:
@@ -2465,6 +2528,7 @@ async def get_playback_v3():
 
 class PlaybackStartCommand(BaseModel):
     policy: str | None = None
+    exclusions: list[str] = Field(default_factory=list)
 
 
 def _playback_connections(cohort: list[str]) -> dict[str, str]:
@@ -2482,6 +2546,7 @@ async def start_playback_v3(command: PlaybackStartCommand | None = None):
     explicit = command.policy if supplied else None
     if supplied and explicit not in playback.POLICIES:
         raise HTTPException(status_code=422, detail='policy must be "online" or "strict"')
+    exclusions = list(command.exclusions) if command is not None else []
     document = persist.load_meta("playlist")
     if not isinstance(document, dict):
         raise HTTPException(status_code=409, detail="save a playlist first")
@@ -2490,10 +2555,28 @@ async def start_playback_v3(command: PlaybackStartCommand | None = None):
         raise HTTPException(status_code=409, detail="a physical layout is required")
     videos = _video_durations(document["items"])
     policy = explicit or ("strict" if videos else "online")
+    slots = layout["slots"]
     required = sorted(
-        device_id for device_id, slot in layout["slots"].items()
+        device_id for device_id, slot in slots.items()
         if slot.get("participating", True) is not False
     )
+
+    if len(set(exclusions)) != len(exclusions):
+        raise HTTPException(status_code=422, detail="exclusions must be unique")
+    if any(
+        device_id not in slots
+        or slots[device_id].get("participating", True) is False
+        for device_id in exclusions
+    ):
+        raise HTTPException(
+            status_code=422,
+            detail="exclusions must name participating physical slots",
+        )
+    excluded = set(exclusions)
+    if required and set(required) <= excluded:
+        raise HTTPException(
+            status_code=409, detail="all participating slots are excluded"
+        )
 
     session = _playback_session
     if session is not None and session.state == "paused":
@@ -2501,15 +2584,19 @@ async def start_playback_v3(command: PlaybackStartCommand | None = None):
         await _prepare_playback(session)
         await _broadcast_playback()
         return _playback_status()
+
     if session is not None and session.state not in ("stopped", "failed"):
         raise HTTPException(status_code=409, detail="playback is already active")
 
     if policy == "strict":
-        cohort = required
+        cohort = [
+            device_id for device_id in required if device_id not in excluded
+        ]
     else:
         cohort = [
             device_id for device_id in required
-            if device_id in devices
+            if device_id not in excluded
+            and device_id in devices
             and devices[device_id].get("protocol") == 3
             and _is_online(device_id)
         ]
@@ -2524,8 +2611,11 @@ async def start_playback_v3(command: PlaybackStartCommand | None = None):
         playlist_revision=int(document.get("revision", 1)),
         policy=policy,
         videos=videos,
+        required=required,
+        excluded=sorted(excluded),
     )
     await _prepare_playback(_playback_session)
+    await _send_excluded_stopped(_playback_session)
     await _broadcast_playback()
     return _playback_status()
 
@@ -2925,16 +3015,7 @@ async def ws_device(
 
         session = _playback_session
         if session is not None and key in session.cohort:
-            pending = session.pending
-            if pending is not None and key in pending.leases:
-                lease = pending.leases[key]
-                lease.connection_id = record.get("connection_id", "")
-                lease.ready = False
-                lease.evidence_seq = 0
-                lease.lease_expires_ms = 0
-                lease.clock_ok = False
-            if pending is not None:
-                await _send_prepare(session, pending, key)
+            await _playback_after_reconnect(session, key)
 
         color = record.get("color")
         if color:
