@@ -224,10 +224,10 @@ def test_an_accepted_sample_delays_stale_detection():
         "occurrence": s.current.as_dict(), "media_ms": 2000, "target_ms": 2000,
         "drift_ms": 0, "rate": 1, "source": "rvfc",
     }
-    assert playback.accept_sample(s, device_id="dev-1", payload=payload, now_ms=4000)
-    assert playback.accept_sample(s, device_id="dev-2", payload=payload, now_ms=4000)
-    assert playback.tick(s, 7000) == []  # exactly 3000 ms is not stale
-    assert [action["type"] for action in playback.tick(s, 7001)] == ["recover"]
+    assert playback.accept_sample(s, device_id="dev-1", payload=payload, now_ms=2500)
+    assert playback.accept_sample(s, device_id="dev-2", payload=payload, now_ms=2500)
+    assert playback.tick(s, 5500) == []  # exactly 3000 ms is not stale
+    assert [action["type"] for action in playback.tick(s, 5501)] == ["recover"]
 
 
 def test_a_recovery_without_the_whole_cohort_blocks_in_strict():
@@ -301,8 +301,12 @@ def test_a_fourth_recovery_for_one_occurrence_blocks_without_a_prepare():
     assert s.version == version
     assert s.state == "blocked" and s.pending is None
     assert s.recovery.attempts == 4 and s.recovery.state == "blocked"
-    with pytest.raises(playback.PlaybackError):
-        playback.retry(s, now + 100)
+    fresh = playback.retry(s, now + 100)
+    assert s.state == "recovering" and fresh.start_media_ms == 2400
+    assert s.recovery.attempts == 1
+    assert ready(s, "dev-1", now + 200, seq=9, video=GOOD)
+    assert ready(s, "dev-2", now + 200, seq=9, video=GOOD)
+    assert playback.tick(s, now + 1199)[0]["type"] == "commit"
 
 
 def test_a_recovered_final_item_stays_final():

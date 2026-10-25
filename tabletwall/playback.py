@@ -468,11 +468,17 @@ def stalled_device(session: Session, now_ms: float) -> tuple[str, int] | None:
         return None
     if session.current_effective_ms is None or now_ms < session.current_effective_ms:
         return None
+    duration = int(session.current_media["duration_ms"])
+    position = _playhead_ms(session, now_ms)
+    if position >= duration - 250:
+        # The clip reached its natural end; a final occurrence has no next
+        # cut, and a non-final one is already being prepared for the boundary.
+        return None
     for device_id in sorted(session.playing):
         sample = session.samples.get(device_id)
         last_ms = sample["at_ms"] if sample is not None else session.current_effective_ms
         if now_ms - last_ms > STALE_SAMPLE_MS:
-            return device_id, _playhead_ms(session, now_ms)
+            return device_id, position
     return None
 
 
@@ -592,7 +598,7 @@ def accept_fault(
         return "ignored"
     duration = int(session.current_media["duration_ms"])
     position_ms = payload.get("position_ms")
-    if not _bounded(position_ms, 0, duration):
+    if not _bounded(position_ms, 0, duration - 1):
         return "ignored"
     if _recovery_attempts_for(session, occurrence) >= RECOVERY_ATTEMPTS:
         _recovery_failure(
@@ -936,15 +942,15 @@ def retry(
     """Leave ``blocked``: a new version of the same blocked occurrence."""
     recovery = session.recovery
     if session.state == "blocked" and recovery is not None and recovery.state == "blocked":
-        if recovery.attempts >= RECOVERY_ATTEMPTS:
-            raise PlaybackError("recovery attempt limit reached")
-        if session.pending is None:
-            raise PlaybackError("only a blocked session can retry")
         occurrence = recovery.occurrence
-        previous = {
-            device_id: lease.connection_id
-            for device_id, lease in session.pending.leases.items()
-        }
+        previous = (
+            {
+                device_id: lease.connection_id
+                for device_id, lease in session.pending.leases.items()
+            }
+            if session.pending is not None
+            else dict(session.current_connections)
+        )
         merged = dict(previous)
         merged.update(connections or {})
         session.version += 1
@@ -952,7 +958,11 @@ def retry(
         session.blocked_reason = None
         session.missed = []
         session.final = False
-        recovery.attempts += 1
+        # An operator Retry after the automatic cap gets one fresh episode;
+        # another automatic fault on the same occurrence is still bounded.
+        recovery.attempts = (
+            1 if recovery.attempts >= RECOVERY_ATTEMPTS else recovery.attempts + 1
+        )
         recovery.started_ms = now_ms
         recovery.state = "preparing"
         recovery.missing = []
