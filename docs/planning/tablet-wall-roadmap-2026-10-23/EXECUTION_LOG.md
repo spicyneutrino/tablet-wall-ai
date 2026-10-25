@@ -581,3 +581,10 @@ cancels the armed cut, and the 412 retry calls the real status refresh.
 Final counts: Python 817, client 43, view 12, wake lock 10. Video browser
 20/20. Sol's verdict was "not merge-ready" before these fixes; the fixes are
 committed (`3c2d5ee`, `3511055`, `7d7143b`, `d53b128`, `a29ac6d`).
+
+Sol verified the replacement-socket fix in `0af196f`: the old lease is revoked
+synchronously before the new socket is published, a deterministic reconnect
+probe forced a tick during closure and saw no commit, and the replacement
+received its preparation and committed with fresh readiness. Verdict:
+merge-ready for the software scope. Optical, physical, CA and soak gates
+remain MISSING.
