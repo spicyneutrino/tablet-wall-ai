@@ -871,7 +871,8 @@ active tab is clicked again.
 Commits: shell `8c72ef7`, `05ccec5`; CSS `8820c81`; tabs and transport
 `778969b`; merges `90b6cb4`, `102e745`; assets `7e07f76`; compact and legacy
 `3d1da82`, `0f232ab`; rail layout `f7cd47a`, `ec05f3b`, `addfea8`; acceptance
-`8007fda`, merge `87fd1c2`; other physical runners `8a16286`.
+`8007fda`, merge `87fd1c2`; other physical runners `8a16286`; layout guard
+`850fcbd`.
 
 Acceptance on a clean worktree at `850fcbd`: `controller_run.py` **95/95
 checks and 14/14 scenarios** on two consecutive runs with `dirty=false`.

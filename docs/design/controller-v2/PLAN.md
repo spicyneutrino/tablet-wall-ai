@@ -125,7 +125,7 @@ immediate rerun was 88/88 and 5/5.
 Merged: shell `8c72ef7`, `05ccec5`; CSS `8820c81`; tabs and transport
 `778969b`; merges `90b6cb4`, `102e745`; assets `7e07f76`; compact and legacy
 fixes `3d1da82`, `0f232ab`; rail layout `f7cd47a`, `ec05f3b`, `addfea8`; tests
-`8007fda`, merges `87fd1c2`, runner tabs `8a16286`.
+`8007fda`, merge `87fd1c2`, runner tabs `8a16286`, layout guard `850fcbd`.
 
 The console is one page with a persistent stage and a Show/Tablet/Content/System
 rail. Exactly one panel is visible; tabs never dirty a draft. Selecting a stage
