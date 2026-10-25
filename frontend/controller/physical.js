@@ -2318,25 +2318,28 @@
         return null;
     }
 
+    function liveNumber(value) {
+        if (value === null || value === undefined || value === "") return null;
+        const number = Number(value);
+        return Number.isFinite(number) ? number : null;
+    }
+
     function liveEntryDuration(entry) {
         if (!entry) return null;
-        const duration = Number(entry.duration_ms);
-        if (Number.isFinite(duration) && duration >= 0) return duration;
-        const dwell = Number(entry.dwell_ms);
-        if (Number.isFinite(dwell) && dwell >= 0) return dwell;
-        return null;
+        const duration = liveNumber(entry.duration_ms);
+        if (duration !== null && duration > 0) return duration;
+        const dwell = liveNumber(entry.dwell_ms);
+        return dwell !== null && dwell > 0 ? dwell : null;
     }
 
     function normalizeLiveEntry(raw) {
         if (!raw || typeof raw !== "object") return null;
-        const duration = Number(raw.duration_ms);
-        const dwell = Number(raw.dwell_ms);
         const entry = {
             occurrence: occurrenceOf(raw),
             asset: typeof raw.asset === "string" && raw.asset !== "" ? raw.asset : null,
             kind: raw.kind === "video" || raw.kind === "still" ? raw.kind : null,
-            duration_ms: Number.isFinite(duration) ? duration : null,
-            dwell_ms: Number.isFinite(dwell) ? dwell : null
+            duration_ms: liveNumber(raw.duration_ms),
+            dwell_ms: liveNumber(raw.dwell_ms)
         };
         return entry.occurrence || entry.asset || entry.kind ? entry : null;
     }
@@ -2367,16 +2370,14 @@
             : raw.durationMs !== undefined ? raw.durationMs
                 : media ? media.duration_ms
                     : slot === "current" ? status.current_duration_ms : undefined;
-        const duration = Number(rawDuration);
-        const dwell = Number(raw.dwell_ms !== undefined ? raw.dwell_ms : raw.dwellMs);
         const entry = {
             occurrence: occurrenceOf(raw),
             asset: typeof raw.asset === "string" && raw.asset !== ""
                 ? raw.asset
                 : typeof raw.asset_id === "string" && raw.asset_id !== "" ? raw.asset_id : null,
             kind: kind,
-            duration_ms: Number.isFinite(duration) ? duration : null,
-            dwell_ms: Number.isFinite(dwell) ? dwell : null
+            duration_ms: liveNumber(rawDuration),
+            dwell_ms: liveNumber(raw.dwell_ms !== undefined ? raw.dwell_ms : raw.dwellMs)
         };
         return entry.occurrence || entry.asset || entry.kind ? entry : null;
     }
@@ -2427,8 +2428,8 @@
                 ? " · " + formatDuration(duration) + " clip" : "");
         }
         if (entry.kind === "still") {
-            const dwell = Number(entry.dwell_ms);
-            return "still" + (Number.isFinite(dwell)
+            const dwell = liveNumber(entry.dwell_ms);
+            return "still" + (dwell !== null
                 ? " · " + formatDuration(dwell) + " dwell" : "");
         }
         const name = liveEntryName(entry);
@@ -2814,8 +2815,7 @@
             : status.server_now_ms !== undefined
                 ? status.server_now_ms
                 : status.server_ms;
-        const value = Number(raw);
-        return Number.isFinite(value) ? value : null;
+        return liveNumber(raw);
     }
 
     function msLabel(value) {
@@ -2835,8 +2835,8 @@
         let observed;
         if (status.state === "paused") {
             // A paused countdown is measured at the pause instant, never now.
-            observed = Number(status.paused_at_ms);
-            if (!Number.isFinite(observed)) return null;
+            observed = liveNumber(status.paused_at_ms);
+            if (observed === null) return null;
         } else {
             const explicit = status.remaining_dwell_ms !== undefined
                 ? status.remaining_dwell_ms : status.dwell_remaining_ms;
@@ -2850,26 +2850,23 @@
         const duration = liveEntryDuration(entry);
         const current = status.current && typeof status.current === "object"
             ? status.current : null;
-        const effective = Number(
-            status.current_effective_ms !== undefined ? status.current_effective_ms
-                : current && current.current_effective_ms !== undefined
-                    ? current.current_effective_ms
-                    : current && current.effective_server_ms !== undefined
-                        ? current.effective_server_ms : status.effective_server_ms
-        );
-        if (!occurrence || duration === null || !Number.isFinite(effective)) return null;
+        let effective = liveNumber(status.current_effective_ms);
+        if (effective === null) effective = liveNumber(current && current.current_effective_ms);
+        if (effective === null) effective = liveNumber(current && current.effective_server_ms);
+        if (effective === null) effective = liveNumber(status.effective_server_ms);
+        if (!occurrence || duration === null || effective === null) return null;
         const pending = status.pending && typeof status.pending === "object"
             ? status.pending : null;
-        const pendingEffective = pending ? Number(pending.effective_server_ms) : NaN;
-        if (pending && Number.isFinite(pendingEffective) && pending.occurrence
+        const pendingEffective = pending ? liveNumber(pending.effective_server_ms) : null;
+        if (pending && pendingEffective !== null && pending.occurrence
                 && !sameOccurrence(pending.occurrence, occurrence)) {
             return pendingEffective - observed;
         }
         const recovery = status.recovery;
-        const recoveryAt = Number(recovery && recovery.position_ms);
+        const recoveryAt = liveNumber(recovery && recovery.position_ms);
         if (recovery && sameOccurrence(recovery.occurrence, occurrence)) {
             if (recovery.state === "preparing") return null;
-            if (Number.isFinite(recoveryAt)) {
+            if (recoveryAt !== null) {
                 return effective + duration - recoveryAt - observed;
             }
         }
@@ -3477,21 +3474,18 @@
         if (currentOccurrence) {
             const current = status.current && typeof status.current === "object"
                 ? status.current : null;
-            const effective = Number(
-                status.current_effective_ms !== undefined ? status.current_effective_ms
-                    : current && current.current_effective_ms !== undefined
-                        ? current.current_effective_ms
-                        : current && current.effective_server_ms !== undefined
-                            ? current.effective_server_ms : status.effective_server_ms
-            );
+            let effective = liveNumber(status.current_effective_ms);
+            if (effective === null) effective = liveNumber(current && current.current_effective_ms);
+            if (effective === null) effective = liveNumber(current && current.effective_server_ms);
+            if (effective === null) effective = liveNumber(status.effective_server_ms);
             const future = status.state === "armed"
-                || (statusNow(status) !== null && Number.isFinite(effective)
+                || (statusNow(status) !== null && effective !== null
                     && statusNow(status) < effective);
             if (!sameOccurrence(displayedOccurrence, currentOccurrence) || future) {
                 facts.push([future ? "Committed, future" : "Committed",
                     liveEntryLabel(currentEntry)]);
             }
-            if (Number.isFinite(effective)) {
+            if (effective !== null) {
                 facts.push([future ? "Cut anchor" : "Active anchor", msLabel(effective)]);
             }
             if (currentEntry && (currentEntry.kind || currentEntry.asset)) {
