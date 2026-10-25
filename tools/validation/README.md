@@ -13,7 +13,7 @@ a gate. Every report uses `tools/validation/evidence.py`
 | `tools/calibration/` | mixed-model calibration | `docs/validation/CALIBRATION-SHEET.md` |
 | `simulator/browser/fleet_soak.py` | soak harness, not the physical soak | `docs/validation/SOAK-AND-NETWORK.md` |
 | `deploy/network_trials.py` | real Wi-Fi/OS harness | `docs/validation/SOAK-AND-NETWORK.md` |
-| `deploy/kiosk_check.py` or the kiosk checklist | kiosk API probe, OS settings manual | `docs/validation/KIOSK-CHECK.md` |
+| `docs/validation/KIOSK-CHECK.md` + `deploy/KIOSK.md` | kiosk API/OS checklist, settings manual | `docs/validation/KIOSK-CHECK.md` |
 
 The shared contract test is `tests/test_validation_evidence.py`. The kit
 rehearsal and the gate matrix are in
