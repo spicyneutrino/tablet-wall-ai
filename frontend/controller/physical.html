@@ -34,6 +34,15 @@
 
             <p class="playback-preflight" id="playback-preflight">Checking the saved playlist and layout…</p>
 
+            <section class="playback-exclusions" id="playback-exclusions" aria-labelledby="playback-exclusions-title" hidden>
+                <h3 id="playback-exclusions-title">Exclude from this show</h3>
+                <p class="playback-exclusion-summary" id="playback-exclusion-summary" role="status" aria-live="polite"></p>
+                <ul class="playback-exclusion-list" id="playback-exclusion-list" aria-label="Participating tablets"></ul>
+                <p class="empty-note" id="playback-exclusion-empty" hidden>No participating tablets in the saved physical layout.</p>
+                <p class="form-msg" id="playback-exclusion-warning" role="alert" hidden></p>
+                <p class="hint" id="playback-exclusion-note">Excluded tablets show the persisted scene. They are not counted as synchronized, and strict readiness ignores them.</p>
+            </section>
+
             <div class="playback-actions">
                 <button type="button" class="btn btn-primary" id="btn-playback-start">Start</button>
                 <button type="button" class="btn" id="btn-playback-pause" hidden>Pause</button>
