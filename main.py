@@ -1022,6 +1022,9 @@ async def rebind_device(device_id: str, command: RebindCommand):
     except displays.DisplayError as error:
         raise HTTPException(status_code=409, detail=str(error)) from error
 
+    # The frozen cohort and its prepared geometry belong to the old identity.
+    await _abort_playback("rebind")
+
     moved = old_id in held
     if moved:
         def apply(target: dict[str, Any]) -> None:

@@ -184,3 +184,21 @@ def test_a_layout_change_aborts_an_active_session():
             response = client.put("/api/v3/layout", json=changed, headers=headers)
             assert response.status_code == 200, response.text
             assert client.get("/api/v3/playback").json() == {"state": "stopped"}
+
+
+def test_rebind_aborts_an_active_session():
+    with TestClient(main.app) as client:
+        prepare_physical(client)
+        replacement = "5c6d7e8f-9012-4a3b-8c4d-5e6f708192a3"
+        register(client, replacement)
+        with client.websocket_connect(socket_url(A)) as socket:
+            socket.receive_json()
+            socket.receive_json()
+            socket.receive_json()
+            started = client.post("/api/v3/playback/start")
+            assert started.status_code == 200, started.text
+            response = client.post(
+                f"/devices/{replacement}/rebind", json={"replaces": B}
+            )
+            assert response.status_code == 200, response.text
+            assert client.get("/api/v3/playback").json() == {"state": "stopped"}
