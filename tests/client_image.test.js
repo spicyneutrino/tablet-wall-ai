@@ -2843,6 +2843,36 @@ function videoCommit(harness, overrides) {
     );
 }
 
+/* The recovery contract's fixture: the same occurrence re-prepared at a
+ * media position after a fault. */
+function videoRecoveryPrepare(overrides) {
+    return videoPrepare(
+        Object.assign(
+            {
+                version: 5,
+                preparation_id: "prep-recovery",
+                start_media_ms: 2400,
+            },
+            overrides
+        )
+    );
+}
+
+function videoRecoveryCommit(harness, overrides) {
+    return videoCommit(
+        harness,
+        Object.assign(
+            {
+                version: 6,
+                prepared_at_version: 5,
+                preparation_id: "prep-recovery",
+                start_media_ms: 2400,
+            },
+            overrides
+        )
+    );
+}
+
 async function startVideoHarness(opts) {
     const h = await startHarness(opts);
     /* The server would have sent welcome and opened the socket. */
@@ -3672,6 +3702,594 @@ test("video: a play promise that never settles is bounded and recovered", async 
     hung.resolve();
     await drain();
     assert.strictEqual(el.playCalls, 3, "the late resolution played nothing");
+});
+
+/* ------------------------------------------------------------------ */
+/* Bounded group video recovery                                       */
+/*                                                                    */
+/* The server owns the recovery; the client reports a fault once per  */
+/* occurrence and position, freezes what is on the glass, re-prepares */
+/* at the position and starts the recovery commit there.              */
+/* ------------------------------------------------------------------ */
+
+test("video recovery: play_ok no sends one fault per occurrence", async () => {
+    const h = await startVideoHarness(VP);
+    h.emit(videoPrepare());
+    await drain();
+    const el = playerVideos(h)[0];
+    el.playImpl = () => Promise.reject(new Error("decoder refused"));
+
+    el.metadata(6);
+    el.settleSeek();
+    el.progress([[0, 6000]]);
+    await drain();
+
+    const faults = h.sent("video_fault");
+    assert.strictEqual(faults.length, 1, "one fault was reported");
+    assert.deepStrictEqual(
+        {
+            session_id: faults[0].session_id,
+            version: faults[0].version,
+            occurrence: faults[0].occurrence,
+            position_ms: faults[0].position_ms,
+            reason: faults[0].reason,
+        },
+        {
+            session_id: "sess-1",
+            version: 3,
+            occurrence: { playlist_revision: 1, item_index: 0, loop: 0 },
+            position_ms: 0,
+            reason: "play_failed",
+        },
+        "the fault names the occurrence and where it stopped"
+    );
+
+    /* The recovery re-prepares the same occurrence at the same position.
+     * If that also refuses to play, it is still the same fault: one report
+     * until a commit moves the occurrence or the position. */
+    h.emit(videoRecoveryPrepare({ version: 5, start_media_ms: 0 }));
+    await drain();
+    const retry = playerVideos(h).find((video) => video !== el);
+    assert.ok(retry, "the recovery prepare created its own element");
+    retry.playImpl = () => Promise.reject(new Error("still refused"));
+    retry.metadata(6);
+    retry.settleSeek();
+    retry.progress([[0, 6000]]);
+    await drain();
+    assert.strictEqual(
+        h.sent("video_fault").length,
+        1,
+        "the same occurrence and position is not reported twice"
+    );
+
+    /* A new occurrence is a new fault. */
+    h.emit(
+        videoPrepare({
+            version: 6,
+            preparation_id: "prep-next",
+            occurrence: { playlist_revision: 1, item_index: 1, loop: 0 },
+        })
+    );
+    await drain();
+    const next = playerVideos(h).find(
+        (video) => video !== el && video !== retry
+    );
+    assert.ok(next, "the next occurrence has its own element");
+    next.playImpl = () => Promise.reject(new Error("no decoder"));
+    next.metadata(6);
+    next.settleSeek();
+    next.progress([[0, 6000]]);
+    await drain();
+    const all = h.sent("video_fault");
+    assert.strictEqual(
+        all.length,
+        2,
+        "the next occurrence reported its own fault"
+    );
+    assert.strictEqual(all[1].occurrence.item_index, 1);
+});
+
+test("video recovery: exhausted preparation recovery sends one fault", async () => {
+    const h = await startVideoHarness(VP);
+    h.emit(videoPrepare());
+    await drain();
+    const el = playerVideos(h)[0];
+
+    for (let i = 0; i < 4; i++) {
+        el.emit("error");
+        await drain();
+    }
+
+    const faults = h.sent("video_fault");
+    assert.strictEqual(faults.length, 1, "the fourth failure reports one fault");
+    assert.strictEqual(faults[0].version, 3);
+    assert.strictEqual(faults[0].position_ms, 0);
+    assert.strictEqual(faults[0].reason, "buffer_lost");
+
+    /* The released source cannot report again. */
+    el.emit("error");
+    await drain();
+    assert.strictEqual(h.sent("video_fault").length, 1);
+});
+
+test("video recovery: a committed video that stays paused faults once", async () => {
+    const h = await startVideoHarness(VP);
+    h.emit(videoPrepare());
+    await drain();
+    const el = playerVideos(h)[0];
+    await driveVideoReady(h, el);
+    const commit = videoCommit(h, { effective_server_ms: h.now() + 400 });
+    h.emit(commit);
+    await activateAt(h, commit.effective_server_ms);
+    assert.strictEqual(el.playCalls, 2, "the video is playing");
+
+    h.advance(1200);
+    el.currentTime = 1.2;
+    el.seeking = false;
+    for (let i = 0; i < 4; i++) {
+        el.paused = true;
+        h.fireIntervals(1000);
+        await drain();
+    }
+
+    const faults = h.sent("video_fault");
+    assert.strictEqual(faults.length, 1, "local recovery exhausted into one fault");
+    assert.strictEqual(faults[0].position_ms, 1200, "the position it stalled at");
+    assert.strictEqual(faults[0].version, 4, "the committed session version");
+    assert.strictEqual(faults[0].reason, "stalled");
+
+    for (let i = 0; i < 3; i++) {
+        el.paused = true;
+        h.fireIntervals(1000);
+        await drain();
+    }
+    assert.strictEqual(
+        h.sent("video_fault").length,
+        1,
+        "a blocked slot cannot spam the same occurrence"
+    );
+});
+
+test("video recovery: recovering freezes, releases and commits at the position", async () => {
+    const h = await startVideoHarness(VP);
+    h.emit(videoPrepare());
+    await drain();
+    const first = playerVideos(h)[0];
+    await driveVideoReady(h, first);
+    const firstCommit = videoCommit(h, { effective_server_ms: h.now() + 200 });
+    h.emit(firstCommit);
+    await activateAt(h, firstCommit.effective_server_ms);
+    const firstLayer = layerOf(h, first);
+    assert.strictEqual(firstLayer.style.visibility, "visible");
+
+    /* The routine next occurrences: one armed commit and one pending
+     * preparation, both of which a recovery must release. */
+    h.emit(
+        videoPrepare({
+            version: 5,
+            preparation_id: "prep-b",
+            occurrence: { playlist_revision: 1, item_index: 1, loop: 0 },
+        })
+    );
+    await drain();
+    const armed = playerVideos(h).find((video) => video !== first);
+    await driveVideoReady(h, armed);
+    h.emit(
+        videoCommit(h, {
+            version: 6,
+            prepared_at_version: 5,
+            preparation_id: "prep-b",
+            occurrence: { playlist_revision: 1, item_index: 1, loop: 0 },
+            effective_server_ms: h.now() + 2000,
+        })
+    );
+    h.emit(
+        videoPrepare({
+            version: 7,
+            preparation_id: "prep-c",
+            occurrence: { playlist_revision: 1, item_index: 2, loop: 0 },
+        })
+    );
+    await drain();
+    const pending = playerVideos(h).find(
+        (video) => video !== first && video !== armed
+    );
+    assert.ok(pending, "the third occurrence is pending");
+
+    /* The recovery state: the picture on the wall holds still, nothing
+     * else may cut. */
+    h.emit({
+        type: "playback",
+        state: "recovering",
+        session_id: "sess-1",
+        version: 8,
+    });
+    await drain();
+    assert.strictEqual(first.paused, true, "the active picture froze");
+    assert.strictEqual(
+        firstLayer.style.visibility,
+        "visible",
+        "and stayed on the wall"
+    );
+    assert.strictEqual(armed.src, "", "the armed commit was released");
+    assert.strictEqual(layerOf(h, armed), undefined, "its layer is gone");
+    assert.strictEqual(pending.src, "", "the pending preparation was released");
+    assert.strictEqual(layerOf(h, pending), undefined, "its layer is gone");
+    assert.strictEqual(visibleLayers(h).length, 1, "exactly the old picture");
+    assert.strictEqual(
+        h.sent("video_fault").length,
+        0,
+        "the server owns this recovery, so no client fault"
+    );
+
+    /* The recovery prepare seeks the same occurrence to 2400 ms. */
+    h.emit(videoRecoveryPrepare({ version: 9 }));
+    await drain();
+    const recovery = playerVideos(h).find(
+        (video) =>
+            video !== first && video !== armed && video !== pending
+    );
+    assert.ok(recovery, "the recovery has its own element");
+    const recoveryLayer = layerOf(h, recovery);
+    assert.strictEqual(
+        recoveryLayer.style.visibility,
+        "hidden",
+        "a recovery preparation is not painted early"
+    );
+    assert.strictEqual(
+        firstLayer.style.visibility,
+        "visible",
+        "the previous picture is kept"
+    );
+    assert.strictEqual(visibleLayers(h).length, 1);
+
+    await driveVideoReady(h, recovery);
+    assert.ok(
+        recovery.seekAssignments.includes(2.4),
+        "the recovery prepared at the position"
+    );
+    const recoveryCommit = videoRecoveryCommit(h, {
+        version: 10,
+        prepared_at_version: 9,
+        effective_server_ms: h.now() + 200,
+    });
+    h.emit(recoveryCommit);
+    await activateAt(h, recoveryCommit.effective_server_ms);
+    assert.strictEqual(recovery.playCalls, 2, "the recovery started once");
+    assert.strictEqual(recoveryLayer.style.visibility, "visible");
+    assert.strictEqual(
+        Math.round(recovery.currentTime * 1000),
+        2400,
+        "it started at start_media_ms"
+    );
+    assert.strictEqual(
+        layerOf(h, first),
+        undefined,
+        "the previous picture was released at the commit"
+    );
+    assert.strictEqual(visibleLayers(h).length, 1, "one picture after the commit");
+});
+
+test("video recovery: a state frame after the prepare keeps the recovery", async () => {
+    const h = await startVideoHarness(VP);
+    h.emit(videoPrepare());
+    await drain();
+    const first = playerVideos(h)[0];
+    await driveVideoReady(h, first);
+    const firstCommit = videoCommit(h, { effective_server_ms: h.now() + 200 });
+    h.emit(firstCommit);
+    await activateAt(h, firstCommit.effective_server_ms);
+    const firstLayer = layerOf(h, first);
+
+    /* The prepare freezes the picture itself, then the recovery state
+     * frame arrives: it must not throw away the preparation it found. */
+    h.emit(videoRecoveryPrepare({ version: 5 }));
+    await drain();
+    assert.strictEqual(first.paused, true, "the prepare froze the picture");
+    assert.strictEqual(
+        firstLayer.style.visibility,
+        "visible",
+        "the frozen picture stayed"
+    );
+    const recovery = playerVideos(h).find((video) => video !== first);
+    assert.ok(recovery, "the recovery preparation exists");
+    const recoveryLayer = layerOf(h, recovery);
+
+    h.emit({
+        type: "playback",
+        state: "recovering",
+        session_id: "sess-1",
+        version: 6,
+    });
+    await drain();
+    assert.notStrictEqual(
+        recovery.src,
+        "",
+        "the recovery preparation survived the state frame"
+    );
+    assert.strictEqual(
+        layerOf(h, recovery),
+        recoveryLayer,
+        "its layer survived"
+    );
+    assert.strictEqual(
+        recoveryLayer.style.visibility,
+        "hidden",
+        "and it is still not painted"
+    );
+
+    await driveVideoReady(h, recovery);
+    const commit = videoRecoveryCommit(h, {
+        version: 7,
+        prepared_at_version: 5,
+        effective_server_ms: h.now() + 200,
+    });
+    h.emit(commit);
+    await activateAt(h, commit.effective_server_ms);
+    assert.strictEqual(recovery.playCalls, 2, "the kept recovery started");
+    assert.strictEqual(recoveryLayer.style.visibility, "visible");
+    assert.strictEqual(layerOf(h, first), undefined, "the old picture was released");
+});
+
+test("video recovery: coverage is measured from the recovery position", async () => {
+    const h = await startVideoHarness(VP);
+    h.emit(videoPrepare({ start_media_ms: 2400 }));
+    await drain();
+    const el = playerVideos(h)[0];
+
+    el.metadata(6);
+    await drain();
+    assert.ok(
+        el.seekAssignments.includes(2.4),
+        "the element seeks to the recovery position"
+    );
+    el.settleSeek();
+    await drain();
+
+    /* The required buffer is min(goal, duration - position) = 3600 ms. */
+    el.progress([[0, 5000]]);
+    await drain();
+    assert.strictEqual(
+        el.playCalls,
+        0,
+        "a range that ends before the remainder is not coverage"
+    );
+    el.progress([[2400, 5999]]);
+    await drain();
+    assert.strictEqual(el.playCalls, 0, "one millisecond short is short");
+    el.progress([[2400, 6000]]);
+    await drain();
+    assert.strictEqual(el.playCalls, 1, "the remaining 3600 ms is enough");
+
+    el.settleSeek();
+    await drain();
+    const ready = readyFrames(h, "prep-1").pop();
+    assert.ok(ready, "the ready preparation reported");
+    assert.strictEqual(
+        ready.video.buffered_ahead_ms,
+        3600,
+        "coverage was reported from the position, not from zero"
+    );
+
+    const commit = videoCommit(h, {
+        effective_server_ms: h.now() + 200,
+        start_media_ms: 2400,
+    });
+    h.emit(commit);
+    await activateAt(h, commit.effective_server_ms);
+    assert.strictEqual(el.playCalls, 2, "the committed recovery started");
+    assert.strictEqual(Math.round(el.currentTime * 1000), 2400);
+});
+
+test("video recovery: a commit that loses its buffer faults at its start", async () => {
+    const h = await startVideoHarness(VP);
+    h.emit(videoPrepare({ start_media_ms: 2400 }));
+    await drain();
+    const el = playerVideos(h)[0];
+    await driveVideoReady(h, el);
+
+    const commit = videoCommit(h, {
+        effective_server_ms: h.now() + 200,
+        start_media_ms: 2400,
+    });
+    h.emit(commit);
+    /* The buffer no longer covers the start by the effective time. */
+    el.progress([[2400, 3000]]);
+    await activateAt(h, commit.effective_server_ms);
+
+    const faults = h.sent("video_fault");
+    assert.strictEqual(faults.length, 1, "the failed start reported one fault");
+    assert.strictEqual(faults[0].position_ms, 2400, "at the commit's start");
+    assert.strictEqual(faults[0].version, 4, "the committed session version");
+    assert.strictEqual(faults[0].reason, "buffer_lost");
+    assert.strictEqual(visibleLayers(h).length, 0, "nothing was painted");
+});
+
+test("video recovery: a commit without start_media_ms still starts at zero", async () => {
+    const h = await startVideoHarness(VP);
+    h.emit(videoPrepare());
+    await drain();
+    const el = playerVideos(h)[0];
+    await driveVideoReady(h, el);
+
+    /* A server from before the recovery contract omits the field. */
+    const commit = videoCommit(h, { effective_server_ms: h.now() + 200 });
+    delete commit.start_media_ms;
+    h.emit(commit);
+    await activateAt(h, commit.effective_server_ms);
+    assert.strictEqual(el.playCalls, 2, "the pre-recovery commit still starts");
+    assert.strictEqual(Math.round(el.currentTime * 1000), 0, "from the beginning");
+});
+
+test("video recovery: the next natural boundary is the remaining duration", async () => {
+    const h = await startVideoHarness(VP);
+    h.emit(videoPrepare({ start_media_ms: 2400 }));
+    await drain();
+    const el = playerVideos(h)[0];
+    await driveVideoReady(h, el);
+
+    const commit = videoCommit(h, {
+        effective_server_ms: h.now() + 200,
+        start_media_ms: 2400,
+    });
+    h.emit(commit);
+    await activateAt(h, commit.effective_server_ms);
+
+    /* 3000 ms after the commit the wall expects media 5400: position plus
+     * elapsed, not elapsed alone. */
+    h.advance(3000);
+    el.takeFrame(5.4, h.now());
+    await drain();
+    let samples = h.sent("video_sample");
+    assert.strictEqual(
+        Math.round(samples[samples.length - 1].target_ms),
+        5400,
+        "the target starts at the recovery position"
+    );
+
+    /* At +3000 of the remaining 3600 ms an `ended` element is early. The
+     * watchdog tick is allowed to land at +3600: the ended event's own
+     * timestamp must decide, not the tick. */
+    el.ended = true;
+    el.paused = true;
+    el.emit("ended");
+    h.advance(600);
+    const plays = el.playCalls;
+    h.fireIntervals(1000);
+    await drain();
+    assert.strictEqual(
+        el.playCalls,
+        plays + 1,
+        "an early end is recovered locally"
+    );
+    assert.strictEqual(
+        h.sent("video_fault").length,
+        0,
+        "one local recovery is not a fault"
+    );
+
+    /* At +4200 the remaining duration is spent: the same state is the
+     * natural end, not a fault. */
+    el.ended = false;
+    h.advance(600);
+    el.ended = true;
+    el.paused = true;
+    el.emit("ended");
+    const after = el.playCalls;
+    h.fireIntervals(1000);
+    await drain();
+    assert.strictEqual(
+        el.playCalls,
+        after,
+        "the natural boundary is left alone"
+    );
+
+    h.advance(1000);
+    el.seeking = false; /* the boundary tick's drift seek settled */
+    const before = h.sent("video_sample").length;
+    /* The callback armed before the local recovery belongs to the old
+     * attempt: it must not report or paint. */
+    el.takeFrame(6, h.now());
+    await drain();
+    assert.strictEqual(
+        h.sent("video_sample").length,
+        before,
+        "a stale frame callback reported nothing"
+    );
+    el.takeFrame(6, h.now());
+    await drain();
+    samples = h.sent("video_sample");
+    assert.strictEqual(
+        Math.round(samples[samples.length - 1].target_ms),
+        6000,
+        "the target never runs past the clip"
+    );
+});
+
+test("video recovery: a superseded recovery and late callbacks never paint", async () => {
+    const h = await startVideoHarness(VP);
+    h.emit(videoPrepare());
+    await drain();
+    const first = playerVideos(h)[0];
+    await driveVideoReady(h, first);
+    const firstCommit = videoCommit(h, { effective_server_ms: h.now() + 200 });
+    h.emit(firstCommit);
+    await activateAt(h, firstCommit.effective_server_ms);
+    const firstLayer = layerOf(h, first);
+
+    /* No playback frame: the recovery prepare itself must freeze the
+     * picture already on the wall before it does anything else. */
+    h.emit(videoRecoveryPrepare({ version: 6, preparation_id: "prep-r-a" }));
+    await drain();
+    assert.strictEqual(first.paused, true, "the recovery prepare froze the picture");
+    assert.strictEqual(
+        firstLayer.style.visibility,
+        "visible",
+        "the frozen picture stayed on the wall"
+    );
+    const stale = playerVideos(h).find((video) => video !== first);
+    h.emit(
+        videoRecoveryPrepare({
+            version: 7,
+            preparation_id: "prep-r-b",
+            start_media_ms: 3000,
+        })
+    );
+    await drain();
+    const fresh = playerVideos(h).find(
+        (video) => video !== first && video !== stale
+    );
+    assert.ok(fresh, "the newer recovery has its own element");
+    assert.strictEqual(stale.src, "", "the superseded recovery let its source go");
+
+    /* Every late event from the abandoned recovery is inert. */
+    stale.metadata(6);
+    stale.settleSeek();
+    stale.progress([[0, 6000]]);
+    first.settleSeek();
+    await drain();
+    assert.strictEqual(stale.playCalls, 0, "the stale recovery never probed");
+    assert.strictEqual(
+        readyFrames(h, "prep-r-a").length,
+        0,
+        "and never reported ready"
+    );
+    assert.strictEqual(first.playCalls, 2, "the frozen picture never restarted");
+
+    /* A stale commit for it cannot replace the picture on the wall. */
+    h.emit(
+        videoCommit(h, {
+            version: 8,
+            prepared_at_version: 6,
+            preparation_id: "prep-r-a",
+            effective_server_ms: h.now() + 100,
+            start_media_ms: 2400,
+        })
+    );
+    await activateAt(h, h.now() + 200);
+    assert.strictEqual(stale.playCalls, 0, "a stale commit starts nothing");
+    assert.strictEqual(
+        firstLayer.style.visibility,
+        "visible",
+        "the old picture held"
+    );
+    assert.strictEqual(visibleLayers(h).length, 1);
+
+    /* The live recovery prepares and commits at its own position. */
+    await driveVideoReady(h, fresh);
+    const commit = videoRecoveryCommit(h, {
+        version: 9,
+        prepared_at_version: 7,
+        preparation_id: "prep-r-b",
+        start_media_ms: 3000,
+        effective_server_ms: h.now() + 200,
+    });
+    h.emit(commit);
+    await activateAt(h, commit.effective_server_ms);
+    assert.strictEqual(fresh.playCalls, 2, "the live recovery started once");
+    assert.strictEqual(layerOf(h, fresh).style.visibility, "visible");
+    assert.strictEqual(layerOf(h, first), undefined, "the frozen picture was released");
+    assert.strictEqual(visibleLayers(h).length, 1);
 });
 
 /* ------------------------------------------------------------------ */

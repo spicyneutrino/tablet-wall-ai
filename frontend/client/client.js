@@ -2743,10 +2743,17 @@
     var VIDEO_DEFAULT_GOAL_MS = 5000;
     var VIDEO_DEADBAND_MS = 50;
     var VIDEO_COMMIT_SLACK_MS = 40;
+    /* An occurrence that ends this close to its scheduled boundary ended
+     * naturally; anything earlier is a fault the server should recover. */
+    var VIDEO_END_EARLY_MS = 250;
 
     var videoPending = null;
     var videoArmed = null;
     var videoActive = null;
+    /* The last video_fault sent: { sessionId, key }. The key is the
+     * occurrence and position together, so a stalled video reports once
+     * until a new commit moves either of them. */
+    var lastVideoFault = null;
     var enableDisplayEl = null;
     var enableDisplaySlot = null;
 
@@ -2884,13 +2891,62 @@
         ) {
             return; /* a stale preparation cannot replace a newer one */
         }
-        releaseVideoSlot(videoPending);
+        /*
+         * A recovery re-prepares the occurrence it is already showing, at a
+         * media position: `start_media_ms` is how the server names it. The
+         * picture on the glass stays until the recovery commit, so freeze it
+         * and drop the pending/armed work it would have cut to.
+         */
+        var recoveryMs = null;
+        if (
+            frame.start_media_ms !== undefined &&
+            frame.start_media_ms !== null
+        ) {
+            recoveryMs = Number(frame.start_media_ms);
+        } else if (
+            frame.media &&
+            frame.media.start_media_ms !== undefined &&
+            frame.media.start_media_ms !== null
+        ) {
+            recoveryMs = Number(frame.media.start_media_ms);
+        }
+        var recovery = recoveryMs !== null;
+        if (recovery) {
+            if (
+                !Number.isFinite(recoveryMs) ||
+                recoveryMs < 0 ||
+                recoveryMs >= duration
+            ) {
+                warn("video recovery position is outside the clip");
+                return;
+            }
+            recoveryMs = Math.round(recoveryMs);
+            /* A replayed recovery prepare from an older lineage must not
+             * freeze the picture a newer one already put on the wall. */
+            if (
+                videoArmed &&
+                Number(frame.version) < Number(videoArmed.version)
+            ) {
+                return;
+            }
+            if (
+                videoActive &&
+                Number(frame.version) < Number(videoActive.version)
+            ) {
+                return;
+            }
+        }
         var url;
         try {
             url = sameOriginUrl(content.url);
         } catch (err) {
             warn("video url rejected", err);
             return;
+        }
+        if (recovery) {
+            interruptVideoPlayback();
+        } else {
+            releaseVideoSlot(videoPending);
         }
         var el = newVideoElement();
         var layer = newVideoLayer();
@@ -2919,7 +2975,8 @@
             phase: "loading",
             durationMs: duration,
             goalMs: goal,
-            startMs: 0,
+            startMs: recovery ? recoveryMs : 0,
+            recovery: recovery,
             evidence: {
                 metadata: false,
                 seeked: false,
@@ -2933,6 +2990,7 @@
             commit: null,
             started: false,
             frozen: false,
+            endedAt: null,
             observed: false,
             needsGesture: false,
             rate: 1,
@@ -2994,6 +3052,10 @@
         listenVideo(slot, "error", function () {
             if (slot.started) recoverPlayingVideo(slot, "media error");
             else recoverVideo(slot, "media error");
+        });
+        listenVideo(slot, "ended", function () {
+            if (!slot.started || !slot.commit) return;
+            slot.endedAt = serverNowMs();
         });
     }
 
@@ -3241,6 +3303,86 @@
         showVideoUnavailable();
         slot.lastReportAt = -Infinity;
         reportVideoReady(slot);
+        sendVideoFault(slot, slot.startMs, "play_failed");
+    }
+
+    /* ---- bounded group recovery: one fault per occurrence and position ---- */
+
+    function occurrenceKey(occurrence) {
+        if (!occurrence) return "none";
+        return [
+            occurrence.playlist_revision,
+            occurrence.item_index,
+            occurrence.loop,
+        ].join(":");
+    }
+
+    /* A media position the server may re-prepare at, bounded 0..duration.
+     * The last millisecond is the resumable position: a prepare at the
+     * duration itself has nothing left to play. */
+    function videoFaultPosition(slot, positionMs) {
+        var ms = Number(positionMs);
+        if (!Number.isFinite(ms)) ms = slot.startMs;
+        var duration = Math.round(slot.durationMs);
+        return Math.max(0, Math.min(Math.round(ms), Math.max(0, duration - 1)));
+    }
+
+    /*
+     * Report a fault the bounded local recovery cannot fix. The server owns
+     * the group recovery; this client only says where it stopped and why.
+     * The same occurrence and position is never reported twice, so a stalled
+     * video cannot spam the session while it waits for the commit.
+     */
+    function sendVideoFault(slot, positionMs, reason) {
+        if (!slot || !activeSocket || activeSocket.readyState !== 1) return;
+        var occurrence =
+            slot.commit && slot.commit.occurrence
+                ? slot.commit.occurrence
+                : slot.occurrence;
+        if (!occurrence) return;
+        var sessionId = slot.commit ? slot.commit.sessionId : slot.sessionId;
+        var version = Number(slot.commit ? slot.commit.version : slot.version);
+        if (sessionId == null || !Number.isFinite(version)) return;
+        var position = videoFaultPosition(slot, positionMs);
+        var key = occurrenceKey(occurrence) + "|" + position;
+        if (
+            lastVideoFault &&
+            lastVideoFault.sessionId === sessionId &&
+            lastVideoFault.key === key
+        ) {
+            return;
+        }
+        lastVideoFault = { sessionId: sessionId, key: key };
+        warn("video fault " + reason + " at " + position + " ms");
+        sendVideoFrame({
+            type: "video_fault",
+            session_id: sessionId,
+            version: version,
+            occurrence: occurrence,
+            position_ms: position,
+            reason: reason,
+        });
+    }
+
+    function videoPreparationFaultReason(why) {
+        return why === "play probe timed out" ? "play_failed" : "buffer_lost";
+    }
+
+    function videoPlayPosition(slot) {
+        return videoFaultPosition(slot, Number(slot.el.currentTime) * 1000);
+    }
+
+    /* Ended before the wall's own boundary for this occurrence? The ended
+     * event's own timestamp is used when it fired, so a watchdog tick that
+     * lands after the boundary cannot make an early end look natural. A
+     * recovery commit at start_media_ms makes that boundary the remaining
+     * duration. */
+    function videoEndedEarly(slot) {
+        if (!slot || !slot.commit) return false;
+        var at = slot.endedAt == null ? NaN : Number(slot.endedAt);
+        if (!Number.isFinite(at)) at = serverNowMs();
+        var target = videoTargetMs(slot, at);
+        return target < slot.durationMs - VIDEO_END_EARLY_MS;
     }
 
     function blockVideoPreparation(slot, why) {
@@ -3269,6 +3411,7 @@
         haltVideoSlot(slot);
         slot.lastReportAt = -Infinity;
         reportVideoReady(slot);
+        sendVideoFault(slot, slot.startMs, videoPreparationFaultReason(why));
         showVideoUnavailable();
     }
 
@@ -3313,6 +3456,16 @@
                 slot.phase = "blocked";
                 slot.evidence.play_ok = "no";
                 showVideoUnavailable();
+                /* Where the wall should be is a resumable position even when
+                 * the element has already run off the end of its media. */
+                var faultAt =
+                    why === "ended early"
+                        ? Math.min(
+                              videoTargetMs(slot, serverNowMs()),
+                              Math.max(0, slot.durationMs - 1)
+                          )
+                        : videoPlayPosition(slot);
+                sendVideoFault(slot, faultAt, "stalled");
             }
             return;
         }
@@ -3497,7 +3650,9 @@
         if (!videoSlotLive(slot)) return;
         var target = Number(frame.effective_server_ms);
         var start = Number(frame.start_media_ms);
-        if (!Number.isFinite(start) || start < 0) start = 0;
+        /* A recovery commit that lost the field still starts where the
+         * recovery prepared, never back at the beginning of the clip. */
+        if (!Number.isFinite(start) || start < 0) start = slot.startMs;
         if (!Number.isFinite(target) || slot.started) return;
         if (
             (slot.phase !== "ready" && slot.phase !== "armed") ||
@@ -3588,6 +3743,7 @@
             slot.lastReportAt = -Infinity;
             reportVideoReady(slot);
             showVideoUnavailable();
+            sendVideoFault(slot, slot.commit.startMs, "buffer_lost");
             releaseVideoSlot(slot);
             return;
         }
@@ -3607,6 +3763,7 @@
 
     function startVideoPlayback(slot, attempt) {
         var el = slot.el;
+        slot.endedAt = null;
         var settled = false;
         var timer = null;
         function settle() {
@@ -3719,8 +3876,16 @@
                         "time"
                     );
                 }
-                if (!slot.needsGesture && el.paused && !el.ended) {
-                    recoverPlayingVideo(slot, "stopped");
+                if (!slot.needsGesture && slot.phase !== "blocked") {
+                    if (el.ended) {
+                        /* A natural end at this occurrence's boundary is not
+                         * a fault; ending before it is. */
+                        if (videoEndedEarly(slot)) {
+                            recoverPlayingVideo(slot, "ended early");
+                        }
+                    } else if (el.paused) {
+                        recoverPlayingVideo(slot, "stopped");
+                    }
                 }
             }, VIDEO_SAMPLE_MS)
         );
@@ -3914,11 +4079,25 @@
         freezeVideoSlot(videoActive);
     }
 
+    /* The recovery state frame: hold the picture on the glass and clear the
+     * routine pending/armed work, but keep a recovery preparation that has
+     * already arrived (the prepare and its state frame need not be ordered). */
+    function holdVideoForRecovery() {
+        if (videoPending && !videoPending.recovery) {
+            releaseVideoSlot(videoPending);
+        }
+        if (videoArmed && !videoArmed.recovery) {
+            releaseVideoSlot(videoArmed);
+        }
+        freezeVideoSlot(videoActive);
+    }
+
     /* Stop/epoch/socket close: everything goes, nothing keeps running. */
     function stopVideoPlayback() {
         releaseVideoSlot(videoPending);
         releaseVideoSlot(videoArmed);
         releaseVideoSlot(videoActive);
+        lastVideoFault = null;
         hideVideoUnavailable();
     }
 
@@ -4001,8 +4180,16 @@
         } else if (frame.type === "cancel") {
             cancelPlayback();
         } else if (frame.type === "playback") {
-            if (frame.state === "paused") pausePlayback();
-            else stopPlayback();
+            if (frame.state === "paused") {
+                pausePlayback();
+            } else if (frame.state === "recovering") {
+                /* Keep the active picture and any recovery preparation
+                 * already in flight; clear everything a routine cut owned. */
+                clearStillPlayback();
+                holdVideoForRecovery();
+            } else {
+                stopPlayback();
+            }
         }
     }
 
