@@ -79,6 +79,13 @@
         playbackStale: document.getElementById("playback-stale"),
         playbackStateWord: document.getElementById("playback-state-word"),
         playbackPreflight: document.getElementById("playback-preflight"),
+        playbackExclusions: document.getElementById("playback-exclusions"),
+        playbackExclusionsTitle: document.getElementById("playback-exclusions-title"),
+        playbackExclusionSummary: document.getElementById("playback-exclusion-summary"),
+        playbackExclusionList: document.getElementById("playback-exclusion-list"),
+        playbackExclusionEmpty: document.getElementById("playback-exclusion-empty"),
+        playbackExclusionWarning: document.getElementById("playback-exclusion-warning"),
+        playbackExclusionNote: document.getElementById("playback-exclusion-note"),
         playbackSession: document.getElementById("playback-session"),
         playbackSteps: document.getElementById("playback-steps"),
         btnPlaybackStart: document.getElementById("btn-playback-start"),
@@ -214,6 +221,8 @@
         libraryLoading: false,
         libraryError: null,
         playback: null,
+        playbackExclusions: [],
+        playbackExclusionRowKey: "",
         playbackVersion: null,
         playbackError: null,
         playbackFetchedAt: null,
@@ -786,6 +795,7 @@
             && config.layout.placements && typeof config.layout.placements === "object"
             ? clone(config.layout.placements) : {};
         state.base = physicalFromConfig(config.layout);
+        restorePlaybackExclusions();
         state.draft = clone(state.base);
         if (settings.resetHistory !== false) {
             state.undo = [];
@@ -2955,6 +2965,11 @@
         ].forEach(function (value) {
             missingSet(value).forEach(function (reason, id) { missing.set(id, reason); });
         });
+        const excluded = new Set();
+        [status.excluded, status.excluded_members, pending.excluded]
+            .forEach(function (value) {
+                idSet(value).forEach(function (id) { excluded.add(id); });
+            });
         const cohort = idArray(status.cohort).concat(idArray(pending.cohort));
         const ordered = [];
         const seen = new Set();
@@ -2965,6 +2980,7 @@
         }
         cohort.forEach(add);
         required.forEach(add);
+        excluded.forEach(add);
         ready.forEach(add);
         missing.forEach(function (_reason, id) { add(id); });
         leases.forEach(function (_lease, id) { add(id); });
@@ -2974,6 +2990,7 @@
         return {
             leases: leases,
             required: required,
+            excluded: excluded,
             ready: ready,
             missing: missing,
             cohort: cohort,
@@ -3119,6 +3136,267 @@
         });
     }
 
+    const PLAYBACK_EXCLUSIONS_KEY = "tablet-wall-playback-exclusions-v1";
+
+    function participantIds() {
+        return committedRequiredIds().slice().sort(function (left, right) {
+            const leftNumber = deviceNumber(left);
+            const rightNumber = deviceNumber(right);
+            if (leftNumber !== rightNumber) {
+                if (leftNumber === null) return 1;
+                if (rightNumber === null) return -1;
+                return leftNumber - rightNumber;
+            }
+            const byLabel = deviceLabel(left, latestProfile(left))
+                .localeCompare(deviceLabel(right, latestProfile(right)));
+            return byLabel !== 0 ? byLabel : left.localeCompare(right);
+        });
+    }
+
+    function exclusionIdList(value) {
+        const out = [];
+        const seen = new Set();
+        function add(candidate) {
+            const id = typeof candidate === "string" ? candidate
+                : candidate && typeof candidate === "object"
+                    ? (typeof candidate.device_id === "string" ? candidate.device_id
+                        : typeof candidate.id === "string" ? candidate.id : null)
+                    : null;
+            if (id && !seen.has(id)) {
+                seen.add(id);
+                out.push(id);
+            }
+        }
+        if (Array.isArray(value)) {
+            value.forEach(add);
+        } else if (value && typeof value === "object") {
+            Object.keys(value).forEach(function (id) {
+                if (value[id] === false || value[id] === null) return;
+                add(id);
+            });
+        }
+        return out;
+    }
+
+    function hasStatusIds(status, key) {
+        return Boolean(status && typeof status === "object"
+            && Object.prototype.hasOwnProperty.call(status, key)
+            && status[key] !== null && status[key] !== undefined);
+    }
+
+    function selectedPlaybackExclusions() {
+        const eligible = new Set(committedRequiredIds());
+        const seen = new Set();
+        return state.playbackExclusions.filter(function (id) {
+            if (typeof id !== "string" || !eligible.has(id) || seen.has(id)) return false;
+            seen.add(id);
+            return true;
+        });
+    }
+
+    function persistPlaybackExclusions() {
+        try {
+            window.sessionStorage.setItem(PLAYBACK_EXCLUSIONS_KEY,
+                JSON.stringify(state.playbackExclusions));
+        } catch (error) { /* Session memory remains authoritative. */ }
+    }
+
+    function syncPlaybackExclusions() {
+        if (!state.configLoaded) return;
+        const eligible = new Set(committedRequiredIds());
+        const next = state.playbackExclusions.filter(function (id, index) {
+            return typeof id === "string" && eligible.has(id)
+                && state.playbackExclusions.indexOf(id) === index;
+        });
+        if (next.length === state.playbackExclusions.length
+                && next.every(function (id, index) {
+                    return id === state.playbackExclusions[index];
+                })) {
+            return;
+        }
+        state.playbackExclusions = next;
+        persistPlaybackExclusions();
+    }
+
+    function restorePlaybackExclusions() {
+        const eligible = new Set(committedRequiredIds());
+        let stored = [];
+        try {
+            const value = JSON.parse(window.sessionStorage.getItem(PLAYBACK_EXCLUSIONS_KEY) || "[]");
+            if (Array.isArray(value)) {
+                stored = value.filter(function (id) {
+                    return typeof id === "string" && eligible.has(id);
+                });
+            }
+        } catch (error) { stored = []; }
+        state.playbackExclusions = Array.from(new Set(stored));
+        state.playbackExclusionRowKey = "";
+        persistPlaybackExclusions();
+    }
+
+    function playbackExclusionData(status, frozen) {
+        const participants = participantIds();
+        let required = participants.slice();
+        let excluded = selectedPlaybackExclusions();
+        let cohortCount = null;
+        if (frozen && status && typeof status === "object") {
+            if (hasStatusIds(status, "required")) {
+                required = exclusionIdList(status.required);
+            }
+            if (hasStatusIds(status, "excluded")) {
+                excluded = exclusionIdList(status.excluded);
+            }
+            if (hasStatusIds(status, "cohort")) {
+                cohortCount = exclusionIdList(status.cohort).length;
+            }
+        }
+        const requiredSet = new Set(required);
+        if (requiredSet.size > 0) {
+            excluded = excluded.filter(function (id) { return requiredSet.has(id); });
+        }
+        const excludedSet = new Set(excluded);
+        const effective = required.filter(function (id) { return !excludedSet.has(id); });
+        return {
+            participants: participants,
+            required: required,
+            excluded: excluded,
+            effective: effective,
+            cohortCount: cohortCount === null ? effective.length : cohortCount
+        };
+    }
+
+    function exclusionRowKey(participants) {
+        return participants.map(function (id) {
+            return [id, numberTag(id), deviceLabel(id, latestProfile(id)),
+                isOnline(id) ? "online" : "offline"].join("|");
+        }).join("\n");
+    }
+
+    function onPlaybackExclusionChange(event) {
+        const input = event && event.currentTarget;
+        const id = input && input.dataset ? input.dataset.deviceId : "";
+        if (!id) return;
+        const chosen = new Set(state.playbackExclusions);
+        if (input.checked) chosen.add(id);
+        else chosen.delete(id);
+        state.playbackExclusions = participantIds().filter(function (entry) {
+            return chosen.has(entry);
+        });
+        persistPlaybackExclusions();
+        renderPlayback();
+    }
+
+    function renderPlaybackExclusionRows(participants, excluded, disabled) {
+        if (!el.playbackExclusionList) return;
+        const focused = document.activeElement;
+        const focusedId = focused && focused.classList
+            && focused.classList.contains("playback-exclusion-input")
+            ? focused.dataset.deviceId : null;
+        const key = exclusionRowKey(participants);
+        if (key !== state.playbackExclusionRowKey) {
+            state.playbackExclusionRowKey = key;
+            clearChildren(el.playbackExclusionList);
+            participants.forEach(function (id) {
+                const item = document.createElement("li");
+                item.className = "playback-exclusion-item";
+
+                const label = document.createElement("label");
+                label.className = "playback-exclusion-option";
+                label.htmlFor = "playback-exclude-" + id;
+
+                const checkbox = document.createElement("input");
+                checkbox.type = "checkbox";
+                checkbox.className = "playback-exclusion-input";
+                checkbox.id = label.htmlFor;
+                checkbox.dataset.deviceId = id;
+                checkbox.checked = excluded.has(id);
+                checkbox.disabled = disabled;
+                checkbox.addEventListener("change", onPlaybackExclusionChange);
+
+                const copy = document.createElement("span");
+                copy.className = "playback-exclusion-copy";
+                appendText(copy, "span", "playback-exclusion-name",
+                    numberedLabel(id, latestProfile(id)));
+                const meta = document.createElement("span");
+                meta.className = "playback-exclusion-meta";
+                appendText(meta, "code", "playback-exclusion-id", shortId(id) + "…");
+                const online = appendText(meta, "span", "playback-exclusion-online",
+                    isOnline(id) ? "online" : "offline");
+                online.dataset.online = isOnline(id) ? "true" : "false";
+                copy.appendChild(meta);
+
+                label.appendChild(checkbox);
+                label.appendChild(copy);
+                item.appendChild(label);
+                el.playbackExclusionList.appendChild(item);
+            });
+            if (focusedId) {
+                const next = el.playbackExclusionList.querySelector(
+                    'input[data-device-id="' + focusedId + '"]');
+                if (next) {
+                    try { next.focus({ preventScroll: true }); }
+                    catch (error) { next.focus(); }
+                }
+            }
+        } else {
+            const inputs = el.playbackExclusionList.querySelectorAll(".playback-exclusion-input");
+            for (let index = 0; index < inputs.length; index += 1) {
+                const input = inputs[index];
+                input.checked = excluded.has(input.dataset.deviceId);
+                input.disabled = disabled;
+            }
+        }
+    }
+
+    function renderPlaybackExclusions(status, hasSession, stateName) {
+        if (!el.playbackExclusions) return;
+        const frozen = Boolean(status) && hasSession && stateName !== "failed";
+        const available = state.configLoaded || frozen;
+        el.playbackExclusions.hidden = !available;
+        if (!available) return;
+
+        syncPlaybackExclusions();
+        const data = playbackExclusionData(status, frozen);
+        const excluded = new Set(data.excluded);
+        const title = frozen ? "This show's cohort" : "Exclude from this show";
+        setTextIfChanged(el.playbackExclusionsTitle, title);
+        el.playbackExclusions.dataset.frozen = frozen ? "true" : "false";
+
+        let summary = data.required.length + " required, "
+            + data.excluded.length + " excluded, "
+            + data.cohortCount + " in this show.";
+        summary += data.excluded.length
+            ? " Excluded: " + data.excluded.map(function (id) {
+                return numberedLabel(id, latestProfile(id));
+            }).join(", ") + "."
+            : " Excluded: none.";
+        if (frozen) summary += " Frozen for this session.";
+        setTextIfChanged(el.playbackExclusionSummary, summary);
+
+        renderPlaybackExclusionRows(data.participants, excluded, frozen);
+        if (el.playbackExclusionList) {
+            el.playbackExclusionList.hidden = frozen || data.participants.length === 0;
+        }
+        if (el.playbackExclusionEmpty) {
+            el.playbackExclusionEmpty.hidden = frozen || data.participants.length > 0;
+        }
+        setTextIfChanged(el.playbackExclusionNote, frozen
+            ? "Frozen until Stop. Excluded tablets show the persisted scene, "
+                + "are not counted as synchronized, and strict readiness ignores them."
+            : "Excluded tablets show the persisted scene. They are not counted as "
+                + "synchronized, and strict readiness ignores them.");
+        const allExcluded = !frozen && data.required.length > 0
+            && data.effective.length === 0;
+        const warning = allExcluded
+            ? "Every participating tablet is excluded. Start is disabled until at least one tablet is included."
+            : "";
+        if (el.playbackExclusionWarning
+                && el.playbackExclusionWarning.textContent !== warning) {
+            if (warning) setMsg(el.playbackExclusionWarning, warning, "err");
+            else clearMsg(el.playbackExclusionWarning);
+        }
+    }
+
     function chosenPolicy() {
         const value = el.playbackPolicy ? el.playbackPolicy.value : "";
         if (value === "strict" || value === "online") return value;
@@ -3142,14 +3420,18 @@
             && state.playlistEtag !== null && state.playlistLoaded;
         const physical = state.layoutKind === "physical";
         const required = committedRequiredIds();
-        const online = required.filter(isOnline);
+        const excluded = selectedPlaybackExclusions();
+        const excludedSet = new Set(excluded);
+        const effective = required.filter(function (id) { return !excludedSet.has(id); });
+        const online = effective.filter(isOnline);
         const parts = [];
         const blockers = [];
 
         if (!state.configLoaded) {
             return {
                 ready: false, kind: "", text: "Checking the saved wall layout…",
-                label: "Start", required: required, online: online
+                label: "Start", required: required, excluded: excluded,
+                effective: effective, online: online
             };
         }
 
@@ -3181,10 +3463,21 @@
         }
 
         if (physical) {
-            parts.push("Layout: " + required.length
-                + " required · " + online.length + " online.");
+            if (excluded.length > 0) {
+                parts.push("Layout: " + required.length + " required · "
+                    + excluded.length + " excluded · " + effective.length
+                    + " in this show · " + online.length + " online.");
+                parts.push("Excluded: " + excluded.map(function (id) {
+                    return numberedLabel(id, latestProfile(id));
+                }).join(", ") + ".");
+            } else {
+                parts.push("Layout: " + required.length
+                    + " required · " + online.length + " online.");
+            }
             if (required.length === 0) {
                 blockers.push("The saved layout has no tablets on the wall. Add tablets under Tablets, then Apply layout.");
+            } else if (effective.length === 0) {
+                blockers.push("Every participating tablet is excluded. Include at least one tablet in this show before Start.");
             }
         } else {
             parts.push("No saved physical layout.");
@@ -3200,7 +3493,7 @@
             parts.push("Policy: server default.");
         }
 
-        if (physical && required.length > 0 && online.length === 0) {
+        if (physical && effective.length > 0 && online.length === 0) {
             parts.push("No wall tablets are online. Open /client/ on a tablet on the same LAN.");
         }
         if (isDirty()) {
@@ -3211,7 +3504,7 @@
         let kind = "";
         if (blockers.length > 0) kind = "err";
         else if (!state.playlistLoaded) kind = "";
-        else if (physical && required.length > 0 && online.length === 0) kind = "warn";
+        else if (physical && effective.length > 0 && online.length === 0) kind = "warn";
         else if (dirty) kind = "warn";
 
         const text = parts.concat(blockers).join(" ");
@@ -3221,6 +3514,8 @@
             text: text,
             label: canSaveDraft ? "Save and start" : "Start",
             required: required,
+            excluded: excluded,
+            effective: effective,
             online: online
         };
     }
@@ -3275,6 +3570,7 @@
         if (el.playbackSession) el.playbackSession.hidden = !hasSession;
 
         renderPlaybackPreflight(gate);
+        renderPlaybackExclusions(status, hasSession, stateName);
         renderPlaybackPolicy(status, hasSession);
         renderPlaybackButtons(status, gate);
         renderPlaybackSummary(status);
@@ -3609,8 +3905,9 @@
             const video = videoEvidence(status, lease, id);
             const strict = status.policy === "strict";
             const participant = info.cohort.indexOf(id) !== -1;
-            const required = info.required.has(id)
-                || (info.required.size === 0 && strict && participant);
+            const isExcluded = info.excluded.has(id);
+            const required = !isExcluded && (info.required.has(id)
+                || (info.required.size === 0 && strict && participant));
             const ready = info.ready.has(id);
             const missingReason = info.missing.get(id);
             const roster = state.roster[id] || {};
@@ -3619,8 +3916,9 @@
 
             const row = document.createElement("li");
             row.className = "playback-member";
-            row.dataset.state = missingReason !== undefined && missingReason !== ""
-                ? "missing" : ready ? "ready" : "waiting";
+            row.dataset.state = isExcluded ? "excluded"
+                : missingReason !== undefined && missingReason !== ""
+                    ? "missing" : ready ? "ready" : "waiting";
 
             const head = document.createElement("div");
             head.className = "playback-member-head";
@@ -3629,12 +3927,17 @@
             appendText(head, "code", "playback-member-id", shortId(id) + "…");
             const chips = document.createElement("span");
             chips.className = "playback-member-chips";
-            const requiredChip = appendText(chips, "span", "chip",
-                required ? "required" : participant ? "participant" : "optional");
-            requiredChip.dataset.kind = "info";
-            const stateChip = appendText(chips, "span", "chip",
-                ready ? "ready" : missingReason !== undefined ? "missing" : "waiting");
-            stateChip.dataset.kind = ready ? "ok" : missingReason !== undefined ? "err" : "warn";
+            if (isExcluded) {
+                const excludedChip = appendText(chips, "span", "chip", "excluded");
+                excludedChip.dataset.kind = "warn";
+            } else {
+                const requiredChip = appendText(chips, "span", "chip",
+                    required ? "required" : participant ? "participant" : "optional");
+                requiredChip.dataset.kind = "info";
+                const stateChip = appendText(chips, "span", "chip",
+                    ready ? "ready" : missingReason !== undefined ? "missing" : "waiting");
+                stateChip.dataset.kind = ready ? "ok" : missingReason !== undefined ? "err" : "warn";
+            }
             const onlineChip = appendText(chips, "span", "chip", online ? "online" : "offline");
             onlineChip.dataset.kind = online ? "ok" : "err";
             head.appendChild(chips);
@@ -3643,35 +3946,47 @@
             const meta = document.createElement("p");
             meta.className = "playback-member-meta";
             const bits = [];
-            if (lease.clock_ok !== undefined) bits.push("clock " + (lease.clock_ok ? "ok" : "stale"));
-            if (lease.mapping_revision !== undefined && lease.mapping_revision !== null) {
-                bits.push("mapping r" + lease.mapping_revision);
-            }
-            if (lease.protocol !== undefined && lease.protocol !== null) {
-                bits.push("protocol " + lease.protocol);
-            }
-            if (lease.unsupported === true) bits.push("protocol unsupported");
-            if (lease.reason) bits.push(String(lease.reason));
-            if (video) {
-                if (video.play_ok === "yes") bits.push("activation ok");
-                else if (video.play_ok === "needs_gesture") bits.push("activation needs a tap");
-                else if (video.play_ok === "no") bits.push("activation failed");
-                if (video.metadata !== undefined) {
-                    bits.push("metadata " + (video.metadata ? "yes" : "no"));
+            if (isExcluded) {
+                bits.push("persisted scene · not in the synchronized cohort");
+            } else {
+                if (lease.clock_ok !== undefined) {
+                    bits.push("clock " + (lease.clock_ok ? "ok" : "stale"));
                 }
-                if (video.seeked !== undefined) bits.push("seek " + (video.seeked ? "yes" : "no"));
-                if (video.buffered_ahead_ms !== undefined) {
-                    bits.push("buffer " + formatSpan(video.buffered_ahead_ms)
-                        + (goal !== null ? " / " + formatSpan(goal) : ""));
+                if (lease.mapping_revision !== undefined && lease.mapping_revision !== null) {
+                    bits.push("mapping r" + lease.mapping_revision);
                 }
-                if (video.rvfc !== undefined) bits.push("rVFC " + (video.rvfc ? "yes" : "no"));
-                if (video.drift_ms !== undefined) bits.push("drift " + Math.round(video.drift_ms) + " ms");
-                if (video.rate !== undefined) bits.push("rate " + Number(video.rate).toFixed(2));
-                if (video.source !== undefined) bits.push("source " + video.source);
-                if (video.age_ms !== undefined) bits.push("sample " + formatSpan(video.age_ms) + " old");
-                if (video.media_ms !== undefined) bits.push("media " + formatSpan(video.media_ms));
+                if (lease.protocol !== undefined && lease.protocol !== null) {
+                    bits.push("protocol " + lease.protocol);
+                }
+                if (lease.unsupported === true) bits.push("protocol unsupported");
+                if (lease.reason) bits.push(String(lease.reason));
+                if (video) {
+                    if (video.play_ok === "yes") bits.push("activation ok");
+                    else if (video.play_ok === "needs_gesture") bits.push("activation needs a tap");
+                    else if (video.play_ok === "no") bits.push("activation failed");
+                    if (video.metadata !== undefined) {
+                        bits.push("metadata " + (video.metadata ? "yes" : "no"));
+                    }
+                    if (video.seeked !== undefined) bits.push("seek " + (video.seeked ? "yes" : "no"));
+                    if (video.buffered_ahead_ms !== undefined) {
+                        bits.push("buffer " + formatSpan(video.buffered_ahead_ms)
+                            + (goal !== null ? " / " + formatSpan(goal) : ""));
+                    }
+                    if (video.rvfc !== undefined) bits.push("rVFC " + (video.rvfc ? "yes" : "no"));
+                    if (video.drift_ms !== undefined) {
+                        bits.push("drift " + Math.round(video.drift_ms) + " ms");
+                    }
+                    if (video.rate !== undefined) bits.push("rate " + Number(video.rate).toFixed(2));
+                    if (video.source !== undefined) bits.push("source " + video.source);
+                    if (video.age_ms !== undefined) {
+                        bits.push("sample " + formatSpan(video.age_ms) + " old");
+                    }
+                    if (video.media_ms !== undefined) {
+                        bits.push("media " + formatSpan(video.media_ms));
+                    }
+                }
+                if (missingReason) bits.push("missing: " + missingReason);
             }
-            if (missingReason) bits.push("missing: " + missingReason);
             if (bits.length) {
                 meta.textContent = bits.join(" · ");
                 row.appendChild(meta);
@@ -3691,6 +4006,9 @@
             }
             if (/physical layout is required/i.test(detail)) {
                 return "Apply a physical layout before starting playback.";
+            }
+            if (/all participating slots are excluded/i.test(detail)) {
+                return "Every participating tablet is excluded. Include at least one tablet, then start again.";
             }
         }
         return detail;
@@ -3731,8 +4049,9 @@
                 try {
                     if (action === "start") {
                         const policy = el.playbackPolicy ? el.playbackPolicy.value : "";
-                        status = await api("POST", API_PLAYBACK + "/start",
-                            policy ? { policy: policy } : undefined);
+                        const body = { exclusions: selectedPlaybackExclusions() };
+                        if (policy) body.policy = policy;
+                        status = await api("POST", API_PLAYBACK + "/start", body);
                     } else if (action === "resume") {
                         // Resume keeps the frozen policy and cohort; send no policy.
                         status = await api("POST", API_PLAYBACK + "/start");
