@@ -486,9 +486,9 @@ five are fixed and covered by tests:
 - pause resumes the displayed item; stop and abort restore the persisted render.
 
 Evidence: 100/100 software cuts, three calibrated clients, 0 failed events,
-0 degradation windows; p95 1.0-1.2 ms and max 1.3 ms in isolated runs. The
-final 100-cut run overlapped a controller Playwright run and had one 17 ms
-event; p95 stayed 1.2 ms. That is software draw timing, not optical. Suspend injection cancels the
+0 degradation windows. The final isolated run reported p50/p95/max
+0.2/0.9/1.1 ms. An earlier run that overlapped a controller Playwright run had
+one 17 ms event; p95 stayed 1.2 ms. That is software draw timing, not optical. Suspend injection cancels the
 session, stops renewals, paints no cancelled cut and returns both clients to
 the persisted scene. Optical gate: MISSING.
 
@@ -506,11 +506,13 @@ the persisted scene. Optical gate: MISSING.
   status (1 s poll), policy selector, member/buffer/drift evidence, field card
   with diagnostics and rebind, wake-lock roster state.
 
-Browser evidence: a real 4 s H.264 MP4 uploaded through the operator route and
-played by two calibrated Chromium clients. 18/18 checks: descriptor, strict
-default, visible video with coded size, advancing media time, per-device rVFC
-samples, pause, resume, a looped occurrence, no native loop, stop and persisted
-scene restore, and the controller page. No optical or physical decode claim.
+Browser evidence: a real 4 s H.264 MP4 uploaded through the operator route,
+added to the playlist and started from the physical editor, played by two
+calibrated Chromium clients. 19/19 checks: descriptor, strict default, editor
+authoring with a still and a video, visible video with coded size, advancing
+media time, per-device rVFC samples, pause from the editor, resume from the
+editor, a looped occurrence, no native loop, stop from the editor and persisted
+scene restore. No optical or physical decode claim.
 
 ### R5 closeout
 
@@ -530,8 +532,8 @@ scene restore, and the controller page. No optical or physical decode claim.
 - Python: 811 passed.
 - Client JS: 41 passed. View JS: 12 passed. Wake lock: 10/10.
 - Browser base: 106/106.
-- Browser 100 cuts + suspend: 131/131.
-- Video browser: 18/18.
+- Browser 100 cuts + suspend: 131/131 (p50/p95/max 0.2/0.9/1.1 ms).
+- Video browser: 19/19.
 - Field browser: 12/12.
 - Recovery browser: 20/20.
 - Simulator: 23 scenarios, 1075 checks.
