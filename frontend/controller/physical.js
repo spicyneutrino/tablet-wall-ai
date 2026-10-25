@@ -3137,21 +3137,38 @@
         renderPlaybackButtons(state.playback);
         try {
             let status;
-            if (action === "start") {
-                const policy = el.playbackPolicy ? el.playbackPolicy.value : "";
-                status = await api("POST", API_PLAYBACK + "/start",
-                    policy ? { policy: policy } : undefined);
-            } else if (action === "resume") {
-                // Resume keeps the frozen policy and cohort; send no policy.
-                status = await api("POST", API_PLAYBACK + "/start");
-            } else {
-                if (state.playbackVersion === null) {
-                    setMsg(el.playbackMsg,
-                        "No playback version is loaded. Refresh the status first.", "err");
-                    return;
+            let retried = false;
+            while (true) {
+                try {
+                    if (action === "start") {
+                        const policy = el.playbackPolicy ? el.playbackPolicy.value : "";
+                        status = await api("POST", API_PLAYBACK + "/start",
+                            policy ? { policy: policy } : undefined);
+                    } else if (action === "resume") {
+                        // Resume keeps the frozen policy and cohort; send no policy.
+                        status = await api("POST", API_PLAYBACK + "/start");
+                    } else {
+                        // A cut can advance the version between polls. Read it
+                        // immediately before the write, then retry once if a
+                        // commit landed in the narrow window.
+                        const fresh = await api("GET", API_PLAYBACK);
+                        applyPlaybackStatus(fresh);
+                        if (state.playbackVersion === null) {
+                            throw new ApiError(428, "No playback version is loaded.");
+                        }
+                        status = await api("POST", API_PLAYBACK + "/" + action, undefined,
+                            { ifMatch: String(state.playbackVersion) });
+                    }
+                    break;
+                } catch (error) {
+                    if (!retried && error instanceof ApiError && error.status === 412
+                            && action !== "start" && action !== "resume") {
+                        retried = true;
+                        await loadPlayback();
+                        continue;
+                    }
+                    throw error;
                 }
-                status = await api("POST", API_PLAYBACK + "/" + action, undefined,
-                    { ifMatch: String(state.playbackVersion) });
             }
             state.playbackError = null;
             state.playbackFetchedAt = Date.now();

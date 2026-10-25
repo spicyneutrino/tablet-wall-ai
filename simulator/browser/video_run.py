@@ -176,27 +176,49 @@ async def main(artifacts: Path) -> int:
         assets = await calibrate_cohort(rig, pages, [mount for _, mount in VIDEO_CLIENTS],
                                         CUT_COLOURS, "video")
 
-        etag = http.get("/api/v3/playlist").json()["etag"]
-        saved = http.put("/api/v3/playlist", json={
-            "items": [
-                {"asset": descriptor["id"], "dwell_ms": 1000},
-                {"asset": assets["red"], "dwell_ms": 1000},
-            ],
-            "loop": True,
-        }, headers={"If-Match": etag})
-        check("a video playlist saves", saved.status_code == 200, text=saved.text[-500:])
-        playlist = saved.json()["playlist"]
+        editor = await browser.new_page(viewport={"width": 1440, "height": 1000})
+        await editor.goto(base + "/controller/physical.html", wait_until="networkidle")
+        await editor.wait_for_function(
+            "document.querySelectorAll('#playlist-library option').length > 1",
+            timeout=15000,
+        )
+        await editor.select_option("#playlist-library", descriptor["id"])
+        await editor.click("#btn-playlist-add")
+        await editor.select_option("#playlist-library", assets["red"])
+        await editor.click("#btn-playlist-add")
+        list_text = await editor.locator("#playlist-items").inner_text()
+        check("the editor adds a video and a still from the library",
+              "video" in list_text.lower() and "still" in list_text.lower(), text=list_text)
+        await editor.click("#btn-playlist-save")
+        await editor.wait_for_function(
+            "document.querySelector('#playlist-msg')?.textContent.toLowerCase().includes('save')",
+            timeout=10000,
+        )
+        playlist = http.get("/api/v3/playlist").json()["playlist"]
         report["playlist"] = playlist
         check("the server sets the video dwell to its duration",
-              playlist["items"][0]["dwell_ms"] == descriptor["durationMs"],
+              playlist["items"][0]["dwell_ms"] == descriptor["durationMs"]
+              and playlist["items"][1]["asset"] == assets["red"],
               dwell=playlist["items"][0]["dwell_ms"], duration=descriptor["durationMs"])
 
-        started = http.post("/api/v3/playback/start")
-        check("playback starts", started.status_code == 200, text=started.text[-500:])
-        session = started.json()
+        await editor.wait_for_function(
+            "!document.querySelector('#btn-playback-start').disabled", timeout=10000
+        )
+        await editor.click("#btn-playback-start")
+        await editor.wait_for_function(
+            "document.querySelector('#playback-status').dataset.state === 'playing'",
+            timeout=10000,
+        )
+        check("start from the editor reaches playing", True)
+        session = http.get("/api/v3/playback").json()
         report["session"] = session
         check("a video playlist defaults to strict policy", session.get("policy") == "strict",
               policy=session.get("policy"))
+        report["editor_text_playing"] = (await editor.locator("body").inner_text())[:4000]
+        check("the editor shows the live video session and members",
+              "playing" in report["editor_text_playing"].lower()
+              and "video" in report["editor_text_playing"].lower())
+        await editor.screenshot(path=str(artifacts / "controller-playing.png"), full_page=True)
 
         async def first_video_visible() -> bool:
             for page, _ in pages:
@@ -237,18 +259,25 @@ async def main(artifacts: Path) -> int:
               all(entry.get("source") in ("rvfc", "time") and abs(entry.get("drift_ms", 0)) < 60000
                   for entry in status["video"].values()), video=status["video"])
 
-        version = status["version"]
-        paused = http.post("/api/v3/playback/pause", headers={"If-Match": str(version)})
-        check("pause is accepted", paused.status_code == 200, text=paused.text[-500:])
+        await editor.click("#btn-playback-pause")
+        await editor.wait_for_function(
+            "document.querySelector('#playback-status').dataset.state === 'paused'",
+            timeout=10000,
+        )
+        check("pause from the editor reaches paused", True)
         await asyncio.sleep(1.2)
         paused_state = {name: await video_state(page) for (page, _), name in zip(pages, names, strict=True)}
         report["paused"] = paused_state
         check("pause freezes the video elements",
               all(v["paused"] for s in paused_state.values() for v in s["videos"] if v["visible"]), states=paused_state)
 
-        resumed = http.post("/api/v3/playback/start")
-        check("start resumes a paused session", resumed.status_code == 200, text=resumed.text[-500:])
+        await editor.click("#btn-playback-pause")  # the button now says Resume
+        await editor.wait_for_function(
+            "document.querySelector('#playback-status').dataset.state !== 'paused'",
+            timeout=10000,
+        )
         await wait_until(advances, 20, "video did not advance after resume")
+        check("resume from the editor advances the video", True)
         report["resumed"] = {name: await video_state(page) for (page, _), name in zip(pages, names, strict=True)}
 
         async def looped() -> bool:
@@ -261,9 +290,12 @@ async def main(artifacts: Path) -> int:
               report["looped_status"]["current"]["loop"] >= 1
               and all(v["loop"] is False for s in report["resumed"].values() for v in s["videos"]))
 
-        stopped = http.post("/api/v3/playback/stop",
-                            headers={"If-Match": str(http.get("/api/v3/playback").json()["version"])})
-        check("stop is accepted", stopped.status_code == 200, text=stopped.text[-500:])
+        await editor.click("#btn-playback-stop")
+        await editor.wait_for_function(
+            "document.querySelector('#playback-status').dataset.state === 'stopped'",
+            timeout=10000,
+        )
+        check("stop from the editor reaches stopped", True)
         await asyncio.sleep(1.2)
         final = {name: await video_state(page) for (page, _), name in zip(pages, names, strict=True)}
         report["stopped"] = final
@@ -275,9 +307,6 @@ async def main(artifacts: Path) -> int:
               all(close_enough(pixel, CUT_COLOURS["idle"]) for pixel in idle.values()), pixels=idle)
         await pages[0][0].screenshot(path=str(artifacts / "client-after-stop.png"))
 
-        editor = await browser.new_page(viewport={"width": 1440, "height": 1000})
-        await editor.goto(base + "/controller/physical.html", wait_until="networkidle")
-        await editor.wait_for_timeout(800)
         report["editor_text"] = (await editor.locator("body").inner_text())[:4000]
         check("the physical editor renders the playback panel",
               "playback" in report["editor_text"].lower())
