@@ -208,6 +208,11 @@ async def main(artifacts: Path) -> int:
              "error": request.failure}))
         await controller.goto(base + "/controller/physical.html",
                               wait_until="networkidle")
+        await controller.click("#tab-show")
+        await controller.wait_for_function(
+            "() => document.querySelector('#panel-show')?.hidden === false",
+            timeout=5000,
+        )
         await controller.evaluate(
             "document.querySelector('#playback-details').open = true"
         )

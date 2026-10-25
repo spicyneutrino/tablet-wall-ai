@@ -162,6 +162,11 @@ async def main(artifacts: Path) -> int:
             " && document.querySelectorAll('#rebind-replaces option').length > 1",
             timeout=15000,
         )
+        await editor.click("#tab-system")
+        await editor.wait_for_function(
+            "() => document.querySelector('#panel-system')?.hidden === false",
+            timeout=5000,
+        )
         await editor.select_option("#rebind-new", new_id)
         await editor.select_option("#rebind-replaces", old_id)
         await editor.fill("#rebind-number", str(old_number))
