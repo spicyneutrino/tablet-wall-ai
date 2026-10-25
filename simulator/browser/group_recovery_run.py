@@ -280,6 +280,11 @@ async def main(artifacts: Path) -> int:
                 process.kill()
         log.close()
         shutil.rmtree(root, ignore_errors=True)
+        if not (artifacts / "report.json").exists():
+            report["checks_passed"] = sum(1 for c in checks if c["passed"])
+            report["checks_total"] = len(checks)
+            report["error"] = "the run ended before its final check"
+            (artifacts / "report.json").write_text(json.dumps(report, indent=2))
 
 
 if __name__ == "__main__":
