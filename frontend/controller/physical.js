@@ -185,6 +185,7 @@
         layoutKind: null,
         configLoaded: false,
         base: null,
+        basePlacements: {},
         draft: null,
         displays: [],
         calibrations: [],
@@ -594,6 +595,7 @@
                 Object.keys(layout.slots).forEach(function (id) { ids.add(id); });
             }
         });
+        Object.keys(state.basePlacements).forEach(function (id) { ids.add(id); });
         const entries = [];
         ids.forEach(function (id) {
             const profile = latestProfile(id);
@@ -602,7 +604,10 @@
                 profile: profile,
                 calibration: latestCalibration(id),
                 slot: state.draft && state.draft.slots ? state.draft.slots[id] || null : null,
+                placement: state.draft && state.draft.placements
+                    ? state.draft.placements[id] || null : null,
                 baseSlot: state.base && state.base.slots ? state.base.slots[id] || null : null,
+                basePlacement: state.basePlacements[id] || null,
                 label: deviceLabel(id, profile)
             });
         });
@@ -777,6 +782,9 @@
         state.calibrations = Array.isArray(config.calibrations) ? config.calibrations : [];
         state.displays.forEach(rememberProfile);
         state.calibrations.forEach(rememberCalibration);
+        state.basePlacements = config.layout && config.layout.kind !== "physical"
+            && config.layout.placements && typeof config.layout.placements === "object"
+            ? clone(config.layout.placements) : {};
         state.base = physicalFromConfig(config.layout);
         state.draft = clone(state.base);
         if (settings.resetHistory !== false) {
@@ -3780,12 +3788,14 @@
     }
 
     function rebindOldEntries() {
-        return deviceEntries().filter(function (entry) { return entry.baseSlot; });
+        return deviceEntries().filter(function (entry) {
+            return entry.baseSlot || entry.basePlacement;
+        });
     }
 
     function rebindNewEntries() {
         return deviceEntries().filter(function (entry) {
-            return !entry.baseSlot && state.roster[entry.id];
+            return !entry.baseSlot && !entry.basePlacement && state.roster[entry.id];
         });
     }
 
@@ -3866,8 +3876,10 @@
         const rawNumber = el.rebindNumber ? el.rebindNumber.value.trim() : "";
         const nextNumber = rawNumber === "" ? null : Number(rawNumber);
         const oldOnline = isOnline(oldId);
-        const newPlaced = Boolean(state.base && state.base.slots
-            && state.base.slots[newId]);
+        const newPlaced = Boolean(
+            (state.base && state.base.slots && state.base.slots[newId])
+            || Boolean(state.basePlacements[newId])
+        );
         const numberOwner = Number.isInteger(nextNumber)
             ? Object.keys(state.roster).find(function (id) {
                 return id !== oldId && id !== newId && deviceNumber(id) === nextNumber;
@@ -3884,9 +3896,12 @@
             parts.push("The new registration is already on the saved wall.");
         }
         const slot = state.base && state.base.slots ? state.base.slots[oldId] : null;
+        const placement = state.basePlacements[oldId] || null;
         parts.push(slot
-            ? "Its saved wall slot moves to the new id."
-            : "No saved wall slot moves; the display number still transfers.");
+            ? "Its saved physical slot moves to the new id."
+            : placement
+                ? "Its saved logical placement moves to the new id."
+                : "No saved placement moves; the display number still transfers.");
         if (numberOwner) {
             parts.push("Display number #" + nextNumber + " is already used by "
                 + numberedLabel(numberOwner, latestProfile(numberOwner)) + ".");
@@ -3947,7 +3962,8 @@
                 "The replaced tablet is online. Close /client/ on that tablet, then try again.", "err");
             return;
         }
-        if (state.base && state.base.slots && state.base.slots[newId]) {
+        if ((state.base && state.base.slots && state.base.slots[newId])
+                || state.basePlacements[newId]) {
             setMsg(el.rebindMsg,
                 "The new registration is already on the saved wall; choose an unplaced tablet.", "err");
             return;

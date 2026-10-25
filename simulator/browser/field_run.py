@@ -157,9 +157,15 @@ async def main(artifacts: Path) -> int:
 
         editor = await browser.new_page(viewport={"width": 1440, "height": 1000})
         await editor.goto(base + "/controller/physical.html", wait_until="networkidle")
-        await editor.fill("#rebind-new", new_id)
-        await editor.fill("#rebind-replaces", old_id)
+        await editor.wait_for_function(
+            "document.querySelectorAll('#rebind-new option').length > 1"
+            " && document.querySelectorAll('#rebind-replaces option').length > 1",
+            timeout=15000,
+        )
+        await editor.select_option("#rebind-new", new_id)
+        await editor.select_option("#rebind-replaces", old_id)
         await editor.fill("#rebind-number", str(old_number))
+        editor.on("dialog", lambda dialog: asyncio.create_task(dialog.accept()))
         await editor.click("#btn-rebind")
         await editor.wait_for_function(
             "document.querySelector('#rebind-msg')?.textContent.includes('Rebound')",

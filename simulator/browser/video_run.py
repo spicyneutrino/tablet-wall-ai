@@ -218,8 +218,11 @@ async def main(artifacts: Path) -> int:
         check("the editor shows the live video session and members",
               "playing" in report["editor_text_playing"].lower()
               and "video" in report["editor_text_playing"].lower())
+        await editor.evaluate("document.querySelector('#playback-details').open = true")
+        facts = await editor.locator("#playback-facts").inner_text()
+        report["editor_facts_playing"] = facts
         check("the editor shows a timed anchor from the server clock",
-              "anchor" in report["editor_text_playing"].lower())
+              "anchor" in facts.lower(), facts=facts)
         await editor.screenshot(path=str(artifacts / "controller-playing.png"), full_page=True)
 
         async def first_video_visible() -> bool:
