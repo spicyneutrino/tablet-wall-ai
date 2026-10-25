@@ -588,3 +588,42 @@ probe forced a tick during closure and saw no commit, and the replacement
 received its preparation and committed with fresh readiness. Verdict:
 merge-ready for the software scope. Optical, physical, CA and soak gates
 remain MISSING.
+
+## Post-milestone review and cleanup (2026-10-24)
+
+Opus 5.5 reproduced three defects after the milestone:
+
+- one failing writer aborted the commit fan-out, so other tablets never got
+  the commit;
+- a wall or render frame received mid-show painted over the committed picture;
+- a layout or calibration change could commit a cut prepared against the old
+  mapping.
+
+Fixed in `24db7ff` and `e52d4bf`:
+- each prepare and commit send is isolated; a failed or replaced connection is
+  recorded as missed; the commit carries lease connection ids;
+- playback owns the glass until stop or epoch, while wall/render frames only
+  update the persisted scene;
+- display, calibration, active layout and layout recall abort the active
+  session.
+
+Tests: a failing writer still reaches the other member, a wall frame during
+video does not remove it, and a layout change stops the session. Python 819,
+client 44.
+
+Worktree reconciliation:
+- `t3/native-video-player-slots` and `t3/controller-video-playlists` are
+  recorded as merges after their content was integrated with later fixes.
+- `t3/shield-browser-cleanup` and `t3/isolated-browser-runner` were byte-for-
+  byte duplicates of changes already on origin/main, so their worktrees and
+  branches were removed.
+- all merged or superseded Claude/DeepSeek worktrees were removed; two
+  uncommitted drafts were preserved first under `recovered/`.
+- only the active UX worktrees remain.
+
+## Next actions
+
+DeepSeek's rendered design review is in `work/frontend-design-review.md`.
+The controller and tablet UX work is running in two worktrees. The remaining
+product work is optical/physical validation and the deferred group recovery,
+named exclusions and mid-video reconnect.
