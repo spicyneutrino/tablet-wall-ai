@@ -2309,55 +2309,140 @@
         }
     }
 
-    function playlistItemFor(occurrence) {
-        if (!occurrence || typeof occurrence !== "object") return null;
-        const index = Number(occurrence.item_index);
-        if (!Number.isInteger(index) || index < 0 || index >= state.playlist.items.length) {
-            return null;
+    function occurrenceOf(value) {
+        if (!value || typeof value !== "object") return null;
+        if (value.occurrence && typeof value.occurrence === "object") {
+            return value.occurrence;
         }
-        const revision = Number(occurrence.playlist_revision);
-        if (Number.isFinite(revision) && state.playlist.revision !== null
-            && revision !== state.playlist.revision) {
-            return null;
-        }
-        return state.playlist.items[index];
+        if (value.item_index !== undefined) return value;
+        return null;
     }
 
-    function itemIsVideo(item) {
-        const asset = item ? libraryAsset(item.asset) : null;
-        return Boolean(asset && asset.kind === "video");
+    function liveEntryDuration(entry) {
+        if (!entry) return null;
+        const duration = Number(entry.duration_ms);
+        if (Number.isFinite(duration) && duration >= 0) return duration;
+        const dwell = Number(entry.dwell_ms);
+        if (Number.isFinite(dwell) && dwell >= 0) return dwell;
+        return null;
     }
 
-    function itemDurationMs(item) {
-        if (!item) return null;
-        const asset = libraryAsset(item.asset);
-        if (asset && asset.kind === "video") {
-            return asset.durationMs !== null ? asset.durationMs : clampDwell(item.dwell_ms);
+    function normalizeLiveEntry(raw) {
+        if (!raw || typeof raw !== "object") return null;
+        const duration = Number(raw.duration_ms);
+        const dwell = Number(raw.dwell_ms);
+        const entry = {
+            occurrence: occurrenceOf(raw),
+            asset: typeof raw.asset === "string" && raw.asset !== "" ? raw.asset : null,
+            kind: raw.kind === "video" || raw.kind === "still" ? raw.kind : null,
+            duration_ms: Number.isFinite(duration) ? duration : null,
+            dwell_ms: Number.isFinite(dwell) ? dwell : null
+        };
+        return entry.occurrence || entry.asset || entry.kind ? entry : null;
+    }
+
+    function legacyLiveEntry(status, slot) {
+        let raw = null;
+        if (slot === "pending") raw = status.pending;
+        else if (slot === "displayed") {
+            raw = status.displayed;
+            if (!raw && status.state !== "armed") raw = status.current;
+        } else {
+            raw = status.current;
         }
-        return item.dwell_ms;
-    }
-
-    function itemKindText(item) {
-        if (!item) return "unknown item";
-        const asset = libraryAsset(item.asset);
-        if (!asset) return "unknown asset · " + shortId(item.asset) + "…";
-        if (asset.kind === "video") {
-            return "video · " + formatDuration(asset.durationMs) + " clip";
+        if (!raw || typeof raw !== "object") return null;
+        const media = raw.media && typeof raw.media === "object"
+            ? raw.media
+            : slot === "pending" && status.pending_media
+                && typeof status.pending_media === "object" ? status.pending_media : null;
+        let kind = raw.kind === "video" || raw.kind === "still" ? raw.kind : null;
+        if (!kind && media) {
+            kind = media.kind === "video" || media.kind === "still" ? media.kind : null;
         }
-        return "still · " + formatDuration(item.dwell_ms) + " dwell";
+        if (!kind && slot === "current") {
+            const reported = status.current_kind;
+            kind = reported === "video" || reported === "still" ? reported : null;
+        }
+        const rawDuration = raw.duration_ms !== undefined ? raw.duration_ms
+            : raw.durationMs !== undefined ? raw.durationMs
+                : media ? media.duration_ms
+                    : slot === "current" ? status.current_duration_ms : undefined;
+        const duration = Number(rawDuration);
+        const dwell = Number(raw.dwell_ms !== undefined ? raw.dwell_ms : raw.dwellMs);
+        const entry = {
+            occurrence: occurrenceOf(raw),
+            asset: typeof raw.asset === "string" && raw.asset !== ""
+                ? raw.asset
+                : typeof raw.asset_id === "string" && raw.asset_id !== "" ? raw.asset_id : null,
+            kind: kind,
+            duration_ms: Number.isFinite(duration) ? duration : null,
+            dwell_ms: Number.isFinite(dwell) ? dwell : null
+        };
+        return entry.occurrence || entry.asset || entry.kind ? entry : null;
     }
 
-    function occurrenceText(occurrence) {
+    /**
+     * Frozen session metadata for a slot, never the editable playlist.
+     * `status.live` wins; older statuses fall back to the top-level
+     * occurrence/preparation fields only.
+     */
+    function liveSlotEntry(status, slot) {
+        if (!status || typeof status !== "object") return null;
+        const live = status.live;
+        if (live && typeof live === "object" && !Array.isArray(live)) {
+            if (Object.prototype.hasOwnProperty.call(live, slot)) {
+                const entry = normalizeLiveEntry(live[slot]);
+                if (entry) return entry;
+            }
+            if (slot === "displayed" && status.state !== "armed"
+                    && Object.prototype.hasOwnProperty.call(live, "current")) {
+                const entry = normalizeLiveEntry(live.current);
+                if (entry) return entry;
+            }
+        }
+        return legacyLiveEntry(status, slot);
+    }
+
+    function liveEntryName(entry) {
+        if (!entry || !entry.asset) return null;
+        const asset = libraryAsset(entry.asset);
+        return asset ? asset.name : shortId(entry.asset) + "…";
+    }
+
+    function occurrenceLabel(occurrence) {
         if (!occurrence || typeof occurrence !== "object") return "none";
         const index = Number(occurrence.item_index);
         const loop = Number(occurrence.loop);
-        const label = Number.isInteger(index)
-            ? "item " + (index + 1) + " · loop " + (Number.isInteger(loop) ? loop + 1 : "—")
+        return Number.isInteger(index)
+            ? "item " + (index + 1) + " · loop "
+                + (Number.isInteger(loop) ? loop + 1 : "—")
             : "item —";
-        const item = playlistItemFor(occurrence);
-        if (!item) return label + " · not in the current playlist";
-        const asset = libraryAsset(item.asset);
-        return label + " · " + (asset ? asset.name : shortId(item.asset) + "…");
+    }
+
+    function liveEntryKindText(entry) {
+        if (!entry) return "unknown item";
+        if (entry.kind === "video") {
+            const duration = liveEntryDuration(entry);
+            return "video" + (duration !== null
+                ? " · " + formatDuration(duration) + " clip" : "");
+        }
+        if (entry.kind === "still") {
+            const dwell = Number(entry.dwell_ms);
+            return "still" + (Number.isFinite(dwell)
+                ? " · " + formatDuration(dwell) + " dwell" : "");
+        }
+        const name = liveEntryName(entry);
+        return name ? "asset · " + name : "media not reported";
+    }
+
+    function liveEntryLabel(entry) {
+        if (!entry) return "none";
+        const name = liveEntryName(entry);
+        const label = entry.occurrence ? occurrenceLabel(entry.occurrence) : "";
+        if (label && name) return label + " · " + name;
+        if (label) return label;
+        if (name) return name;
+        return liveEntryKindText(entry);
     }
 
     function renderLibraryOptions() {
@@ -2447,17 +2532,25 @@
     function syncPlaylistCurrent() {
         if (!el.playlistItems) return;
         const status = state.playback;
-        const current = status && status.current
-            ? (status.current.occurrence || status.current) : null;
-        const index = current ? Number(current.item_index) : NaN;
-        const revision = current ? Number(current.playlist_revision) : NaN;
+        const entry = liveSlotEntry(status, "current");
+        const occurrence = entry ? entry.occurrence : null;
+        const index = occurrence ? Number(occurrence.item_index) : NaN;
+        const reported = status ? Number(status.playlist_revision) : NaN;
+        const revision = Number.isFinite(reported)
+            ? reported
+            : occurrence ? Number(occurrence.playlist_revision) : NaN;
         const sameRevision = state.playlist.revision === null
             || !Number.isFinite(revision) || revision === state.playlist.revision;
+        const liveAsset = entry ? entry.asset : null;
         const rows = el.playlistItems.querySelectorAll(".playlist-item");
         for (let offset = 0; offset < rows.length; offset += 1) {
             const row = rows[offset];
-            const match = !state.playlistDirty && sameRevision
-                && Number.isFinite(index) && Number(row.dataset.index) === index;
+            const rowIndex = Number(row.dataset.index);
+            const rowItem = Number.isInteger(rowIndex)
+                ? state.playlist.items[rowIndex] : null;
+            const sameAsset = !liveAsset || Boolean(rowItem && rowItem.asset === liveAsset);
+            const match = !state.playlistDirty && sameRevision && sameAsset
+                && Number.isFinite(index) && rowIndex === index;
             row.dataset.current = match ? "true" : "false";
         }
     }
@@ -2739,37 +2832,48 @@
 
     function remainingDwell(status) {
         if (!status || !status.state || status.state === "stopped") return null;
-        const explicit = status.remaining_dwell_ms !== undefined
-            ? status.remaining_dwell_ms : status.dwell_remaining_ms;
-        const value = Number(explicit);
-        if (Number.isFinite(value)) return value;
-        const current = status.current;
-        if (!current) return null;
-        const occurrence = current.occurrence || current;
-        const item = playlistItemFor(occurrence);
+        let observed;
+        if (status.state === "paused") {
+            // A paused countdown is measured at the pause instant, never now.
+            observed = Number(status.paused_at_ms);
+            if (!Number.isFinite(observed)) return null;
+        } else {
+            const explicit = status.remaining_dwell_ms !== undefined
+                ? status.remaining_dwell_ms : status.dwell_remaining_ms;
+            const value = Number(explicit);
+            if (Number.isFinite(value)) return value;
+            observed = statusNow(status);
+        }
+        if (observed === null) return null;
+        const entry = liveSlotEntry(status, "current");
+        const occurrence = entry ? entry.occurrence : null;
+        const duration = liveEntryDuration(entry);
+        const current = status.current && typeof status.current === "object"
+            ? status.current : null;
         const effective = Number(
-            current.current_effective_ms !== undefined ? current.current_effective_ms
-                : status.current_effective_ms !== undefined ? status.current_effective_ms
-                    : current.effective_server_ms !== undefined ? current.effective_server_ms
-                        : status.effective_server_ms
+            status.current_effective_ms !== undefined ? status.current_effective_ms
+                : current && current.current_effective_ms !== undefined
+                    ? current.current_effective_ms
+                    : current && current.effective_server_ms !== undefined
+                        ? current.effective_server_ms : status.effective_server_ms
         );
-        const now = statusNow(status);
-        if (!item || !Number.isFinite(effective) || now === null) return null;
-        const pending = status.pending;
-        const pendingEffective = Number(pending && pending.effective_server_ms);
-        if (Number.isFinite(pendingEffective) && pending.occurrence
+        if (!occurrence || duration === null || !Number.isFinite(effective)) return null;
+        const pending = status.pending && typeof status.pending === "object"
+            ? status.pending : null;
+        const pendingEffective = pending ? Number(pending.effective_server_ms) : NaN;
+        if (pending && Number.isFinite(pendingEffective) && pending.occurrence
                 && !sameOccurrence(pending.occurrence, occurrence)) {
-            return pendingEffective - now;
+            return pendingEffective - observed;
         }
         const recovery = status.recovery;
         const recoveryAt = Number(recovery && recovery.position_ms);
         if (recovery && sameOccurrence(recovery.occurrence, occurrence)) {
             if (recovery.state === "preparing") return null;
             if (Number.isFinite(recoveryAt)) {
-                return effective + itemDurationMs(item) - recoveryAt - now;
+                return effective + duration - recoveryAt - observed;
             }
         }
-        return effective + itemDurationMs(item) - now;
+        return effective + duration - observed;
     }
 
     function idArray(value) {
@@ -3285,19 +3389,20 @@
             text = "Failed: " + sentence(failureText(status))
                 + " Start begins a new session; Stop clears the failed session.";
         } else if (stateName === "paused") {
-            text = "Paused on " + occurrenceText(status.current && (status.current.occurrence
-                || status.current)) + ". Resume restarts the item at a new anchor.";
+            const pausedEntry = liveSlotEntry(status, "displayed")
+                || liveSlotEntry(status, "current");
+            text = "Paused on " + liveEntryLabel(pausedEntry)
+                + ". Resume restarts the item at a new anchor.";
             const lingered = remainingDwell(status);
             if (lingered !== null) text += " " + remainingText(lingered) + " at the pause.";
         } else if (stateName === "armed") {
-            text = "Armed: " + occurrenceText(status.current && (status.current.occurrence
-                || status.current)) + " is committed for the next cut.";
+            text = "Armed: " + liveEntryLabel(liveSlotEntry(status, "current"))
+                + " is committed for the next cut.";
         } else if (stateName === "recovering") {
             const recovery = status.recovery && typeof status.recovery === "object"
                 ? status.recovery : {};
             const at = Number(recovery.position_ms);
-            text = "Recovering " + occurrenceText(status.current && (status.current.occurrence
-                || status.current))
+            text = "Recovering " + liveEntryLabel(liveSlotEntry(status, "current"))
                 + (Number.isFinite(at) ? " at " + formatDuration(at) : "")
                 + " after " + recoveryReasonText(recovery.reason)
                 + (recovery.device_id
@@ -3305,21 +3410,22 @@
                     : "")
                 + ". Waiting for the group buffer and a common anchor.";
         } else {
-            const current = status.current && (status.current.occurrence || status.current);
-            const pending = status.pending && status.pending.occurrence;
+            const currentEntry = liveSlotEntry(status, "current");
+            const pendingEntry = liveSlotEntry(status, "pending");
             if (stateName === "final") {
-                text = "Final item: " + occurrenceText(current)
+                text = "Final item: " + liveEntryLabel(currentEntry)
                     + ". Playback holds here; Stop ends playback.";
             } else if (stateName === "preparing") {
-                text = current
-                    ? "Preparing the next item. On screen: " + occurrenceText(current) + "."
+                text = currentEntry
+                    ? "Preparing the next item. On screen: "
+                        + liveEntryLabel(currentEntry) + "."
                     : "Preparing the first item.";
-                if (pending) text += " Next: " + occurrenceText(pending) + ".";
-            } else if (!current && pending) {
-                text = "Preparing: " + occurrenceText(pending) + ".";
+                if (pendingEntry) text += " Next: " + liveEntryLabel(pendingEntry) + ".";
+            } else if (!currentEntry && pendingEntry) {
+                text = "Preparing: " + liveEntryLabel(pendingEntry) + ".";
             } else {
-                text = "Playing: " + occurrenceText(current) + ".";
-                if (pending) text += " Next: " + occurrenceText(pending) + ".";
+                text = "Playing: " + liveEntryLabel(currentEntry) + ".";
+                if (pendingEntry) text += " Next: " + liveEntryLabel(pendingEntry) + ".";
                 const remaining = remainingDwell(status);
                 if (remaining !== null) text += " " + remainingText(remaining) + ".";
             }
@@ -3358,17 +3464,19 @@
         if (status.version !== undefined) facts.push(["Version", status.version]);
         if (status.policy) facts.push(["Policy", status.policy]);
 
-        const current = status.current;
-        const currentOccurrence = current && (current.occurrence || current);
-        const displayed = status.displayed || (status.state === "armed" ? null : current);
-        const displayedOccurrence = displayed && (displayed.occurrence || displayed);
-        if (displayedOccurrence) {
-            facts.push(["Displayed", occurrenceText(displayedOccurrence)]);
+        const currentEntry = liveSlotEntry(status, "current");
+        const currentOccurrence = currentEntry ? currentEntry.occurrence : null;
+        const displayedEntry = liveSlotEntry(status, "displayed");
+        const displayedOccurrence = displayedEntry ? displayedEntry.occurrence : null;
+        if (displayedEntry) {
+            facts.push(["Displayed", liveEntryLabel(displayedEntry)]);
         } else if (status.state === "armed") {
             facts.push(["Displayed", "the previous item stays until the cut"]);
         }
 
         if (currentOccurrence) {
+            const current = status.current && typeof status.current === "object"
+                ? status.current : null;
             const effective = Number(
                 status.current_effective_ms !== undefined ? status.current_effective_ms
                     : current && current.current_effective_ms !== undefined
@@ -3381,25 +3489,13 @@
                     && statusNow(status) < effective);
             if (!sameOccurrence(displayedOccurrence, currentOccurrence) || future) {
                 facts.push([future ? "Committed, future" : "Committed",
-                    occurrenceText(currentOccurrence)]);
+                    liveEntryLabel(currentEntry)]);
             }
             if (Number.isFinite(effective)) {
                 facts.push([future ? "Cut anchor" : "Active anchor", msLabel(effective)]);
             }
-            const reportedKind = current && (current.kind
-                || (current.media && current.media.kind) || status.current_kind);
-            const reportedDuration = current && (current.duration_ms !== undefined
-                ? current.duration_ms
-                : current.durationMs !== undefined ? current.durationMs
-                    : current.media && current.media.duration_ms !== undefined
-                        ? current.media.duration_ms : status.current_duration_ms);
-            const item = playlistItemFor(currentOccurrence);
-            if (reportedKind) {
-                facts.push(["Current media", String(reportedKind)
-                    + (reportedDuration !== undefined && reportedDuration !== null
-                        ? " · " + formatDuration(reportedDuration) : "")]);
-            } else if (item) {
-                facts.push(["Current media", itemKindText(item)]);
+            if (currentEntry && (currentEntry.kind || currentEntry.asset)) {
+                facts.push(["Current media", liveEntryKindText(currentEntry)]);
             }
         }
 
@@ -3438,34 +3534,35 @@
             renderFactList(el.playbackPending, [["Preparation", "none"]]);
             return;
         }
-        const pending = status.pending;
-        if (!pending) {
+        const pending = status.pending && typeof status.pending === "object"
+            ? status.pending : null;
+        const entry = liveSlotEntry(status, "pending");
+        if (!pending && !entry) {
             renderFactList(el.playbackPending, [["Preparation", "none"]]);
             return;
         }
-        const occurrence = pending.occurrence || pending;
-        const facts = [["Next item", occurrenceText(occurrence)]];
-        if (pending.preparation_id) {
+        const facts = [["Next item",
+            entry ? liveEntryLabel(entry) : "occurrence not reported"]];
+        if (pending && pending.preparation_id) {
             facts.push(["Preparation", shortId(pending.preparation_id) + "…"]);
         }
-        if (pending.effective_server_ms !== undefined) {
+        if (pending && pending.effective_server_ms !== undefined) {
             facts.push(["Cut anchor", msLabel(pending.effective_server_ms)]);
             const remaining = statusNow(status) !== null
                 ? pending.effective_server_ms - statusNow(status) : null;
             if (remaining !== null) facts.push(["Cut in", remainingText(remaining)]);
         }
-        if (pending.prepare_deadline_ms !== undefined) {
+        if (pending && pending.prepare_deadline_ms !== undefined) {
             facts.push(["Preparation deadline", msLabel(pending.prepare_deadline_ms)]);
             if (statusNow(status) !== null) {
                 facts.push(["Deadline in",
                     remainingText(pending.prepare_deadline_ms - statusNow(status))]);
             }
         }
-        const media = (pending.media && typeof pending.media === "object")
+        const media = pending && pending.media && typeof pending.media === "object"
             ? pending.media
             : (status.pending_media && typeof status.pending_media === "object")
                 ? status.pending_media : null;
-        const item = playlistItemFor(occurrence);
         if (media) {
             if (media.kind === "video") {
                 facts.push(["Media", "video · " + formatDuration(media.duration_ms)]);
@@ -3481,12 +3578,8 @@
             if (media.prepare_timeout_ms !== undefined) {
                 facts.push(["Prepare timeout", formatDuration(media.prepare_timeout_ms)]);
             }
-        } else if (item && itemIsVideo(item)) {
-            const asset = libraryAsset(item.asset);
-            facts.push(["Media", "video · "
-                + formatDuration(asset && asset.durationMs !== null
-                    ? asset.durationMs : itemDurationMs(item))
-                + " (not reported in status)"]);
+        } else if (entry && (entry.kind || entry.asset)) {
+            facts.push(["Media", liveEntryKindText(entry)]);
         }
         renderFactList(el.playbackPending, facts);
     }
