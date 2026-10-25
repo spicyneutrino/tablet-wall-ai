@@ -6,14 +6,16 @@
 > repaired. Durable browser coverage includes video transitions, controller
 > pause/live identity, the recovery acceptance runner (88/88 checks, 5/5
 > scenarios, twice), and the Phase 3 reconnect/exclusions runner (21/21
-> checks, 5/5 scenarios, twice).
+> checks, 5/5 scenarios, twice). The hardware validation kit (optical
+> analyzer, device probe, trust/calibration, fleet/network/kiosk) is built and
+> dry-run; all eight gates remain MISSING until operator hardware evidence.
 > All optical/physical, deployment, Wi-Fi/OS, kiosk and soak gates remain
 > MISSING.
 
 ## Current software counts (2026-10-25)
 
-- Python 865; client 71; view 12; wake lock 10; report/browser safety 45.
-  These were rerun on the final review-fix and Phase 3 tree.
+- Python 990; client 71; view 12; wake lock 10; report/browser safety 45.
+  These include the hardware-validation kit tests on the final tree.
 - Durable browser: `video_run` 35/35 and `video_transitions_run` 51/51, twice
   each; `controller_run` 54/54 checks and 11/11 scenarios, twice;
   `group_recovery_run` 19/19 live plus 1/1 fixture; `recovery_acceptance_run`
