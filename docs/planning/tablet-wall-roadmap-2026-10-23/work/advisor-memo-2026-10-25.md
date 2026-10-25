@@ -67,9 +67,9 @@ against `/tmp/tablet-wall-codex-work-review-2026-10-25/review.md` at
 > an existing recovery must consume no additional attempt or reset its
 > deadline. Define coalescing across recovery completion, not merely a
 > two-second timer. Exclude paused/blocked/failed/final sessions. Crucially,
-> `_commit()` marks the last item final immediately, so this default also
-> excludes reconnect during an actively playing last video. Accept that
-> consequence explicitly.
+> [`_commit()` marks the last item final immediately](/var/home/oak/Codes/projects/tablet-wall-ai/tabletwall/playback.py:817),
+> so this default also excludes reconnect during an actively playing last
+> video. Accept that consequence explicitly.
 >
 > Start-time exclusions can remain session-only, named, static, outside
 > readiness and synchronized counts, with unchanged bounds and no live
