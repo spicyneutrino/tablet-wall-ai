@@ -5,6 +5,18 @@
  * only adds the stage, measurement forms and the selected-slot inspector.
  */
 
+/*
+ * Phase 1 operator console tokens. Selection is ink so it can never be
+ * mistaken for a warning; orange stays the primary action and focus colour.
+ */
+.physical {
+    --select: var(--ink);
+    --select-soft: #e7e9e2;
+    --fs-util: 0.8125rem; /* 13 px utility floor */
+    font-size: 15px;
+    line-height: 1.5;
+}
+
 .physical .topbar-note {
     flex: 1 1 260px;
     min-width: 0;
@@ -13,7 +25,7 @@
 }
 
 .physical .topbar .btn {
-    min-height: 36px;
+    min-height: 44px;
 }
 
 .physical .card .btn,
@@ -136,9 +148,9 @@
 .page-error,
 .form-msg {
     margin-top: 12px;
-    padding: 10px 12px;
-    border-left: 3px solid var(--bad);
-    border-radius: 0 var(--radius-sm) var(--radius-sm) 0;
+    padding: 9px 11px;
+    border: 1px solid var(--bad);
+    border-radius: var(--radius-sm);
     background: var(--bad-soft);
     color: var(--bad);
     font-size: 0.85rem;
@@ -147,13 +159,13 @@
 }
 
 .form-msg[data-kind="ok"] {
-    border-left-color: var(--ok);
+    border-color: var(--ok);
     background: var(--ok-soft);
     color: var(--ok);
 }
 
 .form-msg[data-kind="warn"] {
-    border-left-color: #c98a14;
+    border-color: #c98a14;
     background: var(--warn-soft);
     color: var(--warn);
 }
@@ -161,8 +173,8 @@
 .conflict {
     margin-top: 12px;
     padding: 12px 14px;
-    border-left: 4px solid var(--bad);
-    border-radius: 0 var(--radius-sm) var(--radius-sm) 0;
+    border: 1px solid var(--bad);
+    border-radius: var(--radius-sm);
     background: var(--bad-soft);
 }
 
@@ -412,8 +424,9 @@
 }
 
 .dev-row[data-selected="true"] {
-    border-color: var(--accent);
-    box-shadow: inset 3px 0 0 var(--accent);
+    border-color: var(--select);
+    background: var(--select-soft);
+    box-shadow: inset 0 0 0 1px var(--select);
 }
 
 .dev-pick {
@@ -484,9 +497,9 @@
     align-self: center;
     padding: 1px 8px;
     border-radius: 999px;
-    background: var(--accent-soft);
-    color: var(--accent);
-    font-size: 0.72rem;
+    background: var(--select);
+    color: #ffffff;
+    font-size: var(--fs-util);
     font-weight: 700;
     white-space: nowrap;
 }
@@ -495,7 +508,6 @@
     display: none;
 }
 
-.dev-flag,
 .playlist-kind[data-kind="video"],
 .playlist-now,
 .playback-state[data-state="preparing"],
@@ -639,6 +651,30 @@
     margin-top: 14px;
 }
 
+/* Local Apply/Cancel stay reachable while the inspector scrolls. */
+.inspector-footer {
+    position: sticky;
+    bottom: 0;
+    z-index: 2;
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+    margin: 16px -18px -18px;
+    padding: 12px 18px;
+    border-top: 1px solid var(--line);
+    background: var(--panel);
+}
+
+.inspector-footer .btn {
+    flex: 1 1 140px;
+}
+
+@media (min-width: 720px) {
+    .inspector-footer {
+        bottom: 34px; /* clear the sticky status bar */
+    }
+}
+
 .nudge-block {
     margin-top: 16px;
     padding-top: 14px;
@@ -776,6 +812,7 @@
 
 .physical .playback-card {
     gap: 8px;
+    padding: 14px;
 }
 
 @media (min-width: 1000px) {
@@ -858,16 +895,101 @@
     }
 
     .physical .playback-actions .btn {
-        flex: 1 1 40%;
+        flex: 1 1 25%;
     }
 
     .physical .playback-actions .playback-stop {
-        flex-basis: 100%;
+        flex: 1 1 30%;
         margin-left: 0;
     }
 
-    .stage-svg {
-        min-width: 520px;
+    /* Compact mobile rail: state, countdown, transport and More only. */
+    .physical .side .card.playback-card {
+        padding: 9px 12px;
+    }
+
+    .physical .playback-card {
+        grid-template-columns: minmax(0, 1fr) auto;
+        gap: 2px;
+    }
+
+    .physical .playback-card[data-session="true"] {
+        gap: 2px;
+    }
+
+    .physical .playback-head {
+        grid-column: 1;
+        grid-row: 1;
+        gap: 4px 6px;
+    }
+
+    .physical .playback-head h2 {
+        font-size: 1rem;
+    }
+
+    .physical .playback-status {
+        grid-column: 1 / -1;
+        grid-row: 2;
+        padding: 5px 8px;
+        font-size: var(--fs-util);
+        line-height: 1.35;
+    }
+
+    .physical .playback-card:not([data-expanded="true"]) .playback-status {
+        max-height: calc(2 * 1.35em + 12px);
+        overflow: hidden;
+    }
+
+    .physical .playback-actions,
+    .physical .playback-steps,
+    .physical .playback-msg,
+    .physical .playback-cohort-line,
+    .physical .playback-more,
+    .physical .playback-extra {
+        grid-column: 1 / -1;
+    }
+
+    .physical .playback-actions {
+        grid-row: 3;
+    }
+
+    .physical .playback-countdown {
+        grid-column: 2;
+        grid-row: 1;
+        align-self: center;
+        margin: 0;
+        text-align: right;
+        white-space: nowrap;
+    }
+
+    .physical .playback-card[data-session="false"] .playback-status {
+        font-size: var(--fs-util);
+    }
+
+    .physical .playback-more {
+        display: inline-flex;
+        width: 100%;
+        min-height: 44px;
+    }
+
+    .physical .playback-card:not([data-expanded="true"]) .playback-extra,
+    .physical .playback-card:not([data-expanded="true"]) .playback-steps,
+    .physical .playback-card:not([data-expanded="true"]) .playback-cohort-line {
+        display: none;
+    }
+
+    .physical .inspector-footer {
+        margin: 14px -14px -14px;
+        padding: 12px 14px calc(12px + env(safe-area-inset-bottom));
+    }
+
+    .physical .stage-scroll {
+        overflow: hidden;
+    }
+
+    .physical .stage-svg {
+        width: 100%;
+        min-width: 0;
     }
 
     .stage-foot {
@@ -991,7 +1113,7 @@
 
 .playlist-item[data-current="true"] {
     border-color: var(--accent);
-    box-shadow: inset 3px 0 0 var(--accent);
+    box-shadow: inset 0 0 0 1px var(--accent);
 }
 
 .playlist-item[data-current="true"] .playlist-now {
@@ -1193,14 +1315,42 @@
     text-transform: lowercase;
 }
 
+.playback-countdown {
+    margin: -4px 0 0;
+    color: var(--ink-3);
+    font-family: var(--mono);
+    font-size: var(--fs-util);
+    font-variant-numeric: tabular-nums;
+    line-height: 1.35;
+}
+
+.playback-countdown:empty {
+    display: none;
+}
+
+.playback-cohort-line {
+    margin: 0;
+    max-width: 62ch;
+    color: var(--ink-2);
+    font-size: var(--fs-util);
+    line-height: 1.4;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.playback-more {
+    display: none;
+}
+
 .playback-preflight {
     margin: 0;
-    padding: 8px 10px;
+    padding: 6px 9px;
     border: 1px solid var(--line);
     border-radius: 6px;
     background: var(--raised);
     color: var(--ink-2);
-    font-size: 0.78rem;
+    font-size: var(--fs-util);
     line-height: 1.45;
     overflow-wrap: anywhere;
 }
@@ -1319,6 +1469,24 @@
     color: var(--bad);
 }
 
+.playback-exclusion-about {
+    margin-top: 2px;
+}
+
+.playback-exclusion-about summary {
+    display: flex;
+    align-items: center;
+    min-height: 44px;
+    color: var(--ink-2);
+    font-size: var(--fs-util);
+    font-weight: 600;
+    cursor: pointer;
+}
+
+.playback-exclusion-about[open] summary {
+    margin-bottom: 2px;
+}
+
 .playback-exclusions .empty-note,
 .playback-exclusions .form-msg,
 .playback-exclusions .hint {
@@ -1379,7 +1547,7 @@
 }
 
 .playback-card[data-session="true"] {
-    gap: 10px;
+    gap: 8px;
 }
 
 .playback-section {
@@ -1393,12 +1561,13 @@
 
 .playback-status {
     margin: 0;
-    padding: 10px 12px;
+    padding: 8px 10px;
     border: 1px solid var(--line);
     border-radius: 8px;
     background: var(--raised);
     font-size: 0.86rem;
     font-weight: 600;
+    line-height: 1.4;
     overflow-wrap: anywhere;
 }
 
@@ -1483,23 +1652,22 @@
 
 .playback-member {
     padding: 8px;
-    border: 1px solid var(--line);
-    border-left: 3px solid #c98a14;
+    border: 1px solid #c98a14;
     border-radius: var(--radius-sm);
     background: var(--raised);
 }
 
 .playback-member[data-state="ready"] {
-    border-left-color: var(--ok);
+    border-color: var(--ok);
 }
 
 .playback-member[data-state="missing"] {
-    border-left-color: var(--bad);
+    border-color: var(--bad);
     background: var(--bad-soft);
 }
 
 .playback-member[data-state="excluded"] {
-    border-left-color: var(--line-2);
+    border-color: var(--line-2);
     background: #f3f4f6;
 }
 
@@ -1559,19 +1727,18 @@
 .diag-integrity {
     margin-top: 12px;
     padding: 10px 12px;
-    border: 1px solid var(--line);
-    border-left: 3px solid #c98a14;
+    border: 1px solid #c98a14;
     border-radius: var(--radius-sm);
     background: var(--raised);
 }
 
 .diag-integrity[data-state="ok"] {
-    border-left-color: var(--ok);
+    border-color: var(--ok);
     background: var(--ok-soft);
 }
 
 .diag-integrity[data-state="bad"] {
-    border-left-color: var(--bad);
+    border-color: var(--bad);
     background: var(--bad-soft);
 }
 
@@ -1615,8 +1782,8 @@
 .rebind-summary {
     margin-top: 10px;
     padding: 9px 11px;
-    border-left: 3px solid var(--accent);
-    border-radius: 0 var(--radius-sm) var(--radius-sm) 0;
+    border: 1px solid var(--accent);
+    border-radius: var(--radius-sm);
     background: var(--accent-soft);
     color: var(--ink-2);
     font-size: 0.79rem;
@@ -1625,13 +1792,13 @@
 }
 
 .rebind-summary[data-kind="warn"] {
-    border-left-color: var(--warn);
+    border-color: var(--warn);
     background: var(--warn-soft);
     color: var(--warn);
 }
 
 .rebind-summary[data-kind="err"] {
-    border-left-color: var(--bad);
+    border-color: var(--bad);
     background: var(--bad-soft);
     color: var(--bad);
 }
@@ -1713,12 +1880,104 @@
     }
 }
 
+/* ---------------------------------------------------------------- *
+ * Phase 1: utility floor, prose measure, selection and focus
+ * ---------------------------------------------------------------- */
+
+.physical .hint,
+.physical .label,
+.physical .chip,
+.physical .physical-meta,
+.physical .physical-meta .chip,
+.physical .etag-meta code,
+.physical .sec-count,
+.physical .dev-meta,
+.physical .dev-meta .mono,
+.physical .dev-slot,
+.physical .insp-name code,
+.physical .insp-id-line code,
+.physical .insp-id-line .btn,
+.physical .current,
+.physical .saved-meta,
+.physical .playlist-index,
+.physical .playlist-now,
+.physical .playlist-kind,
+.physical .playlist-item-meta,
+.physical .playlist-dwell-label,
+.physical .playlist-hint,
+.physical .playback-effective,
+.physical .playback-state,
+.physical .playback-preflight,
+.physical .playback-exclusion-summary,
+.physical .playback-exclusion-name,
+.physical .playback-exclusion-meta,
+.physical .playback-exclusion-id,
+.physical .playback-card[data-session="false"] .playback-status,
+.physical .playback-facts .fact,
+.physical .diag-grid .fact,
+.physical .playback-member-id,
+.physical .playback-member-meta,
+.physical .field-note,
+.physical .rebind-summary,
+.physical .dev-wake,
+.physical .diag-problems,
+.physical .btn-sm,
+.physical .stage-legend,
+.physical .statusbar {
+    font-size: var(--fs-util);
+}
+
+.physical .hint,
+.physical .empty-note,
+.physical .current,
+.physical .conflict-text,
+.physical .playback-status,
+.physical .playback-preflight,
+.physical .playback-cohort-line,
+.physical .playback-exclusion-summary,
+.physical .playback-effective {
+    max-width: 62ch;
+}
+
+.physical #stage-scroll:focus,
+.physical #stage-scroll:focus-visible {
+    outline: 2px solid var(--accent);
+    outline-offset: 2px;
+}
+
+.physical #selected-title:focus,
+.physical #selected-title:focus-visible {
+    outline: 2px solid var(--accent);
+    outline-offset: 4px;
+    border-radius: 2px;
+}
+
+.physical .etag-meta code,
+.physical .insp-name code,
+.physical .insp-id-line code,
+.physical .dev-label,
+.physical .saved-name,
+.physical .playlist-name {
+    overflow-wrap: anywhere;
+}
+
+.physical .layout,
+.physical .main,
+.physical .side {
+    min-width: 0;
+}
+
 @media (prefers-reduced-motion: reduce) {
+    .physical {
+        scroll-behavior: auto;
+    }
+
     .physical *,
     .physical *::before,
     .physical *::after {
         animation-duration: 0.001ms !important;
         animation-iteration-count: 1 !important;
         transition-duration: 0.001ms !important;
+        scroll-behavior: auto !important;
     }
 }
