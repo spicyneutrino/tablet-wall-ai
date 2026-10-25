@@ -276,3 +276,14 @@ def test_cancelling_a_future_commit_restores_the_active_index():
     playback.pause(s, 6999)
     assert s.current.item_index == 0 and s.index == 0 and s.loop_count == 0
     assert s.displayed.item_index == 0
+
+
+def test_a_rejected_step_does_not_cancel_the_armed_cut():
+    s = session(now=1000)
+    assert ready(s, "dev-1", 1100) and ready(s, "dev-2", 1100)
+    playback.tick(s, 1000)
+    assert s.pending is not None
+    with pytest.raises(playback.PlaybackError):
+        playback.step(s, -1, 1001, {"dev-1": "conn-dev-1", "dev-2": "conn-dev-2"})
+    assert s.current.item_index == 0
+    assert s.pending is not None and s.pending.occurrence.item_index == 1

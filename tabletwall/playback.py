@@ -610,8 +610,8 @@ def step(
     """
     if not session.items:
         raise PlaybackError("playlist is empty")
-    _cancel_future_commit(session, now_ms)
     occurrence = _target_occurrence(session, delta, now_ms)
+    _cancel_future_commit(session, now_ms)
     session.version += 1
     session.state = "preparing"
     session.blocked_reason = None
