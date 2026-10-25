@@ -36,6 +36,9 @@ POLICIES = ("online", "strict")
 FINAL = "final"
 STALE_SAMPLE_MS = 3000
 RECOVERY_ATTEMPTS = 3
+RECONNECT_COALESCE_MS = 2000
+RECONNECT_MIN_REMAINING_MS = 250
+RECONNECT_REASON = "reconnect"
 FAULT_REASONS = ("stalled", "play_failed", "buffer_lost")
 RECOVERY_TIMEOUT_REASON = "recovery_timeout"
 RECOVERY_FAILED_REASON = "recovery_failed"
@@ -133,6 +136,8 @@ class Session:
     items: list[dict[str, Any]]
     loop: bool
     cohort: list[str]
+    required: list[str] = field(default_factory=list)
+    excluded: list[str] = field(default_factory=list)
     state: str = "preparing"
     index: int = 0
     loop_count: int = 0
@@ -322,11 +327,22 @@ def start(
     playlist_revision: int = 1,
     policy: str = "online",
     videos: dict[str, int] | None = None,
+    required: list[str] | None = None,
+    excluded: list[str] | None = None,
 ) -> Session:
     if not cohort:
         raise PlaybackError("a playback session needs at least one participant")
     if policy not in POLICIES:
         raise PlaybackError('policy must be "online" or "strict"')
+    required_set = sorted(set(required if required is not None else cohort))
+    excluded_set = sorted(set(excluded or []))
+    effective = set(cohort)
+    if not set(excluded_set) <= set(required_set):
+        raise PlaybackError("an excluded slot must be a required participant")
+    if not effective <= set(required_set) - set(excluded_set):
+        raise PlaybackError(
+            "the cohort must be required participants that are not excluded"
+        )
     session = Session(
         id=uuid.uuid4().hex,
         version=1,
@@ -335,7 +351,9 @@ def start(
         playlist_revision=playlist_revision,
         items=validate_playlist(items, loop=loop, videos=videos),
         loop=loop,
-        cohort=sorted(set(cohort)),
+        cohort=sorted(effective),
+        required=required_set,
+        excluded=excluded_set,
         state="preparing",
         target_ms=now_ms + LEAD_MS,
         policy=policy,
@@ -552,6 +570,57 @@ def _start_recovery(
     session.recovery_occurrence = occurrence
     session.recovery_attempts = attempts
     return pending
+
+
+def accept_reconnect(
+    session: Session,
+    *,
+    device_id: str,
+    now_ms: float,
+    connections: dict[str, str] | None = None,
+) -> str:
+    """Handle one returning device after its replacement socket registered.
+
+    Returns ``"pending"`` when the caller must resend ``session.pending`` to
+    that socket without spending an attempt, ``"started"`` when a new
+    ``reconnect`` recovery was built, and ``"ignored"`` for every state that
+    must wait for the operator. A second reconnect for the same device within
+    ``RECONNECT_COALESCE_MS`` of the recovery start never starts another
+    attempt. A reconnect always builds a fresh version and anchor; no old
+    epoch or position is revived.
+    """
+    if device_id not in session.cohort:
+        return "ignored"
+    if session.state in ("recovering", "preparing", "armed"):
+        return "pending" if session.pending is not None else "ignored"
+    if (
+        session.state not in ("playing", FINAL)
+        or session.final
+        or session.current is None
+        or session.current_media is None
+        or session.current_media.get("kind") != "video"
+    ):
+        return "ignored"
+    duration = int(session.current_media["duration_ms"])
+    position = _playhead_ms(session, now_ms)
+    if duration - position <= RECONNECT_MIN_REMAINING_MS:
+        return "ignored"
+    occurrence = session.current
+    if _recovery_attempts_for(session, occurrence) >= RECOVERY_ATTEMPTS:
+        return "ignored"
+    recovery = session.recovery
+    if (
+        recovery is not None
+        and recovery.reason == RECONNECT_REASON
+        and recovery.device_id == device_id
+        and now_ms - recovery.started_ms < RECONNECT_COALESCE_MS
+    ):
+        return "ignored"
+    _start_recovery(
+        session, occurrence, position, RECONNECT_REASON, device_id, now_ms,
+        connections,
+    )
+    return "started"
 
 
 def _recovery_failure(

@@ -836,8 +836,23 @@ saved playlist and a physical layout. `policy` is optional: an explicit
 `"online"` or `"strict"` wins; otherwise the server resolves `"strict"` when
 any playlist item is video and `"online"` for stills. A strict start includes
 every participating slot, including offline and protocol-unsupported members;
-an online start keeps only online v3 endpoints. `start` on a paused session
-resumes the displayed item at a new anchor. `pause/stop/next/previous/retry`
+an online start keeps only online v3 endpoints.
+
+`start` also accepts an optional `exclusions` list of physical slot IDs:
+`{ "policy": "strict", "exclusions": ["<uuid>"] }`. Every ID must name a
+participating slot in the saved layout; an unknown, duplicate or
+non-participating ID is `422`. The session freezes three sets: `required` is
+every participating slot, `excluded` is the operator's session-only choice,
+and `cohort` is the effective participant set. For strict, `cohort` is
+`required - excluded`; for online it is the online v3 endpoints in
+`required - excluded`. An all-excluded effective cohort is `409`. Excluded
+slots are not counted as synchronized participants: they receive no
+preparation, and each reachable excluded socket receives one isolated
+`playback` stopped frame with reason `"excluded"` so it shows the persisted
+scene. Strict readiness
+and the effective content bounds use `cohort` only. `start` on a paused
+session resumes the displayed item at a new anchor and keeps the frozen
+`required`, `excluded` and `cohort` selection. `pause/stop/next/previous/retry`
 require `If-Match` with the current session version (`428` missing, `412`
 stale, `404` no session).
 
@@ -894,9 +909,11 @@ session and restores static content.
 
 `playback_status` reports the lineage, state, `current` (last committed),
 `displayed`, `current_effective_ms`, `pending`, `playlist_revision`, policy,
-cohort, ready/missed members, `final`, the `recovery` record, and per-device
-`video` samples. `members` carries each pending lease's `ready` and video
-evidence so a blocked clip names its failed gate.
+`required`, `excluded`, the effective `cohort`, ready/missed members, `final`,
+the `recovery` record, and per-device `video` samples. `required` and
+`excluded` are sorted and independent of the effective cohort. `members`
+carries each pending lease's `ready` and video evidence so a blocked clip
+names its failed gate.
 
 `live` describes the frozen session, never the editable saved playlist:
 
@@ -1000,12 +1017,34 @@ the current occurrence and the current version; `position_ms` is bounded
 `0..duration_ms - 1`, because a position at the exact end has nothing left to
 play. A duplicate fault while a recovery is active is ignored.
 
+A replacement device socket rejoins automatically after its welcome and wall
+replay. The returning device must be in the effective `cohort`. If the state
+is `recovering`, the pending recovery preparation is re-sent under the new
+connection with no new attempt and no deadline change. In `preparing` or
+`armed`, the current pending preparation is re-sent. A playing still also
+re-sends its pending next preparation, because it has no video picture to
+recover. In `playing` with a video
+occurrence that is not final, more than 250 ms of media remaining and fewer
+than three attempts already spent, one group recovery starts at the
+server-authoritative playhead with reason `"reconnect"`: it consumes one
+normal attempt, freezes the reachable cohort, cancels the routine next
+preparation and commits a fresh common anchor. A second reconnect for the same
+device within 2 s of that recovery's `started_ms` does not start another
+attempt; while the session is still `recovering`, the resend rule applies.
+`paused`, `blocked`, `failed` and `final` sessions, a clip within 250 ms of its
+end and an occurrence at the attempt cap do not rejoin automatically; the
+tablet stays on the persisted scene until the operator acts. A reconnect never
+revives an old epoch, version or position anchor. `"reconnect"` is a
+server-initiated recovery reason and is never accepted in a client
+`video_fault`.
+
 `playback_status.state` becomes `recovering` and `recovery` is one record:
 
 ```json
 "recovery": {
   "id": "…", "occurrence": {...}, "position_ms": 2400,
-  "reason": "stalled", "device_id": "<uuid>", "attempts": 1,
+  "reason": "stalled"|"play_failed"|"buffer_lost"|"reconnect",
+  "device_id": "<uuid>", "attempts": 1,
   "started_ms": 123, "deadline_ms": 456, "degraded_ms": 789,
   "state": "preparing"|"playing"|"blocked"|"failed", "missing": ["<uuid>"]
 }
@@ -1063,8 +1102,9 @@ the normal blocked/failed state; Retry is available after a strict `blocked`,
 while an online `failed` session offers Start again and Stop. Drift
 correction uses a 50 ms deadband, a rate within 0.98..1.02 inside 50..250 ms,
 and one seek per 5 s above 250 ms. Pause freezes; Start resumes by restarting
-the displayed item; Stop restores the persisted render. Named exclusions
-within a recovery cohort are not claimed. Optical timing, physical
+the displayed item; Stop restores the persisted render. Named exclusions are a
+session-only Start choice; a recovery keeps the frozen effective cohort and
+never re-includes an excluded slot automatically. Optical timing, physical
 decode/suspend, iOS Safari and soak remain MISSING.
 
 The browser evidence measures software canvas/DOM timing only. No optical
