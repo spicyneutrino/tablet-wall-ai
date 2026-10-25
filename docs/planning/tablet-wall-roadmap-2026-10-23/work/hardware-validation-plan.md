@@ -84,6 +84,20 @@ Files: `simulator/browser/fleet_soak.py`, `deploy/network_trials.py`,
   `deploy/KIOSK.md` remains the OS/device procedure. Guided Access, Auto-Lock
   and managed kiosk settings are operator steps.
 
+## Evidence rules (advisor amendments)
+
+Every tool writes through `tools/validation/evidence.py` and
+`docs/validation/EVIDENCE-SCHEMA.md`. It records evidence kind, application
+SHA, tool/settings versions, original cohort, expected scenarios, artifact
+hashes, every failure, skipped and unobserved intervals, and completion.
+Kit execution success is separate from hardware acceptance; every report keeps
+`hardware_gate_status = MISSING`. A single missing transition, wrong target or
+failed row blocks that event and is reported. Optical uncertainty that crosses
+a threshold is inconclusive. A supplied CA bundle proves verifier trust only
+and must name the trust store actually tested. The acceptance record
+`docs/planning/tablet-wall-roadmap-2026-10-23/ROADMAP.md` (targets at lines
+500-522) is frozen before measurements; this work does not revise it.
+
 ## Phase 2: dry runs and evidence discipline
 
 - Run the optical synthetic suite and the analyzer on its fixtures.
@@ -118,6 +132,15 @@ portable CA/install access and time. Execute the procedures in order:
    overnight still soak.
 
 Only the operator's recorded evidence can change a gate from MISSING.
+
+## Kit acceptance rehearsal
+
+The kit is accepted only when a disposable end-to-end rehearsal runs all four
+tools, reproduces known failures, distinguishes aborted/unsupported runs,
+verifies cleanup and leaves all eight gates MISSING. It must show the failed
+row and the skipped/unobserved intervals, not only green paths. The operator
+still supplies supported mixed tablets, camera/tripod, measuring tools, AP and
+host, charging, trust/settings access, fleet scope and execution time.
 
 ## Boundaries
 
