@@ -204,6 +204,20 @@ image-loading races and whole-wall transform, also run:
 node tests/client_image.test.js
 ```
 
+## Hardware validation kit
+
+The eight physical and deployment gates remain **MISSING**. The repository
+contains a kit that builds the evidence and procedures but never promotes a
+synthetic, desktop-browser, loopback or simulated run to a hardware result:
+
+- gate matrix and operator runbook: [docs/validation/HARDWARE-VALIDATION.md](docs/validation/HARDWARE-VALIDATION.md);
+- frozen targets: [docs/validation/ACCEPTANCE.md](docs/validation/ACCEPTANCE.md);
+- evidence contract: [docs/validation/EVIDENCE-SCHEMA.md](docs/validation/EVIDENCE-SCHEMA.md);
+- optical capture, device probe, trust/origin, calibration, soak/network and
+  kiosk runbooks live under `docs/validation/`.
+
+A gate changes only with the operator's signed physical evidence.
+
 ## Known limitations
 
 - **Run one server worker per wall/database.** Active wall state and sockets are
