@@ -817,6 +817,29 @@ recovery at the playhead with all members at the same position, a second drop
 during that recovery spending no extra attempt, visible resumption, and no
 auto-rejoin while paused, final or excluded. Software evidence only.
 
+## Hardware/deployment validation kit (2026-10-25)
+
+The operator asked to work the eight remaining gates. No tablets, camera, AP,
+installed trust or operator measurement session were available (`adb devices`
+empty, `idevice_id -l` empty), so this work builds and dry-runs the validation
+kit; every gate remains MISSING. The plan is
+`work/hardware-validation-plan.md`; the advisor memo is
+`work/hardware-advisor-memo-2026-10-25.md`; the frozen targets are
+`docs/validation/ACCEPTANCE.md`.
+
+The shared evidence contract is `tools/validation/evidence.py` with
+`docs/validation/EVIDENCE-SCHEMA.md`: every report records the application
+lineage, tool versions, original cohort, expected/missing scenarios, failures,
+skipped/unobserved intervals, artifact hashes and completion, and always keeps
+`hardware_gate_status = MISSING`. The gate matrix is
+`docs/validation/HARDWARE-VALIDATION.md`.
+
+The kit workstreams are optical capture analysis (synthetic fixtures first),
+device decode/suspend probe (desktop Chromium/WebKit smoke), trust/origin and
+calibration checkers, and fleet/network/kiosk harnesses. Their tool counts and
+dry-run results are recorded after merge. No synthetic, desktop-browser,
+loopback-Caddy or simulated-fleet result is a hardware result.
+
 ## Next actions
 
 The remaining product work is hardware and deployment evidence: optical cut
