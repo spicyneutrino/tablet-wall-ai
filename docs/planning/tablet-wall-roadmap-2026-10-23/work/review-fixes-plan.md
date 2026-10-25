@@ -226,3 +226,14 @@ temporary DB/media and free ports, never port 8000.
 - Hardware gates remain MISSING: optical cut timing, physical decode/suspend,
   iOS Safari, mixed-model calibration, installed CA trust, real Wi-Fi/OS,
   kiosk, soak. Automatic quality fallback stays deferred.
+
+## Phase 3 status (2026-10-25)
+
+Merged: server/API `ee02577` (exclusions, automatic reconnect, paused-resume
+frozen sets, stale-session guard), controller `3ab1b14` (session-only picker),
+and `simulator/browser/reconnect_exclusions_run.py` (`facda4e`). The runner
+records 21/21 checks and 5/5 scenarios on two consecutive runs, covering
+excluded static scene/no prepare, frozen sets on resume, all-excluded and
+unknown refusals, one reconnect recovery at the playhead, a second drop with no
+extra attempt, visible resumption, and no auto-rejoin while paused, final or
+excluded. Software evidence only; hardware gates remain MISSING.
