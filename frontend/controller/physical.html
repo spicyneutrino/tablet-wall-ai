@@ -12,16 +12,85 @@
 </head>
 <body class="physical">
 <a class="skip" href="#stage-title">Skip to the wall stage</a>
+<a class="skip skip-controls" href="#rail-tabs">Skip to controls</a>
 
 <header class="topbar">
     <h1 class="brand">Wall console</h1>
     <p class="topbar-note">Manage the wall, the show, and its content.</p>
+    <div class="topbar-transport" id="topbar-transport" aria-label="Playback transport">
+        <span class="topbar-playback" id="topbar-playback-state" data-state="stopped">stopped</span>
+        <button type="button" class="btn btn-sm btn-primary" id="btn-topbar-start">Start</button>
+        <button type="button" class="btn btn-sm" id="btn-topbar-pause" hidden>Pause</button>
+        <button type="button" class="btn btn-sm" id="btn-topbar-stop" hidden>Stop</button>
+    </div>
     <a class="btn btn-sm" href="index.html">Logical wall (legacy)</a>
 </header>
 
-<div class="layout">
-    <aside class="side" aria-label="Playback">
-        <section class="card playback-card" id="playback-card" aria-labelledby="playback-title">
+<div class="layout console">
+    <main class="main">
+        <section class="card stage-card" aria-labelledby="stage-title">
+            <div class="wall-head">
+                <h2 id="stage-title" tabindex="-1">Wall stage</h2>
+                <p class="wall-meta physical-meta">
+                    <span>Revision <b id="wall-revision">–</b></span>
+                    <span>Session <b id="wall-generation">–</b></span>
+                    <span class="etag-meta">
+                        ETag <code id="etag-value" title="">–</code>
+                        <span class="chip" id="etag-state" data-kind="info">waiting</span>
+                    </span>
+                </p>
+            </div>
+
+            <p class="hint" id="layout-kind-note">Loading the configuration.</p>
+
+            <div class="phys-toolbar" role="group" aria-label="Layout draft">
+                <button type="button" class="btn btn-ghost" id="btn-undo" disabled>Undo</button>
+                <button type="button" class="btn btn-ghost" id="btn-redo" disabled>Redo</button>
+                <span class="draft-flag" id="draft-flag" data-dirty="false">No changes</span>
+                <span class="toolbar-gap" aria-hidden="true"></span>
+                <button type="button" class="btn btn-primary" id="btn-apply" disabled>Apply layout</button>
+                <button type="button" class="btn" id="btn-cancel" disabled>Cancel changes</button>
+                <button type="button" class="btn btn-ghost" id="btn-reload">Reload config</button>
+            </div>
+
+            <p class="page-error" id="error-text" role="alert" hidden></p>
+
+            <div class="conflict" id="conflict-panel" role="alert" hidden>
+                <p class="conflict-title">Configuration changed on the server</p>
+                <p class="conflict-text" id="conflict-text"></p>
+                <div class="conflict-actions">
+                    <button type="button" class="btn btn-danger" id="btn-conflict-reload">Reload config</button>
+                </div>
+            </div>
+
+            <div class="stage-scroll" id="stage-scroll" tabindex="0" role="region" aria-label="Wall stage. Scroll to pan; select a tablet and use the arrow keys to nudge it.">
+                <svg class="stage-svg" id="stage-svg" viewBox="0 0 720 480"
+                     role="group" aria-label="Wall stage. Select a tablet and drag it, or use the arrow keys to nudge the selected tablet."></svg>
+            </div>
+
+            <div class="stage-foot">
+                <p class="stage-scale" id="stage-scale">Waiting for the wall.</p>
+                <ul class="stage-legend" aria-label="Stage legend">
+                    <li class="lg"><span class="lg-body" aria-hidden="true"></span>Tablet body</li>
+                    <li class="lg"><span class="lg-active" aria-hidden="true"></span>Active panel</li>
+                    <li class="lg"><span class="lg-sel" aria-hidden="true"></span>Selected</li>
+                    <li class="lg"><span class="lg-grid" aria-hidden="true"></span>Wall grid</li>
+                </ul>
+            </div>
+            <p class="hint">Drag a tablet to move it on the wall. A drag starts after 3 px, so a tap only selects. Escape cancels a drag in progress.</p>
+        </section>
+    </main>
+
+    <aside class="side rail" id="rail" aria-label="Console controls">
+        <div class="rail-tabs" id="rail-tabs" role="tablist" aria-label="Console tasks">
+            <button type="button" class="rail-tab" id="tab-show" role="tab" aria-selected="true" aria-controls="panel-show" tabindex="0">Show</button>
+            <button type="button" class="rail-tab" id="tab-tablet" role="tab" aria-selected="false" aria-controls="panel-tablet" tabindex="-1">Tablet <span class="tab-dot" id="tab-tablet-dot" hidden></span></button>
+            <button type="button" class="rail-tab" id="tab-content" role="tab" aria-selected="false" aria-controls="panel-content" tabindex="-1">Content <span class="tab-dot" id="tab-content-dot" hidden></span></button>
+            <button type="button" class="rail-tab" id="tab-system" role="tab" aria-selected="false" aria-controls="panel-system" tabindex="-1">System</button>
+        </div>
+        <div class="rail-panels" id="rail-panels">
+            <section class="rail-panel" id="panel-show" role="tabpanel" aria-labelledby="tab-show" tabindex="0">
+        <section class="playback-card" id="playback-card" aria-labelledby="playback-title">
             <div class="playback-head">
                 <h2 id="playback-title">Playback</h2>
                 <span class="chip playback-stale" id="playback-stale" data-kind="warn" hidden>stale</span>
@@ -106,62 +175,8 @@
                 </details>
             </div>
         </section>
-    </aside>
-
-    <main class="main">
-
-        <section class="card stage-card" aria-labelledby="stage-title">
-            <div class="wall-head">
-                <h2 id="stage-title" tabindex="-1">Wall stage</h2>
-                <p class="wall-meta physical-meta">
-                    <span>Revision <b id="wall-revision">–</b></span>
-                    <span>Session <b id="wall-generation">–</b></span>
-                    <span class="etag-meta">
-                        ETag <code id="etag-value" title="">–</code>
-                        <span class="chip" id="etag-state" data-kind="info">waiting</span>
-                    </span>
-                </p>
-            </div>
-
-            <p class="hint" id="layout-kind-note">Loading the configuration.</p>
-
-            <div class="phys-toolbar" role="group" aria-label="Layout draft">
-                <button type="button" class="btn btn-ghost" id="btn-undo" disabled>Undo</button>
-                <button type="button" class="btn btn-ghost" id="btn-redo" disabled>Redo</button>
-                <span class="draft-flag" id="draft-flag" data-dirty="false">No changes</span>
-                <span class="toolbar-gap" aria-hidden="true"></span>
-                <button type="button" class="btn btn-primary" id="btn-apply" disabled>Apply layout</button>
-                <button type="button" class="btn" id="btn-cancel" disabled>Cancel changes</button>
-                <button type="button" class="btn btn-ghost" id="btn-reload">Reload config</button>
-            </div>
-
-            <p class="page-error" id="error-text" role="alert" hidden></p>
-
-            <div class="conflict" id="conflict-panel" role="alert" hidden>
-                <p class="conflict-title">Configuration changed on the server</p>
-                <p class="conflict-text" id="conflict-text"></p>
-                <div class="conflict-actions">
-                    <button type="button" class="btn btn-danger" id="btn-conflict-reload">Reload config</button>
-                </div>
-            </div>
-
-            <div class="stage-scroll" id="stage-scroll" tabindex="0" role="region" aria-label="Wall stage. Scroll to pan; select a tablet and use the arrow keys to nudge it.">
-                <svg class="stage-svg" id="stage-svg" viewBox="0 0 720 480"
-                     role="group" aria-label="Wall stage. Select a tablet and drag it, or use the arrow keys to nudge the selected tablet."></svg>
-            </div>
-
-            <div class="stage-foot">
-                <p class="stage-scale" id="stage-scale">Waiting for the wall.</p>
-                <ul class="stage-legend" aria-label="Stage legend">
-                    <li class="lg"><span class="lg-body" aria-hidden="true"></span>Tablet body</li>
-                    <li class="lg"><span class="lg-active" aria-hidden="true"></span>Active panel</li>
-                    <li class="lg"><span class="lg-sel" aria-hidden="true"></span>Selected</li>
-                    <li class="lg"><span class="lg-grid" aria-hidden="true"></span>Wall grid</li>
-                </ul>
-            </div>
-            <p class="hint">Drag a tablet to move it on the wall. A drag starts after 3 px, so a tap only selects. Escape cancels a drag in progress.</p>
-        </section>
-
+            </section>
+            <section class="rail-panel" id="panel-tablet" role="tabpanel" aria-labelledby="tab-tablet" tabindex="0" hidden>
         <section class="card devices-card" aria-labelledby="devices-title">
             <div class="sec-head">
                 <h2 id="devices-title">Tablets</h2>
@@ -171,7 +186,6 @@
             <ul class="dev-list" id="device-list" aria-label="Tablets known to this server"></ul>
             <p class="empty-note" id="device-empty" hidden>No tablets are registered yet. Open <a href="/client/">/client/</a> on a tablet on the same LAN, then reload this page.</p>
         </section>
-
         <section class="card inspector" aria-labelledby="inspector-title">
             <h2 id="inspector-title">Selected tablet</h2>
             <p class="empty-note" id="inspector-empty">Select a tablet on the stage or in the list.</p>
@@ -243,7 +257,6 @@
                 <button type="button" class="btn btn-primary" id="btn-add-slot">Add to wall</button>
             </div>
         </section>
-
         <section class="card device-card" aria-labelledby="device-card-title">
             <h2 id="device-card-title">Profile and calibration</h2>
             <p class="empty-note" id="device-card-empty">Select a tablet to edit its measurements.</p>
@@ -412,30 +425,8 @@
                 </form>
             </div>
         </section>
-        <section class="card bounds-card" aria-labelledby="bounds-title">
-            <h2 id="bounds-title">Wall bounds</h2>
-            <p class="hint">The rectangle every slot is placed inside. Values are millimetres, measured from the top-left corner of the wall as the audience sees it.</p>
-            <div class="bounds-grid">
-                <div class="field">
-                    <label class="label" for="bounds-x">X (mm)</label>
-                    <input class="inp" id="bounds-x" type="number" step="any" inputmode="decimal" autocomplete="off">
-                </div>
-                <div class="field">
-                    <label class="label" for="bounds-y">Y (mm)</label>
-                    <input class="inp" id="bounds-y" type="number" step="any" inputmode="decimal" autocomplete="off">
-                </div>
-                <div class="field">
-                    <label class="label" for="bounds-width">Width (mm)</label>
-                    <input class="inp" id="bounds-width" type="number" min="1" step="any" inputmode="decimal" autocomplete="off">
-                </div>
-                <div class="field">
-                    <label class="label" for="bounds-height">Height (mm)</label>
-                    <input class="inp" id="bounds-height" type="number" min="1" step="any" inputmode="decimal" autocomplete="off">
-                </div>
-            </div>
-            <p class="hint" id="bounds-note"></p>
-        </section>
-
+            </section>
+            <section class="rail-panel" id="panel-content" role="tabpanel" aria-labelledby="tab-content" tabindex="0" hidden>
         <section class="card playlist-card" aria-labelledby="playlist-title">
             <div class="sec-head">
                 <h2 id="playlist-title">Playlist</h2>
@@ -487,7 +478,31 @@
                 <p class="hint">A video's play length is always its clip length, whatever the dwell says.</p>
             </details>
         </section>
-
+            </section>
+            <section class="rail-panel" id="panel-system" role="tabpanel" aria-labelledby="tab-system" tabindex="0" hidden>
+        <section class="card bounds-card" aria-labelledby="bounds-title">
+            <h2 id="bounds-title">Wall bounds</h2>
+            <p class="hint">The rectangle every slot is placed inside. Values are millimetres, measured from the top-left corner of the wall as the audience sees it.</p>
+            <div class="bounds-grid">
+                <div class="field">
+                    <label class="label" for="bounds-x">X (mm)</label>
+                    <input class="inp" id="bounds-x" type="number" step="any" inputmode="decimal" autocomplete="off">
+                </div>
+                <div class="field">
+                    <label class="label" for="bounds-y">Y (mm)</label>
+                    <input class="inp" id="bounds-y" type="number" step="any" inputmode="decimal" autocomplete="off">
+                </div>
+                <div class="field">
+                    <label class="label" for="bounds-width">Width (mm)</label>
+                    <input class="inp" id="bounds-width" type="number" min="1" step="any" inputmode="decimal" autocomplete="off">
+                </div>
+                <div class="field">
+                    <label class="label" for="bounds-height">Height (mm)</label>
+                    <input class="inp" id="bounds-height" type="number" min="1" step="any" inputmode="decimal" autocomplete="off">
+                </div>
+            </div>
+            <p class="hint" id="bounds-note"></p>
+        </section>
         <section class="card saved-card" aria-labelledby="saved-title">
             <div class="sec-head">
                 <h2 id="saved-title">Saved physical layouts</h2>
@@ -508,7 +523,6 @@
             <ul class="saved-list" id="saved-layouts" aria-label="Saved physical layouts"></ul>
             <p class="empty-note" id="saved-empty" hidden>No saved physical layouts yet.</p>
         </section>
-
         <section class="card field-card" aria-labelledby="field-title">
             <div class="sec-head">
                 <h2 id="field-title">Field check</h2>
@@ -566,8 +580,9 @@
                 <button type="submit" class="btn btn-primary" id="btn-rebind">Rebind tablet</button>
             </form>
         </section>
-    </main>
-
+            </section>
+        </div>
+    </aside>
 </div>
 
 <footer class="statusbar">
