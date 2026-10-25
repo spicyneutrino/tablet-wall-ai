@@ -209,7 +209,6 @@
         diagnostics: null,
         diagnosticsState: "pending",
         diagnosticsError: null,
-        diagnosticsVerify: false,
         diagnosticsLoading: false,
         rebindBusy: false
     };
@@ -275,6 +274,14 @@
         return (seconds < 10 ? seconds.toFixed(1) : String(Math.round(seconds))) + " s";
     }
 
+    /** Like formatDuration, but zero is a real reading (buffer, sample age). */
+    function formatSpan(ms) {
+        const value = Number(ms);
+        if (!Number.isFinite(value) || value < 0) return "—";
+        const seconds = value / 1000;
+        return (seconds < 10 ? seconds.toFixed(1) : String(Math.round(seconds))) + " s";
+    }
+
     function formatBytes(bytes) {
         const value = Number(bytes);
         if (!Number.isFinite(value) || value < 0) return "—";
@@ -294,6 +301,16 @@
     function formatTime(iso) {
         const parsed = Date.parse(iso);
         return Number.isNaN(parsed) ? String(iso) : new Date(parsed).toLocaleString();
+    }
+
+    function relativeAge(iso) {
+        const parsed = Date.parse(iso);
+        if (Number.isNaN(parsed)) return "";
+        const seconds = Math.max(0, (Date.now() - parsed) / 1000);
+        if (seconds < 60) return Math.floor(seconds) + "s ago";
+        if (seconds < 3600) return Math.floor(seconds / 60) + "m ago";
+        if (seconds < 86400) return Math.floor(seconds / 3600) + "h ago";
+        return Math.floor(seconds / 86400) + "d ago";
     }
 
     function clampDwell(value) {
@@ -2162,7 +2179,7 @@
             const payload = await api("GET", API_PLAYLIST);
             state.playlistEtag = payload && typeof payload.etag === "string" ? payload.etag : null;
             const document = normalizePlaylistDocument(payload ? payload.playlist : null);
-            if (document !== null && (!state.playlistDirty || !state.playlistLoaded)) {
+            if (document !== null && !state.playlistDirty) {
                 state.playlist = document;
                 state.playlistDirty = false;
             }
@@ -2615,7 +2632,8 @@
         const pending = status && status.pending && typeof status.pending === "object"
             ? status.pending : {};
         const leases = leaseMap(pending.leases || status.leases
-            || pending.members || status.members);
+            || pending.evidence || status.evidence || pending.members
+            || status.members || status.devices);
         const required = new Set();
         [
             status.required, status.required_members, pending.required,
@@ -2920,11 +2938,24 @@
             if (Number.isFinite(effective)) {
                 facts.push([future ? "Cut anchor" : "Active anchor", msLabel(effective)]);
             }
+            const reportedKind = current && (current.kind
+                || (current.media && current.media.kind) || status.current_kind);
+            const reportedDuration = current && (current.duration_ms !== undefined
+                ? current.duration_ms
+                : current.durationMs !== undefined ? current.durationMs
+                    : current.media && current.media.duration_ms !== undefined
+                        ? current.media.duration_ms : status.current_duration_ms);
             const item = playlistItemFor(currentOccurrence);
-            if (item) facts.push(["Current media", itemKindText(item)]);
+            if (reportedKind) {
+                facts.push(["Current media", String(reportedKind)
+                    + (reportedDuration !== undefined && reportedDuration !== null
+                        ? " · " + formatDuration(reportedDuration) : "")]);
+            } else if (item) {
+                facts.push(["Current media", itemKindText(item)]);
+            }
         }
 
-        const remaining = (status.state === "blocked" || status.state === "failed")
+        const remaining = ["blocked", "failed", "paused", "final"].indexOf(status.state) !== -1
             ? null : remainingDwell(status);
         if (remaining !== null) facts.push(["Remaining dwell", remainingText(remaining)]);
         if (status.hold_deadline_ms !== undefined) {
@@ -2970,7 +3001,10 @@
                     remainingText(pending.prepare_deadline_ms - statusNow(status))]);
             }
         }
-        const media = pending.media && typeof pending.media === "object" ? pending.media : null;
+        const media = (pending.media && typeof pending.media === "object")
+            ? pending.media
+            : (status.pending_media && typeof status.pending_media === "object")
+                ? status.pending_media : null;
         const item = playlistItemFor(occurrence);
         if (media) {
             if (media.kind === "video") {
@@ -3016,7 +3050,9 @@
         el.playbackMembersEmpty.hidden = true;
 
         const media = status.pending && status.pending.media
-            && typeof status.pending.media === "object" ? status.pending.media : null;
+            && typeof status.pending.media === "object" ? status.pending.media
+            : (status.pending_media && typeof status.pending_media === "object")
+                ? status.pending_media : null;
         const goal = media && media.buffer_goal_ms !== undefined
             ? Number(media.buffer_goal_ms) : null;
 
@@ -3063,6 +3099,11 @@
             if (lease.mapping_revision !== undefined && lease.mapping_revision !== null) {
                 bits.push("mapping r" + lease.mapping_revision);
             }
+            if (lease.protocol !== undefined && lease.protocol !== null) {
+                bits.push("protocol " + lease.protocol);
+            }
+            if (lease.unsupported === true) bits.push("protocol unsupported");
+            if (lease.reason) bits.push(String(lease.reason));
             if (video) {
                 if (video.play_ok === "yes") bits.push("activation ok");
                 else if (video.play_ok === "needs_gesture") bits.push("activation needs a tap");
@@ -3072,15 +3113,15 @@
                 }
                 if (video.seeked !== undefined) bits.push("seek " + (video.seeked ? "yes" : "no"));
                 if (video.buffered_ahead_ms !== undefined) {
-                    bits.push("buffer " + formatDuration(video.buffered_ahead_ms)
-                        + (goal !== null ? " / " + formatDuration(goal) : ""));
+                    bits.push("buffer " + formatSpan(video.buffered_ahead_ms)
+                        + (goal !== null ? " / " + formatSpan(goal) : ""));
                 }
                 if (video.rvfc !== undefined) bits.push("rVFC " + (video.rvfc ? "yes" : "no"));
                 if (video.drift_ms !== undefined) bits.push("drift " + Math.round(video.drift_ms) + " ms");
                 if (video.rate !== undefined) bits.push("rate " + Number(video.rate).toFixed(2));
                 if (video.source !== undefined) bits.push("source " + video.source);
-                if (video.age_ms !== undefined) bits.push("sample " + formatDuration(video.age_ms) + " old");
-                if (video.media_ms !== undefined) bits.push("media " + formatDuration(video.media_ms));
+                if (video.age_ms !== undefined) bits.push("sample " + formatSpan(video.age_ms) + " old");
+                if (video.media_ms !== undefined) bits.push("media " + formatSpan(video.media_ms));
             }
             if (missingReason) bits.push("missing: " + missingReason);
             meta.textContent = bits.length ? bits.join(" · ") : "No evidence reported yet.";
@@ -3213,7 +3254,8 @@
                 "schema " + (db.schema ?? "—") + " · " + formatBytes(db.bytes)]);
             facts.push(["Backup",
                 backup.last_manifest_at
-                    ? formatTime(backup.last_manifest_at)
+                    ? formatTime(backup.last_manifest_at) + " · "
+                        + relativeAge(backup.last_manifest_at)
                     : "No backup manifest found"]);
             facts.push(["Clients",
                 (clients.online ?? "—") + " online · " + (clients.total ?? "—") + " registered"]);
@@ -3226,7 +3268,6 @@
         if (state.diagnosticsLoading) return;
         state.diagnosticsLoading = true;
         state.diagnosticsState = state.diagnostics ? "refreshing" : "loading";
-        state.diagnosticsVerify = Boolean(verify);
         if (el.btnDiagRefresh) el.btnDiagRefresh.disabled = true;
         if (el.btnDiagVerify) el.btnDiagVerify.disabled = true;
         renderDiagnostics();
@@ -3304,8 +3345,8 @@
         const rawNumber = el.rebindNumber ? el.rebindNumber.value.trim() : "";
         if (rawNumber !== "") {
             const number = Number(rawNumber);
-            if (!Number.isInteger(number) || number < 1) {
-                setMsg(el.rebindMsg, "The display number must be a positive whole number.", "err");
+            if (!Number.isInteger(number) || number < 1 || number > 512) {
+                setMsg(el.rebindMsg, "The display number must be a whole number from 1 to 512.", "err");
                 if (el.rebindNumber) el.rebindNumber.focus();
                 return;
             }
