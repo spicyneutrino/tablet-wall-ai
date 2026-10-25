@@ -720,8 +720,8 @@ drift (F6). Software release approval stays closed; every physical,
 deployment, iOS, CA, Wi-Fi, kiosk and soak gate remains MISSING.
 
 The committed repair plan is `0ea98b9`
-(`work/review-fixes-plan.md`). No separate advisor memo artifact is committed;
-the plan records the advisor memo's amendments. The binding amendments kept
+(`work/review-fixes-plan.md`); the advisor's full returned memo is
+`work/advisor-memo-2026-10-25.md`. The binding amendments kept
 recovery identity explicit by `recovery_id`, required one terminal transition
 that freezes every reachable cohort member without a fourth prepare, and left
 Phase 3's reconnect/exclusion defaults for the operator to confirm rather than
