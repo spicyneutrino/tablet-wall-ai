@@ -747,6 +747,15 @@ async def main(artifacts_arg: Path) -> int:
         phase["id"] = "S8"
 
         await video_window(max_elapsed_ms=10000)
+        # Keep the second member's recovery preparation from becoming ready
+        # so the recovery stays observable while the save is performed. The
+        # prototype is restored before the cohort is allowed to resume.
+        await pages[1][0].evaluate("""() => {
+            window.__reviewPlay = HTMLMediaElement.prototype.play;
+            HTMLMediaElement.prototype.play = function () {
+                return new Promise(function () {});
+            };
+        }""")
         froze = await pages[0][0].evaluate("""() => {
             const video = [...document.querySelectorAll('video')].find((node) => {
                 const style = getComputedStyle(node);
@@ -816,6 +825,10 @@ async def main(artifacts_arg: Path) -> int:
               recovery_at_save.get("state") == "recovering"
               and saved_four.get("revision") == 4,
               state=recovery_at_save.get("state"), saved=saved_four)
+        await pages[1][0].evaluate("""() => {
+            if (window.__reviewPlay) HTMLMediaElement.prototype.play = window.__reviewPlay;
+            delete window.__reviewPlay;
+        }""")
         await reload_controller()
         await controller.wait_for_function(
             "() => ['Recovering', 'Playing'].some(prefix =>"
@@ -899,6 +912,14 @@ async def main(artifacts_arg: Path) -> int:
                          "the new Start never played")
         await wait_until(lambda: clients_show_still(CUT_COLOURS["green"]), 20,
                          "the clients never showed the newly saved green still")
+        # The controller polls once a second; wait for it to render the new
+        # playing session and mark the live row before reading the marker.
+        await wait_summary("Playing:", 10)
+
+        async def marked_now() -> bool:
+            return await now_markers() == 1
+
+        await wait_until(marked_now, 10, "the live row was never marked Now")
         started = status()
         start_summary = await summary()
         start_markers = await now_markers()
