@@ -3135,6 +3135,101 @@ test("video: buffer coverage is exact, ranged and only the remainder near the en
     assert.strictEqual(el.playCalls, 1, "the remainder is enough");
 });
 
+test("video: a duplicate still commit cannot remove the playing video", async () => {
+    const h = await startVideoHarness(VP);
+    h.setFetch(route({ [ASSET_A]: okResponse(assetBlob("A", 400, 400)) }));
+    await h.emit(wallFrame());
+    await drain();
+
+    /* One still occurrence is prepared, committed and consumed. */
+    const stillId = "sha256:" + ASSET_A;
+    h.emit({
+        type: "prepare",
+        session_id: "sess-1",
+        version: 3,
+        preparation_id: "still-1",
+        occurrence: { playlist_revision: 1, item_index: 0, loop: 0 },
+        asset: {
+            id: stillId,
+            url: "/assets/" + stillId,
+            intrinsicWidth: 400,
+            intrinsicHeight: 400,
+        },
+        plan: VIDEO_PLAN,
+        calibration: VIDEO_CALIBRATION,
+        connection_id: "conn-1",
+    });
+    await drain();
+    const stillEffective = h.now() + 100;
+    const stillCommit = {
+        type: "commit",
+        session_id: "sess-1",
+        version: 4,
+        prepared_at_version: 3,
+        preparation_id: "still-1",
+        occurrence: { playlist_revision: 1, item_index: 0, loop: 0 },
+        effective_server_ms: stillEffective,
+        connection_id: "conn-1",
+    };
+    h.emit(stillCommit);
+    await activateAt(h, stillEffective);
+    await drain();
+
+    /* The next occurrence is a video and it is now on the wall. */
+    h.emit(videoPrepare({
+        version: 5,
+        preparation_id: "prep-v",
+        occurrence: { playlist_revision: 1, item_index: 1, loop: 0 },
+    }));
+    await drain();
+    const video = playerVideos(h)[0];
+    await driveVideoReady(h, video);
+    const videoCommit = {
+        type: "commit",
+        session_id: "sess-1",
+        version: 6,
+        prepared_at_version: 5,
+        preparation_id: "prep-v",
+        occurrence: { playlist_revision: 1, item_index: 1, loop: 0 },
+        effective_server_ms: h.now() + 400,
+        connection_id: "conn-1",
+        start_media_ms: 0,
+    };
+    h.emit(videoCommit);
+    await activateAt(h, videoCommit.effective_server_ms);
+    await drain();
+    assert.strictEqual(visibleLayers(h).length, 1, "the video is on the wall");
+
+    /* Replaying the old still commit must be ignored, not repaint the still
+     * and release the playing video. */
+    h.emit(stillCommit);
+    await drain();
+    assert.strictEqual(visibleLayers(h).length, 1, "the video survived the replay");
+});
+
+test("video: a fractional frame duration matches the published millisecond", async () => {
+    const h = await startVideoHarness(VP);
+    h.emit(
+        videoPrepare({
+            asset: videoAsset({ durationMs: 2067 }),
+            media: {
+                kind: "video",
+                duration_ms: 2067,
+                buffer_goal_ms: 5000,
+                start_lead_ms: 1000,
+                prepare_timeout_ms: 30000,
+            },
+        })
+    );
+    await drain();
+    const el = playerVideos(h)[0];
+    el.metadata(2.0666667);
+    el.settleSeek();
+    el.progress([[0, 2066.667]]);
+    await drain();
+    assert.strictEqual(el.playCalls, 1, "2.066667 s of a 2.067 s clip is enough");
+});
+
 test("video: activation denial shows one Enable display and asks for a gesture", async () => {
     const h = await startVideoHarness(VP);
     h.emit(videoPrepare());

@@ -2523,6 +2523,8 @@
                     return;
                 }
                 applyPrepared(prepared);
+                if (playbackPrepared === prepared) playbackPrepared = null;
+                playbackTimer = null;
             });
         }, Math.max(0, delay - 40));
     }
@@ -2887,7 +2889,10 @@
             var start = Number(ranges.start(i));
             var end = Number(ranges.end(i));
             if (start <= targetSec + 1e-9 && end >= targetSec - 1e-9) {
-                return Math.max(0, Math.floor((end - targetSec) * 1000));
+                /* Duration is published as a rounded millisecond count while
+                 * the media's buffered end is fractional. Ceil the coverage
+                 * so a fully buffered 2.066667 s clip matches 2067 ms. */
+                return Math.max(0, Math.ceil((end - targetSec) * 1000));
             }
         }
         return 0;
