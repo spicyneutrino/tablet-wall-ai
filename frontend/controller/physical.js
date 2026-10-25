@@ -2966,7 +2966,8 @@
         const remaining = ["blocked", "failed", "paused", "final"].indexOf(status.state) !== -1
             ? null : remainingDwell(status);
         if (remaining !== null) facts.push(["Remaining dwell", remainingText(remaining)]);
-        if (status.hold_deadline_ms !== undefined) {
+        if (status.hold_deadline_ms !== undefined && status.hold_deadline_ms !== null
+                && status.held) {
             facts.push(["Hold deadline", msLabel(status.hold_deadline_ms)]);
         }
         if (status.held) facts.push(["Holding", "yes"]);
