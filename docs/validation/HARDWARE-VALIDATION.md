@@ -40,6 +40,8 @@ fleet runs cannot close a gate.
 | Kiosk operation | Devices stay on or return to the intended page; measured viewport/calibration remains valid; operator can enter and exit safely; recovery meets the same connectivity targets | `docs/validation/KIOSK-CHECK.md` checklist + `deploy/KIOSK.md` | Real devices, OS management/pinning, charging, Auto-Lock/Guided Access settings, operator exit procedure | **MISSING** |
 | Sustained soak | At least 2-hour media soak; overnight still soak if unattended; no unplanned stalls, lost members, stale paints or unexplained restarts; resource/temperature envelope agreed before the run | `simulator/browser/fleet_soak.py` (harness only) | Intended physical fleet, trusted ingress, charging, temperature/resource monitoring, continuous or sampled recording | **MISSING** |
 
+The executed kit rehearsal and its counts are in [REHEARSAL.md](REHEARSAL.md).
+
 ## Kit dry-run status
 
 This table proves the tools run; it is not hardware acceptance.
