@@ -1,6 +1,7 @@
 # Execution log: Stages 0-3
 
-Scope: P0, R1, R2 and R3 of [ROADMAP.md](ROADMAP.md). Hardware-only claims
+Scope: P0, R1, R2 and R3 of `ROADMAP.md` (an untracked planning artifact,
+not part of this checkout). Hardware-only claims
 (physical iPad/Android, optical synchronization, real suspend, iOS Safari
 decode) stay explicit gaps; the roadmap permits implementing a ticket without
 claiming those results.
@@ -708,11 +709,74 @@ Claude Opus 5.5 review was retried once on 2026-10-24 at max effort and failed
 again with `Claude API rate limit reached`. No Opus findings were produced for
 this pass; the independent DeepSeek red-team review above is the substitute.
 
+## Review-fix round (2026-10-25)
+
+The independent review at `96a7862`
+(`/tmp/tablet-wall-codex-work-review-2026-10-25/review.md`, outside the
+checkout) reproduced two P1 playback defects and two P2 controller defects in
+disposable Chromium while the Python, client, video, recovery and restore
+suites passed. It also found a browser-evidence gap (F5) and documentation
+drift (F6). Software release approval stays closed; every physical,
+deployment, iOS, CA, Wi-Fi, kiosk and soak gate remains MISSING.
+
+The committed repair plan is `0ea98b9`
+(`work/review-fixes-plan.md`). No separate advisor memo artifact is committed;
+the plan records the advisor memo's amendments. The binding amendments kept
+recovery identity explicit by `recovery_id`, required one terminal transition
+that freezes every reachable cohort member without a fourth prepare, and left
+Phase 3's reconnect/exclusion defaults for the operator to confirm rather than
+treating advisor review as product acceptance.
+
+### Findings and repairs
+
+| Finding | State | Repair |
+| --- | --- | --- |
+| F1 preparation identity | Fixed | Server/protocol `8c0c3c3`: an ordinary prepare omits both `recovery_id` and `start_media_ms`; a recovery prepare carries both. Client `8df56f6` detects recovery only from the top-level `recovery_id`, validates a non-empty id and position bounds, and preserves armed/active playback on a routine prepare. |
+| F2 terminal hold | Fixed | `8c0c3c3` model and fan-out plus `8df56f6` client handling. The cap advances the session version, clears pending work, builds one hold frame before fan-out, and sends no fourth prepare. Both the socket-fault and stale-sample cap paths use it. The client holds the picture and rejects a stale terminal frame after Retry or a new session. Stop restores the persisted scene; strict Retry resets the fresh episode to attempt 1. |
+| F3 pause rendering | Fixed | `925556b`: `remainingDwell` checks `pending` before converting or dereferencing it and uses `paused_at_ms` as the observation time, so the paused countdown stops and the status poll stays healthy. |
+| F4 live item identity | Fixed | `925556b`: status publishes `playlist_revision` and `live.current/displayed/pending` from the frozen session. The controller renders live name, kind and duration from that data, hides the editable `Now` marker when revisions differ, and a later Start uses the saved revision. |
+| F5 evidence gaps | Partially landed | `video_run.py` now fails on unexpected page/console/request errors and requires visible advancing pictures. `video_transitions_run.py` adds the F1 transitions and the real following cut. `controller_run.py` adds durable pause and live-identity coverage. Recovery timeout, live cap, multi-fault and final-item acceptance remain pending with the recovery acceptance runner. |
+| F6 docs/evidence schemas | Partially landed | Current capability, historical scope, evidence kinds and acceptance gaps are reconciled here and in `README.md`, `RECOVERY.md`, `RECOVERY-CONTRACT.md` and `simulator/README.md`. Report-summary normalization (a common runner version, head, dirty, scenario and count schema) and `PROTOCOL.md`'s Retry/Stop wording remain outside this change. |
+
+### Repairs and durable browser evidence
+
+The durable browser additions are `02349b1` (`controller_run.py`), `ae97049`
+with merge `2a30ffb` (`video_run.py` v2 and `video_transitions_run.py`), and
+`187bde4` (deterministic recovery-time save). Two consecutive green runs each
+recorded:
+
+- `controller_run.py`: 54/54 checks, 11/11 scenarios.
+- `video_transitions_run.py`: 51/51 checks.
+- `video_run.py` v2: 35/35 checks.
+
+Baseline failure proofs:
+
+- `controller_run.py` at `8df56f6`: the run stops at the paused summary; the
+  controller never renders `Paused on` (the F3 exception path).
+- `video_run.py` at `8df56f6`: 34/35, failing on repeated controller page
+  errors `Cannot read properties of null (reading 'occurrence')` from F3.
+
+Targeted verification in the review-fix worktree: Python 851; client 71;
+view 12; wake lock 10. `field_run` 12/12 and `restore_run` 41/41 are last
+recorded runs from before this round and were not rerun. Do not add counts
+across overlapping browser suites.
+
+Still pending:
+
+- Recovery acceptance: timeout, live strict and online caps, operator Retry,
+  multi-fault ordering and final-item recovery. No runner count is claimed
+  until the recovery acceptance runner lands and passes.
+- Phase 3: mid-video reconnect and session-only named exclusions. Both still
+  need the operator's product choices; neither is implemented or claimed.
+- Report-summary normalization, physical/optical validation, iOS Safari,
+  installed CA trust, real Wi-Fi/OS, kiosk and soak.
+
 ## Next actions
 
 The remaining product work is hardware and deployment evidence: optical cut
 timing, physical decode/suspend, iOS Safari, mixed-model calibration,
 installed local-CA trust, real Wi-Fi/OS behavior, kiosk and soak. Software
-follow-ups that stay in scope are named exclusions, mid-video reconnect
+follow-ups that stay in scope are the recovery acceptance runner (timeout,
+live cap, multi-fault and final item), named exclusions, mid-video reconnect
 reusing the recovery model, and any credible red-team findings. None of the
 hardware gates may be inferred from the software evidence above.

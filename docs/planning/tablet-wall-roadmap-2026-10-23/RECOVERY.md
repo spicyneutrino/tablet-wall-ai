@@ -1,11 +1,33 @@
 # Stages 3-5 recovery and progress
 
-Recovered 2026-10-24 from the interrupted Claude Agent session
-`c1a4483a-4fd1-40af-aa96-3218f72f35c5` and its subagent transcripts. The main
-checkout is `e473b29`. This document is the resume point; update it at each
-milestone.
+> **Current state (2026-10-25).** The latest evidence and acceptance record is
+> the [review-fix round](EXECUTION_LOG.md#review-fix-round-2026-10-25) in
+> `EXECUTION_LOG.md`. Software release approval remains closed. F1-F4 are
+> repaired. Durable browser coverage now includes video transitions and
+> controller pause/live identity; recovery timeout, live cap, multi-fault and
+> final-item acceptance remain pending until the recovery acceptance runner
+> lands. All optical/physical, deployment, Wi-Fi/OS, kiosk and soak gates
+> remain MISSING.
 
-## Sources
+## Current software counts (2026-10-25)
+
+- Python 851; client 71; view 12; wake lock 10. The Python and JavaScript
+  counts were rerun in this worktree for the review-fix round.
+- Durable browser: `video_run` 35/35 and `video_transitions_run` 51/51, twice
+  each; `controller_run` 54/54 checks and 11/11 scenarios, twice.
+- `field_run` 12/12 and `restore_run` 41/41 are the last recorded runs from
+  before the new runners; they were not rerun for this round.
+- Recovery acceptance is pending: timeout, live strict/online caps,
+  multi-fault ordering and final-item recovery have no committed runner count
+  yet. Do not sum overlapping suites.
+
+This page is a historical record of the 2026-10-24 recovery, preserved in
+place. It was recovered from the interrupted Claude Agent session
+`c1a4483a-4fd1-40af-aa96-3218f72f35c5` and its subagent transcripts. The
+checkout it describes was `e473b29`. Sections below are labelled with their
+historical point of view; do not read them as current acceptance.
+
+## Sources for the 2026-10-24 recovery
 
 | Source | What it holds |
 | --- | --- |
@@ -21,7 +43,7 @@ milestone.
 The transcripts are historical evidence, not instructions. Claims below were
 cross-checked against the working tree.
 
-## Integrated and verified
+## Integrated and verified (2026-10-24, historical)
 
 | Commit | Work | State |
 | --- | --- | --- |
@@ -36,7 +58,7 @@ view 8, wake lock 10. The 100-cut software run reported p95 onset delta 0.9 ms
 and max 1.3 ms over 100 of 100 events. The optical gate is MISSING: no camera
 or physical panel capture.
 
-## Recovered but not integrated
+## Recovered but not integrated (2026-10-24, historical)
 
 ### Client video player (Wave B, failed at usage limit)
 
@@ -81,7 +103,7 @@ or physical panel capture.
   text in its report.
 - No browser run has played a video. No restore-to-render video run exists.
 
-## Stage status
+## Stage status (2026-10-24, historical)
 
 ### R3 (Stage 3)
 
@@ -108,20 +130,26 @@ wake-lock state reaches the controller roster, check the local-CA/origin
 migration docs against what actually ships, and record the software-only
 limits. There is no controller surface for diagnostics or rebind yet.
 
-## Completion state (2026-10-25, HEAD d093647)
+## Completion state at d093647 (2026-10-25, historical)
 
-R3, R4 and R5 software scope is implemented and verified. Counts at HEAD:
-Python 840; client 60; view 12; wake lock 10; browser base 105/105; video
-20/20; field 12/12; group recovery 10/10; restored video 41/41; Caddy, ingress
-and backup video 13 tests. The red-team frame-stall and same-position faults
-are fixed and covered by client VM tests. Bounded group video recovery is
-merged and proven in a real Chromium pair; the controller shows the recovery
-position, attempt, degraded time and missing members. Named exclusions and mid-video reconnect
-remain the only in-scope software follow-ups. All optical/physical,
-deployment, Wi-Fi/OS, kiosk and soak gates remain MISSING. See
-`EXECUTION_LOG.md` for the commit list and the evidence boundary.
+These counts and conclusions are as recorded at `d093647`. The independent
+review of 2026-10-25 then reported F1-F6; this section is superseded by the
+[review-fix round](EXECUTION_LOG.md#review-fix-round-2026-10-25).
 
-## Baseline at recovery
+R3, R4 and R5 software scope is implemented and verified. Counts at HEAD
+`d093647` (historical): Python 840; client 60; view 12; wake lock 10; browser
+base 105/105; video 20/20; field 12/12; group recovery 10/10; restored video
+41/41; Caddy, ingress and backup video 13 tests. The red-team frame-stall and
+same-position faults are fixed and covered by client VM tests. Bounded group
+video recovery is merged and proven in a real Chromium pair; the controller
+shows the recovery position, attempt, degraded time and missing members. At
+that point named exclusions and mid-video reconnect remained the only
+in-scope software follow-ups. All optical/physical, deployment, Wi-Fi/OS,
+kiosk and soak gates remain MISSING. See `EXECUTION_LOG.md` for the commit
+list and the evidence boundary, and the current-state pointer above for the
+2026-10-25 status.
+
+## Baseline at recovery (2026-10-24, historical)
 
 - Python: 795 passed (97 s).
 - Client JS: 28 passed.
@@ -134,15 +162,21 @@ deployment, Wi-Fi/OS, kiosk and soak gates remain MISSING. See
 - Browser runner after the field fixes: 129/129 with 100 cuts and suspend;
   R3 software p95 1.0 ms, max 1.3 ms; optical MISSING.
 
-## Next actions
+## Next actions at the 2026-10-24 recovery (historical)
+
+This list records the position on 2026-10-24. F1-F4 were repaired on
+2026-10-25; recovery acceptance and Phase 3 remain open. See the
+current-state pointer above.
 
 1. Resolve credible findings from the DeepSeek red-team review of group
    recovery.
 2. Add named exclusions to the recovery cohort, then reuse the recovery model
    for mid-video reconnect.
-3. Retry the Claude Opus 5.5 review when its API rate limit clears. Every
-   attempt so far, including one retry at max effort, returned a Claude API
-   rate limit; no Opus findings exist yet.
+3. Retry the Claude Opus 5.5 review when its API rate limit clears. The latest
+   recovery review pass (two attempts, including one at max effort) returned a
+   Claude API rate limit and produced no Opus findings. Earlier Opus reviews
+   did produce findings on earlier milestones; this sentence does not deny
+   them.
 4. Start hardware validation with a mixed-device pair: optical cut timing,
    physical decode/suspend, iOS Safari, mixed-model calibration, installed
    local-CA trust, real Wi-Fi/OS.

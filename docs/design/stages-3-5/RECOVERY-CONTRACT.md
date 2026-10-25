@@ -39,10 +39,12 @@ attempts, missing, degraded_since_ms
 current occurrence is re-prepared at `position_ms` with a fresh version and a
 fresh common anchor `now + LEAD_MS`. The cohort is frozen and not shrunk.
 The recovery preparation uses the normal physical plan and media, plus
-`start_media_ms`.
+`recovery_id` and `start_media_ms`.
 
-`prepare` for a recovery carries the same occurrence and
-`start_media_ms = position_ms`. `ready.video.buffered_ahead_ms` is measured
+`prepare` for a recovery carries the same occurrence, a top-level
+`recovery_id` marker, and `start_media_ms = position_ms`. An ordinary prepare
+carries neither field, so a zero start position is unambiguous.
+`ready.video.buffered_ahead_ms` is measured
 from that position; the required buffer is
 `min(goal, duration_ms - position_ms)`. The commit carries the same
 `start_media_ms`. The following boundary is
@@ -56,6 +58,14 @@ Timeout or a missing required member:
 Retry from a blocked recovery re-prepares the same occurrence and position with
 a new version. At most three recovery attempts per occurrence; the fourth
 fault enters the blocked/failed state without another prepare.
+
+At the cap, one terminal transition advances `session.version`, clears pending
+work and captures one hold frame before asynchronous fan-out. The frame is sent
+to every reachable cohort member with isolated sends; no fourth prepare is
+sent. Strict ends `blocked`; online ends `failed`. A client applies a terminal
+hold only to the lineage it names, so Retry or a new session makes an older
+hold stale. Stop restores the persisted scene, and a strict Retry resets the
+new episode's attempts to 1.
 
 Status adds:
 
@@ -83,7 +93,7 @@ recovery prepare to the replacement socket.
   stall, even when `currentTime` advances and the element is not paused. The
   watchdog's own samples renew the server's recency, so the client must
   notice the frozen glass itself.
-- On `playback` state `recovering` (or a `prepare` with `start_media_ms`),
+- On `playback` state `recovering`, or a `prepare` carrying `recovery_id`,
   freeze the active picture, release pending/armed work, and prepare from the
   position. Buffer coverage, probe, commit and samples use the position.
 - Keep the previous picture until the recovery commit. Do not paint a
@@ -115,15 +125,44 @@ recorded here rather than rewritten in place:
 
 ## Evidence
 
-Model tests: trigger bounds, duplicate suppression, strict missing, timeout,
-retry, attempt cap, remaining-duration boundary, final item, stop/mapping/epoch.
+Durable, committed evidence:
 
-Client tests: fault once, freeze, position-aware coverage, commit at position,
-remaining boundary, stale callbacks ignored, a playing element with no
-presented frames faults locally, and a recovery commit at the same position
-can report its own fault.
+- Model tests: trigger bounds, duplicate suppression, strict missing, timeout,
+  retry, attempt cap, remaining-duration boundary, final item, stop, mapping,
+  calibration and epoch cancellation.
+- Client tests: fault once, freeze, position-aware coverage, commit at
+  position, remaining boundary, stale callbacks ignored, a playing element
+  with no presented frames faults locally, and a recovery commit at the same
+  position can report its own fault.
+- `simulator/browser/video_run.py`: ordinary video preparation, commit,
+  samples and Stop on two calibrated desktop Chromium clients, with
+  controller and client page/request health. Software browser evidence.
+- `simulator/browser/video_transitions_run.py`: consecutive videos, a
+  one-video loop, a routine next prepare during an active video, recovery at
+  position zero from a valid server-path `video_fault`, and the real following
+  cut. The injected fault exercises the server path, not the tablet's natural
+  fault detector. Software browser evidence.
+- `simulator/browser/group_recovery_run.py`: a hung play promise, one group
+  recovery at the live playhead, one common commit, and the next boundary at
+  the remaining duration. Its blocked copy is fixture-rendered, not a live
+  cap. Software browser evidence.
+- `simulator/browser/controller_run.py`: pause summary and stable dwell, live
+  versus editable playlist identity across save, reorder and reload, and a
+  saved draft during a real recovery. Software browser evidence on one host
+  clock.
 
-Browser: force one client's play promise to hang, let local recovery exhaust,
-observe the server start one recovery, all clients prepare the same position,
-one common future commit, the next cut after the remaining duration, and the
-degraded interval. Repeat for timeout and final item. Label software only.
+Disposable probes from the 2026-10-25 review (strict/online timeout, live cap,
+operator Retry, multi-fault and final-item recovery) are not durable
+acceptance and are not counted here.
+
+The recovery acceptance runner will close this scope: strict and online
+attempt caps, the terminal hold on both the socket-fault and stale-sample
+paths, no fourth prepare, operator Retry after a strict cap, Stop after a
+hold, the approximately 31 s timeout under both policies, multi-fault
+ordering, and final-item recovery. Until that runner lands and passes, those
+transitions are model-tested and review-probed, not committed browser evidence.
+No counts are claimed for it in advance.
+
+All browser evidence is software on one host and one desktop Chromium engine.
+It does not prove optical onset, physical decode, suspend, iOS Safari, real
+Wi-Fi/OS, installed CA trust, kiosk operation or soak.
