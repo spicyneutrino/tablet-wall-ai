@@ -97,6 +97,11 @@ class Preparation:
         }
         if self.media is not None:
             frame["media"] = self.media
+        if self.recovery_id is not None:
+            # Recovery is identified by this marker alone. The start position
+            # is meaningful only as part of that identity; an ordinary prepare
+            # carries neither field, so position zero is unambiguous.
+            frame["recovery_id"] = self.recovery_id
             frame["start_media_ms"] = self.start_media_ms
         return frame
 
@@ -181,6 +186,30 @@ class Session:
 
     def dwell_ms(self) -> int:
         return int(self.items[self.index]["dwell_ms"])
+
+
+def item_metadata(
+    session: Session, occurrence: Occurrence | None
+) -> dict[str, Any] | None:
+    """Frozen identity, kind and timing of an occurrence, or ``None``.
+
+    Live status must describe the session's own items and videos. The saved
+    playlist is authoring for a later Start and may already name different
+    content. A video reports its published duration; a still has no intrinsic
+    duration and reports only its dwell.
+    """
+    if occurrence is None or not 0 <= occurrence.item_index < len(session.items):
+        return None
+    item = session.items[occurrence.item_index]
+    asset = item["asset"]
+    video_ms = session.videos.get(asset)
+    return {
+        "occurrence": occurrence.as_dict(),
+        "asset": asset,
+        "kind": "video" if video_ms is not None else "still",
+        "duration_ms": int(video_ms) if video_ms is not None else None,
+        "dwell_ms": int(item["dwell_ms"]),
+    }
 
 
 def refresh_display(session: Session, now_ms: float) -> None:
@@ -533,9 +562,15 @@ def _recovery_failure(
     device_id: str,
     now_ms: float,
 ) -> None:
-    """The attempt cap is spent: stop preparing and expose the failed state."""
+    """The attempt cap is spent: stop preparing and expose the failed state.
+
+    The transition advances the version so every pending lease, prepared
+    commit and late readiness report for the old state is stale. The caller
+    sends the matching terminal hold to the cohort.
+    """
     attempts = _recovery_attempts_for(session, occurrence) + 1
     state = "blocked" if session.policy == "strict" else "failed"
+    session.version += 1
     session.pending = None
     session.state = state
     session.held = False
@@ -736,7 +771,8 @@ def tick(session: Session, now_ms: float) -> list[dict[str, Any]]:
         valid = _valid_leases(session, now_ms, cut)
         if not valid:
             session.state = "failed"
-            return [{"type": "failed", "reason": "no participant became ready"}]
+            session.blocked_reason = "no participant became ready"
+            return [{"type": "failed", "reason": session.blocked_reason}]
         missed = sorted(set(session.cohort) - {lease.device_id for lease in valid})
         session.missed.extend(missed)
         actions = _commit(session, valid, cut, now_ms)

@@ -825,6 +825,11 @@ PUT  /api/v3/playlist        -> requires If-Match; 1..64 items, 1000..600000 ms
 ```
 
 A video item's dwell is its published duration, not the request value.
+Every accepted `PUT` increments the document's `revision` only after its
+`If-Match` matched. A legacy document without a revision is treated as
+revision 1, so its first successful save writes 2; a rejected save (`422`,
+`428` or `412`) never advances it. A Start freezes the saved revision as the
+session's `playlist_revision`, and every occurrence names it.
 Playback commands are
 `POST /api/v3/playback/{start,pause,stop,next,previous,retry}`. `start` needs a
 saved playlist and a physical layout. `policy` is optional: an explicit
@@ -859,7 +864,18 @@ and a per-device lease. Frames:
 { "type": "cancel", "session_id": "…", "version": 5, "reason": "superseded" }
 
 { "type": "playback", "state": "paused"|"stopped", ... }
+
+{ "type": "playback", "state": "blocked"|"failed", "reason": "…",
+  "missing": ["<uuid>"], "session_id": "…", "version": 6, "generation": "…",
+  "clock_epoch": "…" }
 ```
+
+A recovery `prepare` adds top-level `recovery_id` and `start_media_ms`; an
+ordinary prepare carries neither, so position zero is a valid recovery
+position and never an ordinary marker. `start_media_ms` is meaningful only
+while a top-level `recovery_id` is present. A `commit` never carries
+`recovery_id`; a video commit keeps `start_media_ms` (0 for a fresh occurrence
+or the recovery position).
 
 A ready lease is renewed every 500 ms and expires after 2 s. It must cover the
 actual accepted cut and the report must match the preparation's occurrence,
@@ -877,10 +893,27 @@ preparation. Stop and abort restore the persisted render. Restart leaves no
 session and restores static content.
 
 `playback_status` reports the lineage, state, `current` (last committed),
-`displayed`, `current_effective_ms`, `pending`, policy, cohort, ready/missed
-members, `final`, the `recovery` record, and per-device `video` samples.
-`members` carries each pending lease's `ready` and video evidence so a blocked
-clip names its failed gate.
+`displayed`, `current_effective_ms`, `pending`, `playlist_revision`, policy,
+cohort, ready/missed members, `final`, the `recovery` record, and per-device
+`video` samples. `members` carries each pending lease's `ready` and video
+evidence so a blocked clip names its failed gate.
+
+`live` describes the frozen session, never the editable saved playlist:
+
+```json
+"live": {
+  "current":   {"occurrence": {...}, "asset": "sha256:…", "kind": "video",
+                "duration_ms": 4000, "dwell_ms": 4000},
+  "displayed": null,
+  "pending":   {"occurrence": {...}, "asset": "sha256:…", "kind": "still",
+                "duration_ms": null, "dwell_ms": 5000}
+}
+```
+
+Each entry is nullable. A video reports its published duration; a still has
+`duration_ms: null` and reports only its frozen dwell. Saving or reordering a
+playlist changes what the next Start will use; it does not change these
+entries while the session runs.
 
 ### Prerecorded video (R4)
 
@@ -984,9 +1017,9 @@ members that were not ready when a recovery blocked.
 
 The pending next occurrence is cancelled, the cohort is frozen and not
 shrunk, and the current occurrence is prepared again at a fresh version and
-the common anchor `now + LEAD_MS`. The recovery `prepare` carries
-`start_media_ms = position_ms`; `ready.video.buffered_ahead_ms` is measured
-from that position and the required buffer is
+the common anchor `now + LEAD_MS`. The recovery `prepare` carries a top-level
+`recovery_id` and `start_media_ms = position_ms`; `ready.video.buffered_ahead_ms`
+is measured from that position and the required buffer is
 `min(buffer_goal_ms, duration_ms - position_ms)`. The commit carries the same
 `start_media_ms`, and the next boundary is `effective_server_ms +
 (duration_ms - position_ms)`, not the full duration. A final non-looping
@@ -999,9 +1032,21 @@ online session becomes `failed` with reason `recovery_failed`. Retry from a
 blocked recovery re-prepares the same occurrence and position at a new
 version and anchor. At most three automatic recovery attempts are allowed per
 occurrence; a fourth fault enters `blocked`/`failed` without another prepare.
-An operator Retry after that cap starts one fresh episode at the same
-occurrence and position, with `attempts` reset to 1; the fresh episode is
-bounded by the same three-attempt cap.
+That cap transition advances `version` and clears the pending preparation, so
+every old lease, prepared commit and late readiness report is stale. An
+operator Retry after that cap starts one fresh episode at the same occurrence
+and position, at another fresh version, with `attempts` reset to 1; the fresh
+episode is bounded by the same three-attempt cap.
+
+Every transition to `blocked`/`failed` is terminal for the session, whether
+it is the attempt cap, a recovery timeout or a preparation timeout. The server
+builds one `playback` hold frame with the transition's state, `reason`,
+`missing` set and lineage, then sends it to every reachable cohort socket with
+isolated fan-out. The hold is idempotent, carries no prepare, and clients
+ignore stale lineage after Retry or a new session. A recovery timeout
+therefore re-sends the same freeze its recovery prepare already established.
+Retry is offered for a strict `blocked` session; an online `failed` session
+offers Start again instead.
 
 Stop, a mapping/calibration/layout/rebind change and a clock epoch change
 cancel the recovery. A replaced device socket revokes the old connection's
@@ -1014,7 +1059,8 @@ trigger the client freezes the active picture, releases pending and armed
 work, and prepares the occurrence from the position. It keeps the previous
 picture until the recovery commit, then starts at `start_media_ms`; the next
 natural boundary is the remaining duration. A recovery that times out shows
-the normal blocked/failed state with Retry and Stop available. Drift
+the normal blocked/failed state; Retry is available after a strict `blocked`,
+while an online `failed` session offers Start again and Stop. Drift
 correction uses a 50 ms deadband, a rate within 0.98..1.02 inside 50..250 ms,
 and one seek per 5 s above 250 ms. Pause freezes; Start resumes by restarting
 the displayed item; Stop restores the persisted render. Named exclusions
