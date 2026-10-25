@@ -10,7 +10,7 @@ tablet, iPad, camera, AP or installed-trust session was available
 
 | Tool | Command / evidence | Result |
 | --- | --- | --- |
-| Optical analyzer tests | `pytest -q tests/test_optical.py` | **35 passed** |
+| Optical analyzer tests | `pytest -q tests/test_optical.py` | **40 passed** |
 | Optical synthetic suite | `python -m tools.optical.cli fixtures ...` then `analyze-suite` | **19 cases, 0 errors**; 19 reports `incomplete` because each has fewer than the required 100 real events. The suite includes known offsets, threshold boundaries, subframe/rolling-shutter, exposure/noise, partial/wrong/missing, repeated colours, variable timing, dropped/duplicated frames, truncated capture and early cut. Expected failure cases report their failures rather than being hidden. |
 | Device probe | `python -m simulator.browser.decode_probe --artifacts ...`, twice | **40/40 checks**; desktop Chromium and WebKit passed; `ios-safari` **unsupported**. Completion remains `incomplete`; gate MISSING. |
 | Trust checker | disposable Caddy, two loopback HTTPS listeners, fresh local CA; `python deploy/trust_check.py ...` | **72/72 checks, 8/8 scenarios**; supplied CA bundle is verifier trust only; backend/tablet route matrix checked; installed tablet trust remains manual. |
@@ -18,7 +18,7 @@ tablet, iPad, camera, AP or installed-trust session was available
 | Fleet soak harness | `python -m simulator.browser.fleet_soak --duration 60 --clients 4` | **22/22 checks, 6/6 scenarios**; four clients, shared host; not the two-hour media or overnight still run. |
 | Network trial harness | `python deploy/network_trials.py --dry --artifacts ...` | **7/7 checks, 20/20 trials**; loopback context offline/online, not Wi-Fi/AP/OS. |
 | Kiosk | `docs/validation/KIOSK-CHECK.md` + `deploy/KIOSK.md` | checklist only; no physical device or OS settings. |
-| Full Python | `pytest -q` | **990 passed** (3 deprecation warnings). |
+| Full Python | `pytest -q` | **995 passed** (3 deprecation warnings). |
 
 Artifacts were written outside the checkout; they are bounded and hash-listed
 in each report. The server/browser runners record their own cleanup checks;

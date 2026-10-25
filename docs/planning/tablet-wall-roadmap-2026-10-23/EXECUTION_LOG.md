@@ -835,7 +835,7 @@ skipped/unobserved intervals, artifact hashes and completion, and always keeps
 `docs/validation/HARDWARE-VALIDATION.md`.
 
 The kit is merged:
-- Optical (`3615e06`, merge `27420b3`): 35 analyzer tests; 19 synthetic cases,
+- Optical (`3615e06`, hardening `a80914f`, merge `27420b3`): 40 analyzer tests; 19 synthetic cases,
   0 errors, covering known offsets, threshold boundaries, subframe phases,
   rolling shutter, exposure blur, noise, partial/wrong/missing targets,
   repeated colours, variable timing, dropped/duplicated frames, truncated
@@ -854,7 +854,7 @@ The kit is merged:
   trials. Shared-host limitations and the non-Wi-Fi nature are recorded.
 - Kiosk: browser/OS checklist only; no physical device.
 
-Full Python after these merges: 990 passed. Every report keeps
+Full Python after these merges: 995 passed. Every report keeps
 `hardware_gate_status = MISSING` and `hardware_claim = false`. No synthetic,
 desktop-browser, loopback-Caddy or simulated-fleet result is a hardware
 result.

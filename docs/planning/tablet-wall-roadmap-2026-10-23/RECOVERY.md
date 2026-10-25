@@ -14,7 +14,7 @@
 
 ## Current software counts (2026-10-25)
 
-- Python 990; client 71; view 12; wake lock 10; report/browser safety 45.
+- Python 995; client 71; view 12; wake lock 10; report/browser safety 45.
   These include the hardware-validation kit tests on the final tree.
 - Durable browser: `video_run` 35/35 and `video_transitions_run` 51/51, twice
   each; `controller_run` 54/54 checks and 11/11 scenarios, twice;

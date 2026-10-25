@@ -54,7 +54,7 @@ This table proves the tools run; it is not hardware acceptance.
 | Fleet soak harness | 4 clients, 60 s; 22/22 checks, 6/6 scenarios; shared-host limitations recorded | the two-hour media and overnight still runs remain **MISSING** |
 | Network trial harness | dry loopback 20 trials; 7/7 checks, 20/20 scenarios; not Wi-Fi | real Wi-Fi/OS remains **MISSING** |
 | Kiosk | browser/OS checklist; no physical device | kiosk remains **MISSING** |
-| Optical analyzer | 35 analyzer tests; 19 synthetic cases, 0 errors, including threshold, rolling-shutter, noise, partial/wrong/missing, dropped/duplicated and truncated captures. Reports stay incomplete until 100 real events; synthetic only. | optical cut timing remains **MISSING** |
+| Optical analyzer | 40 analyzer tests; 19 synthetic cases, 0 errors, including threshold, rolling-shutter, noise, partial/wrong/missing, dropped/duplicated and truncated captures. Reports stay incomplete until 100 real events; synthetic only. | optical cut timing remains **MISSING** |
 
 ## Operator prerequisites
 
