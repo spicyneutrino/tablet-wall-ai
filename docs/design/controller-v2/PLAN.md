@@ -119,3 +119,41 @@ still deferred to the later authenticated controller tablet.
 The existing video, transitions, field, group recovery and base runners still
 pass. One recovery-acceptance run hit a pre-existing cap-timing flake; the
 immediate rerun was 88/88 and 5/5.
+
+## Phase 2 status (2026-10-25)
+
+Merged: shell `8c72ef7`, `05ccec5`; CSS `8820c81`; tabs and transport
+`778969b`; merges `90b6cb4`, `102e745`; assets `7e07f76`; compact and legacy
+fixes `3d1da82`, `0f232ab`; rail layout `f7cd47a`, `ec05f3b`, `addfea8`; tests
+`8007fda`, merges `87fd1c2`, runner tabs `8a16286`.
+
+The console is one page with a persistent stage and a Show/Tablet/Content/System
+rail. Exactly one panel is visible; tabs never dirty a draft. Selecting a stage
+slot opens Tablet and focuses the inspector for explicit click/Enter, not for a
+drag. The topbar transport mirrors the rail state and proxies its buttons, so
+Start, Pause/Resume and Stop stay reachable from every tab. At 1000 px and
+wider the rail is 392 px (340 px at 1000–1199) and scrolls inside itself; each
+tab keeps its own rail scroll position. From 720–999 px the stage comes first
+and the rail sits below it. At 719 px and below the tab strip is hidden and the
+compact Show card is the only panel; tab state is coerced to Show so ARIA and
+visibility agree. The legacy logical-wall link lives only in the System panel.
+The empty-wall exception keeps Tablet as the first tab when there are no slots
+and no session; otherwise Show is the default.
+
+The rail also reflows the playlist picker to a full-width row and each playlist
+item to a two-row grid at 1000 px and wider. Without that, a 392 px rail left the
+item name one character wide and the library picker unusable.
+
+`controller_run.py` passes **95/95 checks and 14/14 scenarios** on two clean
+runs in a clean worktree at `850fcbd`, with `dirty=false`. It proves the tab
+shell and keyboard model, reload persistence, topbar proxy, dirty dots,
+selection-opens-Tablet, the legacy link location, the Content row and picker
+widths, and the compact mobile view in addition to the Phase 1 behavior.
+Field 12/12, group recovery 19/19 and recovery acceptance 88/88 with 5/5
+scenarios pass after their tab updates.
+Axe 4.12.1 reports no violations on 1440 Show/Tablet/Content/System, 1280 and
+1024 Show/Content/System, and 390 compact and expanded; all four widths have no
+horizontal page overflow. Synthetic blocked and paused layouts at 1280, 1024
+and 390 keep the card, status and 44 px transport inside the viewport; the real
+state behavior remains the runner evidence above. This is software browser
+evidence, not optical, physical, iOS, CA-trust, Wi-Fi or soak evidence.

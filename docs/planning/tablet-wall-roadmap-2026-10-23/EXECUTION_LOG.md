@@ -834,6 +834,61 @@ runs. Video 35/35, transitions 51/51, field 12/12 and group recovery 19/19
 still pass. One recovery-acceptance run hit its cap-timing flake; the rerun
 passed 88/88 and 5/5. Phase 2 (tabbed rail) is next.
 
+## Console Phase 2 (2026-10-25)
+
+The console is now one tabbed page. `physical.html` keeps the stage in `main`
+and puts a sticky Show/Tablet/Content/System rail beside it:
+
+- Show holds playback, the frozen cohort, this show's exclusions, next-cut
+  readiness and Details. Tablet holds the list, inspector, profile and
+  calibration. Content holds the library, playlist and save controls. System
+  holds wall bounds, saved layouts, diagnostics, rebind and the legacy link.
+- Exactly one panel is visible. Arrow Left/Right, Home and End move a roving
+  tabindex; the last manual tab is restored from `sessionStorage`. A stage
+  selection opens Tablet and reveals the inspector for click/Enter, not for a
+  pointer drag. Switching tabs never dirties a draft.
+- The topbar transport mirrors the rail state and proxies Start,
+  Pause/Resume and Stop, so it remains usable from another tab. Tablet and
+  Content carry dirty dots for layout/profile/calibration and playlist edits.
+- At 1000 px and wider the rail is 392 px (340 px at 1000–1199), sticky, with
+  its own scroll area and a per-tab scroll position. At 720–999 px the stage
+  comes first and the rail sits below. At 719 px and below the tab strip is
+  hidden, only the compact Show card remains, and tab state is coerced to Show
+  so ARIA and visibility agree.
+- The legacy `index.html` link moved from the topbar into System and is
+  labelled "Logical wall (legacy)".
+- An empty wall keeps Tablet as the first tab when there is no session;
+  otherwise Show is the default.
+
+The first Phase 2 browser pass found two Content defects: playlist rows
+collapsed to a one-character text column in the 392 px rail, and the library
+picker was squeezed to a few characters. Both are fixed at `f7cd47a` and
+`ec05f3b`; the item now uses a two-row grid and the picker a full-width row at
+1000 px and wider. `850fcbd` adds a check that the row body, picker and controls
+fit the 392 px rail. `addfea8` keeps per-tab rail scroll, including when the
+active tab is clicked again.
+
+Commits: shell `8c72ef7`, `05ccec5`; CSS `8820c81`; tabs and transport
+`778969b`; merges `90b6cb4`, `102e745`; assets `7e07f76`; compact and legacy
+`3d1da82`, `0f232ab`; rail layout `f7cd47a`, `ec05f3b`, `addfea8`; acceptance
+`8007fda`, merge `87fd1c2`; other physical runners `8a16286`.
+
+Acceptance on a clean worktree at `850fcbd`: `controller_run.py` **95/95
+checks and 14/14 scenarios** on two consecutive runs with `dirty=false`.
+Field 12/12, group recovery 19/19 and recovery acceptance 88/88 with 5/5
+scenarios pass after opening the tabs those runners need. The base, video and
+transition runners do not load `physical.html`; their Phase 1 results stand.
+Axe 4.12.1 reports zero violations on 1440 Show/Tablet/Content/System, 1280 and 1024
+Show/Content/System, and 390 compact and expanded. There is no horizontal page
+overflow at 1440, 1280, 1024 or 390; 44 px controls are retained. Synthetic
+blocked and paused layouts at 1280, 1024 and 390 stay inside the viewport; real
+state behavior is the runner evidence above.
+
+This is software browser evidence. Optical, physical decode/suspend, iOS
+Safari, mixed-model calibration, installed CA trust, real Wi-Fi/OS, kiosk and
+soak remain MISSING. No backend protocol or hardware evidence boundary
+changed.
+
 ## Hardware/deployment validation kit (2026-10-25)
 
 The operator asked to work the eight remaining gates. No tablets, camera, AP,
