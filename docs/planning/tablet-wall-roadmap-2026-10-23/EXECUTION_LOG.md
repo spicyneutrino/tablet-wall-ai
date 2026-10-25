@@ -624,7 +624,7 @@ Worktree reconciliation:
 ## Bounded group recovery and current evidence (2026-10-24)
 
 The feature Sol's fallback plan named next is implemented, merged and proven
-at the software boundary. HEAD `b1e7037`.
+at the software boundary. HEAD `64e57d3`.
 
 - `2c9571c` server model: one recovery record per occurrence, fault intake
   from a playing device, three automatic attempts, strict cohort freeze,
@@ -644,6 +644,9 @@ at the software boundary. HEAD `b1e7037`.
 - `bae3280` the runner checks the live controller before the fault, its
   recovery facts and dwell after the commit, and fresh samples on both
   clients. `b1e7037` keeps a partial report if a check aborts.
+- `64e57d3` renders a recorded capped status in the live controller and
+  checks the blocked sentence and Retry visibility. This is fixture-rendered
+  copy evidence, not a real blocked recovery.
 
 Browser recovery proof (`simulator/browser/group_recovery_run.py`): one
 client's active video is frozen with a hanging play promise, its local
@@ -651,13 +654,14 @@ retries exhaust, one `video_fault` is accepted, the server starts one
 recovery at the live playhead, both calibrated clients prepare there, one
 common commit resumes the clip, and the next boundary is the remaining
 duration. The live controller shows the same recovery record, a truthful
-remaining dwell, and a playing state after the commit. 9/9 checks at
-`b1e7037`; the run is software evidence only.
+remaining dwell, and a playing state after the commit. 10/10 checks at
+`64e57d3`; the run is software evidence only. The blocked presentation is
+checked against a recorded status, not a live cap exhaustion.
 
-Verification at `b1e7037` (application code `09848f9`):
+Verification at `64e57d3` (application code `72d2424`):
 - Python 839 passed (full suite).
 - Client 58, view 12, wake lock 10.
-- Browser base 106/106; video 20/20; field 12/12; group recovery 9/9;
+- Browser base 106/106; video 20/20; field 12/12; group recovery 10/10;
   restored video 41/41.
 - Caddy + ingress + backup video: 13 passed, including the real Caddy skip
   path.
