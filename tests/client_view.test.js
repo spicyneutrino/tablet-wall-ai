@@ -186,6 +186,91 @@ test("cover and contain share the centre but not the extent", () => {
     close(view.fitMatrix([0, 0, 200, 100], 100, 100, "contain"), [100, 0, 0, 100, 50, 0], "contain");
 });
 
+/* ------------------------------------------------------------------ */
+/* Video drift correction                                             */
+/* ------------------------------------------------------------------ */
+
+test("video drift is observed minus target, in both directions", () => {
+    assert.strictEqual(view.videoDriftMs(1010, 1000), 10);
+    assert.strictEqual(view.videoDriftMs(990, 1000), -10);
+    assert.throws(() => view.videoDriftMs("1", 0), Error);
+    assert.throws(() => view.videoDriftMs(0, NaN), Error);
+});
+
+test("video correction: 50 ms deadband keeps rate 1 and never seeks", () => {
+    for (const drift of [0, 25, -25, 50, -50]) {
+        const decision = view.videoCorrection({
+            driftMs: drift,
+            nowMs: 1000,
+            lastSeekMs: null,
+        });
+        assert.deepStrictEqual(
+            decision,
+            { rate: 1, seek: false },
+            "drift " + drift
+        );
+    }
+});
+
+test("video correction: 50..250 ms is proportional rate inside 0.98..1.02", () => {
+    const cases = [
+        [100, 0.992],
+        [-100, 1.008],
+        [200, 0.984],
+        [-200, 1.016],
+        [250, 0.98],
+        [-250, 1.02],
+    ];
+    for (const [drift, rate] of cases) {
+        const decision = view.videoCorrection({
+            driftMs: drift,
+            nowMs: 1000,
+            lastSeekMs: null,
+        });
+        assert.strictEqual(decision.seek, false, "drift " + drift + " seek");
+        close(decision.rate, rate, "drift " + drift + " rate");
+    }
+    /* Even a value past the boundary cannot leave the rate band. */
+    const huge = view.videoCorrection({
+        driftMs: 249,
+        nowMs: 1000,
+        lastSeekMs: null,
+    });
+    assert.ok(huge.rate >= 0.98 && huge.rate <= 1.02, "rate stays bounded");
+});
+
+test("video correction: above 250 ms one seek per 5 s", () => {
+    const first = view.videoCorrection({
+        driftMs: 251,
+        nowMs: 10000,
+        lastSeekMs: null,
+    });
+    assert.deepStrictEqual(first, { rate: 1, seek: true }, "no seek yet");
+
+    const spent = view.videoCorrection({
+        driftMs: 251,
+        nowMs: 12000,
+        lastSeekMs: 10000,
+    });
+    assert.strictEqual(spent.seek, false, "within the 5 s budget");
+    close(spent.rate, 0.98, "ahead and out of budget slows at the limit");
+
+    const late = view.videoCorrection({
+        driftMs: -400,
+        nowMs: 15000,
+        lastSeekMs: 10000,
+    });
+    assert.deepStrictEqual(late, { rate: 1, seek: true }, "budget renewed");
+
+    const notYet = view.videoCorrection({
+        driftMs: -400,
+        nowMs: 14999,
+        lastSeekMs: 10000,
+    });
+    assert.strictEqual(notYet.seek, false, "one millisecond short");
+    close(notYet.rate, 1.02, "behind and out of budget speeds at the limit");
+});
+
 let failed = 0;
 for (const entry of tests) {
     try {

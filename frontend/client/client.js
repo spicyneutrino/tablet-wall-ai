@@ -52,6 +52,23 @@
     var PROTOCOL_VERSION = 3;
     var CAPS = "calibration,image,physical";
 
+    /* Prerecorded video: advertised only when this browser says it can play
+     * H.264 in MP4, the one codec the server ingests. A page that cannot
+     * decode it must never be sent a video it would only fail on. */
+    var VIDEO_PLAYABLE = 'video/mp4; codecs="avc1.42E01E"';
+    try {
+        var videoProbe = document.createElement("video");
+        if (
+            videoProbe &&
+            typeof videoProbe.canPlayType === "function" &&
+            videoProbe.canPlayType(VIDEO_PLAYABLE)
+        ) {
+            CAPS += ",video";
+        }
+    } catch (err) {
+        /* no video support: the server never sends this page a video */
+    }
+
     var BACKOFF_MIN_MS = 500;
     var BACKOFF_MAX_MS = 15000;
     var REGISTER_TIMEOUT_MS = 10000;
@@ -373,6 +390,10 @@
      * until the first accepted frame.
      */
     var wallState = null;
+    /* The scene the server last put on this tablet (`wall` / `render`
+     * frames). Playback paints its own pictures over it without overwriting
+     * it, so a stop, an epoch abort or a superseded video can return to it. */
+    var persistedWall = null;
     var heldRevision = null;
     var heldGeneration = null;
     var heldRenderSeq = 0;
@@ -565,6 +586,11 @@
 
     /* Single entry point for every state change that affects the screen. */
     function render() {
+        renderScene();
+        relayoutVideo();
+    }
+
+    function renderScene() {
         if (!wallState) return; /* no wall frame yet: colour-only surface */
 
         if (wallState.physical && !wallState.physical.plan) {
@@ -1480,50 +1506,78 @@
      *               render;
      *   "size"    — the picture's own dimensions are unusable: a failure.
      */
+
+    /* The one place a calibrated physical plan becomes a source-to-CSS
+     * matrix and a clip rectangle, in CSS pixels. Stills scale it by the
+     * backing ratio when they draw; video lays its element out with it
+     * directly, so both land on the same pixels. */
+    function physicalTransform(calibration, plan, iw, ih, rect) {
+        return window.TabletWallView.canvasTransformComponents({
+            backing: [rect[0], rect[1]],
+            rect: [rect[0], rect[1]],
+            calibration: {
+                viewport_width: calibration.viewport_width,
+                viewport_height: calibration.viewport_height,
+                quarter_turn: calibration.quarter_turn,
+                panel_offset_mm: calibration.panel_offset_mm,
+                mm_per_css: calibration.mm_per_css,
+                panel_width: plan.active.width,
+                panel_height: plan.active.height,
+            },
+            panel_from_source: plan.panel_from_source,
+            source_size: [iw, ih],
+        });
+    }
+
     function drawPhysicalImage(vp, entry) {
         var view = prepareCanvas(vp.w, vp.h);
         if (!view) return "surface";
         var physical = wallState.physical;
-        var viewLib = window.TabletWallView;
-        if (!viewLib || !physical || !physical.plan) return "surface";
+        if (!window.TabletWallView || !physical || !physical.plan) {
+            return "surface";
+        }
         var iw = Number(entry.iw);
         var ih = Number(entry.ih);
         if (!Number.isFinite(iw) || iw <= 0 || !Number.isFinite(ih) || ih <= 0) {
             return "size";
         }
-        var calibration = {
-            viewport_width: physical.calibration.viewport_width,
-            viewport_height: physical.calibration.viewport_height,
-            quarter_turn: physical.calibration.quarter_turn,
-            panel_offset_mm: physical.calibration.panel_offset_mm,
-            mm_per_css: physical.calibration.mm_per_css,
-            panel_width: physical.plan.active.width,
-            panel_height: physical.plan.active.height,
-        };
         var result;
         try {
-            result = viewLib.canvasTransformComponents({
-                backing: [view.ctx.canvas.width, view.ctx.canvas.height],
-                rect: [vp.w, vp.h],
-                calibration: calibration,
-                panel_from_source: physical.plan.panel_from_source,
-                source_size: [iw, ih],
-            });
+            result = physicalTransform(
+                physical.calibration,
+                physical.plan,
+                iw,
+                ih,
+                [vp.w, vp.h]
+            );
         } catch (err) {
             warn("physical transform failed", err);
             return "surface";
         }
         var ctx = view.ctx;
-        ctx.setTransform(1, 0, 0, 1, 0, 0);
+        var dpr = view.dpr;
+        ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
         ctx.beginPath();
-        ctx.rect(result.clip.x, result.clip.y, result.clip.width, result.clip.height);
+        ctx.rect(
+            result.clip.x,
+            result.clip.y,
+            result.clip.width,
+            result.clip.height
+        );
         ctx.clip();
         ctx.fillStyle = PATTERN.background;
-        ctx.fillRect(0, 0, ctx.canvas.width, ctx.canvas.height);
+        ctx.fillRect(0, 0, vp.w, vp.h);
         var m = result.matrix;
-        ctx.setTransform(m[0], m[1], m[2], m[3], m[4], m[5]);
+        ctx.setTransform(
+            m[0] * dpr,
+            m[1] * dpr,
+            m[2] * dpr,
+            m[3] * dpr,
+            m[4] * dpr,
+            m[5] * dpr
+        );
         ctx.drawImage(entry.source, 0, 0, iw, ih);
-        ctx.setTransform(view.dpr, 0, 0, view.dpr, 0, 0);
+        ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
         return "painted";
     }
 
@@ -1781,9 +1835,12 @@
             return false;
         }
 
+        if (heldGeneration !== null && generation !== heldGeneration) {
+            discardPlayback();
+        }
         heldRevision = revision;
         heldGeneration = generation;
-        wallState = {
+        var state = {
             width: width,
             height: height,
             contentType: contentType,
@@ -1794,6 +1851,8 @@
             placement: placement,
             visible: visible,
         };
+        persistedWall = state;
+        wallState = state;
         /* Image scenes carry asynchronous work: reconcile it with the frame
          * we just accepted — it starts the load, and paints the outcome if
          * there is one — then paint whatever it left for us. */
@@ -1849,10 +1908,13 @@
             frame.plan && frame.calibration && frame.calibration.status === "valid"
                 ? frame.plan
                 : null;
+        if (heldGeneration !== null && generation !== heldGeneration) {
+            discardPlayback();
+        }
         heldRevision = revision;
         heldGeneration = generation;
         heldRenderSeq = sequence;
-        wallState = {
+        var renderState = {
             width: width,
             height: height,
             contentType: contentType,
@@ -1868,6 +1930,8 @@
                 slot: frame.slot || null,
             },
         };
+        persistedWall = renderState;
+        wallState = renderState;
         if (!syncImageScene()) render();
         return true;
     }
@@ -2312,6 +2376,14 @@
     }
 
     function handlePrepare(frame) {
+        if (isVideoPrepare(frame)) {
+            prepareVideo(frame);
+            return;
+        }
+        /* A still preparation supersedes a video that was still preparing
+         * for the next occurrence. A committed (armed) or playing video is
+         * not this preparation's to dispose. */
+        releaseVideoSlot(videoPending);
         var content = preparedContent(frame.asset);
         if (!content) return;
         var token = ++playbackToken;
@@ -2345,27 +2417,53 @@
         image.src = content.url;
     }
 
-    function sendReady(prepared) {
+    function sendReady(prepared, video) {
         if (!activeSocket || activeSocket.readyState !== 1) return;
         playbackEvidence += 1;
+        var frame = {
+            type: "ready",
+            preparation_id: prepared.preparation_id,
+            version: prepared.version,
+            connection_id: prepared.connection_id,
+            occurrence: prepared.occurrence,
+            evidence_seq: playbackEvidence,
+            mapping_revision: prepared.calibration
+                ? prepared.calibration.revision
+                : 0,
+            decoded: true,
+        };
+        if (video) {
+            frame.decoded = !!(video.metadata && video.seeked);
+            frame.video = video;
+        }
         try {
-            activeSocket.send(JSON.stringify({
-                type: "ready",
-                preparation_id: prepared.preparation_id,
-                version: prepared.version,
-                connection_id: prepared.connection_id,
-                occurrence: prepared.occurrence,
-                evidence_seq: playbackEvidence,
-                mapping_revision: prepared.calibration ? prepared.calibration.revision : 0,
-                decoded: true,
-            }));
+            activeSocket.send(JSON.stringify(frame));
         } catch (err) {
             warn("could not report readiness", err);
         }
     }
 
+    /* Playback shows its own picture over the persisted scene without
+     * writing to it: wallState is replaced by a copy, persistedWall stays. */
     function applyPrepared(prepared) {
         if (!wallState || !prepared.image) return;
+        var shown = Object.assign({}, wallState, {
+            contentType: "image",
+            image: prepared.content,
+            imageError: null,
+        });
+        if (wallState.physical) {
+            shown.physical = Object.assign({}, wallState.physical, {
+                plan: prepared.plan,
+                calibration: prepared.calibration,
+            });
+            shown.visible = {
+                x: 0,
+                y: 0,
+                w: wallState.width,
+                h: wallState.height,
+            };
+        }
         releaseImageCache();
         imageCache = {
             key: prepared.content.key,
@@ -2377,20 +2475,27 @@
         imageAttempt = null;
         imageStatus = "ready";
         imageFailure = null;
-        wallState.contentType = "image";
-        wallState.image = prepared.content;
-        wallState.imageError = null;
-        if (wallState.physical) {
-            wallState.physical.plan = prepared.plan;
-            wallState.physical.calibration = prepared.calibration;
-            wallState.visible = {
-                x: 0, y: 0, w: wallState.width, h: wallState.height,
-            };
-        }
+        wallState = shown;
         render();
+        /* A still replaces the videos that are already on the wall. The
+         * PENDING preparation is the next occurrence: the server sends it
+         * immediately after this commit, and it must survive this paint. */
+        releaseVideoSlot(videoArmed);
+        releaseVideoSlot(videoActive);
     }
 
     function handleCommit(frame) {
+        /* A commit is idempotent: an already-started occurrence ignores the
+         * repeat, and an armed one reschedules without starting twice. */
+        if (videoActive && videoCommitMatches(videoActive, frame)) return;
+        if (videoArmed && videoCommitMatches(videoArmed, frame)) {
+            commitVideo(frame, videoArmed);
+            return;
+        }
+        if (videoPending && videoCommitMatches(videoPending, frame)) {
+            commitVideo(frame, videoPending);
+            return;
+        }
         var prepared = playbackPrepared;
         if (
             !prepared ||
@@ -2420,7 +2525,7 @@
         }, Math.max(0, delay - 40));
     }
 
-    function stopPlayback() {
+    function clearStillPlayback() {
         playbackToken += 1;
         playbackCommitSeq += 1;
         playbackPrepared = null;
@@ -2428,6 +2533,1217 @@
         playbackTimer = null;
         if (playbackRenewTimer !== null) clearInterval(playbackRenewTimer);
         playbackRenewTimer = null;
+    }
+
+    /* Stop and epoch end the session: nothing keeps running and the screen
+     * returns to the scene the server persisted. */
+    function stopPlayback() {
+        clearStillPlayback();
+        stopVideoPlayback();
+        restoreStaticScene();
+    }
+
+    /* Pause and cancel own the pending preparation and the armed commit;
+     * an already-playing video freezes on its last picture like a still. */
+    function pausePlayback() {
+        clearStillPlayback();
+        interruptVideoPlayback();
+    }
+
+    function cancelPlayback() {
+        clearStillPlayback();
+        interruptVideoPlayback();
+    }
+
+    /* A change of wall generation means the server restarted or was
+     * replaced: playback state from the old lineage can never paint. */
+    function discardPlayback() {
+        clearStillPlayback();
+        stopVideoPlayback();
+    }
+
+    function restoreStaticScene() {
+        if (!persistedWall || wallState === persistedWall) return;
+        wallState = persistedWall;
+        if (!syncImageScene()) render();
+    }
+
+    /* ------------------------------------------------------------------ */
+    /* Native prerecorded video                                           */
+    /* ------------------------------------------------------------------ */
+
+    /*
+     * A video is an element in a clipped layer above the canvas, placed by
+     * the same calibrated physical plan a still is drawn with. Three slots:
+     *
+     *   videoPending  preparing for the next occurrence, layer hidden;
+     *   videoArmed    commit received, waiting for the effective time;
+     *   videoActive   playing, frozen or blocked on the wall.
+     *
+     * A routine next prepare replaces only `pending`, so a commit that has
+     * already arrived keeps its slot and starts on time. Slots move
+     * loading -> seeking -> buffering -> probing -> reseeking -> ready and
+     * then armed -> playing, or land in gesture/blocked. Only the evidence
+     * states report to the server; the server decides from the evidence.
+     * Wall loops are occurrences the server schedules: the element never
+     * carries the native `loop` attribute.
+     */
+    var VIDEO_POLL_MS = 250;
+    var VIDEO_REPORT_MS = 500; /* ready renewal, as for stills */
+    var VIDEO_SAMPLE_MS = 1000;
+    var VIDEO_SEEK_TIMEOUT_MS = 5000;
+    var VIDEO_PLAY_TIMEOUT_MS = 3000;
+    var VIDEO_SEEK_SETTLE_MS = 100;
+    var VIDEO_SEEK_SLACK_MS = 100;
+    var VIDEO_MAX_RECOVERIES = 3;
+    var VIDEO_DEFAULT_GOAL_MS = 5000;
+    var VIDEO_DEADBAND_MS = 50;
+    var VIDEO_COMMIT_SLACK_MS = 40;
+
+    var videoPending = null;
+    var videoArmed = null;
+    var videoActive = null;
+    var enableDisplayEl = null;
+    var enableDisplaySlot = null;
+
+    function isVideoPrepare(frame) {
+        return !!(
+            (frame.media && frame.media.kind === "video") ||
+            (frame.asset && frame.asset.kind === "video")
+        );
+    }
+
+    function videoView() {
+        return window.TabletWallView;
+    }
+
+    function serverNowMs() {
+        return performance.now() + (clockOffset === null ? 0 : clockOffset);
+    }
+
+    function sendVideoFrame(frame) {
+        if (!activeSocket || activeSocket.readyState !== 1) return;
+        try {
+            activeSocket.send(JSON.stringify(frame));
+        } catch (err) {
+            warn("could not send a video frame", err);
+        }
+    }
+
+    /* Every callback re-checks the slot's own lineage, never a single
+     * global "latest" version: generation, epoch, and the slot's identity
+     * are the tokens; the caller adds the per-attempt/probe/seek token. */
+    function videoSlotLive(slot) {
+        return !!(
+            slot &&
+            !slot.dead &&
+            !slot.frozen &&
+            slot.epoch === clockEpoch &&
+            (slot.generation === null || slot.generation === heldGeneration)
+        );
+    }
+
+    function videoAttemptLive(slot, attempt) {
+        return videoSlotLive(slot) && slot.startAttempt === attempt;
+    }
+
+    function newVideoElement() {
+        var el = document.createElement("video");
+        el.muted = true;
+        el.defaultMuted = true;
+        el.setAttribute("muted", "");
+        el.setAttribute("playsinline", "");
+        el.setAttribute("webkit-playsinline", "");
+        el.playsInline = true;
+        el.preload = "auto";
+        el.controls = false;
+        el.style.position = "absolute";
+        el.style.left = "0px";
+        el.style.top = "0px";
+        el.style.transformOrigin = "0 0";
+        el.style.objectFit = "fill";
+        return el;
+    }
+
+    function newVideoLayer() {
+        var layer = document.createElement("div");
+        layer.style.position = "fixed";
+        layer.style.overflow = "hidden";
+        layer.style.zIndex = "2";
+        layer.style.pointerEvents = "none";
+        layer.style.background = PATTERN.background;
+        /* Hidden, not display:none: the browser keeps buffering and
+         * decoding a hidden element, and nothing is painted before the
+         * commit. */
+        layer.style.visibility = "hidden";
+        return layer;
+    }
+
+    function prepareVideo(frame) {
+        var content = preparedContent(frame.asset);
+        var media = frame.media || {};
+        var duration = Number(media.duration_ms);
+        if (!Number.isFinite(duration) || duration <= 0) {
+            duration = Number(frame.asset && frame.asset.durationMs);
+        }
+        var goal = Number(media.buffer_goal_ms);
+        if (!Number.isFinite(goal) || goal <= 0) goal = VIDEO_DEFAULT_GOAL_MS;
+        if (
+            !content ||
+            content.iw === null ||
+            content.ih === null ||
+            !(duration > 0) ||
+            !frame.plan ||
+            !frame.plan.panel_from_source ||
+            !frame.plan.active ||
+            !frame.calibration ||
+            !videoView() ||
+            typeof videoView().videoCorrection !== "function"
+        ) {
+            warn("video prepare is unusable");
+            return;
+        }
+        if (
+            clockEpoch !== null &&
+            frame.clock_epoch !== undefined &&
+            frame.clock_epoch !== null &&
+            frame.clock_epoch !== clockEpoch
+        ) {
+            return; /* another clock epoch: not ours to prepare */
+        }
+        if (
+            videoPending &&
+            videoPending.preparationId === frame.preparation_id &&
+            videoPending.version === frame.version
+        ) {
+            return; /* the same preparation replayed */
+        }
+        /* A replay of a preparation that is already committed or playing is
+         * not a new pending slot. */
+        if (
+            videoArmed &&
+            videoArmed.preparationId === frame.preparation_id &&
+            videoArmed.version === frame.version
+        ) {
+            return;
+        }
+        if (
+            videoActive &&
+            videoActive.preparationId === frame.preparation_id &&
+            videoActive.version === frame.version
+        ) {
+            return;
+        }
+        if (
+            videoPending &&
+            Number(frame.version) < Number(videoPending.version)
+        ) {
+            return; /* a stale preparation cannot replace a newer one */
+        }
+        releaseVideoSlot(videoPending);
+        var url;
+        try {
+            url = sameOriginUrl(content.url);
+        } catch (err) {
+            warn("video url rejected", err);
+            return;
+        }
+        var el = newVideoElement();
+        var layer = newVideoLayer();
+        var slot = {
+            dead: false,
+            el: el,
+            layer: layer,
+            url: url,
+            iw: content.iw,
+            ih: content.ih,
+            plan: frame.plan,
+            calibration: frame.calibration,
+            generation: heldGeneration,
+            epoch:
+                clockEpoch !== null
+                    ? clockEpoch
+                    : frame.clock_epoch !== undefined
+                      ? frame.clock_epoch
+                      : null,
+            sessionId: frame.session_id != null ? frame.session_id : null,
+            version: frame.version,
+            preparationId: frame.preparation_id,
+            connectionId:
+                frame.connection_id != null ? frame.connection_id : null,
+            occurrence: frame.occurrence || null,
+            phase: "loading",
+            durationMs: duration,
+            goalMs: goal,
+            startMs: 0,
+            evidence: {
+                metadata: false,
+                seeked: false,
+                buffered_ahead_ms: 0,
+                play_ok: null,
+                rvfc: typeof el.requestVideoFrameCallback === "function",
+            },
+            seek: null,
+            probe: null,
+            recoveries: 0,
+            commit: null,
+            started: false,
+            frozen: false,
+            observed: false,
+            needsGesture: false,
+            rate: 1,
+            lastSeekAt: null,
+            lastSampleAt: -Infinity,
+            lastObserveAt: -Infinity,
+            lastReportAt: -Infinity,
+            intervals: [],
+            listeners: [],
+            startTimer: null,
+            startAttempt: 0,
+            rvfcHandle: null,
+        };
+        if (!layoutVideoSlot(slot)) {
+            warn("video layout failed");
+            return;
+        }
+        videoPending = slot;
+        layer.appendChild(el);
+        document.body.appendChild(layer);
+        bindVideoEvents(slot);
+        slot.intervals.push(
+            setInterval(function () {
+                advanceVideo(slot);
+            }, VIDEO_POLL_MS)
+        );
+        loadVideo(slot);
+    }
+
+    function listenVideo(slot, type, handler) {
+        var wrapped = function (event) {
+            if (slot.dead) return;
+            if (handler) handler(event);
+        };
+        slot.el.addEventListener(type, wrapped);
+        slot.listeners.push({ type: type, handler: wrapped });
+    }
+
+    function bindVideoEvents(slot) {
+        listenVideo(slot, "loadedmetadata", function () {
+            advanceVideo(slot);
+        });
+        listenVideo(slot, "seeked", function () {
+            /* A late seeked from an abandoned seek must not mark the
+             * current one done: the position has to belong to this seek. */
+            if (
+                slot.seek &&
+                Math.abs(
+                    Number(slot.el.currentTime) * 1000 - slot.seek.targetMs
+                ) <= VIDEO_SEEK_SLACK_MS
+            ) {
+                slot.seek.done = true;
+            }
+            advanceVideo(slot);
+        });
+        listenVideo(slot, "progress", function () {
+            advanceVideo(slot);
+        });
+        listenVideo(slot, "error", function () {
+            if (slot.started) recoverPlayingVideo(slot, "media error");
+            else recoverVideo(slot, "media error");
+        });
+    }
+
+    function loadVideo(slot) {
+        slot.phase = "loading";
+        slot.seek = null;
+        if (slot.probe) {
+            slot.probe.done = true;
+            if (slot.probe.timer !== null) clearTimeout(slot.probe.timer);
+            slot.probe = null;
+        }
+        var ev = slot.evidence;
+        ev.metadata = false;
+        ev.seeked = false;
+        ev.buffered_ahead_ms = 0;
+        ev.play_ok = null;
+        try {
+            slot.el.setAttribute("src", slot.url);
+            slot.el.load();
+        } catch (err) {
+            warn("could not load the video", err);
+        }
+    }
+
+    /* Buffer coverage from the range that CONTAINS the target, with no
+     * rounding up: end is compared at full precision. Near the end of the
+     * clip only the remainder is required. */
+    function videoBufferedAheadMs(slot, targetMs) {
+        var ranges = slot.el.buffered;
+        if (!ranges || !(ranges.length > 0)) return 0;
+        var targetSec = targetMs / 1000;
+        for (var i = 0; i < ranges.length; i++) {
+            var start = Number(ranges.start(i));
+            var end = Number(ranges.end(i));
+            if (start <= targetSec + 1e-9 && end >= targetSec - 1e-9) {
+                return Math.max(0, Math.floor((end - targetSec) * 1000));
+            }
+        }
+        return 0;
+    }
+
+    function requiredCoverageMs(slot, startMs) {
+        return Math.max(
+            0,
+            Math.min(slot.goalMs, slot.durationMs - startMs)
+        );
+    }
+
+    function videoCovered(slot, startMs) {
+        return (
+            videoBufferedAheadMs(slot, startMs) >=
+            requiredCoverageMs(slot, startMs)
+        );
+    }
+
+    function seekVideo(slot, ms) {
+        slot.seek = { targetMs: ms, at: performance.now(), done: false };
+        slot.evidence.seeked = false;
+        try {
+            slot.el.currentTime = ms / 1000;
+        } catch (err) {
+            /* metadata not usable yet: the poll notices the timeout */
+        }
+    }
+
+    function videoSeekSettled(slot) {
+        var seek = slot.seek;
+        if (!seek) return true;
+        if (seek.done) return true;
+        var el = slot.el;
+        if (
+            !el.seeking &&
+            performance.now() - seek.at >= VIDEO_SEEK_SETTLE_MS &&
+            Number(el.readyState) >= 2 &&
+            Math.abs(Number(el.currentTime) * 1000 - seek.targetMs) <=
+                VIDEO_SEEK_SLACK_MS
+        ) {
+            seek.done = true;
+        }
+        return seek.done;
+    }
+
+    function advanceVideo(slot) {
+        if (!videoSlotLive(slot) || slot.started) return;
+        var el = slot.el;
+        var ev = slot.evidence;
+        var now = performance.now();
+        if (slot.phase === "blocked" || slot.phase === "gesture") return;
+
+        if (slot.phase === "loading") {
+            if (Number(el.readyState) >= 1) {
+                ev.metadata = true;
+                slot.phase = "seeking";
+                seekVideo(slot, slot.startMs);
+            }
+        }
+        if (slot.phase === "seeking" || slot.phase === "reseeking") {
+            if (videoSeekSettled(slot)) {
+                ev.seeked = true;
+                if (slot.phase === "seeking") {
+                    slot.phase = "buffering";
+                } else {
+                    slot.phase = videoCovered(slot, slot.startMs)
+                        ? "ready"
+                        : "buffering";
+                }
+            } else if (
+                slot.seek &&
+                now - slot.seek.at > VIDEO_SEEK_TIMEOUT_MS
+            ) {
+                recoverVideo(slot, "seek timed out");
+                return;
+            }
+        }
+        if (ev.metadata) {
+            ev.buffered_ahead_ms = videoBufferedAheadMs(slot, slot.startMs);
+            if (Number(el.readyState) < 1) ev.metadata = false;
+        }
+        if (slot.phase === "buffering" && videoCovered(slot, slot.startMs)) {
+            probeVideoPlay(slot);
+            return;
+        }
+        if (slot.phase === "ready") reportVideoReady(slot);
+    }
+
+    /* Ready evidence, every 500 ms while the slot is ready or stuck. */
+    function reportVideoReady(slot) {
+        if (!slot || slot.dead || slot.frozen) return;
+        if (
+            slot.phase !== "ready" &&
+            slot.phase !== "gesture" &&
+            slot.phase !== "blocked" &&
+            !slot.needsGesture
+        ) {
+            return;
+        }
+        var now = performance.now();
+        if (now - slot.lastReportAt < VIDEO_REPORT_MS) return;
+        slot.lastReportAt = now;
+        var ev = slot.evidence;
+        sendReady(
+            {
+                preparation_id: slot.preparationId,
+                version: slot.version,
+                connection_id: slot.connectionId,
+                occurrence: slot.occurrence,
+                calibration: slot.calibration,
+            },
+            {
+                metadata: ev.metadata,
+                seeked: ev.seeked,
+                buffered_ahead_ms: ev.buffered_ahead_ms,
+                play_ok: ev.play_ok || "no",
+                rvfc: ev.rvfc,
+            }
+        );
+    }
+
+    /* Activation probe: a muted play() then pause() proves this page may
+     * play. The promise is bounded: a timeout pauses the element, kills the
+     * attempt, and counts as a recovery; any late resolution does nothing. */
+    function probeVideoPlay(slot) {
+        if (!videoSlotLive(slot) || slot.probe) return;
+        slot.phase = "probing";
+        var probe = { slot: slot, done: false, timer: null };
+        slot.probe = probe;
+        var result;
+        try {
+            result = slot.el.play();
+        } catch (err) {
+            result = Promise.reject(err);
+        }
+        probe.timer = setTimeout(function () {
+            probe.timer = null;
+            if (probe.done) return;
+            probe.done = true;
+            if (slot.probe === probe) slot.probe = null;
+            if (slot.dead || slot.frozen) return;
+            try {
+                slot.el.pause();
+            } catch (err) {
+                warn("could not pause the probe", err);
+            }
+            recoverVideo(slot, "play probe timed out");
+        }, VIDEO_PLAY_TIMEOUT_MS);
+        if (!result || typeof result.then !== "function") {
+            finishProbe(probe, slot.el.paused === false, null);
+            return;
+        }
+        result.then(
+            function () {
+                finishProbe(probe, true, null);
+            },
+            function (err) {
+                finishProbe(probe, false, err);
+            }
+        );
+    }
+
+    function finishProbe(probe, ok, err) {
+        if (probe.done) return; /* the timeout already took it */
+        var slot = probe.slot;
+        if (slot.dead || slot.probe !== probe) return;
+        probe.done = true;
+        if (probe.timer !== null) {
+            clearTimeout(probe.timer);
+            probe.timer = null;
+        }
+        slot.probe = null;
+        if (!videoSlotLive(slot)) return;
+        if (ok) {
+            try {
+                slot.el.pause();
+            } catch (pauseErr) {
+                warn("could not pause the probe", pauseErr);
+            }
+            slot.evidence.play_ok = "yes";
+            showEnableDisplay(null);
+            /* Play moved the position: reseek and prove coverage again
+             * before the slot may become ready. */
+            slot.phase = "reseeking";
+            slot.lastReportAt = -Infinity;
+            seekVideo(slot, slot.startMs);
+            advanceVideo(slot);
+            return;
+        }
+        if (err && err.name === "NotAllowedError") {
+            /* Expected on a page without activation: the button is the
+             * answer, and this is not a console-worthy fault. */
+            slot.evidence.play_ok = "needs_gesture";
+            slot.phase = "gesture";
+            showEnableDisplay(slot);
+            slot.lastReportAt = -Infinity;
+            reportVideoReady(slot);
+            return;
+        }
+        warn("video cannot play", err);
+        slot.evidence.play_ok = "no";
+        slot.phase = "blocked";
+        showEnableDisplay(null);
+        slot.lastReportAt = -Infinity;
+        reportVideoReady(slot);
+    }
+
+    function blockVideoPreparation(slot, why) {
+        if (!slot || slot.dead) return;
+        warn(
+            "video blocked after " +
+                slot.recoveries +
+                " recoveries (" +
+                why +
+                ")"
+        );
+        slot.phase = "blocked";
+        slot.evidence.play_ok = "no";
+        slot.evidence.buffered_ahead_ms = 0;
+        try {
+            slot.el.pause();
+        } catch (err) {
+            warn("could not pause the video", err);
+        }
+        try {
+            slot.el.removeAttribute("src");
+            slot.el.load();
+        } catch (err) {
+            warn("could not release the video source", err);
+        }
+        haltVideoSlot(slot);
+        slot.lastReportAt = -Infinity;
+        reportVideoReady(slot);
+    }
+
+    /* Bounded recovery before the commit: reload and prepare again, three
+     * times at most, then say it is blocked and stop touching the network. */
+    function recoverVideo(slot, why) {
+        if (!slot || slot.dead || slot.frozen || slot.started) return;
+        if (slot.phase === "blocked") return;
+        if (slot.recoveries >= VIDEO_MAX_RECOVERIES) {
+            blockVideoPreparation(slot, why);
+            return;
+        }
+        slot.recoveries += 1;
+        warn("video preparation recovery " + slot.recoveries + " (" + why + ")");
+        try {
+            slot.el.pause();
+        } catch (err) {
+            warn("could not pause the video", err);
+        }
+        try {
+            slot.el.removeAttribute("src");
+        } catch (err) {
+            warn("could not clear the video source", err);
+        }
+        loadVideo(slot);
+    }
+
+    /* Bounded recovery while playing: seek to where the wall is and play
+     * again, three times at most. After that the slot is blocked; the
+     * observation keeps sending samples so the drift stays visible. */
+    function recoverPlayingVideo(slot, why) {
+        if (!slot || slot.dead || slot.frozen || !slot.started) return;
+        if (slot.recoveries >= VIDEO_MAX_RECOVERIES) {
+            if (slot.phase !== "blocked") {
+                warn(
+                    "video blocked after " +
+                        slot.recoveries +
+                        " recoveries (" +
+                        why +
+                        ")"
+                );
+                slot.phase = "blocked";
+                slot.evidence.play_ok = "no";
+            }
+            return;
+        }
+        slot.recoveries += 1;
+        warn("video recovery " + slot.recoveries + " (" + why + ")");
+        slot.startAttempt += 1;
+        var target = Math.min(
+            Math.max(videoTargetMs(slot, serverNowMs()), slot.commit.startMs),
+            Math.max(0, slot.durationMs - 1)
+        );
+        try {
+            slot.el.currentTime = target / 1000;
+        } catch (err) {
+            warn("video seek failed", err);
+        }
+        startVideoPlayback(slot, slot.startAttempt);
+    }
+
+    /* The local Enable display action: a tap is the user gesture play() was
+     * waiting for. One button is reused for whichever slot needs it. */
+    function showEnableDisplay(slot) {
+        enableDisplaySlot = slot;
+        if (slot && !enableDisplayEl) {
+            enableDisplayEl = document.createElement("button");
+            enableDisplayEl.setAttribute("type", "button");
+            enableDisplayEl.setAttribute("id", "enable-display");
+            enableDisplayEl.textContent = "Enable display";
+            enableDisplayEl.style.position = "fixed";
+            enableDisplayEl.style.left = "50%";
+            enableDisplayEl.style.bottom = "12%";
+            enableDisplayEl.style.transform = "translateX(-50%)";
+            enableDisplayEl.style.zIndex = "3";
+            enableDisplayEl.style.padding = "16px 24px";
+            enableDisplayEl.style.fontSize = "20px";
+            enableDisplayEl.addEventListener("click", onEnableDisplay);
+            document.body.appendChild(enableDisplayEl);
+        }
+        if (enableDisplayEl) enableDisplayEl.hidden = !slot;
+    }
+
+    function onEnableDisplay(event) {
+        if (event && typeof event.stopPropagation === "function") {
+            event.stopPropagation();
+        }
+        var slot = enableDisplaySlot;
+        if (!slot || slot.dead) {
+            showEnableDisplay(null);
+            return;
+        }
+        showEnableDisplay(null);
+        slot.needsGesture = false;
+        if (slot.started) {
+            slot.startAttempt += 1;
+            startVideoPlayback(slot, slot.startAttempt);
+            return;
+        }
+        if (slot.phase === "gesture") probeVideoPlay(slot);
+    }
+
+    /* ---- geometry: the same plan and transform a still is drawn with ---- */
+
+    function layoutVideoSlot(slot) {
+        var vp = viewportSize();
+        if (!vp) return false;
+        var result;
+        try {
+            result = physicalTransform(
+                slot.calibration,
+                slot.plan,
+                slot.iw,
+                slot.ih,
+                [vp.w, vp.h]
+            );
+        } catch (err) {
+            warn("video transform failed", err);
+            return false;
+        }
+        var clip = result.clip;
+        var m = result.matrix;
+        var layer = slot.layer.style;
+        layer.left = clip.x + "px";
+        layer.top = clip.y + "px";
+        layer.width = clip.width + "px";
+        layer.height = clip.height + "px";
+        var style = slot.el.style;
+        style.width = slot.iw + "px";
+        style.height = slot.ih + "px";
+        /* The layer starts at the clip corner, so the matrix is shifted by
+         * it. CSS pixels only: no backing scale here. */
+        style.transform =
+            "matrix(" +
+            [m[0], m[1], m[2], m[3], m[4] - clip.x, m[5] - clip.y].join(",") +
+            ")";
+        return true;
+    }
+
+    function relayoutVideo() {
+        if (videoPending) layoutVideoSlot(videoPending);
+        if (videoArmed) layoutVideoSlot(videoArmed);
+        if (videoActive) layoutVideoSlot(videoActive);
+    }
+
+    /* ---- commit: start at the compensated effective time ---- */
+
+    function sameOccurrence(left, right) {
+        if (!left || !right) return true;
+        return (
+            left.playlist_revision === right.playlist_revision &&
+            left.item_index === right.item_index &&
+            left.loop === right.loop
+        );
+    }
+
+    function videoCommitMatches(slot, frame) {
+        if (!slot || slot.dead) return false;
+        if (slot.preparationId !== frame.preparation_id) return false;
+        if (slot.version !== frame.prepared_at_version) return false;
+        if (
+            frame.session_id != null &&
+            slot.sessionId != null &&
+            frame.session_id !== slot.sessionId
+        ) {
+            return false;
+        }
+        if (
+            frame.connection_id != null &&
+            slot.connectionId != null &&
+            frame.connection_id !== slot.connectionId
+        ) {
+            return false;
+        }
+        if (
+            frame.occurrence &&
+            slot.occurrence &&
+            !sameOccurrence(frame.occurrence, slot.occurrence)
+        ) {
+            return false;
+        }
+        return true;
+    }
+
+    function commitVideo(frame, slot) {
+        if (!videoSlotLive(slot)) return;
+        var target = Number(frame.effective_server_ms);
+        var start = Number(frame.start_media_ms);
+        if (!Number.isFinite(start) || start < 0) start = 0;
+        if (!Number.isFinite(target) || slot.started) return;
+        if (
+            (slot.phase !== "ready" && slot.phase !== "armed") ||
+            slot.evidence.play_ok !== "yes"
+        ) {
+            /* Not prepared by the evidence we reported: never paint it. */
+            warn("video commit ignored: not ready");
+            return;
+        }
+        if (start >= slot.durationMs) {
+            warn("video commit ignored: start is outside the clip");
+            return;
+        }
+        /* A duplicate commit for an armed slot may carry a new effective
+         * anchor after a re-anchor: update it, never start twice. */
+        if (slot.commit) {
+            if (
+                slot.commit.effectiveMs === target &&
+                slot.commit.startMs === start
+            ) {
+                return;
+            }
+            slot.commit.effectiveMs = target;
+            slot.commit.startMs = start;
+            scheduleVideoStart(slot);
+            return;
+        }
+        if (videoArmed && !videoArmed.started) {
+            /* A newer commit for a different preparation supersedes the
+             * armed one it never got to start. */
+            releaseVideoSlot(videoArmed);
+        }
+        if (videoPending === slot) videoPending = null;
+        videoArmed = slot;
+        slot.phase = "armed";
+        slot.commit = {
+            sessionId:
+                frame.session_id != null ? frame.session_id : slot.sessionId,
+            version: frame.version != null ? frame.version : slot.version,
+            occurrence: frame.occurrence || slot.occurrence,
+            effectiveMs: target,
+            startMs: start,
+        };
+        /* Ready renewals stop here: the slot is the server's now. */
+        clearVideoTimers(slot);
+        if (
+            Math.abs(Number(slot.el.currentTime) * 1000 - start) >
+            VIDEO_DEADBAND_MS
+        ) {
+            seekVideo(slot, start); /* positioning, not drift correction */
+        }
+        scheduleVideoStart(slot);
+    }
+
+    function scheduleVideoStart(slot) {
+        if (!videoSlotLive(slot) || slot.started || !slot.commit) return;
+        var attempt = ++slot.startAttempt;
+        if (slot.startTimer !== null) clearTimeout(slot.startTimer);
+        var delay = slot.commit.effectiveMs - serverNowMs();
+        slot.startTimer = setTimeout(function () {
+            slot.startTimer = null;
+            if (!videoAttemptLive(slot, attempt)) return;
+            requestAnimationFrame(function () {
+                if (!videoAttemptLive(slot, attempt)) return;
+                if (serverNowMs() + 50 < slot.commit.effectiveMs) {
+                    scheduleVideoStart(slot);
+                    return;
+                }
+                activateVideo(slot, attempt);
+            });
+        }, Math.max(0, delay - VIDEO_COMMIT_SLACK_MS));
+    }
+
+    function activateVideo(slot, attempt) {
+        if (!videoAttemptLive(slot, attempt) || slot.started) return;
+        if (
+            (slot.phase !== "ready" && slot.phase !== "armed") ||
+            slot.evidence.play_ok !== "yes"
+        ) {
+            return;
+        }
+        /* Recheck coverage and permission immediately before activation:
+         * the position may have moved since the prepare evidence. */
+        if (!videoCovered(slot, slot.commit.startMs)) {
+            warn("video commit ignored: buffer does not cover the start");
+            slot.phase = "blocked";
+            slot.evidence.play_ok = "no";
+            slot.lastReportAt = -Infinity;
+            reportVideoReady(slot);
+            releaseVideoSlot(slot);
+            return;
+        }
+        var previous = videoActive;
+        slot.started = true;
+        slot.phase = "playing";
+        slot.needsGesture = false;
+        videoActive = slot;
+        if (videoArmed === slot) videoArmed = null;
+        if (videoPending === slot) videoPending = null;
+        slot.layer.style.visibility = "visible";
+        if (previous && previous !== slot) releaseVideoSlot(previous);
+        startVideoPlayback(slot, attempt);
+    }
+
+    function startVideoPlayback(slot, attempt) {
+        var el = slot.el;
+        var settled = false;
+        var timer = null;
+        function settle() {
+            if (settled) return false;
+            settled = true;
+            if (timer !== null) {
+                clearTimeout(timer);
+                timer = null;
+            }
+            return true;
+        }
+        function started() {
+            slot.needsGesture = false;
+            slot.phase = "playing";
+            if (slot.observed) {
+                if (typeof el.requestVideoFrameCallback === "function") {
+                    armFrameCallback(slot);
+                }
+            } else {
+                observeVideo(slot);
+            }
+        }
+        var result;
+        try {
+            result = el.play();
+        } catch (err) {
+            result = Promise.reject(err);
+        }
+        /* The play promise is bounded like the probe: a browser that
+         * neither starts nor rejects must not leave the picture frozen
+         * with no recovery. A timeout pauses, invalidates the attempt, and
+         * spends one of the bounded recoveries. */
+        timer = setTimeout(function () {
+            timer = null;
+            if (!settle()) return;
+            if (!videoAttemptLive(slot, attempt) || slot.dead) return;
+            try {
+                el.pause();
+            } catch (err) {
+                warn("could not pause the video", err);
+            }
+            slot.startAttempt += 1;
+            recoverPlayingVideo(slot, "play timed out");
+        }, VIDEO_PLAY_TIMEOUT_MS);
+        if (!result || typeof result.then !== "function") {
+            if (settle()) started();
+            return;
+        }
+        result.then(
+            function () {
+                if (!settle()) return;
+                if (!videoAttemptLive(slot, attempt) || slot.dead) return;
+                started();
+            },
+            function (err) {
+                if (!settle()) return;
+                if (!videoAttemptLive(slot, attempt) || slot.dead) return;
+                if (err && err.name === "NotAllowedError") {
+                    /* Activation can be lost after a probe: ask for a tap
+                     * locally and tell the server; do not warn. */
+                    slot.needsGesture = true;
+                    slot.phase = "paused";
+                    slot.evidence.play_ok = "needs_gesture";
+                    showEnableDisplay(slot);
+                    slot.lastReportAt = -Infinity;
+                    reportVideoReady(slot);
+                    return;
+                }
+                recoverPlayingVideo(slot, "play rejected");
+            }
+        );
+    }
+
+    /* ---- observation, drift and correction ---- */
+
+    function videoTargetMs(slot, serverMs) {
+        return (
+            slot.commit.startMs +
+            (serverMs - slot.commit.effectiveMs)
+        );
+    }
+
+    function observeVideo(slot) {
+        if (!slot || slot.dead || slot.observed) return;
+        slot.observed = true;
+        var el = slot.el;
+        if (typeof el.requestVideoFrameCallback === "function") {
+            armFrameCallback(slot);
+        } else {
+            listenVideo(slot, "timeupdate", function () {
+                measureVideo(
+                    slot,
+                    Number(el.currentTime) * 1000,
+                    performance.now(),
+                    "time"
+                );
+            });
+        }
+        /* Frame callbacks stop when the picture does: a watchdog keeps the
+         * server told about a video that is stuck. */
+        slot.intervals.push(
+            setInterval(function () {
+                if (!videoSlotLive(slot) || !slot.started) return;
+                var now = performance.now();
+                if (now - slot.lastObserveAt >= VIDEO_SAMPLE_MS * 1.5) {
+                    measureVideo(
+                        slot,
+                        Number(el.currentTime) * 1000,
+                        now,
+                        "time"
+                    );
+                }
+                if (!slot.needsGesture && el.paused && !el.ended) {
+                    recoverPlayingVideo(slot, "stopped");
+                }
+            }, VIDEO_SAMPLE_MS)
+        );
+    }
+
+    function armFrameCallback(slot) {
+        var el = slot.el;
+        var attempt = slot.startAttempt;
+        var handle = el.requestVideoFrameCallback(function (now, metadata) {
+            if (slot.rvfcHandle === handle) slot.rvfcHandle = null;
+            if (!videoAttemptLive(slot, attempt) || !slot.started) return;
+            var shownAt = Number(metadata && metadata.expectedDisplayTime);
+            if (!Number.isFinite(shownAt)) {
+                shownAt = Number(metadata && metadata.presentationTime);
+            }
+            if (!Number.isFinite(shownAt)) shownAt = Number(now);
+            measureVideo(
+                slot,
+                Number(metadata && metadata.mediaTime) * 1000,
+                shownAt,
+                "rvfc"
+            );
+            armFrameCallback(slot);
+        });
+        slot.rvfcHandle = handle;
+    }
+
+    /* One instant: the media time that was observed, and where the wall's
+     * clock says it should have been then. */
+    function measureVideo(slot, mediaMs, atPerfMs, source) {
+        if (!slot || slot.dead || slot.frozen || !slot.started) return;
+        if (!slot.commit) return;
+        var el = slot.el;
+        var now = performance.now();
+        slot.lastObserveAt = now;
+        if (el.seeking || !Number.isFinite(mediaMs)) return;
+        var offset = clockOffset === null ? 0 : clockOffset;
+        var targetMs = videoTargetMs(slot, atPerfMs + offset);
+        if (targetMs < slot.commit.startMs) return; /* not due yet */
+        targetMs = Math.min(targetMs, slot.durationMs);
+        var view = videoView();
+        if (!view || typeof view.videoCorrection !== "function") return;
+        var drift = view.videoDriftMs(mediaMs, targetMs);
+        /* Correction belongs to a playing picture. A paused/needs-gesture
+         * or blocked element still reports samples (so the server sees the
+         * drift), but must not be seeked or rate-shifted underneath. */
+        if (
+            !slot.needsGesture &&
+            slot.phase !== "paused" &&
+            slot.phase !== "blocked"
+        ) {
+            var decision = view.videoCorrection({
+                driftMs: drift,
+                nowMs: now,
+                lastSeekMs: slot.lastSeekAt,
+            });
+            if (decision.seek) {
+                slot.lastSeekAt = now;
+                try {
+                    el.currentTime = targetMs / 1000;
+                } catch (err) {
+                    warn("video seek failed", err);
+                }
+            }
+            if (decision.rate !== slot.rate) {
+                slot.rate = decision.rate;
+                try {
+                    el.playbackRate = decision.rate;
+                } catch (err) {
+                    warn("video rate change failed", err);
+                }
+            }
+        }
+        if (now - slot.lastSampleAt >= VIDEO_SAMPLE_MS) {
+            slot.lastSampleAt = now;
+            sendVideoFrame({
+                type: "video_sample",
+                session_id: slot.commit.sessionId,
+                version: slot.commit.version,
+                occurrence: slot.commit.occurrence,
+                media_ms: Math.round(mediaMs * 10) / 10,
+                target_ms: Math.round(targetMs * 10) / 10,
+                drift_ms: Math.round(drift * 10) / 10,
+                rate: slot.rate,
+                source: source,
+            });
+        }
+    }
+
+    /* ---- supersede ---- */
+
+    function clearVideoTimers(slot) {
+        for (var j = 0; j < slot.intervals.length; j++) {
+            clearInterval(slot.intervals[j]);
+        }
+        slot.intervals = [];
+        if (slot.startTimer !== null) {
+            clearTimeout(slot.startTimer);
+            slot.startTimer = null;
+        }
+        if (slot.probe) {
+            var probe = slot.probe;
+            probe.done = true;
+            if (probe.timer !== null) clearTimeout(probe.timer);
+            probe.timer = null;
+            slot.probe = null;
+        }
+    }
+
+    /* Everything that can still act on this slot stops: timers, the frame
+     * callback, in-flight probes, and the listeners. The attempt token is
+     * bumped so a late promise/rAF/seek completion does nothing. */
+    function haltVideoSlot(slot) {
+        clearVideoTimers(slot);
+        slot.startAttempt += 1;
+        var el = slot.el;
+        if (
+            slot.rvfcHandle !== null &&
+            typeof el.cancelVideoFrameCallback === "function"
+        ) {
+            try {
+                el.cancelVideoFrameCallback(slot.rvfcHandle);
+            } catch (err) {
+                warn("could not cancel the frame callback", err);
+            }
+        }
+        slot.rvfcHandle = null;
+        for (var i = 0; i < slot.listeners.length; i++) {
+            el.removeEventListener(
+                slot.listeners[i].type,
+                slot.listeners[i].handler
+            );
+        }
+        slot.listeners = [];
+        slot.seek = null;
+        slot.observed = false;
+        if (slot.rate !== 1) {
+            slot.rate = 1;
+            try {
+                el.playbackRate = 1;
+            } catch (err) {
+                warn("could not reset the video rate", err);
+            }
+        }
+        if (enableDisplaySlot === slot) showEnableDisplay(null);
+    }
+
+    /* The element is let go of: no more bytes, no more decoding, off
+     * screen. Anything still in flight for it finds `dead` and does
+     * nothing. */
+    function releaseVideoSlot(slot) {
+        if (!slot || slot.dead) return;
+        slot.dead = true;
+        haltVideoSlot(slot);
+        try {
+            slot.el.pause();
+        } catch (err) {
+            warn("could not pause the video", err);
+        }
+        try {
+            slot.el.removeAttribute("src");
+            slot.el.load();
+        } catch (err) {
+            warn("could not release the video source", err);
+        }
+        if (slot.layer && slot.layer.parentNode) {
+            slot.layer.parentNode.removeChild(slot.layer);
+        }
+        if (videoPending === slot) videoPending = null;
+        if (videoArmed === slot) videoArmed = null;
+        if (videoActive === slot) videoActive = null;
+    }
+
+    /* Stop acting but stay on screen: the last picture holds like a still. */
+    function freezeVideoSlot(slot) {
+        if (!slot || slot.dead || slot.frozen) return;
+        slot.frozen = true;
+        haltVideoSlot(slot);
+        try {
+            slot.el.pause();
+        } catch (err) {
+            warn("could not pause the video", err);
+        }
+    }
+
+    /* Pause/cancel/visibility: own the pending preparation and the armed
+     * commit, freeze whatever is on the wall. */
+    function interruptVideoPlayback() {
+        releaseVideoSlot(videoPending);
+        releaseVideoSlot(videoArmed);
+        freezeVideoSlot(videoActive);
+    }
+
+    /* Stop/epoch/socket close: everything goes, nothing keeps running. */
+    function stopVideoPlayback() {
+        releaseVideoSlot(videoPending);
+        releaseVideoSlot(videoArmed);
+        releaseVideoSlot(videoActive);
+    }
+
+    /* A dropped socket cannot promise the server still owns this video, so
+     * the picture goes and the canvas shows the persisted scene again. The
+     * reconnect prepares the current item when the session is still live. */
+    function onSocketClosed() {
+        clearStillPlayback();
+        var hadVideo = videoPending || videoArmed || videoActive;
+        stopVideoPlayback();
+        if (hadVideo) restoreStaticScene();
+    }
+
+    if (typeof document.addEventListener === "function") {
+        document.addEventListener("visibilitychange", function () {
+            if (document.visibilityState !== "hidden") return;
+            clearStillPlayback();
+            interruptVideoPlayback();
+        });
     }
 
     function handleFrame(socket, raw, onWelcome) {
@@ -2459,7 +3775,18 @@
         } else if (frame.type === "render") {
             applyRenderFrame(frame);
         } else if (frame.type === "clock_bootstrap") {
-            clockEpoch = frame.epoch;
+            var nextEpoch = frame.epoch;
+            if (clockEpoch !== null && nextEpoch !== clockEpoch) {
+                /* A new epoch means a restart/suspend: nothing prepared
+                 * under the old clock may paint, and the wall returns to
+                 * the server's persisted scene. */
+                stopPlayback();
+            } else if (clockEpoch === null) {
+                if (videoPending) videoPending.epoch = nextEpoch;
+                if (videoArmed) videoArmed.epoch = nextEpoch;
+                if (videoActive) videoActive.epoch = nextEpoch;
+            }
+            clockEpoch = nextEpoch;
             clockSamples = [];
             clockOffset = null;
             startClockSampling();
@@ -2469,8 +3796,11 @@
             handlePrepare(frame);
         } else if (frame.type === "commit") {
             handleCommit(frame);
-        } else if (frame.type === "cancel" || frame.type === "playback") {
-            stopPlayback();
+        } else if (frame.type === "cancel") {
+            cancelPlayback();
+        } else if (frame.type === "playback") {
+            if (frame.state === "paused") pausePlayback();
+            else stopPlayback();
         }
     }
 
@@ -2504,7 +3834,10 @@
 
             socket.addEventListener("close", function (event) {
                 stopHeartbeat();
-                if (activeSocket === socket) activeSocket = null;
+                if (activeSocket === socket) {
+                    activeSocket = null;
+                    onSocketClosed();
+                }
                 resolve({
                     welcomed: welcomed,
                     code: event && typeof event.code === "number" ? event.code : null,

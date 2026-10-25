@@ -46,6 +46,12 @@
  *   - on that grid, generations across lower revisions stay repeatable:
  *     a same-generation replay is a no-op, a new lineage at a lower
  *     revision refetches, and a stale in-flight lineage never paints.
+ *
+ * Native video player coverage (same harness): the pending/armed/active
+ * slot split, a next prepare immediately after a commit, duplicate commits,
+ * bounded play probes and activation, pause/cancel/stop/generation
+ * supersede, exact ranged buffer coverage, activation denial, rVFC samples,
+ * and the shared CSS physical transform.
  */
 
 "use strict";
@@ -58,6 +64,7 @@ const { webcrypto } = require("node:crypto");
 
 const CLIENT_JS = path.join(__dirname, "..", "frontend", "client", "client.js");
 const CLIENT_SOURCE = fs.readFileSync(CLIENT_JS, "utf8");
+const view = require("../frontend/client/view.js");
 
 const ORIGIN = "http://wall.test";
 const ORIGIN_HREF = ORIGIN + "/client/";
@@ -177,6 +184,213 @@ function createHarness(opts = {}) {
         },
     };
 
+    /*
+     * A minimal DOM for the video player: layers and the Enable-display
+     * button are real element objects, and <video> knows the states the
+     * player reads (buffered ranges, readyState, seeking, play/pause). The
+     * tests drive the lifecycle by emitting the media events a browser
+     * would, never by waiting out real decoding.
+     */
+    const elements = [];
+    const videos = [];
+    const bodyChildren = [];
+
+    function makeElement(tag) {
+        const el = {
+            tagName: String(tag || "div").toUpperCase(),
+            style: {},
+            children: [],
+            parentNode: null,
+            hidden: false,
+            textContent: "",
+            attributes: {},
+            listeners: {},
+            setAttribute(name, value) {
+                this.attributes[name] = String(value);
+            },
+            getAttribute(name) {
+                return Object.prototype.hasOwnProperty.call(this.attributes, name)
+                    ? this.attributes[name]
+                    : null;
+            },
+            removeAttribute(name) {
+                delete this.attributes[name];
+            },
+            appendChild(child) {
+                child.parentNode = this;
+                this.children.push(child);
+                return child;
+            },
+            removeChild(child) {
+                const index = this.children.indexOf(child);
+                if (index >= 0) this.children.splice(index, 1);
+                child.parentNode = null;
+                return child;
+            },
+            addEventListener(type, fn) {
+                (this.listeners[type] = this.listeners[type] || []).push(fn);
+            },
+            removeEventListener(type, fn) {
+                const list = this.listeners[type] || [];
+                const index = list.indexOf(fn);
+                if (index >= 0) list.splice(index, 1);
+            },
+            emit(type, event) {
+                for (const fn of (this.listeners[type] || []).slice()) {
+                    fn(event || {});
+                }
+            },
+        };
+        elements.push(el);
+        return el;
+    }
+
+    const bodyMock = makeElement("body");
+    bodyMock.appendChild = function (child) {
+        child.parentNode = this;
+        this.children.push(child);
+        bodyChildren.push(child);
+        return child;
+    };
+    bodyMock.removeChild = function (child) {
+        const index = this.children.indexOf(child);
+        if (index >= 0) this.children.splice(index, 1);
+        const shown = bodyChildren.indexOf(child);
+        if (shown >= 0) bodyChildren.splice(shown, 1);
+        child.parentNode = null;
+        return child;
+    };
+
+    function timeRanges(ranges) {
+        const list = Array.isArray(ranges) ? ranges : [];
+        return {
+            length: list.length,
+            start(index) {
+                return list[index][0] / 1000;
+            },
+            end(index) {
+                return list[index][1] / 1000;
+            },
+        };
+    }
+
+    function makeVideo() {
+        const el = makeElement("video");
+        el.muted = false;
+        el.defaultMuted = false;
+        el.playsInline = false;
+        el.preload = "";
+        el.controls = false;
+        el.paused = true;
+        el.seeking = false;
+        el.ended = false;
+        el.readyState = 0;
+        el.duration = 6;
+        el.playbackRate = 1;
+        el._currentTime = 0;
+        el.currentTime = 0;
+        el.buffered = timeRanges([]);
+        el.src = "";
+        el.playCalls = 0;
+        el.pauseCalls = 0;
+        el.loadCalls = 0;
+        el.removeSrcCalls = 0;
+        el.seekAssignments = [];
+        el.playImpl = null;
+        el.rvfc = [];
+        el.rvfcSeq = 0;
+        el.cancelledRvfc = [];
+        el.canPlayType = function () {
+            return "probably";
+        };
+        Object.defineProperty(el, "currentTime", {
+            get() {
+                return el._currentTime;
+            },
+            set(value) {
+                el._currentTime = Number(value);
+                el.seeking = true;
+                el.seekAssignments.push(Number(value));
+            },
+        });
+        el.play = function () {
+            el.playCalls += 1;
+            el.paused = false;
+            const impl = el.playImpl || function () {
+                return Promise.resolve();
+            };
+            try {
+                return Promise.resolve(impl(el));
+            } catch (err) {
+                return Promise.reject(err);
+            }
+        };
+        el.pause = function () {
+            el.pauseCalls += 1;
+            el.paused = true;
+        };
+        el.load = function () {
+            el.loadCalls += 1;
+            el.readyState = 0;
+            el.emit("loadstart");
+        };
+        el.requestVideoFrameCallback = function (callback) {
+            const id = ++el.rvfcSeq;
+            el.rvfc.push({ id, callback });
+            return id;
+        };
+        el.cancelVideoFrameCallback = function (id) {
+            el.cancelledRvfc.push(id);
+            el.rvfc = el.rvfc.filter((entry) => entry.id !== id);
+        };
+        el.takeFrame = function (mediaTime, displayTime) {
+            const entry = el.rvfc.shift();
+            if (!entry) throw new Error("no frame callback is armed");
+            entry.callback(Number(displayTime) || 0, {
+                mediaTime: Number(mediaTime),
+                expectedDisplayTime: Number(displayTime),
+                presentationTime: Number(displayTime),
+            });
+            return entry.id;
+        };
+        el.setBuffered = function (ranges) {
+            el.buffered = timeRanges(ranges);
+        };
+        el.metadata = function (duration) {
+            el.readyState = 1;
+            if (duration !== undefined) el.duration = Number(duration);
+            el.emit("loadedmetadata");
+        };
+        el.settleSeek = function () {
+            el.seeking = false;
+            el.readyState = Math.max(el.readyState, 2);
+            el.emit("seeked");
+        };
+        el.progress = function (ranges) {
+            if (ranges) el.setBuffered(ranges);
+            el.readyState = Math.max(el.readyState, 2);
+            el.emit("progress");
+        };
+        el.wantFrame = function () {
+            return el.rvfc.length;
+        };
+        const setAttribute = el.setAttribute;
+        const removeAttribute = el.removeAttribute;
+        el.setAttribute = function (name, value) {
+            if (name === "src") el.src = String(value);
+            setAttribute.call(el, name, value);
+        };
+        el.removeAttribute = function (name) {
+            if (name === "src") {
+                if (el.src !== "") el.removeSrcCalls += 1;
+                el.src = "";
+            }
+            removeAttribute.call(el, name);
+        };
+        videos.push(el);
+        return el;
+    }
+
     const documentMock = {
         getElementById(id) {
             if (id === "surface") return canvas;
@@ -189,10 +403,12 @@ function createHarness(opts = {}) {
             clientHeight: opts.height || VP.height,
             style: { setProperty() {} },
         },
-        createElement() {
-            return canvas;
+        createElement(tag) {
+            if (tag === "video") return makeVideo();
+            if (tag === "canvas") return canvas;
+            return makeElement(tag);
         },
-        body: { appendChild() {} },
+        body: bodyMock,
         addEventListener(type, fn) {
             (docListeners[type] = docListeners[type] || []).push(fn);
         },
@@ -202,6 +418,7 @@ function createHarness(opts = {}) {
         innerWidth: opts.width || VP.width,
         innerHeight: opts.height || VP.height,
         devicePixelRatio: opts.dpr !== undefined ? opts.dpr : VP.dpr,
+        TabletWallView: view,
         location: {
             protocol: "http:",
             host: "wall.test",
@@ -242,10 +459,12 @@ function createHarness(opts = {}) {
     }
 
     /*
-     * Timers are recorded as well as run, so a test can fire the client's
-     * image-load deadline immediately instead of waiting out the real 15 s.
+     * Timers and intervals are recorded as well as run, so a test can fire
+     * the client's own deadlines and polling ticks immediately instead of
+     * waiting them out.
      */
     const timers = [];
+    const intervals = [];
     function sandboxSetTimeout(fn, delay) {
         const entry = {
             delay: Number(delay),
@@ -266,6 +485,30 @@ function createHarness(opts = {}) {
         entry.done = true;
         clearTimeout(entry.handle);
     }
+    function sandboxSetInterval(fn, delay) {
+        const entry = {
+            delay: Number(delay),
+            fn,
+            done: false,
+            handle: null,
+        };
+        entry.handle = setInterval(() => {
+            if (entry.done) return;
+            entry.fn();
+        }, entry.delay);
+        intervals.push(entry);
+        return entry;
+    }
+    function sandboxClearInterval(entry) {
+        if (!entry || entry.done) return;
+        entry.done = true;
+        clearInterval(entry.handle);
+    }
+
+    /* A controllable clock for the playback code, and a queued
+     * requestAnimationFrame the tests run explicitly. */
+    let perfNow = opts.perfNow !== undefined ? opts.perfNow : 1000;
+    const rafQueue = [];
 
     /*
      * The `<img>` fallback path (no createImageBitmap): decode() and the
@@ -310,12 +553,19 @@ function createHarness(opts = {}) {
             this.url = url;
             this.readyState = 0;
             this.listeners = {};
+            this.sent = [];
             sockets.push(this);
         }
         addEventListener(type, fn) {
             (this.listeners[type] = this.listeners[type] || []).push(fn);
         }
-        send() {}
+        send(data) {
+            try {
+                this.sent.push(JSON.parse(String(data)));
+            } catch (err) {
+                this.sent.push({ raw: String(data) });
+            }
+        }
         close(code) {
             this.readyState = 3;
             this.emit("close", { code: code === undefined ? 1000 : code });
@@ -365,8 +615,21 @@ function createHarness(opts = {}) {
         },
         setTimeout: sandboxSetTimeout,
         clearTimeout: sandboxClearTimeout,
-        setInterval,
-        clearInterval,
+        setInterval: sandboxSetInterval,
+        clearInterval: sandboxClearInterval,
+        performance: {
+            now() {
+                return perfNow;
+            },
+        },
+        requestAnimationFrame(callback) {
+            const entry = { callback, cancelled: false };
+            rafQueue.push(entry);
+            return entry;
+        },
+        cancelAnimationFrame(entry) {
+            if (entry) entry.cancelled = true;
+        },
         URL: URLShim,
         fetch: fetchMock,
         WebSocket: MockWebSocket,
@@ -444,6 +707,48 @@ function createHarness(opts = {}) {
             return pending.length;
         },
         makeBitmap,
+        videos,
+        elements,
+        bodyChildren,
+        now() {
+            return perfNow;
+        },
+        advance(ms) {
+            perfNow += ms;
+        },
+        runAnimationFrames() {
+            const queued = rafQueue.splice(0);
+            let ran = 0;
+            for (const entry of queued) {
+                if (entry.cancelled) continue;
+                entry.callback(perfNow);
+                ran += 1;
+            }
+            return ran;
+        },
+        fireTimers(predicate) {
+            const pending = timers.filter(
+                (t) => !t.done && (!predicate || predicate(t))
+            );
+            for (const timer of pending) {
+                timer.done = true;
+                clearTimeout(timer.handle);
+                timer.fn();
+            }
+            return pending.length;
+        },
+        fireIntervals(delay) {
+            const matching = intervals.filter(
+                (i) => !i.done && (delay === undefined || i.delay === delay)
+            );
+            for (const interval of matching) interval.fn();
+            return matching.length;
+        },
+        sent(type) {
+            const socket = sockets[sockets.length - 1];
+            if (!socket) return [];
+            return socket.sent.filter((f) => !type || f.type === type);
+        },
         reset() {
             calls.length = 0;
         },
@@ -2408,6 +2713,797 @@ function isOpaque(style) {
     if (parts.length < 4) return true;
     return Number(parts[3]) >= 1;
 }
+
+/* ================================================================== */
+/* Native video player                                                */
+/*                                                                    */
+/* The harness drives the same lifecycle a browser would: metadata,    */
+/* seek, buffered ranges, the muted probe, the reseek, then commit at  */
+/* the compensated effective time. It also proves the three-slot       */
+/* rule: a routine next prepare never releases an armed commit, while  */
+/* pause/cancel/stop/epoch do dispose only what they own.              */
+/* ================================================================== */
+
+const VIDEO_CALIBRATION = {
+    viewport_width: VP.width,
+    viewport_height: VP.height,
+    quarter_turn: 0,
+    panel_offset_mm: [0, 0],
+    mm_per_css: [1, 1],
+    revision: 7,
+    status: "valid",
+};
+
+/* A valid server-shaped plan: the video is laid out by exactly the
+ * transform the still path uses. */
+const VIDEO_PLAN = view.normalizedSourceToPanel({
+    active_size: [800, 600],
+    bezels: ZERO_BEZEL,
+    center_mm: [0, 0],
+    nudge_mm: [0, 0],
+    mount_angle: 0,
+    bounds: [0, 0, 800, 600],
+    source_size: [1280, 720],
+    fit: "cover",
+});
+
+const VIDEO_ID = "sha256:" + "d".repeat(64);
+
+function videoAsset(overrides) {
+    return Object.assign(
+        {
+            id: VIDEO_ID,
+            kind: "video",
+            mime: "video/mp4",
+            url: "/media/" + VIDEO_ID,
+            intrinsicWidth: 1280,
+            intrinsicHeight: 720,
+            durationMs: 6000,
+        },
+        overrides
+    );
+}
+
+function videoPrepare(overrides) {
+    return Object.assign(
+        {
+            type: "prepare",
+            session_id: "sess-1",
+            version: 3,
+            preparation_id: "prep-1",
+            occurrence: { playlist_revision: 1, item_index: 0, loop: 0 },
+            asset: videoAsset(),
+            media: {
+                kind: "video",
+                duration_ms: 6000,
+                buffer_goal_ms: 5000,
+                start_lead_ms: 1000,
+                prepare_timeout_ms: 30000,
+            },
+            plan: VIDEO_PLAN,
+            calibration: VIDEO_CALIBRATION,
+            connection_id: "conn-1",
+        },
+        overrides
+    );
+}
+
+function videoCommit(harness, overrides) {
+    return Object.assign(
+        {
+            type: "commit",
+            session_id: "sess-1",
+            version: 4,
+            prepared_at_version: 3,
+            preparation_id: "prep-1",
+            occurrence: { playlist_revision: 1, item_index: 0, loop: 0 },
+            effective_server_ms: harness.now() + 400,
+            connection_id: "conn-1",
+            start_media_ms: 0,
+        },
+        overrides
+    );
+}
+
+async function startVideoHarness(opts) {
+    const h = await startHarness(opts);
+    /* The server would have sent welcome and opened the socket. */
+    h.socket().readyState = 1;
+    return h;
+}
+
+/* Player elements only: the capability probe at module load is a <video>
+ * too, but nothing prepared it. */
+function playerVideos(h) {
+    return h.videos.filter((el) => el.src !== "" || el.loadCalls > 0);
+}
+
+function layerOf(h, el) {
+    return h.bodyChildren.find((child) => child.children.indexOf(el) >= 0);
+}
+
+function visibleLayers(h) {
+    return h.bodyChildren.filter(
+        (child) =>
+            child.tagName === "DIV" && child.style.visibility === "visible"
+    );
+}
+
+function readyFrames(h, preparationId) {
+    return h.sent("ready").filter(
+        (frame) => !preparationId || frame.preparation_id === preparationId
+    );
+}
+
+/* Drive one prepared slot to ready, the way a browser would. */
+async function driveVideoReady(h, el) {
+    el.metadata(6);
+    el.settleSeek();
+    el.progress([[0, 6000]]);
+    await drain();
+    el.settleSeek();
+    await drain();
+}
+
+async function activateAt(h, effectiveMs) {
+    h.advance(Math.max(0, effectiveMs - h.now()));
+    /* Fire the commit timer. The play-probe deadline is the one timer that
+     * must never be fired by accident. */
+    h.fireTimers((timer) => timer.delay !== 3000);
+    h.runAnimationFrames();
+    await drain();
+}
+
+test("video: a commit followed immediately by the next prepare survives", async () => {
+    const h = await startVideoHarness(VP);
+    h.emit(videoPrepare());
+    await drain();
+    const first = playerVideos(h)[0];
+    assert.ok(first, "the video prepare created an element");
+    assert.strictEqual(h.videos.length, 2, "one probe plus one player");
+    await driveVideoReady(h, first);
+    assert.strictEqual(
+        readyFrames(h, "prep-1").length,
+        1,
+        "the ready slot reported its evidence"
+    );
+
+    const commit = videoCommit(h, { effective_server_ms: h.now() + 2000 });
+    h.emit(commit);
+
+    /* The next occurrence arrives before the cut: it may replace only the
+     * pending slot, never the committed one. */
+    h.emit(
+        videoPrepare({
+            version: 5,
+            preparation_id: "prep-2",
+            occurrence: { playlist_revision: 1, item_index: 1, loop: 0 },
+        })
+    );
+    await drain();
+
+    const second = playerVideos(h).find((el) => el !== first);
+    assert.ok(second, "the next prepare created its own element");
+    const firstLayer = layerOf(h, first);
+    assert.ok(firstLayer, "the armed element is still attached");
+    assert.strictEqual(
+        firstLayer.style.visibility,
+        "hidden",
+        "the armed element has not painted yet"
+    );
+    assert.strictEqual(
+        layerOf(h, second).style.visibility,
+        "hidden",
+        "the pending element is hidden"
+    );
+
+    await activateAt(h, commit.effective_server_ms);
+    assert.strictEqual(
+        first.playCalls,
+        2,
+        "the armed slot started (probe, then playback)"
+    );
+    assert.strictEqual(
+        firstLayer.style.visibility,
+        "visible",
+        "the armed slot is on the wall"
+    );
+    assert.strictEqual(second.playCalls, 0, "the next occurrence did not start");
+    assert.strictEqual(
+        layerOf(h, second).style.visibility,
+        "hidden",
+        "the next occurrence stayed hidden"
+    );
+    assert.strictEqual(visibleLayers(h).length, 1, "exactly one picture");
+});
+
+test("video: a duplicate commit cannot start the player twice", async () => {
+    const h = await startVideoHarness(VP);
+    h.emit(videoPrepare());
+    await drain();
+    const el = playerVideos(h)[0];
+    await driveVideoReady(h, el);
+
+    const commit = videoCommit(h, { effective_server_ms: h.now() + 400 });
+    h.emit(commit);
+    h.emit(commit);
+    await drain();
+    await activateAt(h, commit.effective_server_ms);
+    assert.strictEqual(el.playCalls, 2, "one probe and one start");
+    assert.strictEqual(visibleLayers(h).length, 1, "one picture");
+
+    /* The same commit after the start is also a no-op. */
+    h.emit(commit);
+    await drain();
+    assert.strictEqual(el.playCalls, 2, "a late duplicate starts nothing");
+    assert.strictEqual(visibleLayers(h).length, 1, "still one picture");
+});
+
+test("video: a timed-out probe pauses and invalidates the attempt", async () => {
+    const h = await startVideoHarness(VP);
+    h.emit(videoPrepare());
+    await drain();
+    const el = playerVideos(h)[0];
+    const play = deferred();
+    el.playImpl = () => play.promise;
+
+    el.metadata(6);
+    el.settleSeek();
+    el.progress([[0, 6000]]);
+    await drain();
+    assert.strictEqual(el.playCalls, 1, "the probe started");
+    assert.strictEqual(readyFrames(h).length, 0, "not ready before the probe");
+
+    const fired = h.fireTimers((timer) => timer.delay === 3000);
+    assert.ok(fired >= 1, "the play probe deadline was armed");
+    await drain();
+    assert.ok(el.pauseCalls >= 1, "the timed-out probe paused the element");
+    assert.strictEqual(readyFrames(h).length, 0, "no ready evidence from it");
+
+    const pauses = el.pauseCalls;
+    play.resolve();
+    await drain();
+    assert.strictEqual(el.pauseCalls, pauses, "the late resolution did nothing");
+    assert.strictEqual(el.playCalls, 1, "it did not play again");
+    assert.strictEqual(readyFrames(h).length, 0, "and reported nothing");
+
+    /* A late seek completion from the abandoned attempt is inert too. */
+    el.settleSeek();
+    await drain();
+    assert.strictEqual(readyFrames(h).length, 0, "late seek painted nothing");
+});
+
+test("video: pause while armed disposes the commit, resume prepares again", async () => {
+    const h = await startVideoHarness(VP);
+    h.emit(videoPrepare());
+    await drain();
+    const el = playerVideos(h)[0];
+    await driveVideoReady(h, el);
+
+    const commit = videoCommit(h, { effective_server_ms: h.now() + 2000 });
+    h.emit(commit);
+    const layer = layerOf(h, el);
+    assert.ok(layer, "the armed element is attached");
+
+    h.emit({
+        type: "playback",
+        state: "paused",
+        session_id: "sess-1",
+        version: 5,
+    });
+    await drain();
+    assert.strictEqual(el.src, "", "pause released the armed source");
+    assert.strictEqual(layer.parentNode, null, "and removed its layer");
+
+    await activateAt(h, commit.effective_server_ms);
+    assert.strictEqual(el.playCalls, 1, "only the probe ever played");
+    assert.strictEqual(visibleLayers(h).length, 0, "nothing was painted");
+
+    /* Resume is the server preparing the current item again. */
+    h.emit(
+        videoPrepare({
+            version: 6,
+            preparation_id: "prep-resume",
+        })
+    );
+    await drain();
+    const resumed = playerVideos(h).find((video) => video !== el);
+    assert.ok(resumed, "the resumed preparation has its own element");
+    await driveVideoReady(h, resumed);
+    const resumedCommit = videoCommit(h, {
+        version: 7,
+        prepared_at_version: 6,
+        preparation_id: "prep-resume",
+        effective_server_ms: h.now() + 400,
+    });
+    h.emit(resumedCommit);
+    await activateAt(h, resumedCommit.effective_server_ms);
+    assert.strictEqual(resumed.playCalls, 2, "the resumed video is playing");
+    assert.strictEqual(
+        layerOf(h, resumed).style.visibility,
+        "visible",
+        "the resumed video is on the wall"
+    );
+});
+
+test("video: a superseded preparation never paints, the new one does", async () => {
+    const h = await startVideoHarness(VP);
+    h.emit(videoPrepare());
+    await drain();
+    const old = playerVideos(h)[0];
+    const oldLayer = layerOf(h, old);
+
+    h.emit(
+        videoPrepare({
+            version: 4,
+            preparation_id: "prep-2",
+            occurrence: { playlist_revision: 1, item_index: 1, loop: 0 },
+        })
+    );
+    await drain();
+    assert.strictEqual(old.src, "", "the superseded element let its source go");
+    assert.strictEqual(oldLayer.parentNode, null, "its layer is gone");
+
+    /* Every event from the abandoned lineage is inert. */
+    old.metadata(6);
+    old.settleSeek();
+    old.progress([[0, 6000]]);
+    await drain();
+    assert.strictEqual(old.playCalls, 0, "the stale preparation never probed");
+    assert.strictEqual(
+        readyFrames(h, "prep-1").length,
+        0,
+        "and never reported ready"
+    );
+
+    /* Nor can a commit for it paint anything. */
+    h.emit(
+        videoCommit(h, {
+            preparation_id: "prep-1",
+            effective_server_ms: h.now() + 100,
+        })
+    );
+    await activateAt(h, h.now() + 200);
+    assert.strictEqual(old.playCalls, 0, "a stale commit never starts");
+    assert.strictEqual(visibleLayers(h).length, 0, "nothing painted");
+
+    const fresh = playerVideos(h).find((el) => el !== old);
+    assert.ok(fresh, "the current preparation is still alive");
+    await driveVideoReady(h, fresh);
+    assert.ok(
+        readyFrames(h, "prep-2").length >= 1,
+        "the current preparation reports ready"
+    );
+    const commit = videoCommit(h, {
+        version: 5,
+        prepared_at_version: 4,
+        preparation_id: "prep-2",
+        occurrence: { playlist_revision: 1, item_index: 1, loop: 0 },
+        effective_server_ms: h.now() + 400,
+    });
+    h.emit(commit);
+    await activateAt(h, commit.effective_server_ms);
+    assert.strictEqual(fresh.playCalls, 2, "the current video started");
+    assert.strictEqual(
+        layerOf(h, fresh).style.visibility,
+        "visible",
+        "the current video is on the wall"
+    );
+});
+
+test("video: buffer coverage is exact, ranged and only the remainder near the end", async () => {
+    const h = await startVideoHarness(VP);
+    h.emit(
+        videoPrepare({
+            asset: videoAsset({ durationMs: 3000 }),
+            media: {
+                kind: "video",
+                duration_ms: 3000,
+                buffer_goal_ms: 5000,
+                start_lead_ms: 1000,
+                prepare_timeout_ms: 30000,
+            },
+        })
+    );
+    await drain();
+    const el = playerVideos(h)[0];
+    el.metadata(3);
+    el.settleSeek();
+
+    /* The range does not contain the target: not coverage at all. */
+    el.progress([[500, 3000]]);
+    await drain();
+    assert.strictEqual(el.playCalls, 0, "an unrelated range is not coverage");
+
+    /* One millisecond short must not be rounded up into a pass. */
+    el.progress([[0, 2999]]);
+    await drain();
+    assert.strictEqual(el.playCalls, 0, "a 1 ms gap is a gap");
+
+    /* Coverage comes from the range containing the target, not from a
+     * later range that happens to be longer. */
+    el.progress([
+        [0, 1000],
+        [2000, 3000],
+    ]);
+    await drain();
+    assert.strictEqual(el.playCalls, 0, "only the containing range counts");
+
+    /* Near the end the goal is the remainder (3000 ms), not 5000 ms. */
+    el.progress([[0, 3000]]);
+    await drain();
+    assert.strictEqual(el.playCalls, 1, "the remainder is enough");
+});
+
+test("video: activation denial shows one Enable display and asks for a gesture", async () => {
+    const h = await startVideoHarness(VP);
+    h.emit(videoPrepare());
+    await drain();
+    const el = playerVideos(h)[0];
+    let deny = true;
+    el.playImpl = () =>
+        deny
+            ? Promise.reject(
+                  Object.assign(new Error("play refused"), {
+                      name: "NotAllowedError",
+                  })
+              )
+            : Promise.resolve();
+
+    el.metadata(6);
+    el.settleSeek();
+    el.progress([[0, 6000]]);
+    await drain();
+
+    const denied = readyFrames(h, "prep-1");
+    assert.ok(denied.length >= 1, "the denial was reported");
+    assert.strictEqual(
+        denied[denied.length - 1].video.play_ok,
+        "needs_gesture",
+        "the server is told a gesture is needed"
+    );
+    assert.ok(
+        !h.warnings.some((w) => String(w.message).includes("video cannot play")),
+        "an expected activation denial is not a console warning"
+    );
+    const buttons = h.bodyChildren.filter(
+        (child) =>
+            child.tagName === "BUTTON" &&
+            child.attributes.id === "enable-display"
+    );
+    assert.strictEqual(buttons.length, 1, "exactly one Enable display button");
+    assert.strictEqual(buttons[0].hidden, false, "the button is shown");
+    assert.strictEqual(buttons[0].textContent, "Enable display");
+
+    /* The tap is the gesture: probe again, then finish the reseek. */
+    deny = false;
+    buttons[0].emit("click", { stopPropagation() {} });
+    await drain();
+    el.settleSeek();
+    await drain();
+    const accepted = readyFrames(h, "prep-1");
+    assert.strictEqual(
+        accepted[accepted.length - 1].video.play_ok,
+        "yes",
+        "the retried probe reports playable"
+    );
+    assert.strictEqual(buttons[0].hidden, true, "the button hides itself");
+});
+
+test("video: playback reports a rVFC sample with its source and drift", async () => {
+    const h = await startVideoHarness(VP);
+    h.emit(videoPrepare());
+    await drain();
+    const el = playerVideos(h)[0];
+    await driveVideoReady(h, el);
+
+    const commit = videoCommit(h, { effective_server_ms: h.now() + 400 });
+    h.emit(commit);
+    await activateAt(h, commit.effective_server_ms);
+
+    h.advance(20);
+    el.takeFrame(0.02, h.now());
+    await drain();
+
+    const samples = h.sent("video_sample");
+    assert.strictEqual(samples.length, 1, "one sample was sent");
+    assert.strictEqual(samples[0].session_id, "sess-1");
+    assert.strictEqual(samples[0].source, "rvfc");
+    assert.strictEqual(samples[0].occurrence.item_index, 0);
+    assert.ok(
+        Math.abs(samples[0].drift_ms) <= 1,
+        "a media time on target has no drift"
+    );
+    assert.strictEqual(samples[0].rate, 1, "the deadband keeps rate 1");
+    assert.strictEqual(
+        el.playbackRate,
+        1,
+        "the element was not rate-shifted inside the deadband"
+    );
+});
+
+test("video: a wall generation change disposes an armed commit", async () => {
+    const h = await startVideoHarness(VP);
+    h.emit(wallFrame({ scene: { content: { type: "color" }, layout: "active" } }));
+    await drain();
+    h.emit(videoPrepare());
+    await drain();
+    const el = playerVideos(h)[0];
+    await driveVideoReady(h, el);
+    const commit = videoCommit(h, { effective_server_ms: h.now() + 2000 });
+    h.emit(commit);
+
+    /* The server restarted or was replaced: the old lineage cannot paint. */
+    h.emit(
+        wallFrame({
+            revision: 2,
+            generation: "gen-2",
+            scene: { content: { type: "color" }, layout: "active" },
+        })
+    );
+    await drain();
+    assert.strictEqual(el.src, "", "the armed source was released");
+    await activateAt(h, commit.effective_server_ms);
+    assert.strictEqual(el.playCalls, 1, "only the probe ever played");
+    assert.strictEqual(visibleLayers(h).length, 0, "nothing was painted");
+});
+
+test("playback stop restores the scene the server persisted", async () => {
+    const h = await startHarness(VP);
+    h.socket().readyState = 1;
+    h.setFetch(route({ [ASSET_A]: okResponse(assetBlob("A", 400, 400)) }));
+    h.emit(wallFrame());
+    await drain();
+    assertCloseAll(
+        lastDrawImage(h).slice(1),
+        COVER_400,
+        "the persisted picture is on the wall"
+    );
+
+    /* A prepared still replaces the canvas; persistedWall stays. */
+    const stillId = "sha256:" + ASSET_B;
+    h.emit({
+        type: "prepare",
+        session_id: "sess-1",
+        version: 3,
+        preparation_id: "still-1",
+        occurrence: { playlist_revision: 1, item_index: 0, loop: 0 },
+        asset: {
+            id: stillId,
+            url: "/assets/" + stillId,
+            intrinsicWidth: 1000,
+            intrinsicHeight: 1500,
+        },
+        plan: VIDEO_PLAN,
+        calibration: VIDEO_CALIBRATION,
+        connection_id: "conn-1",
+    });
+    await drain();
+    const effective = h.now() + 100;
+    h.emit({
+        type: "commit",
+        session_id: "sess-1",
+        version: 4,
+        prepared_at_version: 3,
+        preparation_id: "still-1",
+        occurrence: { playlist_revision: 1, item_index: 0, loop: 0 },
+        effective_server_ms: effective,
+        connection_id: "conn-1",
+    });
+    await activateAt(h, effective);
+    assertCloseAll(
+        lastDrawImage(h).slice(1),
+        COVER_1000x1500,
+        "the committed still is on the wall"
+    );
+
+    h.emit({ type: "playback", state: "stopped" });
+    await drain();
+    assertCloseAll(
+        lastDrawImage(h).slice(1),
+        COVER_400,
+        "stop restored the persisted scene"
+    );
+});
+
+test("video: the layer uses the still path's CSS physical transform", async () => {
+    const h = await startVideoHarness(VP);
+    h.setFetch(route({ [ASSET_A]: okResponse(assetBlob("A", 1280, 720)) }));
+    h.emit({
+        type: "render",
+        mode: "physical",
+        revision: 11,
+        generation: "gen-v",
+        render_seq: 1,
+        wall: { width: VP.width, height: VP.height },
+        scene: {
+            content: imageContent({
+                intrinsicWidth: 1280,
+                intrinsicHeight: 720,
+            }),
+            layout: "active",
+        },
+        calibration: VIDEO_CALIBRATION,
+        plan: VIDEO_PLAN,
+        slot: null,
+    });
+    await drain();
+
+    /* The still path drew with the same plan, in CSS pixels, scaled by the
+     * backing ratio (dpr 1 here). */
+    const expected = view.canvasTransformComponents({
+        backing: [VP.width, VP.height],
+        rect: [VP.width, VP.height],
+        calibration: {
+            viewport_width: VP.width,
+            viewport_height: VP.height,
+            quarter_turn: 0,
+            panel_offset_mm: [0, 0],
+            mm_per_css: [1, 1],
+            panel_width: VIDEO_PLAN.active.width,
+            panel_height: VIDEO_PLAN.active.height,
+        },
+        panel_from_source: VIDEO_PLAN.panel_from_source,
+        source_size: [1280, 720],
+    });
+    assertCloseAll(clipRect(h), [
+        expected.clip.x,
+        expected.clip.y,
+        expected.clip.width,
+        expected.clip.height,
+    ], "still clip");
+
+    h.emit(videoPrepare());
+    await drain();
+    const el = playerVideos(h)[0];
+    const layer = layerOf(h, el);
+    const clip = [
+        parseFloat(layer.style.left),
+        parseFloat(layer.style.top),
+        parseFloat(layer.style.width),
+        parseFloat(layer.style.height),
+    ];
+    assertCloseAll(clip, [
+        expected.clip.x,
+        expected.clip.y,
+        expected.clip.width,
+        expected.clip.height,
+    ], "video clip");
+    const m = expected.matrix;
+    assert.strictEqual(
+        el.style.transform,
+        "matrix(" +
+            [
+                m[0],
+                m[1],
+                m[2],
+                m[3],
+                m[4] - expected.clip.x,
+                m[5] - expected.clip.y,
+            ].join(",") +
+            ")",
+        "video matrix is the still matrix shifted by the clip corner"
+    );
+});
+
+test("video: a still commit followed by the next video prepare paints both", async () => {
+    const h = await startVideoHarness(VP);
+    h.setFetch(
+        route({
+            [ASSET_A]: okResponse(assetBlob("A", 400, 400)),
+            [ASSET_B]: okResponse(assetBlob("B", 1000, 1500)),
+        })
+    );
+    h.emit(wallFrame());
+    await drain();
+
+    const stillId = "sha256:" + ASSET_B;
+    h.emit({
+        type: "prepare",
+        session_id: "sess-1",
+        version: 3,
+        preparation_id: "still-1",
+        occurrence: { playlist_revision: 1, item_index: 0, loop: 0 },
+        asset: {
+            id: stillId,
+            url: "/assets/" + stillId,
+            intrinsicWidth: 1000,
+            intrinsicHeight: 1500,
+        },
+        plan: VIDEO_PLAN,
+        calibration: VIDEO_CALIBRATION,
+        connection_id: "conn-1",
+    });
+    await drain();
+
+    const stillEffective = h.now() + 800;
+    h.emit({
+        type: "commit",
+        session_id: "sess-1",
+        version: 4,
+        prepared_at_version: 3,
+        preparation_id: "still-1",
+        occurrence: { playlist_revision: 1, item_index: 0, loop: 0 },
+        effective_server_ms: stillEffective,
+        connection_id: "conn-1",
+    });
+
+    /* The server sends the next occurrence's prepare immediately after
+     * the commit: it must not cancel the still's pending cut. */
+    h.emit(
+        videoPrepare({
+            version: 4,
+            preparation_id: "prep-2",
+            occurrence: { playlist_revision: 1, item_index: 1, loop: 0 },
+        })
+    );
+    await drain();
+    const videoEl = playerVideos(h)[0];
+    await driveVideoReady(h, videoEl);
+
+    await activateAt(h, stillEffective);
+    assertCloseAll(
+        lastDrawImage(h).slice(1),
+        COVER_1000x1500,
+        "the still cut still painted"
+    );
+    assert.ok(
+        layerOf(h, videoEl),
+        "the next occurrence's video preparation survived the still paint"
+    );
+    assert.notStrictEqual(videoEl.src, "", "and kept its source");
+
+    const videoEffective = h.now() + 400;
+    h.emit(
+        videoCommit(h, {
+            version: 5,
+            prepared_at_version: 4,
+            preparation_id: "prep-2",
+            occurrence: { playlist_revision: 1, item_index: 1, loop: 0 },
+            effective_server_ms: videoEffective,
+        })
+    );
+    await activateAt(h, videoEffective);
+    assert.strictEqual(videoEl.playCalls, 2, "the next video started");
+    assert.strictEqual(
+        layerOf(h, videoEl).style.visibility,
+        "visible",
+        "the next video is on the wall"
+    );
+});
+
+test("video: a play promise that never settles is bounded and recovered", async () => {
+    const h = await startVideoHarness(VP);
+    h.emit(videoPrepare());
+    await drain();
+    const el = playerVideos(h)[0];
+    await driveVideoReady(h, el);
+
+    const hung = deferred();
+    el.playImpl = function (element) {
+        /* Call 1 is the probe; call 2 is activation, which hangs. */
+        if (element.playCalls === 1) return Promise.resolve();
+        if (element.playCalls === 2) return hung.promise;
+        return Promise.resolve();
+    };
+    const commit = videoCommit(h, { effective_server_ms: h.now() + 400 });
+    h.emit(commit);
+    await activateAt(h, commit.effective_server_ms);
+    assert.strictEqual(el.playCalls, 2, "activation is waiting on play()");
+    assert.strictEqual(el.wantFrame(), 0, "nothing is observing yet");
+
+    const fired = h.fireTimers((timer) => timer.delay === 3000);
+    assert.ok(fired >= 1, "the activation play deadline was armed");
+    await drain();
+    assert.ok(el.pauseCalls >= 2, "the hung play() was paused");
+    assert.strictEqual(el.playCalls, 3, "one bounded retry played again");
+    assert.ok(el.wantFrame() > 0, "the retry is being observed");
+
+    /* The original promise resolving late is inert. */
+    hung.resolve();
+    await drain();
+    assert.strictEqual(el.playCalls, 3, "the late resolution played nothing");
+});
 
 /* ------------------------------------------------------------------ */
 /* Runner                                                             */

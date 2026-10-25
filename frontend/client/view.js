@@ -297,6 +297,51 @@
         };
     }
 
+    /*
+     * Video drift correction. Drift is observed media time minus the
+     * compensated target at the same instant: positive drift is a video that
+     * is ahead and must slow down, negative drift must speed up.
+     *
+     *   |drift| <= 50 ms     deadband: rate 1, no seek
+     *   50..250 ms           rate = 1 - drift * (0.02 / 250), clamped
+     *   > 250 ms             one local seek, at most once per 5 s; while the
+     *                        seek budget is spent the rate stays at its limit
+     */
+    var VIDEO_DEADBAND_MS = 50;
+    var VIDEO_SEEK_MS = 250;
+    var VIDEO_RATE_SPAN = 0.02;
+    var VIDEO_SEEK_INTERVAL_MS = 5000;
+
+    function videoDriftMs(mediaMs, targetMs) {
+        return (
+            finiteNumber(mediaMs, "media time") -
+            finiteNumber(targetMs, "target time")
+        );
+    }
+
+    function videoCorrection(options) {
+        var drift = finiteNumber(options.driftMs, "drift");
+        var magnitude = Math.abs(drift);
+        if (magnitude <= VIDEO_DEADBAND_MS) return { rate: 1, seek: false };
+        if (magnitude <= VIDEO_SEEK_MS) {
+            var rate = 1 - drift * (VIDEO_RATE_SPAN / VIDEO_SEEK_MS);
+            return {
+                rate: Math.min(
+                    1 + VIDEO_RATE_SPAN,
+                    Math.max(1 - VIDEO_RATE_SPAN, rate)
+                ),
+                seek: false,
+            };
+        }
+        var last = options.lastSeekMs;
+        var due =
+            last === null ||
+            last === undefined ||
+            finiteNumber(options.nowMs, "now") - last >= VIDEO_SEEK_INTERVAL_MS;
+        if (due) return { rate: 1, seek: true };
+        return { rate: 1 - (drift > 0 ? 1 : -1) * VIDEO_RATE_SPAN, seek: false };
+    }
+
     var api = {
         IDENTITY: IDENTITY,
         multiply: multiply,
@@ -313,7 +358,9 @@
         cssToPanel: cssToPanel,
         backingScale: backingScale,
         canvasTransform: canvasTransform,
-        canvasTransformComponents: canvasTransformComponents
+        canvasTransformComponents: canvasTransformComponents,
+        videoDriftMs: videoDriftMs,
+        videoCorrection: videoCorrection,
     };
 
     if (typeof window !== "undefined") window.TabletWallView = api;
