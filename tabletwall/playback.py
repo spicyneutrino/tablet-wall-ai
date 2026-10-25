@@ -176,6 +176,9 @@ def _cancel_future_commit(session: Session, now_ms: float) -> None:
         session.previous_effective_ms = None
         session.displayed = session.current
         session.final = False
+        if session.current is not None:
+            session.index = session.current.item_index
+            session.loop_count = session.current.loop
 
 
 def validate_playlist(

@@ -263,3 +263,16 @@ def test_readiness_requires_decoded_mapping_and_occurrence():
     assert playback.accept_ready(**{**common, "evidence_seq": 3}, decoded=True,
                                  occurrence={"playlist_revision": 1, "item_index": 1, "loop": 0}) is False
     assert playback.accept_ready(**{**common, "evidence_seq": 4}, decoded=True) is True
+
+
+def test_cancelling_a_future_commit_restores_the_active_index():
+    s = session(now=1000)
+    assert ready(s, "dev-1", 1100) and ready(s, "dev-2", 1100)
+    playback.tick(s, 1000)  # commit item 0 at 2000
+    playback.refresh_display(s, 2000)
+    assert ready(s, "dev-1", 6900, seq=2) and ready(s, "dev-2", 6900, seq=2)
+    playback.tick(s, 6999)  # commit item 1 at 7000, still future
+    assert s.current.item_index == 1 and s.previous.item_index == 0
+    playback.pause(s, 6999)
+    assert s.current.item_index == 0 and s.index == 0 and s.loop_count == 0
+    assert s.displayed.item_index == 0
