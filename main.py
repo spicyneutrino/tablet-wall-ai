@@ -2324,7 +2324,9 @@ async def _playback_after_reconnect(
     one server-authoritative group recovery, while every operator-controlled
     or near-end state stays on the persisted scene.
     """
-    if device_id not in session.cohort:
+    if session is not _playback_session or device_id not in session.cohort:
+        # A session replaced while the welcome/render was being written must
+        # not start a recovery under its old lineage.
         return
     if session.state in ("recovering", "preparing", "armed"):
         pending = session.pending
