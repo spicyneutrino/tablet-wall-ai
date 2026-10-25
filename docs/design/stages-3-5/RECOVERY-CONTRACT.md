@@ -143,25 +143,22 @@ Durable, committed evidence:
   cut. The injected fault exercises the server path, not the tablet's natural
   fault detector. Software browser evidence.
 - `simulator/browser/group_recovery_run.py`: a hung play promise, one group
-  recovery at the live playhead, one common commit, and the next boundary at
-  the remaining duration. Its blocked copy is fixture-rendered, not a live
-  cap. Software browser evidence.
+  recovery at the live playhead, one common commit, the real following cut and
+  the remaining-duration next boundary. Its blocked copy is fixture-rendered,
+  not a live cap; it is counted separately from the live checks.
+- `simulator/browser/recovery_acceptance_run.py`: strict and online attempt
+  caps, the terminal hold on both the socket-fault and stale-sample paths, no
+  fourth prepare, operator Retry after a strict cap, Stop after a hold, the
+  approximately 31 s timeout under both policies, multi-fault ordering in both
+  orders, and final-item recovery. Two consecutive runs recorded 88/88 checks
+  and 5/5 scenarios.
 - `simulator/browser/controller_run.py`: pause summary and stable dwell, live
   versus editable playlist identity across save, reorder and reload, and a
   saved draft during a real recovery. Software browser evidence on one host
   clock.
 
-Disposable probes from the 2026-10-25 review (strict/online timeout, live cap,
-operator Retry, multi-fault and final-item recovery) are not durable
-acceptance and are not counted here.
-
-The recovery acceptance runner will close this scope: strict and online
-attempt caps, the terminal hold on both the socket-fault and stale-sample
-paths, no fourth prepare, operator Retry after a strict cap, Stop after a
-hold, the approximately 31 s timeout under both policies, multi-fault
-ordering, and final-item recovery. Until that runner lands and passes, those
-transitions are model-tested and review-probed, not committed browser evidence.
-No counts are claimed for it in advance.
+The disposable probes from the 2026-10-25 review are not counted as durable
+acceptance; the committed runners above supersede them.
 
 All browser evidence is software on one host and one desktop Chromium engine.
 It does not prove optical onset, physical decode, suspend, iOS Safari, real

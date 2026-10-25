@@ -735,19 +735,22 @@ treating advisor review as product acceptance.
 | F2 terminal hold | Fixed | `8c0c3c3` model and fan-out plus `8df56f6` client handling. The cap advances the session version, clears pending work, builds one hold frame before fan-out, and sends no fourth prepare. Both the socket-fault and stale-sample cap paths use it. The client holds the picture and rejects a stale terminal frame after Retry or a new session. Stop restores the persisted scene; strict Retry resets the fresh episode to attempt 1. |
 | F3 pause rendering | Fixed | `925556b`: `remainingDwell` checks `pending` before converting or dereferencing it and uses `paused_at_ms` as the observation time, so the paused countdown stops and the status poll stays healthy. |
 | F4 live item identity | Fixed | `925556b`: status publishes `playlist_revision` and `live.current/displayed/pending` from the frozen session. The controller renders live name, kind and duration from that data, hides the editable `Now` marker when revisions differ, and a later Start uses the saved revision. |
-| F5 evidence gaps | Partially landed | `video_run.py` now fails on unexpected page/console/request errors and requires visible advancing pictures. `video_transitions_run.py` adds the F1 transitions and the real following cut. `controller_run.py` adds durable pause and live-identity coverage. Recovery timeout, live cap, multi-fault and final-item acceptance remain pending with the recovery acceptance runner. |
-| F6 docs/evidence schemas | Partially landed | Current capability, historical scope, evidence kinds and acceptance gaps are reconciled here and in `README.md`, `RECOVERY.md`, `RECOVERY-CONTRACT.md` and `simulator/README.md`. Report-summary normalization (a common runner version, head, dirty, scenario and count schema) and `PROTOCOL.md`'s Retry/Stop wording remain outside this change. |
+| F5 evidence gaps | Fixed | `video_run.py` now fails on unexpected page/console/request errors and requires visible advancing pictures. `video_transitions_run.py` adds the F1 transitions and the real following cut. `controller_run.py` adds durable pause and live-identity coverage. `recovery_acceptance_run.py` adds live strict/online caps, terminal hold, operator Retry, Stop, timeout, multi-fault ordering and final-item recovery; two runs recorded 88/88 checks and 5/5 scenarios. `group_recovery_run.py` now has 19/19 live checks plus 1/1 fixture copy check. |
+| F6 docs/evidence schemas | Partially landed | Current capability, historical scope, evidence kinds and acceptance gaps are reconciled here and in `README.md`, `RECOVERY.md`, `RECOVERY-CONTRACT.md` and `simulator/README.md`. `PROTOCOL.md` now qualifies Retry as strict-blocked and Start again as online-failed. Report-summary normalization is still in flight. |
 
 ### Repairs and durable browser evidence
 
 The durable browser additions are `02349b1` (`controller_run.py`), `ae97049`
-with merge `2a30ffb` (`video_run.py` v2 and `video_transitions_run.py`), and
-`187bde4` (deterministic recovery-time save). Two consecutive green runs each
-recorded:
+with merge `2a30ffb` (`video_run.py` v2 and `video_transitions_run.py`),
+`187bde4` (deterministic recovery-time save), and `c4a68d1` with merge
+`93665e1` (`recovery_acceptance_run.py` and the strengthened group runner).
+Two consecutive green runs each recorded:
 
 - `controller_run.py`: 54/54 checks, 11/11 scenarios.
 - `video_transitions_run.py`: 51/51 checks.
 - `video_run.py` v2: 35/35 checks.
+- `recovery_acceptance_run.py`: 88/88 checks, 5/5 scenarios.
+- `group_recovery_run.py`: 19/19 live checks plus 1/1 fixture copy check.
 
 Baseline failure proofs:
 
@@ -756,18 +759,16 @@ Baseline failure proofs:
 - `video_run.py` at `8df56f6`: 34/35, failing on repeated controller page
   errors `Cannot read properties of null (reading 'occurrence')` from F3.
 
-Targeted verification in the review-fix worktree: Python 851; client 71;
-view 12; wake lock 10. `field_run` 12/12 and `restore_run` 41/41 are last
-recorded runs from before this round and were not rerun. Do not add counts
-across overlapping browser suites.
+Verification on the merged tree: Python 851; client 71; view 12; wake lock 10;
+base browser 106/106; `field_run` 12/12 and `restore_run` 41/41. Do not add
+counts across overlapping browser suites.
 
 Still pending:
 
-- Recovery acceptance: timeout, live strict and online caps, operator Retry,
-  multi-fault ordering and final-item recovery. No runner count is claimed
-  until the recovery acceptance runner lands and passes.
-- Phase 3: mid-video reconnect and session-only named exclusions. Both still
-  need the operator's product choices; neither is implemented or claimed.
+- Phase 3: the operator accepted automatic mid-video reconnect with one normal
+  attempt, session-only named exclusions at Start with the persisted static
+  scene, and no live exclusion command. Implementation is next; neither is
+  claimed yet.
 - Report-summary normalization, physical/optical validation, iOS Safari,
   installed CA trust, real Wi-Fi/OS, kiosk and soak.
 
@@ -776,7 +777,8 @@ Still pending:
 The remaining product work is hardware and deployment evidence: optical cut
 timing, physical decode/suspend, iOS Safari, mixed-model calibration,
 installed local-CA trust, real Wi-Fi/OS behavior, kiosk and soak. Software
-follow-ups that stay in scope are the recovery acceptance runner (timeout,
-live cap, multi-fault and final item), named exclusions, mid-video reconnect
-reusing the recovery model, and any credible red-team findings. None of the
-hardware gates may be inferred from the software evidence above.
+follow-ups that stay in scope are the accepted Phase 3 reconnect and
+session-only exclusions. From the recovery model, reconnect uses one group
+recovery at the live playhead and one normal attempt; exclusions are chosen at
+Start, show the persisted static scene, and have no live exclusion command.
+None of the hardware gates may be inferred from the software evidence above.

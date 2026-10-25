@@ -3,23 +3,21 @@
 > **Current state (2026-10-25).** The latest evidence and acceptance record is
 > the [review-fix round](EXECUTION_LOG.md#review-fix-round-2026-10-25) in
 > `EXECUTION_LOG.md`. Software release approval remains closed. F1-F4 are
-> repaired. Durable browser coverage now includes video transitions and
-> controller pause/live identity; recovery timeout, live cap, multi-fault and
-> final-item acceptance remain pending until the recovery acceptance runner
-> lands. All optical/physical, deployment, Wi-Fi/OS, kiosk and soak gates
-> remain MISSING.
+> repaired. Durable browser coverage includes video transitions, controller
+> pause/live identity, and the recovery acceptance runner (88/88 checks,
+> 5/5 scenarios, twice). All optical/physical, deployment, Wi-Fi/OS, kiosk and
+> soak gates remain MISSING.
 
 ## Current software counts (2026-10-25)
 
 - Python 851; client 71; view 12; wake lock 10. The Python and JavaScript
   counts were rerun in this worktree for the review-fix round.
 - Durable browser: `video_run` 35/35 and `video_transitions_run` 51/51, twice
-  each; `controller_run` 54/54 checks and 11/11 scenarios, twice.
-- `field_run` 12/12 and `restore_run` 41/41 are the last recorded runs from
-  before the new runners; they were not rerun for this round.
-- Recovery acceptance is pending: timeout, live strict/online caps,
-  multi-fault ordering and final-item recovery have no committed runner count
-  yet. Do not sum overlapping suites.
+  each; `controller_run` 54/54 checks and 11/11 scenarios, twice;
+  `group_recovery_run` 19/19 live plus 1/1 fixture; `recovery_acceptance_run`
+  88/88 checks and 5/5 scenarios, twice; `field_run` 12/12 and `restore_run`
+  41/41 rerun on the merged tree.
+- Base `run.py` 106/106 on the merged tree. Do not sum overlapping suites.
 
 This page is a historical record of the 2026-10-24 recovery, preserved in
 place. It was recovered from the interrupted Claude Agent session
