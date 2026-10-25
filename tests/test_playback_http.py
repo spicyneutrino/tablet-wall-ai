@@ -162,3 +162,25 @@ def test_a_video_playlist_defaults_to_strict_and_uses_its_duration(
             assert status["policy"] == "strict"
             assert set(status["cohort"]) == {A, B}
             assert status["pending"]["media"]["kind"] == "video"
+
+
+def test_a_layout_change_aborts_an_active_session():
+    with TestClient(main.app) as client:
+        prepare_physical(client)
+        with client.websocket_connect(socket_url(A)) as socket:
+            socket.receive_json()
+            socket.receive_json()
+            socket.receive_json()
+            started = client.post("/api/v3/playback/start")
+            assert started.status_code == 200, started.text
+            assert client.get("/api/v3/playback").json()["state"] != "stopped"
+
+            config = client.get("/api/v3/config").json()
+            changed = layout()
+            changed["bounds"]["width"] = 210
+            headers = {"If-Match": config["etag"]}
+            if os.environ.get("TABLET_WALL_OPERATOR_ORIGIN"):
+                headers["Origin"] = os.environ["TABLET_WALL_OPERATOR_ORIGIN"]
+            response = client.put("/api/v3/layout", json=changed, headers=headers)
+            assert response.status_code == 200, response.text
+            assert client.get("/api/v3/playback").json() == {"state": "stopped"}

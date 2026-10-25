@@ -79,3 +79,33 @@ def test_replacing_a_socket_revokes_before_a_tick():
     assert main.device_sockets["dev-1"] is new
     main._playback_session.pending.leases["dev-2"].ready = False
     assert playback.tick(main._playback_session, 1500) == []
+
+
+def test_commit_reaches_the_other_members_when_one_writer_fails(monkeypatch):
+    import asyncio
+
+    main._playback_session = session()
+    pending = main._playback_session.pending
+    action = {
+        "type": "commit", "version": 2, "prepared_at_version": 1,
+        "preparation_id": pending.id, "occurrence": pending.occurrence.as_dict(),
+        "asset": A, "effective_server_ms": main._now_ms() + 1000,
+        "devices": ["dev-1", "dev-2"],
+        "connections": {"dev-1": "conn-dev-1", "dev-2": "conn-dev-2"},
+    }
+    first, second = object(), object()
+    main.devices["dev-1"] = {"device_id": "dev-1", "connection_id": "conn-dev-1"}
+    main.devices["dev-2"] = {"device_id": "dev-2", "connection_id": "conn-dev-2"}
+    main.device_sockets["dev-1"] = first
+    main.device_sockets["dev-2"] = second
+    sent = []
+
+    async def send(socket, frame, stamp=None):
+        if socket is first:
+            raise RuntimeError("writer closed")
+        sent.append(socket)
+
+    monkeypatch.setattr(main, "_send_to", send)
+    asyncio.run(main._send_commit(main._playback_session, action))
+    assert sent == [second]
+    assert main._playback_session.missed == ["dev-1"]

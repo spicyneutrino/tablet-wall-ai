@@ -1947,6 +1947,7 @@ async def put_display_v3(device_id: str, command: ProfileCommand, request: Reque
         )
     except displays.DisplayError as error:
         raise HTTPException(status_code=422, detail=str(error)) from error
+    await _abort_playback("mapping changed")
     return {"display": profile, "etag": _config_etag()}
 
 
@@ -1973,6 +1974,7 @@ async def put_calibration_v3(
         )
     except displays.DisplayError as error:
         raise HTTPException(status_code=422, detail=str(error)) from error
+    await _abort_playback("mapping changed")
     return {"calibration": saved, "etag": _config_etag()}
 
 
@@ -2017,6 +2019,7 @@ async def put_physical_layout_v3(command: PhysicalLayoutCommand, request: Reques
         }
 
     _commit_wall(apply)
+    await _abort_playback("layout changed")
     # A cached logical controller cannot represent a physical wall: close it
     # with the upgrade code instead of letting it issue fenced writes.
     for socket in list(controller_sockets):
@@ -2067,6 +2070,7 @@ async def recall_physical_layout_v3(name: str, request: Request):
         target["layout"] = deepcopy(saved)
 
     _commit_wall(apply)
+    await _abort_playback("layout changed")
     for socket in list(controller_sockets):
         if controller_protocols.get(socket, 1) != 3:
             controller_sockets.discard(socket)
@@ -2275,15 +2279,23 @@ async def _prepare_playback(session: playback.Session) -> None:
     if pending is None:
         return
     for device_id in session.cohort:
-        await _send_prepare(session, pending, device_id)
+        with contextlib.suppress(Exception):
+            await _send_prepare(session, pending, device_id)
 
 
 async def _send_commit(session: playback.Session, action: dict[str, Any]) -> None:
     descriptor = _asset_descriptor(action["asset"])
+    expected = action.get("connections") or {}
+    failed: list[str] = []
     for device_id in action["devices"]:
         record = devices.get(device_id)
         socket = device_sockets.get(device_id)
         if record is None or socket is None:
+            failed.append(device_id)
+            continue
+        if device_id in expected and record.get("connection_id") != expected[device_id]:
+            # A replacement socket has not prepared this occurrence.
+            failed.append(device_id)
             continue
         frame = {
             "type": "commit", **session.lineage(),
@@ -2298,7 +2310,12 @@ async def _send_commit(session: playback.Session, action: dict[str, Any]) -> Non
         }
         if "start_media_ms" in action:
             frame["start_media_ms"] = action["start_media_ms"]
-        await _send_to(socket, frame)
+        try:
+            await _send_to(socket, frame)
+        except Exception:
+            failed.append(device_id)
+    if failed:
+        session.missed = sorted(set(session.missed) | set(failed))
 
 
 async def _abort_playback(reason: str) -> None:

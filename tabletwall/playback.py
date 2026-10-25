@@ -503,6 +503,7 @@ def _commit(
         "asset": pending.asset,
         "effective_server_ms": effective_ms,
         "devices": [lease.device_id for lease in leases],
+        "connections": {lease.device_id: lease.connection_id for lease in leases},
     }
     if pending.media is not None:
         commit["start_media_ms"] = 0
