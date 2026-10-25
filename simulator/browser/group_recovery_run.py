@@ -5,7 +5,9 @@
 One client's active video is frozen and its play promise is replaced with a
 never-settling promise. Its bounded local recovery exhausts and sends a
 video_fault. The server starts one group recovery at the playhead position,
-both clients prepare there, and one common anchor resumes the clip. Software
+both clients prepare there, and one common anchor resumes the clip. The live
+controller is checked during and after the recovery; its blocked copy is
+rendered from a recorded cap status, not a real blocked episode. Software
 evidence only; no optical or physical claim.
 """
 
@@ -254,10 +256,45 @@ async def main(artifacts: Path) -> int:
                 except ValueError:
                     dwell = None
         remaining_s = (video["durationMs"] - recovery["position_ms"]) / 1000
-        check("the controller dwell does not exceed the recovered remainder",
-              dwell is not None and dwell <= remaining_s + 0.5,
+        # A controller poll can land just before the commit anchor, so the
+        # dwell may legitimately include the one-second cut lead.
+        check("the controller dwell does not exceed the remainder and cut lead",
+              dwell is not None and dwell <= remaining_s + 1.5,
               dwell=dwell, remainder=remaining_s, facts=facts[-300:])
         await controller.screenshot(path=str(artifacts / "controller-recovered.png"))
+
+        blocked = {
+            "state": "blocked", "now_ms": final["now_ms"],
+            "blocked_reason": "recovery attempt limit reached",
+            "current": final["current"], "current_effective_ms": final["current_effective_ms"],
+            "pending": None, "cohort": final["cohort"],
+            "recovery": {
+                **final["recovery"], "state": "blocked", "attempts": 4,
+                "missing": [],
+            },
+        }
+        await controller.route(
+            "**/api/v3/playback",
+            lambda route: asyncio.create_task(route.fulfill(json=blocked)),
+        )
+        try:
+            await controller.wait_for_function(
+                "document.querySelector('#playback-status')?.dataset.state"
+                " === 'blocked'",
+                timeout=8000,
+            )
+            blocked_text = await controller.locator("#playback-status").inner_text()
+            retry_visible = await controller.locator("#btn-playback-retry").is_visible()
+        except Exception:
+            blocked_text, retry_visible = "", False
+        report["controller_blocked"] = blocked_text
+        check("the recorded blocked status reads as one sentence and offers Retry",
+              "attempt 4" in blocked_text
+              and "reached. at" not in blocked_text.lower()
+              and retry_visible,
+              text=blocked_text, retry=retry_visible)
+        await controller.screenshot(path=str(artifacts / "controller-blocked.png"))
+        await controller.unroute("**/api/v3/playback")
         await controller.close()
         await pages[0][0].screenshot(path=str(artifacts / "after-recovery.png"))
         http.post("/api/v3/playback/stop",
