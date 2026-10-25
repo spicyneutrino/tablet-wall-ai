@@ -531,11 +531,11 @@ scene restore. No optical or physical decode claim.
 
 ### Verification
 
-- Python: 811 passed.
-- Client JS: 41 passed. View JS: 12 passed. Wake lock: 10/10.
+- Python: 817 passed.
+- Client JS: 43 passed. View JS: 12 passed. Wake lock: 10/10.
 - Browser base: 106/106.
 - Browser 100 cuts + suspend: 130-131/130-131 (UUID-named checks), p50/p95/max 0.2/0.9-1.0/1.1 ms isolated.
-- Video browser: 19/19.
+- Video browser: 20/20.
 - Field browser: 12/12.
 - Recovery browser: 20/20.
 - Simulator: 23 scenarios, 1075 checks.
@@ -578,6 +578,6 @@ defects. All are fixed and covered:
 
 Two findings were already fixed concurrently: a rejected Previous no longer
 cancels the armed cut, and the 412 retry calls the real status refresh.
-Final counts: Python 815, client 43, view 12, wake lock 10. Video browser
+Final counts: Python 817, client 43, view 12, wake lock 10. Video browser
 20/20. Sol's verdict was "not merge-ready" before these fixes; the fixes are
 committed (`3c2d5ee`, `3511055`, `7d7143b`, `d53b128`, `a29ac6d`).
