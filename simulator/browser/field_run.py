@@ -155,11 +155,26 @@ async def main(artifacts: Path) -> int:
         report["new"] = {"id": new_id, "number": http.get("/devices").json()[new_id]["number"]}
         check("the replacement is a different, unplaced identity", new_id != old_id)
 
-        rebound = http.post(f"/devices/{new_id}/rebind", json={"replaces": old_id})
-        report["rebind"] = {"status": rebound.status_code, "body": rebound.json() if rebound.status_code == 200 else rebound.text}
-        check("rebind moves the placement and number", rebound.status_code == 200
-              and rebound.json()["number"] == old_number and rebound.json()["placed"] is True,
+        editor = await browser.new_page(viewport={"width": 1440, "height": 1000})
+        await editor.goto(base + "/controller/physical.html", wait_until="networkidle")
+        await editor.fill("#rebind-new", new_id)
+        await editor.fill("#rebind-replaces", old_id)
+        await editor.fill("#rebind-number", str(old_number))
+        await editor.click("#btn-rebind")
+        await editor.wait_for_function(
+            "document.querySelector('#rebind-msg')?.textContent.includes('Rebound')",
+            timeout=10000,
+        )
+        rebound = http.get("/wall")
+        roster = http.get("/devices").json()
+        report["rebind"] = {"message": await editor.locator("#rebind-msg").inner_text(),
+                            "placements": list(rebound.json()["placements"]),
+                            "number": roster.get(new_id, {}).get("number")}
+        check("the operator rebind form moves the placement and number",
+              report["rebind"]["number"] == old_number
+              and new_id in report["rebind"]["placements"],
               response=report["rebind"])
+        await editor.screenshot(path=str(artifacts / "operator-rebind.png"), full_page=True)
         wall = http.get("/wall").json()
         check("the old identity is gone and the new one holds its place",
               new_id in wall["placements"] and old_id not in wall["placements"],

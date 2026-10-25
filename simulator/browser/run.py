@@ -1896,17 +1896,17 @@ async def exercise(artifacts: Path, report: dict[str, Any], observation_seconds:
 
             await editor_page.click("#btn-playback-refresh")
             await editor_page.wait_for_function(
-                "document.querySelector('#playback-status').textContent.includes('playing')",
+                "document.querySelector('#playback-status').dataset.state === 'playing'",
                 timeout=5000,
             )
             await editor_page.click("#btn-playback-pause")
             await editor_page.wait_for_function(
-                "document.querySelector('#playback-status').textContent.includes('paused')",
+                "document.querySelector('#playback-status').dataset.state === 'paused'",
                 timeout=5000,
             )
             await editor_page.click("#btn-playback-stop")
             await editor_page.wait_for_function(
-                "document.querySelector('#playback-status').textContent.includes('stopped')",
+                "document.querySelector('#playback-status').dataset.state === 'stopped'",
                 timeout=5000,
             )
             check("playback pause and stop work from the controller",
