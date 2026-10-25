@@ -10,7 +10,8 @@ A recovery starts when one of these is true for a playing video occurrence:
 - the client sends `video_fault` after its bounded local recovery is exhausted
   or the browser reports `play_ok: "no"`;
 - the server sees a playing device's last accepted sample older than 3000 ms;
-- the client reports a committed video stopped with `ended: false`.
+- the client reports a committed video stopped with `ended: false`, sent as
+  `video_fault` with reason `stalled` after its local recovery is exhausted.
 
 Ordinary drift inside 250 ms stays local and never starts a recovery.
 
@@ -76,7 +77,12 @@ recovery prepare to the replacement socket.
 - On local recovery exhaustion, `play_ok: "no"`, or a committed video that
   stays paused/ended early, send one `video_fault` for the occurrence and
   position. Do not send a second fault until a new commit changes the
-  occurrence or position.
+  occurrence or position; a recovery commit is a new attempt even when it
+  resumes at the same position.
+- Treat 2500 ms without a presented frame while the element is playing as a
+  stall, even when `currentTime` advances and the element is not paused. The
+  watchdog's own samples renew the server's recency, so the client must
+  notice the frozen glass itself.
 - On `playback` state `recovering` (or a `prepare` with `start_media_ms`),
   freeze the active picture, release pending/armed work, and prepare from the
   position. Buffer coverage, probe, commit and samples use the position.
@@ -104,6 +110,8 @@ recorded here rather than rewritten in place:
   the fresh episode is bounded by the same cap. `Session.recovery` is retained
   with `state: "failed"` on an online-session failure, in addition to the
   `preparing|playing|blocked` states above.
+- A fault before the current commit anchor is ignored. An occurrence that is
+  armed but not yet on the glass cannot have stalled there.
 
 ## Evidence
 
@@ -111,7 +119,9 @@ Model tests: trigger bounds, duplicate suppression, strict missing, timeout,
 retry, attempt cap, remaining-duration boundary, final item, stop/mapping/epoch.
 
 Client tests: fault once, freeze, position-aware coverage, commit at position,
-remaining boundary, stale callbacks ignored.
+remaining boundary, stale callbacks ignored, a playing element with no
+presented frames faults locally, and a recovery commit at the same position
+can report its own fault.
 
 Browser: force one client's play promise to hang, let local recovery exhaust,
 observe the server start one recovery, all clients prepare the same position,

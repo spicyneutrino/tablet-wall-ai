@@ -593,6 +593,10 @@ def accept_fault(
         return "ignored"
     if payload.get("occurrence") != occurrence.as_dict():
         return "ignored"
+    if session.current_effective_ms is None or now_ms < session.current_effective_ms:
+        # The occurrence is armed but not on the glass yet; a fault cannot
+        # describe a picture the cohort has not started.
+        return "ignored"
     reason = payload.get("reason")
     if not isinstance(reason, str) or reason not in FAULT_REASONS:
         return "ignored"

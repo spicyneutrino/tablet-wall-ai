@@ -182,6 +182,15 @@ def test_a_fault_re_prepares_the_current_occurrence_at_its_position():
     assert playback.recovery_status(s, 4500)["state"] == "playing"
 
 
+def test_a_fault_before_the_commit_anchor_is_ignored():
+    s = committed()
+    anchor = s.current_effective_ms
+    assert anchor is not None
+    assert fault(s, now=anchor - 1) == "ignored"
+    assert s.state == "playing" and s.recovery is None
+    assert fault(s, now=anchor) == "preparing"
+
+
 def test_a_fault_must_be_current_bounded_and_is_deduplicated():
     s = committed()
     assert fault(s, position=-1) == "ignored"

@@ -945,7 +945,14 @@ these is true:
 - the server's last accepted `video_sample` for a playing device is older
   than 3000 ms, unless the playhead is within 250 ms of the clip's natural
   end (that sample is not a stall);
-- the client reports the committed occurrence stopped with `ended: false`.
+- the client reports the committed occurrence stopped with `ended: false`,
+  sent as `video_fault` with reason `stalled` after its local recovery is
+  exhausted;
+- the client presents no video frame for 2500 ms while the element is
+  playing (not paused, not seeking, not ended). A frozen decoder can keep
+  `currentTime` and `paused` healthy, so sample recency alone cannot see it;
+  the client spends its local recoveries and then sends the same
+  `video_fault`.
 
 Ordinary drift inside 250 ms stays local and never starts a recovery.
 

@@ -2746,6 +2746,10 @@
     /* An occurrence that ends this close to its scheduled boundary ended
      * naturally; anything earlier is a fault the server should recover. */
     var VIDEO_END_EARLY_MS = 250;
+    /* Frame callbacks stop when a decoder wedges even though currentTime and
+     * the element's paused flag can stay healthy. Two and a half seconds
+     * without a presented frame is a frozen glass, not a slow first frame. */
+    var VIDEO_FRAME_STALL_MS = 2500;
 
     var videoPending = null;
     var videoArmed = null;
@@ -2997,6 +3001,7 @@
             lastSeekAt: null,
             lastSampleAt: -Infinity,
             lastObserveAt: -Infinity,
+            lastFrameAt: null,
             lastReportAt: -Infinity,
             intervals: [],
             listeners: [],
@@ -3472,6 +3477,7 @@
         slot.recoveries += 1;
         warn("video recovery " + slot.recoveries + " (" + why + ")");
         slot.startAttempt += 1;
+        slot.lastFrameAt = performance.now();
         var target = Math.min(
             Math.max(videoTargetMs(slot, serverNowMs()), slot.commit.startMs),
             Math.max(0, slot.durationMs - 1)
@@ -3688,6 +3694,9 @@
         if (videoPending === slot) videoPending = null;
         videoArmed = slot;
         slot.phase = "armed";
+        /* A commit is a new attempt, even when a recovery resumes at the
+         * position the fault named: that attempt may report its own fault. */
+        lastVideoFault = null;
         slot.commit = {
             sessionId:
                 frame.session_id != null ? frame.session_id : slot.sessionId,
@@ -3757,6 +3766,7 @@
         if (videoArmed === slot) videoArmed = null;
         if (videoPending === slot) videoPending = null;
         slot.layer.style.visibility = "visible";
+        slot.lastFrameAt = performance.now();
         if (previous && previous !== slot) releaseVideoSlot(previous);
         startVideoPlayback(slot, attempt);
     }
@@ -3778,6 +3788,7 @@
         function started() {
             slot.needsGesture = false;
             slot.phase = "playing";
+            slot.lastFrameAt = performance.now();
             if (slot.observed) {
                 if (typeof el.requestVideoFrameCallback === "function") {
                     armFrameCallback(slot);
@@ -3885,6 +3896,18 @@
                         }
                     } else if (el.paused) {
                         recoverPlayingVideo(slot, "stopped");
+                    } else if (
+                        slot.evidence.rvfc &&
+                        slot.phase === "playing" &&
+                        !el.seeking &&
+                        (typeof document === "undefined" || !document.hidden) &&
+                        slot.lastFrameAt !== null &&
+                        now - slot.lastFrameAt >= VIDEO_FRAME_STALL_MS
+                    ) {
+                        /* The element still says it is playing but the
+                         * decoder presents no frames: the glass is frozen
+                         * while samples would otherwise look healthy. */
+                        recoverPlayingVideo(slot, "frames stopped");
                     }
                 }
             }, VIDEO_SAMPLE_MS)
@@ -3897,6 +3920,7 @@
         var handle = el.requestVideoFrameCallback(function (now, metadata) {
             if (slot.rvfcHandle === handle) slot.rvfcHandle = null;
             if (!videoAttemptLive(slot, attempt) || !slot.started) return;
+            slot.lastFrameAt = performance.now();
             var shownAt = Number(metadata && metadata.expectedDisplayTime);
             if (!Number.isFinite(shownAt)) {
                 shownAt = Number(metadata && metadata.presentationTime);

@@ -3850,6 +3850,95 @@ test("video recovery: a committed video that stays paused faults once", async ()
     );
 });
 
+test("video recovery: a playing element with no presented frames faults", async () => {
+    const h = await startVideoHarness(VP);
+    h.emit(videoPrepare({
+        asset: videoAsset({ durationMs: 20000 }),
+        media: {
+            kind: "video",
+            duration_ms: 20000,
+            buffer_goal_ms: 5000,
+            start_lead_ms: 1000,
+            prepare_timeout_ms: 30000,
+        },
+    }));
+    await drain();
+    const el = playerVideos(h)[0];
+    await driveVideoReady(h, el);
+    const commit = videoCommit(h, { effective_server_ms: h.now() + 400 });
+    h.emit(commit);
+    await activateAt(h, commit.effective_server_ms);
+    assert.strictEqual(el.paused, false, "the element says it is playing");
+    assert.strictEqual(el.wantFrame(), 1, "a frame callback is armed");
+
+    /* currentTime and paused stay healthy, but no frame is presented. The
+     * watchdog must treat the frozen glass as a stall instead of relying on
+     * the server's sample recency, which this client keeps renewing. */
+    for (let i = 0; i < 4; i++) {
+        h.advance(2600);
+        el.currentTime =
+            (h.now() - commit.effective_server_ms + commit.start_media_ms) /
+            1000;
+        el.seeking = false;
+        h.fireIntervals(1000);
+        await drain();
+        el.settleSeek();
+        await drain();
+    }
+    const faults = h.sent("video_fault");
+    assert.strictEqual(faults.length, 1, "three local recoveries then one fault");
+    assert.strictEqual(faults[0].reason, "stalled");
+});
+
+test("video recovery: a commit lets the same position report again", async () => {
+    const h = await startVideoHarness(VP);
+    h.emit(videoPrepare());
+    await drain();
+    const el = playerVideos(h)[0];
+    await driveVideoReady(h, el);
+    const commit = videoCommit(h, { effective_server_ms: h.now() + 400 });
+    h.emit(commit);
+    await activateAt(h, commit.effective_server_ms);
+    assert.strictEqual(el.playCalls, 2, "the video is playing");
+
+    h.advance(2400);
+    el.currentTime = 2.4;
+    el.seeking = false;
+    for (let i = 0; i < 4; i++) {
+        el.paused = true;
+        h.fireIntervals(1000);
+        await drain();
+    }
+    let faults = h.sent("video_fault");
+    assert.strictEqual(faults.length, 1, "the first stall reported once");
+    assert.strictEqual(faults[0].position_ms, 2400);
+
+    /* The server recovers at the same position. A new commit is a new
+     * attempt: a second stall there must report instead of matching the
+     * first fault's occurrence/position key. */
+    h.emit(videoRecoveryPrepare({ start_media_ms: 2400 }));
+    await drain();
+    const recovery = playerVideos(h).find((video) => video !== el);
+    assert.ok(recovery, "the recovery prepare created its own element");
+    await driveVideoReady(h, recovery);
+    const second = videoRecoveryCommit(h, {
+        effective_server_ms: h.now() + 400,
+    });
+    h.emit(second);
+    await activateAt(h, second.effective_server_ms);
+    recovery.currentTime = 2.4;
+    recovery.seeking = false;
+    for (let i = 0; i < 4; i++) {
+        recovery.paused = true;
+        h.fireIntervals(1000);
+        await drain();
+    }
+    faults = h.sent("video_fault");
+    assert.strictEqual(faults.length, 2, "the new attempt reported its fault");
+    assert.strictEqual(faults[1].position_ms, 2400, "at the same position");
+    assert.strictEqual(faults[1].version, 6, "with the recovery commit version");
+});
+
 test("video recovery: recovering freezes, releases and commits at the position", async () => {
     const h = await startVideoHarness(VP);
     h.emit(videoPrepare());
