@@ -2199,6 +2199,14 @@ def _playback_status() -> dict[str, Any]:
         "displayed": session.displayed.as_dict() if session.displayed else None,
         "current_effective_ms": session.current_effective_ms,
         "pending": session.pending.as_frame() if session.pending else None,
+        "playlist_revision": session.playlist_revision,
+        "live": {
+            "current": playback.item_metadata(session, session.current),
+            "displayed": playback.item_metadata(session, session.displayed),
+            "pending": playback.item_metadata(
+                session, session.pending.occurrence if session.pending else None
+            ),
+        },
         "cohort": session.cohort,
         "missed": session.missed,
         "held": session.held,
@@ -2261,20 +2269,15 @@ async def _send_prepare(
         lease.lease_expires_ms = 0
         lease.clock_ok = False
     frame = {
-        "type": "prepare", **session.lineage(),
-        "preparation_id": pending.id,
-        "occurrence": pending.occurrence.as_dict(),
+        "type": "prepare",
+        **pending.as_frame(),
+        **session.lineage(),
         "asset": descriptor,
         "plan": plan,
         "calibration": calibration,
-        "prepare_deadline_ms": pending.deadline_ms,
-        "effective_server_ms": pending.effective_ms,
         "connection_id": connection_id,
         "cohort": session.cohort,
     }
-    if pending.media is not None:
-        frame["media"] = pending.media
-        frame["start_media_ms"] = pending.start_media_ms
     await _send_to(socket, frame)
     return True
 
@@ -2286,6 +2289,30 @@ async def _prepare_playback(session: playback.Session) -> None:
     for device_id in session.cohort:
         with contextlib.suppress(Exception):
             await _send_prepare(session, pending, device_id)
+
+
+async def _send_terminal_hold(session: playback.Session) -> None:
+    """Freeze every reachable cohort socket on a terminal blocked/failed state.
+
+    The frame is built once, before any await, so every device receives the
+    same lineage and missing set. A broken writer is isolated: it must not
+    skip the remaining members. No prepare follows a terminal transition.
+    """
+    frame = {
+        "type": "playback",
+        "state": session.state,
+        "reason": session.blocked_reason,
+        "missing": sorted(session.missed),
+        **session.lineage(),
+    }
+    for device_id in session.cohort:
+        socket = device_sockets.get(device_id)
+        if socket is None:
+            continue
+        try:
+            await _send_to(socket, frame)
+        except Exception:
+            continue
 
 
 async def _send_commit(session: playback.Session, action: dict[str, Any]) -> None:
@@ -2362,6 +2389,12 @@ async def _playback_loop() -> None:
                     await _send_commit(session, action)
                 if action["type"] in ("commit", "recover"):
                     await _prepare_playback(session)
+                if action["type"] in ("blocked", "failed"):
+                    # Every blocked/failed state is terminal for the session:
+                    # the attempt cap, a recovery timeout or a preparation
+                    # timeout leaves no next commit. The hold is idempotent
+                    # and carries no prepare.
+                    await _send_terminal_hold(session)
                 if action["type"] in (
                     "commit", "hold", "failed", "blocked", "reanchor", "recover",
                 ):
@@ -2399,13 +2432,16 @@ async def put_playlist_v3(command: PlaylistCommand, request: Request):
     for item in items:
         if _asset_descriptor(item["asset"]) is None:
             raise HTTPException(status_code=422, detail="playlist asset is unknown")
-    document = {"items": items, "loop": command.loop, "revision": 1}
     supplied = request.headers.get("if-match")
     current = persist.load_meta("playlist")
     if not supplied:
         raise HTTPException(status_code=428, detail="If-Match is required")
     if supplied.strip().strip('"') != _playlist_etag(current):
         raise HTTPException(status_code=412, detail="playlist changed; reload")
+    # A legacy document without a revision is revision 1, so its first
+    # successful save writes 2. Nothing advances until If-Match matched.
+    revision = int(current.get("revision", 1)) + 1 if isinstance(current, dict) else 1
+    document = {"items": items, "loop": command.loop, "revision": revision}
     persist.save_meta("playlist", document)
     return {"playlist": document, "etag": _playlist_etag(document)}
 
@@ -2485,6 +2521,7 @@ async def start_playback_v3(command: PlaybackStartCommand | None = None):
         generation=wall["generation"],
         clock_epoch=_server_clock.epoch if _server_clock else "",
         connections=connections,
+        playlist_revision=int(document.get("revision", 1)),
         policy=policy,
         videos=videos,
     )
@@ -2760,6 +2797,10 @@ async def _device_loop(websocket: WebSocket, device_id: str) -> None:
                 )
                 if result == "preparing":
                     await _prepare_playback(session)
+                elif result in ("blocked", "failed"):
+                    # The cap spent its last attempt: freeze the cohort and do
+                    # not prepare a fourth time.
+                    await _send_terminal_hold(session)
                 if result != "ignored":
                     await _broadcast_playback()
         elif isinstance(payload, dict) and payload.get("type") == "heartbeat":

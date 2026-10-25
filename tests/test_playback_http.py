@@ -4,15 +4,22 @@ import os
 from io import BytesIO
 from pathlib import Path
 
+import pytest
 from fastapi.testclient import TestClient
 from PIL import Image
 
 import main
-from tabletwall import displays, media, playback
+from tabletwall import displays, media, persist, playback
 from video_fixtures import make_video, needs_ffmpeg, video_dir  # noqa: F401
 
 A = "0f8fad5b-d9cb-469f-a165-70867728950e"
 B = "2b1c4d5e-6f70-4819-a2b3-c4d5e6f70819"
+VIDEO = "sha256:" + "a" * 64
+STILL = "sha256:" + "b" * 64
+VIDEO_GOOD = {
+    "metadata": True, "seeked": True, "buffered_ahead_ms": 5000,
+    "play_ok": "yes", "rvfc": True,
+}
 
 
 def measurement(device_id: str) -> None:
@@ -79,14 +86,16 @@ def video_asset_id() -> str:
     return assets.list_assets()[0]["id"]
 
 
-def playing_video_session(asset_id: str, connections: dict[str, str]) -> playback.Session:
+def playing_video_session(
+    asset_id: str, connections: dict[str, str], *, policy: str = "strict"
+) -> playback.Session:
     """A committed video occurrence, as if the server had already cut it."""
     now = main._now_ms()
     session = playback.start(
         [{"asset": asset_id, "dwell_ms": 1000}, {"asset": asset_id, "dwell_ms": 5000}],
         False, [A, B], now, generation=main.wall["generation"],
         clock_epoch=main._server_clock.epoch, connections=connections,
-        policy="strict", videos={asset_id: 4000},
+        policy=policy, videos={asset_id: 4000},
     )
     media = session.pending.media
     session.version = 2
@@ -199,6 +208,12 @@ def test_a_video_playlist_defaults_to_strict_and_uses_its_duration(
             assert set(status["cohort"]) == {A, B}
             assert status["pending"]["media"]["kind"] == "video"
 
+            frame = socket.receive_json()
+            assert frame["type"] == "prepare"
+            assert frame["media"]["kind"] == "video"
+            assert "recovery_id" not in frame
+            assert "start_media_ms" not in frame
+
 
 def test_a_layout_change_aborts_an_active_session():
     with TestClient(main.app) as client:
@@ -260,6 +275,7 @@ def test_a_video_fault_over_the_socket_prepares_the_group_at_its_position():
             assert frame["type"] == "prepare"
             assert frame["occurrence"] == session.current.as_dict()
             assert frame["start_media_ms"] == 1500
+            assert frame["recovery_id"] == session.recovery.id
             assert frame["media"]["kind"] == "video"
             assert frame["effective_server_ms"] >= sent_at + 900
             assert session.state == "recovering"
@@ -336,3 +352,173 @@ def test_a_host_suspend_epoch_change_aborts_a_recovery():
         assert main._playback_session is None
         assert client.get("/api/v3/playback").json() == {"state": "stopped"}
         assert session.state == "stopped" and session.recovery is None
+
+
+def test_saved_playlist_revision_advances_only_on_an_accepted_save():
+    with TestClient(main.app) as client:
+        prepare_physical(client)
+        current = client.get("/api/v3/playlist").json()
+        assert current["playlist"]["revision"] == 1
+
+        # A legacy document without a revision is treated as revision 1, so
+        # its first successful save writes 2.
+        legacy = {"items": current["playlist"]["items"], "loop": False}
+        persist.save_meta("playlist", legacy)
+        etag = client.get("/api/v3/playlist").json()["etag"]
+        first = client.put("/api/v3/playlist", json={
+            "items": legacy["items"], "loop": False,
+        }, headers={"If-Match": etag})
+        assert first.status_code == 200, first.text
+        assert first.json()["playlist"]["revision"] == 2
+
+        second = client.put("/api/v3/playlist", json={
+            "items": legacy["items"], "loop": False,
+        }, headers={"If-Match": first.json()["etag"]})
+        assert second.status_code == 200, second.text
+        assert second.json()["playlist"]["revision"] == 3
+
+        rejected = client.put("/api/v3/playlist", json={
+            "items": legacy["items"], "loop": False,
+        }, headers={"If-Match": etag})
+        assert rejected.status_code == 412
+        assert client.get("/api/v3/playlist").json()["playlist"]["revision"] == 3
+
+
+def test_start_captures_the_saved_playlist_revision():
+    with TestClient(main.app) as client:
+        prepare_physical(client)
+        current = client.get("/api/v3/playlist").json()
+        saved = client.put("/api/v3/playlist", json={
+            "items": current["playlist"]["items"], "loop": False,
+        }, headers={"If-Match": current["etag"]})
+        assert saved.status_code == 200, saved.text
+        assert saved.json()["playlist"]["revision"] == 2
+
+        started = client.post("/api/v3/playback/start", json={"policy": "strict"})
+        assert started.status_code == 200, started.text
+        status = started.json()
+        assert status["playlist_revision"] == 2
+        assert status["live"]["pending"]["occurrence"]["playlist_revision"] == 2
+        session = main._playback_session
+        assert session is not None and session.playlist_revision == 2
+
+
+def test_live_status_keeps_the_frozen_session_after_a_playlist_save():
+    with TestClient(main.app) as client:
+        prepare_physical(client)
+        now = main._now_ms()
+        connections = {A: "conn-a", B: "conn-b"}
+        session = playback.start(
+            [{"asset": VIDEO, "dwell_ms": 1000},
+             {"asset": STILL, "dwell_ms": 5000}],
+            False, [A, B], now, generation=main.wall["generation"],
+            clock_epoch=main._server_clock.epoch, connections=connections,
+            policy="strict", videos={VIDEO: 4000}, playlist_revision=1,
+        )
+        for device_id in (A, B):
+            pending = session.pending
+            assert playback.accept_ready(
+                session, device_id=device_id,
+                connection_id=connections[device_id],
+                preparation_id=pending.id, version=pending.version,
+                evidence_seq=1, mapping_revision=1, clock_ok=True,
+                lease_ms=2000, now_ms=now + 100, decoded=False,
+                occurrence=pending.occurrence.as_dict(), video=VIDEO_GOOD,
+            )
+        assert playback.tick(session, now)[0]["type"] == "commit"
+        session.current_effective_ms = main._now_ms() - 1
+        session.playing = []  # keep the loop from starting a stale recovery
+        session.pending.effective_ms = main._now_ms() + 60_000
+        session.pending.deadline_ms = (
+            session.pending.effective_ms + playback.PREPARE_TIMEOUT_MS
+        )
+        main._playback_session = session
+
+        frozen = {
+            "current": {
+                "occurrence": {"playlist_revision": 1, "item_index": 0, "loop": 0},
+                "asset": VIDEO, "kind": "video", "duration_ms": 4000,
+                "dwell_ms": 4000,
+            },
+            "displayed": {
+                "occurrence": {"playlist_revision": 1, "item_index": 0, "loop": 0},
+                "asset": VIDEO, "kind": "video", "duration_ms": 4000,
+                "dwell_ms": 4000,
+            },
+            "pending": {
+                "occurrence": {"playlist_revision": 1, "item_index": 1, "loop": 0},
+                "asset": STILL, "kind": "still", "duration_ms": None,
+                "dwell_ms": 5000,
+            },
+        }
+        before = main._playback_status()
+        assert before["playlist_revision"] == 1
+        assert before["live"] == frozen
+
+        from tabletwall import assets
+        entry = assets.list_assets()[0]
+        etag = client.get("/api/v3/playlist").json()["etag"]
+        saved = client.put("/api/v3/playlist", json={
+            "items": [{"asset": entry["id"], "dwell_ms": 1000}], "loop": False,
+        }, headers={"If-Match": etag})
+        assert saved.status_code == 200, saved.text
+        assert saved.json()["playlist"]["revision"] == 2
+
+        after = main._playback_status()
+        assert after["live"] == frozen
+        assert after["playlist_revision"] == 1
+        assert after["current"] == before["current"]
+        assert after["displayed"] == before["displayed"]
+        assert after["pending"]["preparation_id"] == before["pending"]["preparation_id"]
+
+
+@pytest.mark.parametrize(
+    ("policy", "state", "reason"),
+    [
+        ("strict", "blocked", playback.RECOVERY_LIMIT_REASON),
+        ("online", "failed", playback.RECOVERY_FAILED_REASON),
+    ],
+)
+def test_a_capped_video_fault_sends_one_terminal_hold_and_no_prepare(
+    policy, state, reason, monkeypatch
+):
+    with TestClient(main.app) as client:
+        prepare_physical(client)
+        asset_id = video_asset_id()
+        with client.websocket_connect(socket_url(A)) as socket:
+            socket.receive_json()  # welcome
+            socket.receive_json()  # clock bootstrap
+            socket.receive_json()  # render
+            connections = {
+                device_id: main.devices[device_id].get("connection_id", "")
+                for device_id in (A, B) if device_id in main.devices
+            }
+            session = playing_video_session(
+                asset_id, connections, policy=policy
+            )
+            session.current_start_media_ms = 3990
+            session.recovery_occurrence = session.current
+            session.recovery_attempts = playback.RECOVERY_ATTEMPTS
+            version = session.version
+            main._playback_session = session
+            prepared = []
+
+            async def prepare(_session):
+                prepared.append(_session.version)
+
+            monkeypatch.setattr(main, "_prepare_playback", prepare)
+            socket.send_json(video_fault(session))
+            frame = socket.receive_json()
+            assert frame == {
+                "type": "playback",
+                "state": state,
+                "reason": reason,
+                "missing": [],
+                "session_id": session.id,
+                "version": version + 1,
+                "generation": session.generation,
+                "clock_epoch": session.clock_epoch,
+            }
+            assert prepared == []
+            assert session.state == state and session.pending is None
+            assert session.recovery.attempts == 4

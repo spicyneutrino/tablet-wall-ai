@@ -21,15 +21,15 @@ def session():
     )
 
 
-def video_session():
+def video_session(*, policy="strict", cohort=("dev-1", "dev-2")):
     """A strict session whose first video occurrence has committed."""
     s = playback.start(
         [{"asset": A, "dwell_ms": 1000}, {"asset": B, "dwell_ms": 5000}],
-        False, ["dev-1", "dev-2"], 1000, generation="gen", clock_epoch="epoch",
-        connections={"dev-1": "conn-dev-1", "dev-2": "conn-dev-2"},
-        policy="strict", videos={A: VIDEO_MS},
+        False, list(cohort), 1000, generation="gen", clock_epoch="epoch",
+        connections={device_id: "conn-" + device_id for device_id in cohort},
+        policy=policy, videos={A: VIDEO_MS},
     )
-    for device_id in ("dev-1", "dev-2"):
+    for device_id in cohort:
         pending = s.pending
         assert playback.accept_ready(
             s, device_id=device_id, connection_id="conn-" + device_id,
@@ -185,3 +185,130 @@ def test_a_replacement_socket_revokes_the_recovery_lease_but_keeps_the_recovery(
     assert lease.ready is False and lease.evidence_seq == 0
     assert current.state == "recovering"
     assert current.recovery is not None
+
+
+def test_status_reports_frozen_live_item_metadata():
+    main._playback_session = video_session()
+    session = main._playback_session
+    session.current_effective_ms = main._now_ms() - 1
+    status = main._playback_status()
+    assert status["playlist_revision"] == 1
+    assert status["live"] == {
+        "current": {
+            "occurrence": {"playlist_revision": 1, "item_index": 0, "loop": 0},
+            "asset": A, "kind": "video", "duration_ms": VIDEO_MS,
+            "dwell_ms": VIDEO_MS,
+        },
+        "displayed": {
+            "occurrence": {"playlist_revision": 1, "item_index": 0, "loop": 0},
+            "asset": A, "kind": "video", "duration_ms": VIDEO_MS,
+            "dwell_ms": VIDEO_MS,
+        },
+        "pending": {
+            "occurrence": {"playlist_revision": 1, "item_index": 1, "loop": 0},
+            "asset": B, "kind": "still", "duration_ms": None, "dwell_ms": 5000,
+        },
+    }
+    # The existing top-level fields are unchanged, and the pending frame is an
+    # ordinary preparation: no recovery identity and no start position.
+    assert status["current"] == session.current.as_dict()
+    assert status["displayed"] == session.current.as_dict()
+    assert status["pending"]["preparation_id"] == session.pending.id
+    assert "recovery_id" not in status["pending"]
+    assert "start_media_ms" not in status["pending"]
+
+
+def test_a_terminal_hold_reaches_every_reachable_socket(monkeypatch):
+    import asyncio
+
+    main._playback_session = video_session(cohort=("dev-1", "dev-2", "dev-3"))
+    session = main._playback_session
+    session.recovery_occurrence = session.current
+    session.recovery_attempts = playback.RECOVERY_ATTEMPTS
+    version = session.version
+    assert fault(session) == "blocked"
+    assert session.version == version + 1 and session.pending is None
+
+    broken, second, third = object(), object(), object()
+    main.device_sockets.update(
+        {"dev-1": broken, "dev-2": second, "dev-3": third}
+    )
+    sent = []
+
+    async def send(socket, frame, stamp=None):
+        if socket is broken:
+            raise RuntimeError("writer closed")
+        sent.append((socket, frame))
+
+    monkeypatch.setattr(main, "_send_to", send)
+    asyncio.run(main._send_terminal_hold(session))
+    assert [socket for socket, _ in sent] == [second, third]
+    assert sent[0][1] is sent[1][1]
+    assert sent[0][1] == {
+        "type": "playback",
+        "state": "blocked",
+        "reason": playback.RECOVERY_LIMIT_REASON,
+        "missing": [],
+        "session_id": session.id,
+        "version": session.version,
+        "generation": "gen",
+        "clock_epoch": "epoch",
+    }
+
+
+def test_the_playback_loop_holds_the_cohort_when_a_stale_sample_hits_the_cap(monkeypatch):
+    import asyncio
+    import contextlib
+
+    now = main._now_ms()
+    session = playback.start(
+        [{"asset": A, "dwell_ms": 1000}], False, ["dev-1", "dev-2"], now,
+        generation="gen", clock_epoch="epoch",
+        connections={"dev-1": "conn-dev-1", "dev-2": "conn-dev-2"},
+        policy="strict", videos={A: 20000},
+    )
+    session.version = 2
+    session.state = "playing"
+    session.current = session.occurrence_at(0)
+    session.displayed = session.current
+    session.current_effective_ms = now - 5000
+    session.current_media = {
+        "kind": "video", "duration_ms": 20000, "buffer_goal_ms": 5000,
+        "start_lead_ms": 1000, "prepare_timeout_ms": 30000,
+    }
+    session.current_start_media_ms = 0
+    session.playing = ["dev-1", "dev-2"]
+    session.pending = None
+    session.recovery_occurrence = session.current
+    session.recovery_attempts = playback.RECOVERY_ATTEMPTS
+    main._playback_session = session
+
+    first, second = object(), object()
+    main.device_sockets.update({"dev-1": first, "dev-2": second})
+    sent = []
+
+    async def send(socket, frame, stamp=None):
+        sent.append((socket, frame))
+
+    monkeypatch.setattr(main, "_send_to", send)
+
+    async def run():
+        task = asyncio.create_task(main._playback_loop())
+        try:
+            for _ in range(50):
+                await asyncio.sleep(0.01)
+                if sent:
+                    break
+        finally:
+            task.cancel()
+            with contextlib.suppress(asyncio.CancelledError):
+                await task
+
+    asyncio.run(run())
+    assert [socket for socket, _ in sent] == [first, second]
+    frame = sent[0][1]
+    assert frame["type"] == "playback" and frame["state"] == "blocked"
+    assert frame["reason"] == playback.RECOVERY_LIMIT_REASON
+    assert frame["version"] == session.version
+    assert session.state == "blocked" and session.pending is None
+    assert session.recovery.attempts == 4

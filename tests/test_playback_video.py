@@ -41,7 +41,32 @@ def test_a_video_preparation_sets_dwell_and_media():
         "start_lead_ms": 1000, "prepare_timeout_ms": 30000,
     }
     assert s.pending.deadline_ms == s.pending.effective_ms + 30000
-    assert s.pending.as_frame()["media"]["kind"] == "video"
+    frame = s.pending.as_frame()
+    assert frame["media"]["kind"] == "video"
+    # An ordinary prepare has no recovery identity and no start position.
+    assert "recovery_id" not in frame
+    assert "start_media_ms" not in frame
+
+
+def test_prepare_frames_carry_recovery_identity_only_for_a_recovery():
+    ordinary = session().pending.as_frame()
+    assert ordinary["media"]["kind"] == "video"
+    assert set(ordinary) == {
+        "preparation_id", "version", "occurrence", "asset",
+        "prepare_deadline_ms", "effective_server_ms", "media",
+    }
+    assert "recovery_id" not in ordinary and "start_media_ms" not in ordinary
+
+    s = committed()
+    assert fault(s, position=0) == "preparing"
+    recovery = s.pending.as_frame()
+    assert set(recovery) == {
+        "preparation_id", "version", "occurrence", "asset",
+        "prepare_deadline_ms", "effective_server_ms", "media",
+        "recovery_id", "start_media_ms",
+    }
+    assert recovery["recovery_id"] == s.recovery.id
+    assert recovery["start_media_ms"] == 0
 
 
 def test_video_ready_needs_every_field_and_the_buffer_goal():
@@ -165,6 +190,7 @@ def test_a_fault_re_prepares_the_current_occurrence_at_its_position():
     assert s.recovery.position_ms == 2400 and s.recovery.attempts == 1
     frame = s.pending.as_frame()
     assert frame["start_media_ms"] == 2400 and frame["media"]["kind"] == "video"
+    assert frame["recovery_id"] == s.recovery.id
     # The required buffer is measured from the position: 4000 - 2400.
     assert ready(s, "dev-1", 3900, seq=2,
                  video={**GOOD, "buffered_ahead_ms": 1599}) is False
@@ -173,6 +199,7 @@ def test_a_fault_re_prepares_the_current_occurrence_at_its_position():
     assert ready(s, "dev-2", 3900, seq=2, video=GOOD) is True
     action = playback.tick(s, 3999)[0]
     assert action["type"] == "commit"
+    assert "recovery_id" not in action
     assert action["start_media_ms"] == 2400
     assert action["effective_server_ms"] == 4000
     assert s.current_start_media_ms == 2400
@@ -307,15 +334,66 @@ def test_a_fourth_recovery_for_one_occurrence_blocks_without_a_prepare():
     version = s.version
     assert s.state == "playing"
     assert fault(s, now=now) == "blocked"
-    assert s.version == version
+    assert s.version == version + 1
     assert s.state == "blocked" and s.pending is None
     assert s.recovery.attempts == 4 and s.recovery.state == "blocked"
     fresh = playback.retry(s, now + 100)
     assert s.state == "recovering" and fresh.start_media_ms == 2400
+    assert s.version == version + 2
     assert s.recovery.attempts == 1
     assert ready(s, "dev-1", now + 200, seq=9, video=GOOD)
     assert ready(s, "dev-2", now + 200, seq=9, video=GOOD)
     assert playback.tick(s, now + 1199)[0]["type"] == "commit"
+
+
+def test_an_online_cap_fails_without_a_prepare_and_advances_the_version():
+    s = committed(policy="online")
+    now = 2500
+    for attempt in (1, 2, 3):
+        assert fault(s, now=now) == "preparing"
+        assert s.recovery.attempts == attempt
+        assert ready(s, "dev-1", now + 900, seq=attempt + 1, video=GOOD)
+        assert ready(s, "dev-2", now + 900, seq=attempt + 1, video=GOOD)
+        playback.tick(s, now + 999)
+        now = int(s.current_effective_ms) + 100
+    version = s.version
+    assert fault(s, now=now) == "failed"
+    assert s.version == version + 1
+    assert s.state == "failed" and s.pending is None
+    assert s.recovery.attempts == 4 and s.recovery.state == "failed"
+    assert s.blocked_reason == playback.RECOVERY_FAILED_REASON
+    with pytest.raises(playback.PlaybackError):
+        playback.retry(s, now + 100)  # online failure offers Start again
+
+
+def test_the_stale_sample_cap_blocks_without_a_prepare():
+    s = playback.start(
+        [{"asset": A, "dwell_ms": 1000}, {"asset": B, "dwell_ms": 1000}],
+        False, ["dev-1", "dev-2"], 1000,
+        generation="gen", clock_epoch="epoch",
+        connections={"dev-1": "conn-dev-1", "dev-2": "conn-dev-2"},
+        policy="strict", videos={A: 20000},
+    )
+    assert ready(s, "dev-1", 1100, video=GOOD)
+    assert ready(s, "dev-2", 1100, video=GOOD)
+    assert playback.tick(s, 1000)[0]["type"] == "commit"
+    now = int(s.current_effective_ms) + playback.STALE_SAMPLE_MS + 1
+    for attempt in (1, 2, 3):
+        actions = playback.tick(s, now)
+        assert [action["type"] for action in actions] == ["recover"]
+        assert s.recovery.attempts == attempt
+        assert ready(s, "dev-1", now + 900, seq=attempt + 1, video=GOOD)
+        assert ready(s, "dev-2", now + 900, seq=attempt + 1, video=GOOD)
+        assert playback.tick(s, now + 999)[0]["type"] == "commit"
+        now = int(s.current_effective_ms) + playback.STALE_SAMPLE_MS + 1
+    version = s.version
+    actions = playback.tick(s, now)
+    assert actions == [{
+        "type": "blocked", "reason": playback.RECOVERY_LIMIT_REASON, "missing": [],
+    }]
+    assert s.state == "blocked" and s.pending is None
+    assert s.version == version + 1
+    assert s.recovery.attempts == 4 and s.recovery.state == "blocked"
 
 
 def test_a_recovered_final_item_stays_final():
