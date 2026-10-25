@@ -5,13 +5,28 @@
     const API_DEVICES = "/devices";
     const API_LAYOUT = "/api/v3/layout";
     const API_LAYOUTS = "/api/v3/layouts";
+    const API_PLAYLIST = "/api/v3/playlist";
+    const API_PLAYBACK = "/api/v3/playback";
+    const API_MEDIA = "/media";
+    const API_DIAGNOSTICS = "/diagnostics";
     const REQUEST_TIMEOUT_MS = 10000;
+    const PLAYBACK_POLL_MS = 1000;
     const SVG_NS = "http://www.w3.org/2000/svg";
     const STAGE_W = 720;
     const STAGE_H = 480;
     const STAGE_MARGIN = 28;
     const DRAG_THRESHOLD_PX = 3;
     const HISTORY_LIMIT = 80;
+    const UUID4_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+    const WAKE_LOCK_TEXT = {
+        held: "Wake lock held",
+        released: "Wake lock released",
+        unsupported: "Wake lock unsupported",
+        insecure: "Wake lock insecure",
+        denied: "Wake lock denied"
+    };
+    const MIN_DWELL_MS = 1000;
+    const MAX_DWELL_MS = 600000;
 
     const el = {
         wallRevision: document.getElementById("wall-revision"),
@@ -42,18 +57,50 @@
         btnLayoutsRefresh: document.getElementById("btn-layouts-refresh"),
         layoutSaveForm: document.getElementById("layout-save-form"),
         layoutName: document.getElementById("layout-name"),
-        playlistAssets: document.getElementById("playlist-assets"),
-        playlistDwell: document.getElementById("playlist-dwell"),
+        playlistLibrary: document.getElementById("playlist-library"),
+        btnPlaylistAdd: document.getElementById("btn-playlist-add"),
+        btnPlaylistLibraryRefresh: document.getElementById("btn-playlist-library-refresh"),
+        playlistLibraryMsg: document.getElementById("playlist-library-msg"),
+        playlistItems: document.getElementById("playlist-items"),
+        playlistEmpty: document.getElementById("playlist-empty"),
+        playlistCount: document.getElementById("playlist-count"),
+        playlistHint: document.getElementById("playlist-hint"),
         playlistLoop: document.getElementById("playlist-loop"),
         btnPlaylistSave: document.getElementById("btn-playlist-save"),
         playlistMsg: document.getElementById("playlist-msg"),
+        playlistRawId: document.getElementById("playlist-raw-id"),
+        playlistRawDwell: document.getElementById("playlist-raw-dwell"),
+        btnPlaylistRawAdd: document.getElementById("btn-playlist-raw-add"),
+        playbackPolicy: document.getElementById("playback-policy"),
+        playbackEffectivePolicy: document.getElementById("playback-effective-policy"),
         btnPlaybackStart: document.getElementById("btn-playback-start"),
         btnPlaybackPause: document.getElementById("btn-playback-pause"),
         btnPlaybackStop: document.getElementById("btn-playback-stop"),
+        btnPlaybackRetry: document.getElementById("btn-playback-retry"),
         btnPlaybackPrevious: document.getElementById("btn-playback-previous"),
         btnPlaybackNext: document.getElementById("btn-playback-next"),
         btnPlaybackRefresh: document.getElementById("btn-playback-refresh"),
+        playbackMsg: document.getElementById("playback-msg"),
         playbackStatus: document.getElementById("playback-status"),
+        playbackFacts: document.getElementById("playback-facts"),
+        playbackPending: document.getElementById("playback-pending"),
+        playbackMembers: document.getElementById("playback-members"),
+        playbackMembersEmpty: document.getElementById("playback-members-empty"),
+        playbackPollNote: document.getElementById("playback-poll-note"),
+        diagState: document.getElementById("diag-state"),
+        btnDiagRefresh: document.getElementById("btn-diag-refresh"),
+        btnDiagVerify: document.getElementById("btn-diag-verify"),
+        diagMsg: document.getElementById("diag-msg"),
+        diagGrid: document.getElementById("diag-grid"),
+        diagIntegrity: document.getElementById("diag-integrity"),
+        diagIntegrityText: document.getElementById("diag-integrity-text"),
+        diagProblems: document.getElementById("diag-problems"),
+        rebindForm: document.getElementById("rebind-form"),
+        rebindNew: document.getElementById("rebind-new"),
+        rebindReplaces: document.getElementById("rebind-replaces"),
+        rebindNumber: document.getElementById("rebind-number"),
+        rebindMsg: document.getElementById("rebind-msg"),
+        btnRebind: document.getElementById("btn-rebind"),
         btnLayoutSave: document.getElementById("btn-layout-save"),
         layoutMsg: document.getElementById("layout-msg"),
         savedLayouts: document.getElementById("saved-layouts"),
@@ -141,8 +188,29 @@
         calDirty: false,
         busy: false,
         playlistEtag: null,
+        playlist: { items: [], loop: true, revision: null },
         playlistLoaded: false,
-        playbackVersion: null
+        playlistDirty: false,
+        playlistSaving: false,
+        playlistFocus: null,
+        library: [],
+        libraryState: "pending",
+        libraryLoading: false,
+        libraryError: null,
+        playback: null,
+        playbackVersion: null,
+        playbackError: null,
+        playbackFetchedAt: null,
+        playbackOkAt: null,
+        playbackFetching: false,
+        playbackBusy: false,
+        playbackAnnouncedState: null,
+        playbackTimer: null,
+        diagnostics: null,
+        diagnosticsState: "pending",
+        diagnosticsError: null,
+        diagnosticsLoading: false,
+        rebindBusy: false
     };
 
     const profileCache = new Map();
@@ -196,6 +264,75 @@
 
     function shortId(id) {
         return id ? String(id).slice(0, 8) : "—";
+    }
+
+    /** 1.0 s .. 600 s: one decimal below ten seconds, whole seconds above. */
+    function formatDuration(ms) {
+        const value = Number(ms);
+        if (!Number.isFinite(value) || value <= 0) return "—";
+        const seconds = value / 1000;
+        return (seconds < 10 ? seconds.toFixed(1) : String(Math.round(seconds))) + " s";
+    }
+
+    /** Like formatDuration, but zero is a real reading (buffer, sample age). */
+    function formatSpan(ms) {
+        const value = Number(ms);
+        if (!Number.isFinite(value) || value < 0) return "—";
+        const seconds = value / 1000;
+        return (seconds < 10 ? seconds.toFixed(1) : String(Math.round(seconds))) + " s";
+    }
+
+    function formatBytes(bytes) {
+        const value = Number(bytes);
+        if (!Number.isFinite(value) || value < 0) return "—";
+        if (value >= 1024 * 1024 * 1024) return (value / (1024 * 1024 * 1024)).toFixed(1) + " GiB";
+        if (value >= 1024 * 1024) return (value / (1024 * 1024)).toFixed(1) + " MiB";
+        if (value >= 1024) return (value / 1024).toFixed(1) + " KiB";
+        return Math.round(value) + " B";
+    }
+
+    function formatPercent(used, quota) {
+        const part = Number(used);
+        const whole = Number(quota);
+        if (!Number.isFinite(part) || !Number.isFinite(whole) || whole <= 0) return "—";
+        return ((part / whole) * 100).toFixed(1) + "%";
+    }
+
+    function formatTime(iso) {
+        const parsed = Date.parse(iso);
+        return Number.isNaN(parsed) ? String(iso) : new Date(parsed).toLocaleString();
+    }
+
+    function relativeAge(iso) {
+        const parsed = Date.parse(iso);
+        if (Number.isNaN(parsed)) return "";
+        const seconds = Math.max(0, (Date.now() - parsed) / 1000);
+        if (seconds < 60) return Math.floor(seconds) + "s ago";
+        if (seconds < 3600) return Math.floor(seconds / 60) + "m ago";
+        if (seconds < 86400) return Math.floor(seconds / 3600) + "h ago";
+        return Math.floor(seconds / 86400) + "d ago";
+    }
+
+    function clampDwell(value) {
+        const parsed = Number(value);
+        if (!Number.isFinite(parsed)) return MIN_DWELL_MS;
+        return Math.min(MAX_DWELL_MS, Math.max(MIN_DWELL_MS, Math.round(parsed)));
+    }
+
+    function setTextIfChanged(node, text) {
+        if (node && node.textContent !== text) node.textContent = text;
+    }
+
+    function clearChildren(node) {
+        if (node) node.textContent = "";
+    }
+
+    function appendText(parent, tag, className, text) {
+        const node = document.createElement(tag);
+        if (className) node.className = className;
+        node.textContent = text;
+        parent.appendChild(node);
+        return node;
     }
 
     function finiteOr(value, fallback) {
@@ -1250,6 +1387,17 @@
             calText.textContent = status.text;
             meta.appendChild(calText);
 
+            const record = state.roster[entry.id];
+            const wakeLock = record && typeof record.wake_lock === "string"
+                ? record.wake_lock : null;
+            if (wakeLock) {
+                const wake = document.createElement("span");
+                wake.className = "dev-wake";
+                wake.dataset.kind = wakeLock;
+                wake.textContent = WAKE_LOCK_TEXT[wakeLock] || ("Wake lock " + wakeLock);
+                meta.appendChild(wake);
+            }
+
             pick.setAttribute("aria-label", entry.label + ", device " + shortId(entry.id)
                 + ", " + (entry.profile
                     ? formatNumber(entry.profile.active_width_mm, 1) + " by "
@@ -1257,6 +1405,7 @@
                     : "size unknown")
                 + ", " + (entry.profile ? "profile revision " + entry.profile.revision : "no profile")
                 + ", " + status.text
+                + (wakeLock ? ", " + (WAKE_LOCK_TEXT[wakeLock] || wakeLock) : "")
                 + (entry.id === state.selectedId ? ", selected" : ""));
 
             pick.appendChild(label);
@@ -1914,90 +2063,1331 @@
     }
 
     /* ---------------------------------------------------------------- *
-     * Saved layouts
+     * Media library and playlist authoring
      * ---------------------------------------------------------------- */
 
-    async function loadPlayback() {
+    function normalizeLibraryAsset(raw) {
+        if (!raw || typeof raw !== "object" || Array.isArray(raw)) return null;
+        const id = typeof raw.id === "string" && raw.id
+            ? raw.id
+            : (typeof raw.asset_id === "string" && raw.asset_id ? raw.asset_id : null);
+        if (!id) return null;
+        const mime = typeof raw.mime === "string" ? raw.mime : "";
+        const kind = raw.kind === "video" || mime.indexOf("video/") === 0 ? "video" : "still";
+        const rawDuration = raw.durationMs !== undefined ? raw.durationMs : raw.duration_ms;
+        const duration = Number(rawDuration);
+        const posterRaw = raw.poster || raw.thumbnail;
+        const poster = posterRaw && typeof posterRaw === "object" && !Array.isArray(posterRaw)
+            && typeof posterRaw.url === "string" ? posterRaw.url : null;
+        const width = Number(raw.intrinsicWidth !== undefined ? raw.intrinsicWidth : raw.width);
+        const height = Number(raw.intrinsicHeight !== undefined ? raw.intrinsicHeight : raw.height);
+        return {
+            id: id,
+            name: typeof raw.name === "string" && raw.name !== "" ? raw.name : id,
+            mime: mime,
+            kind: kind,
+            durationMs: kind === "video" && Number.isFinite(duration) && duration > 0
+                ? Math.round(duration) : null,
+            bytes: Number.isFinite(Number(raw.bytes)) ? Number(raw.bytes) : null,
+            width: Number.isFinite(width) && width > 0 ? Math.round(width) : null,
+            height: Number.isFinite(height) && height > 0 ? Math.round(height) : null,
+            poster: poster
+        };
+    }
+
+    function libraryAsset(id) {
+        for (let index = 0; index < state.library.length; index += 1) {
+            if (state.library[index].id === id) return state.library[index];
+        }
+        return null;
+    }
+
+    function playlistHasVideo() {
+        return state.playlist.items.some(function (item) {
+            const asset = libraryAsset(item.asset);
+            return Boolean(asset && asset.kind === "video");
+        });
+    }
+
+    async function loadLibrary(quiet) {
+        if (state.libraryLoading) return false;
+        state.libraryLoading = true;
+        state.libraryState = state.library.length > 0 ? "refreshing" : "pending";
+        state.libraryError = null;
+        if (!quiet) clearMsg(el.playlistLibraryMsg);
+        renderLibraryOptions();
         try {
-            const playlist = await api("GET", "/api/v3/playlist");
-            const status = await api("GET", "/api/v3/playback");
-            state.playlistEtag = playlist.etag;
-            if (!state.playlistLoaded) {
-                const items = playlist.playlist && Array.isArray(playlist.playlist.items)
-                    ? playlist.playlist.items : [];
-                if (el.playlistAssets) {
-                    el.playlistAssets.value = items.map(function (item) {
-                        return item.asset;
-                    }).join("\n");
-                }
-                if (items.length > 0 && el.playlistDwell) {
-                    el.playlistDwell.value = String(items[0].dwell_ms);
-                }
-                if (playlist.playlist && el.playlistLoop) {
-                    el.playlistLoop.checked = Boolean(playlist.playlist.loop);
-                }
-                state.playlistLoaded = true;
-            }
-            renderPlayback(status);
+            const payload = await api("GET", API_MEDIA);
+            const raw = Array.isArray(payload)
+                ? payload
+                : payload && Array.isArray(payload.assets) ? payload.assets : null;
+            if (raw === null) throw new Error("the answer was not a file library");
+            const seen = new Set();
+            const items = [];
+            raw.forEach(function (entry) {
+                const asset = normalizeLibraryAsset(entry);
+                if (!asset || seen.has(asset.id)) return;
+                seen.add(asset.id);
+                items.push(asset);
+            });
+            items.sort(function (left, right) {
+                const byName = left.name.toLowerCase().localeCompare(right.name.toLowerCase());
+                return byName !== 0 ? byName : left.id.localeCompare(right.id);
+            });
+            state.library = items;
+            state.libraryState = "ready";
         } catch (error) {
-            setMsg(el.playlistMsg, error.message, "err");
+            state.libraryState = "error";
+            state.libraryError = errorDetail(error);
+        }
+        state.libraryLoading = false;
+        renderPlaylist();
+        renderPlayback();
+        if (!quiet) {
+            if (state.libraryState === "ready") {
+                setMsg(el.playlistLibraryMsg,
+                    state.library.length + (state.library.length === 1 ? " file" : " files")
+                        + " in the library.", "ok");
+            } else {
+                setMsg(el.playlistLibraryMsg,
+                    "Library unavailable: " + state.libraryError, "err");
+            }
+        }
+        return state.libraryState === "ready";
+    }
+
+    function normalizePlaylistDocument(document) {
+        if (!document || typeof document !== "object" || !Array.isArray(document.items)) {
+            return null;
+        }
+        const items = [];
+        document.items.forEach(function (raw) {
+            if (!raw || typeof raw !== "object") return;
+            if (typeof raw.asset !== "string" || raw.asset === "") return;
+            items.push({ asset: raw.asset, dwell_ms: clampDwell(raw.dwell_ms) });
+        });
+        const revision = Number(document.revision);
+        return {
+            items: items,
+            loop: document.loop !== false,
+            revision: Number.isFinite(revision) ? revision : null
+        };
+    }
+
+    async function loadPlaylist() {
+        try {
+            const payload = await api("GET", API_PLAYLIST);
+            state.playlistEtag = payload && typeof payload.etag === "string" ? payload.etag : null;
+            const document = normalizePlaylistDocument(payload ? payload.playlist : null);
+            if (document !== null && !state.playlistDirty) {
+                state.playlist = document;
+                state.playlistDirty = false;
+            }
+            state.playlistLoaded = true;
+            renderPlaylist();
+            renderPlayback();
+            return true;
+        } catch (error) {
+            setMsg(el.playlistMsg, "Could not load the playlist: " + errorDetail(error), "err");
+            return false;
         }
     }
 
-    function renderPlayback(status) {
-        if (!el.playbackStatus) return;
-        const stateName = status && status.state ? status.state : "stopped";
-        state.playbackVersion = status && status.version ? status.version : null;
-        el.playbackStatus.dataset.state = stateName;
-        if (stateName === "stopped") {
-            el.playbackStatus.textContent = "Playback is stopped.";
-            return;
+    function playlistItemFor(occurrence) {
+        if (!occurrence || typeof occurrence !== "object") return null;
+        const index = Number(occurrence.item_index);
+        if (!Number.isInteger(index) || index < 0 || index >= state.playlist.items.length) {
+            return null;
         }
-        const current = status.current
-            ? "item " + (status.current.item_index + 1) + " (loop " + status.current.loop + ")"
-            : "waiting for the first cut";
-        const missed = status.missed && status.missed.length
-            ? " · missed " + status.missed.length : "";
-        const held = status.held ? " · holding" : "";
-        el.playbackStatus.textContent = stateName + " · " + current + missed + held;
+        const revision = Number(occurrence.playlist_revision);
+        if (Number.isFinite(revision) && state.playlist.revision !== null
+            && revision !== state.playlist.revision) {
+            return null;
+        }
+        return state.playlist.items[index];
+    }
+
+    function itemIsVideo(item) {
+        const asset = item ? libraryAsset(item.asset) : null;
+        return Boolean(asset && asset.kind === "video");
+    }
+
+    function itemDurationMs(item) {
+        if (!item) return null;
+        const asset = libraryAsset(item.asset);
+        if (asset && asset.kind === "video") {
+            return asset.durationMs !== null ? asset.durationMs : clampDwell(item.dwell_ms);
+        }
+        return item.dwell_ms;
+    }
+
+    function itemKindText(item) {
+        if (!item) return "unknown item";
+        const asset = libraryAsset(item.asset);
+        if (!asset) return "unknown asset · " + shortId(item.asset) + "…";
+        if (asset.kind === "video") {
+            return "video · " + formatDuration(asset.durationMs) + " clip";
+        }
+        return "still · " + formatDuration(item.dwell_ms) + " dwell";
+    }
+
+    function occurrenceText(occurrence) {
+        if (!occurrence || typeof occurrence !== "object") return "none";
+        const index = Number(occurrence.item_index);
+        const loop = Number(occurrence.loop);
+        const label = Number.isInteger(index)
+            ? "item " + (index + 1) + " · loop " + (Number.isInteger(loop) ? loop + 1 : "—")
+            : "item —";
+        const item = playlistItemFor(occurrence);
+        if (!item) return label + " · not in the current playlist";
+        const asset = libraryAsset(item.asset);
+        return label + " · " + (asset ? asset.name : shortId(item.asset) + "…");
+    }
+
+    function renderLibraryOptions() {
+        const select = el.playlistLibrary;
+        if (!select) return;
+        const previous = select.value;
+        clearChildren(select);
+
+        let placeholder = "Choose a file";
+        if (state.libraryState === "pending") placeholder = "Loading the library…";
+        else if (state.libraryState === "refreshing") placeholder = "Refreshing the library…";
+        else if (state.libraryState === "error") placeholder = "Library unavailable — add by content id";
+        else if (state.library.length === 0) placeholder = "No uploaded files yet";
+        const first = document.createElement("option");
+        first.value = "";
+        first.textContent = placeholder;
+        select.appendChild(first);
+
+        state.library.forEach(function (asset) {
+            const option = document.createElement("option");
+            option.value = asset.id;
+            option.textContent = asset.name + " — "
+                + (asset.kind === "video" ? "video " + formatDuration(asset.durationMs) : "still");
+            select.appendChild(option);
+        });
+
+        select.disabled = state.libraryState !== "ready" || state.library.length === 0;
+        if (previous && select.querySelector('option[value="' + previous.replace(/"/g, '\\"') + '"]')) {
+            select.value = previous;
+        } else {
+            select.selectedIndex = 0;
+        }
+        if (el.btnPlaylistAdd) {
+            el.btnPlaylistAdd.disabled = state.playlistSaving || !select.value;
+        }
+    }
+
+    function renderPlaylist() {
+        if (!el.playlistItems) return;
+        renderLibraryOptions();
+        clearChildren(el.playlistItems);
+
+        state.playlist.items.forEach(function (item, index) {
+            el.playlistItems.appendChild(buildPlaylistRow(item, index));
+        });
+
+        el.playlistEmpty.hidden = state.playlist.items.length > 0;
+        const count = state.playlist.items.length;
+        setTextIfChanged(el.playlistCount, count + (count === 1 ? " item" : " items"));
+        if (el.playlistLoop && document.activeElement !== el.playlistLoop) {
+            el.playlistLoop.checked = state.playlist.loop;
+        }
+        syncPlaylistFooter();
+
+        if (state.playlistFocus) {
+            const focus = state.playlistFocus;
+            state.playlistFocus = null;
+            const node = el.playlistItems.querySelector(
+                '[data-action="' + focus.action + '"][data-index="' + focus.index + '"]');
+            if (node) {
+                try { node.focus({ preventScroll: true }); }
+                catch (error) { node.focus(); }
+            }
+        }
+    }
+
+    function syncPlaylistFooter() {
+        const count = state.playlist.items.length;
+        if (el.playlistHint) {
+            let text = "At least one item.";
+            if (state.playlistSaving) text = "Saving…";
+            else if (state.playlistDirty) text = "Unsaved changes.";
+            else if (repoSavedPlaylist()) text = "Saved on the server.";
+            el.playlistHint.textContent = text;
+            el.playlistHint.dataset.kind = state.playlistDirty ? "warn" : "";
+        }
+        if (el.btnPlaylistSave) {
+            el.btnPlaylistSave.disabled = state.playlistSaving || count === 0;
+            el.btnPlaylistSave.textContent = state.playlistSaving ? "Saving…" : "Save playlist";
+        }
+    }
+
+    function repoSavedPlaylist() {
+        return state.playlistLoaded && !state.playlistDirty && state.playlistEtag !== null;
+    }
+
+    function buildPlaylistRow(item, index) {
+        const asset = libraryAsset(item.asset);
+        const isVideo = Boolean(asset && asset.kind === "video");
+        const itemNode = document.createElement("li");
+        itemNode.className = "playlist-item";
+        itemNode.dataset.index = String(index);
+        itemNode.dataset.kind = asset ? asset.kind : "unknown";
+
+        const thumbUrl = asset ? asset.poster : null;
+        let thumb;
+        if (thumbUrl) {
+            thumb = document.createElement("img");
+            thumb.className = "playlist-thumb";
+            thumb.src = thumbUrl;
+            thumb.alt = "";
+            thumb.loading = "lazy";
+        } else {
+            thumb = document.createElement("span");
+            thumb.className = "playlist-thumb playlist-thumb-none";
+            thumb.setAttribute("aria-hidden", "true");
+        }
+
+        const body = document.createElement("div");
+        body.className = "playlist-item-body";
+        const head = document.createElement("div");
+        head.className = "playlist-item-head";
+        appendText(head, "span", "playlist-name",
+            asset ? asset.name : "Unknown asset " + shortId(item.asset) + "…");
+        const kind = appendText(head, "span", "playlist-kind",
+            asset ? (isVideo ? "Video" : "Still") : "Unknown");
+        kind.dataset.kind = asset ? asset.kind : "unknown";
+        const meta = appendText(body, "p", "playlist-item-meta", "");
+        if (isVideo) {
+            meta.textContent = "Clip " + formatDuration(asset.durationMs)
+                + " · dwell is the clip length";
+        } else if (asset) {
+            meta.textContent = "Still · " + formatDuration(item.dwell_ms) + " dwell";
+        } else {
+            meta.textContent = item.asset;
+        }
+        body.insertBefore(head, meta);
+
+        const dwell = document.createElement("div");
+        dwell.className = "playlist-dwell";
+        if (isVideo) {
+            appendText(dwell, "span", "playlist-dwell-label", "Fixed dwell");
+            appendText(dwell, "strong", "playlist-dwell-value", formatDuration(asset.durationMs));
+        } else {
+            const inputId = "playlist-dwell-" + index;
+            const label = appendText(dwell, "label", "playlist-dwell-label", "Dwell (ms)");
+            label.setAttribute("for", inputId);
+            const input = document.createElement("input");
+            input.className = "inp playlist-dwell-input";
+            input.id = inputId;
+            input.type = "number";
+            input.min = String(MIN_DWELL_MS);
+            input.max = String(MAX_DWELL_MS);
+            input.step = "100";
+            input.inputMode = "numeric";
+            input.autocomplete = "off";
+            input.value = String(item.dwell_ms);
+            input.addEventListener("input", function () {
+                const value = Number(input.value);
+                if (Number.isFinite(value) && value >= MIN_DWELL_MS && value <= MAX_DWELL_MS) {
+                    state.playlist.items[index].dwell_ms = Math.round(value);
+                    markPlaylistDirty();
+                }
+            });
+            input.addEventListener("change", function () {
+                const next = clampDwell(input.value);
+                input.value = String(next);
+                state.playlist.items[index].dwell_ms = next;
+                markPlaylistDirty();
+            });
+            dwell.appendChild(input);
+        }
+
+        const controls = document.createElement("div");
+        controls.className = "playlist-controls";
+
+        function addControl(label, action, disabled, handler) {
+            const button = document.createElement("button");
+            button.type = "button";
+            button.className = "btn btn-ghost btn-sm playlist-control";
+            button.dataset.action = action;
+            button.dataset.index = String(index);
+            button.textContent = label;
+            button.disabled = disabled;
+            button.setAttribute("aria-label", label + " " + (asset ? asset.name : item.asset)
+                + ", position " + (index + 1));
+            button.addEventListener("click", handler);
+            controls.appendChild(button);
+        }
+
+        addControl("Up", "up", index === 0, function () {
+            movePlaylistItem(index, -1);
+        });
+        addControl("Down", "down", index === state.playlist.items.length - 1, function () {
+            movePlaylistItem(index, 1);
+        });
+        addControl("Remove", "remove", false, function () {
+            removePlaylistItem(index);
+        });
+
+        itemNode.appendChild(thumb);
+        itemNode.appendChild(body);
+        itemNode.appendChild(dwell);
+        itemNode.appendChild(controls);
+        return itemNode;
+    }
+
+    function markPlaylistDirty() {
+        state.playlistDirty = true;
+        syncPlaylistFooter();
+    }
+
+    function movePlaylistItem(index, delta) {
+        const target = index + delta;
+        const items = state.playlist.items;
+        if (target < 0 || target >= items.length) return;
+        const moved = items[index];
+        items[index] = items[target];
+        items[target] = moved;
+        state.playlistFocus = { index: target, action: delta < 0 ? "up" : "down" };
+        markPlaylistDirty();
+        renderPlaylist();
+    }
+
+    function removePlaylistItem(index) {
+        state.playlist.items.splice(index, 1);
+        state.playlistFocus = {
+            index: Math.min(index, state.playlist.items.length - 1),
+            action: "remove"
+        };
+        markPlaylistDirty();
+        renderPlaylist();
+    }
+
+    function addPlaylistAsset(id, dwell) {
+        if (typeof id !== "string" || id === "") return false;
+        const asset = libraryAsset(id);
+        const isVideo = Boolean(asset && asset.kind === "video");
+        const value = isVideo && asset.durationMs !== null
+            ? clampDwell(asset.durationMs)
+            : clampDwell(dwell === undefined ? 5000 : dwell);
+        state.playlist.items.push({ asset: id, dwell_ms: value });
+        markPlaylistDirty();
+        renderPlaylist();
+        announce("Added " + (asset ? asset.name : shortId(id) + "…") + " to the playlist.", "ok");
+        return true;
     }
 
     async function savePlaylist() {
+        if (state.playlistSaving) return;
         clearMsg(el.playlistMsg);
-        const lines = (el.playlistAssets ? el.playlistAssets.value : "")
-            .split(/\s+/).map(function (value) { return value.trim(); })
-            .filter(function (value) { return value !== ""; });
-        const dwell = Number(el.playlistDwell ? el.playlistDwell.value : 0);
+        const items = state.playlist.items;
+        if (items.length === 0) {
+            setMsg(el.playlistMsg, "Add at least one item before saving.", "err");
+            return;
+        }
+        if (state.playlistEtag === null) {
+            setMsg(el.playlistMsg, "The playlist did not load, so there is no ETag to save against. Refresh the page.", "err");
+            return;
+        }
+        const payloadItems = items.map(function (item) {
+            const asset = libraryAsset(item.asset);
+            const dwell = asset && asset.kind === "video" && asset.durationMs !== null
+                ? clampDwell(asset.durationMs)
+                : clampDwell(item.dwell_ms);
+            return { asset: item.asset, dwell_ms: dwell };
+        });
+
+        state.playlistSaving = true;
+        syncPlaylistFooter();
         try {
-            const saved = await api("PUT", "/api/v3/playlist", {
-                items: lines.map(function (asset) {
-                    return { asset: asset, dwell_ms: dwell };
-                }),
-                loop: Boolean(el.playlistLoop && el.playlistLoop.checked),
+            const saved = await api("PUT", API_PLAYLIST, {
+                items: payloadItems,
+                loop: Boolean(el.playlistLoop && el.playlistLoop.checked)
             }, { ifMatch: state.playlistEtag });
-            state.playlistEtag = saved.etag;
+            state.playlistEtag = saved && typeof saved.etag === "string" ? saved.etag : null;
+            const document = normalizePlaylistDocument(saved ? saved.playlist : null);
+            if (document !== null) state.playlist = document;
+            else state.playlist.loop = Boolean(el.playlistLoop && el.playlistLoop.checked);
             state.playlistLoaded = true;
-            setMsg(el.playlistMsg, "Playlist saved.", "ok");
+            state.playlistDirty = false;
+            setMsg(el.playlistMsg, "Playlist saved: "
+                + state.playlist.items.length
+                + (state.playlist.items.length === 1 ? " item." : " items."), "ok");
+            announce("Playlist saved.", "ok");
         } catch (error) {
-            setMsg(el.playlistMsg, error.message, "err");
+            const detail = errorDetail(error);
+            setMsg(el.playlistMsg, error && error.status === 412
+                ? "Playlist changed on the server. Refresh the page and add your changes again. " + detail
+                : detail, "err");
+            announce("Playlist save failed.", "err");
+        } finally {
+            state.playlistSaving = false;
+            renderPlaylist();
+            renderPlayback();
         }
     }
 
-    async function playbackAction(action) {
-        clearMsg(el.playlistMsg);
+    /* ---------------------------------------------------------------- *
+     * Playback status
+     * ---------------------------------------------------------------- */
+
+    function statusNow(status) {
+        if (!status || typeof status !== "object") return null;
+        const raw = status.now_ms !== undefined
+            ? status.now_ms
+            : status.server_now_ms !== undefined
+                ? status.server_now_ms
+                : status.server_ms;
+        const value = Number(raw);
+        return Number.isFinite(value) ? value : null;
+    }
+
+    function msLabel(value) {
+        const number = Number(value);
+        return Number.isFinite(number) ? Math.round(number) + " ms (server)" : "—";
+    }
+
+    function remainingText(ms) {
+        const value = Number(ms);
+        if (!Number.isFinite(value)) return null;
+        if (value <= 0) return "due now";
+        return formatDuration(value) + " left";
+    }
+
+    function remainingDwell(status) {
+        if (!status || !status.state || status.state === "stopped") return null;
+        const explicit = status.remaining_dwell_ms !== undefined
+            ? status.remaining_dwell_ms : status.dwell_remaining_ms;
+        const value = Number(explicit);
+        if (Number.isFinite(value)) return value;
+        const current = status.current;
+        if (!current) return null;
+        const occurrence = current.occurrence || current;
+        const item = playlistItemFor(occurrence);
+        const effective = Number(current.effective_server_ms !== undefined
+            ? current.effective_server_ms : status.effective_server_ms);
+        const now = statusNow(status);
+        if (!item || !Number.isFinite(effective) || now === null) return null;
+        return effective + itemDurationMs(item) - now;
+    }
+
+    function idArray(value) {
+        if (!Array.isArray(value)) return [];
+        return value.filter(function (entry) {
+            return typeof entry === "string" && entry !== "";
+        });
+    }
+
+    function idSet(value) {
+        const out = new Set();
+        idArray(value).forEach(function (id) { out.add(id); });
+        if (value && typeof value === "object" && !Array.isArray(value)) {
+            Object.keys(value).forEach(function (id) { out.add(id); });
+        }
+        return out;
+    }
+
+    function missingSet(value) {
+        const out = new Map();
+        if (Array.isArray(value)) {
+            value.forEach(function (entry) {
+                if (typeof entry === "string") out.set(entry, "");
+                else if (entry && typeof entry === "object") {
+                    const id = typeof entry.device_id === "string" ? entry.device_id : null;
+                    if (id) out.set(id, typeof entry.reason === "string" ? entry.reason : "");
+                }
+            });
+        } else if (value && typeof value === "object") {
+            Object.keys(value).forEach(function (id) {
+                const entry = value[id];
+                out.set(id, typeof entry === "string" ? entry
+                    : entry && typeof entry.reason === "string" ? entry.reason : "");
+            });
+        }
+        return out;
+    }
+
+    function leaseMap(value) {
+        const out = new Map();
+        if (Array.isArray(value)) {
+            value.forEach(function (entry) {
+                if (entry && typeof entry === "object" && typeof entry.device_id === "string") {
+                    out.set(entry.device_id, entry);
+                }
+            });
+        } else if (value && typeof value === "object") {
+            Object.keys(value).forEach(function (id) {
+                const entry = value[id];
+                out.set(id, entry && typeof entry === "object"
+                    ? entry : { ready: Boolean(entry) });
+            });
+        }
+        return out;
+    }
+
+    function memberState(status) {
+        const pending = status && status.pending && typeof status.pending === "object"
+            ? status.pending : {};
+        const leases = leaseMap(pending.leases || status.leases
+            || pending.evidence || status.evidence || pending.members
+            || status.members || status.devices);
+        const required = new Set();
+        [
+            status.required, status.required_members, pending.required,
+            pending.required_members
+        ].forEach(function (value) {
+            idSet(value).forEach(function (id) { required.add(id); });
+        });
+        const ready = new Set();
+        [
+            status.ready, status.ready_members, pending.ready, pending.ready_members
+        ].forEach(function (value) {
+            idSet(value).forEach(function (id) { ready.add(id); });
+        });
+        leases.forEach(function (lease, id) {
+            if (lease && lease.ready === true) ready.add(id);
+        });
+        const missing = new Map();
+        [
+            status.missing, status.missing_members, status.blocked_missing,
+            status.missed, pending.missing, pending.missed
+        ].forEach(function (value) {
+            missingSet(value).forEach(function (reason, id) { missing.set(id, reason); });
+        });
+        const cohort = idArray(status.cohort).concat(idArray(pending.cohort));
+        const ordered = [];
+        const seen = new Set();
+        function add(id) {
+            if (typeof id !== "string" || id === "" || seen.has(id)) return;
+            seen.add(id);
+            ordered.push(id);
+        }
+        cohort.forEach(add);
+        required.forEach(add);
+        ready.forEach(add);
+        missing.forEach(function (_reason, id) { add(id); });
+        leases.forEach(function (_lease, id) { add(id); });
+        if (status.video && typeof status.video === "object") {
+            Object.keys(status.video).forEach(add);
+        }
+        return {
+            leases: leases,
+            required: required,
+            ready: ready,
+            missing: missing,
+            cohort: cohort,
+            ids: ordered
+        };
+    }
+
+    function videoEvidence(status, lease, id) {
+        const merged = {};
+        let found = false;
+        function take(value) {
+            if (!value || typeof value !== "object") return;
+            Object.keys(value).forEach(function (key) {
+                merged[key] = value[key];
+                found = true;
+            });
+        }
+        if (lease && typeof lease === "object") {
+            take(lease.video);
+            if (lease.evidence && typeof lease.evidence === "object") {
+                take(lease.evidence.video);
+            }
+        }
+        if (status && status.video && typeof status.video === "object") {
+            take(status.video[id]);
+        }
+        return found ? merged : null;
+    }
+
+    function factRow(term, value) {
+        const row = document.createElement("div");
+        row.className = "fact";
+        appendText(row, "dt", "", term);
+        appendText(row, "dd", "", value === null || value === undefined ? "—" : String(value));
+        return row;
+    }
+
+    function renderFactList(node, facts) {
+        if (!node) return;
+        clearChildren(node);
+        facts.forEach(function (fact) {
+            if (!fact || fact[1] === null || fact[1] === undefined || fact[1] === "") return;
+            node.appendChild(factRow(fact[0], fact[1]));
+        });
+    }
+
+    function playStateWord(stateName) {
+        if (stateName === "final") return "final item";
+        if (stateName === "armed") return "armed for the cut";
+        return stateName;
+    }
+
+    function applyPlaybackStatus(status) {
+        const next = status && typeof status.state === "string" ? status.state : "stopped";
+        state.playback = status;
+        state.playbackVersion = status && status.version !== undefined
+            ? status.version : null;
+        if (next !== state.playbackAnnouncedState) {
+            state.playbackAnnouncedState = next;
+            if (next === "blocked" || next === "failed") {
+                announce("Playback " + playStateWord(next) + ".", "warn");
+            } else if (next === "stopped") {
+                announce("Playback stopped.", "info");
+            } else {
+                announce("Playback " + playStateWord(next) + ".", "info");
+            }
+        }
+        renderPlayback();
+    }
+
+    async function refreshPlayback(manual) {
+        if (state.playbackFetching) return;
+        state.playbackFetching = true;
+        if (el.btnPlaybackRefresh) el.btnPlaybackRefresh.disabled = true;
         try {
-            const path = "/api/v3/playback/" + action;
-            const options = action === "start"
-                ? undefined : { ifMatch: String(state.playbackVersion) };
-            const status = await api("POST", path, undefined, options);
-            renderPlayback(status);
-            setMsg(el.playlistMsg,
-                action.charAt(0).toUpperCase() + action.slice(1) + " accepted.", "ok");
+            const status = await api("GET", API_PLAYBACK);
+            state.playbackError = null;
+            state.playbackFetchedAt = Date.now();
+            state.playbackOkAt = state.playbackFetchedAt;
+            applyPlaybackStatus(status);
+            if (manual) setMsg(el.playbackMsg, "Playback status refreshed.", "ok");
         } catch (error) {
-            setMsg(el.playlistMsg, error.message, "err");
-            loadPlayback();
+            state.playbackError = errorDetail(error);
+            state.playbackFetchedAt = Date.now();
+            renderPlayback();
+            if (manual) setMsg(el.playbackMsg, "Could not refresh playback: " + state.playbackError, "err");
+        } finally {
+            state.playbackFetching = false;
+            if (el.btnPlaybackRefresh) el.btnPlaybackRefresh.disabled = false;
+            renderPlaybackPollNote();
         }
     }
+
+    function renderPlaybackPollNote() {
+        if (!el.playbackPollNote) return;
+        let text = "Waiting for the first status read.";
+        let kind = "";
+        if (state.playbackError) {
+            kind = "err";
+            text = "Status unavailable: " + state.playbackError;
+            if (state.playbackOkAt) {
+                text += ". Showing the last answer from " + new Date(state.playbackOkAt)
+                    .toLocaleTimeString([], { hour: "2-digit", minute: "2-digit", second: "2-digit" })
+                    + ".";
+            } else {
+                text += ".";
+            }
+        } else if (state.playbackFetchedAt) {
+            text = "Live status, read at " + new Date(state.playbackFetchedAt)
+                .toLocaleTimeString([], { hour: "2-digit", minute: "2-digit", second: "2-digit" })
+                + ". Polled once a second while this page is visible.";
+        }
+        setTextIfChanged(el.playbackPollNote, text);
+        if (kind) el.playbackPollNote.dataset.kind = kind;
+        else el.playbackPollNote.removeAttribute("data-kind");
+    }
+
+    function renderPlayback() {
+        const status = state.playback;
+        renderPlaybackPolicy(status);
+        renderPlaybackButtons(status);
+        renderPlaybackSummary(status);
+        renderPlaybackFacts(status);
+        renderPlaybackPending(status);
+        renderPlaybackMembers(status);
+        renderPlaybackPollNote();
+    }
+
+    function renderPlaybackPolicy(status) {
+        if (!el.playbackEffectivePolicy) return;
+        let text;
+        if (status && status.state && status.state !== "stopped" && status.policy) {
+            text = "Effective policy: " + status.policy + " (from status).";
+        } else if (status && status.policy) {
+            text = "Effective policy: " + status.policy + " (last session).";
+        } else if (playlistHasVideo()) {
+            text = "No active session. Server default: strict, because the playlist has a video.";
+        } else {
+            text = "No active session. Server default: online, because the playlist has only stills.";
+        }
+        setTextIfChanged(el.playbackEffectivePolicy, text);
+    }
+
+    function renderPlaybackButtons(status) {
+        const stateName = status && typeof status.state === "string" ? status.state : "stopped";
+        const hasSession = Boolean(status) && stateName !== "stopped";
+        const paused = stateName === "paused";
+        const active = hasSession && stateName !== "failed";
+        const busy = state.playbackBusy;
+        const canPause = active && stateName !== "blocked" && stateName !== "paused";
+        const canResume = paused;
+
+        if (el.btnPlaybackStart) {
+            el.btnPlaybackStart.disabled = busy || paused
+                || (hasSession && stateName !== "failed");
+            el.btnPlaybackStart.textContent = "Start";
+            el.btnPlaybackStart.title = paused
+                ? "Use Resume to continue the paused item." : "Start a new playback session.";
+        }
+        if (el.btnPlaybackPause) {
+            el.btnPlaybackPause.disabled = busy || (!canPause && !canResume);
+            el.btnPlaybackPause.textContent = paused ? "Resume" : "Pause";
+        }
+        if (el.btnPlaybackStop) el.btnPlaybackStop.disabled = busy || !hasSession;
+        if (el.btnPlaybackRetry) {
+            el.btnPlaybackRetry.disabled = busy
+                || (stateName !== "blocked" && stateName !== "failed");
+        }
+        if (el.btnPlaybackPrevious) el.btnPlaybackPrevious.disabled = busy || !hasSession;
+        if (el.btnPlaybackNext) el.btnPlaybackNext.disabled = busy || !hasSession;
+        if (el.playbackPolicy) el.playbackPolicy.disabled = busy || hasSession;
+    }
+
+    function renderPlaybackSummary(status) {
+        if (!el.playbackStatus) return;
+        const stateName = status && typeof status.state === "string" ? status.state : "stopped";
+        if (el.playbackStatus.dataset.state !== stateName) {
+            el.playbackStatus.dataset.state = stateName;
+        }
+        let text;
+        if (stateName === "stopped") {
+            text = "Playback is stopped.";
+        } else if (stateName === "blocked") {
+            text = "Blocked: " + (status.blocked_reason
+                || "the cohort was not ready before the preparation deadline") + " Retry or Stop.";
+        } else if (stateName === "failed") {
+            text = "Failed: " + (status.blocked_reason || status.failure
+                || "the session stopped after a failure") + " Retry or Stop.";
+        } else if (stateName === "paused") {
+            text = "Paused on " + occurrenceText(status.current && (status.current.occurrence
+                || status.current)) + ". Resume restarts the item at a new anchor.";
+        } else if (stateName === "armed") {
+            text = "Armed: " + occurrenceText(status.current && (status.current.occurrence
+                || status.current)) + " is committed for the next cut.";
+        } else {
+            const current = status.current && (status.current.occurrence || status.current);
+            const pending = status.pending && status.pending.occurrence;
+            if (stateName === "final") {
+                text = "Final item: " + occurrenceText(current) + " Stop to leave it on screen.";
+            } else if (stateName === "preparing") {
+                text = current
+                    ? "Preparing the next item. On screen: " + occurrenceText(current) + "."
+                    : "Preparing the first item.";
+                if (pending) text += " Next: " + occurrenceText(pending) + ".";
+            } else if (!current && pending) {
+                text = "Preparing: " + occurrenceText(pending) + ".";
+            } else {
+                text = "Playing: " + occurrenceText(current);
+                if (pending) text += " Next: " + occurrenceText(pending) + ".";
+            }
+        }
+        setTextIfChanged(el.playbackStatus, text);
+    }
+
+    function sameOccurrence(left, right) {
+        if (!left || !right || typeof left !== "object" || typeof right !== "object") {
+            return false;
+        }
+        return ["playlist_revision", "item_index", "loop"].every(function (key) {
+            return left[key] === right[key];
+        });
+    }
+
+    function renderPlaybackFacts(status) {
+        if (!el.playbackFacts) return;
+        if (!status || !status.state || status.state === "stopped") {
+            renderFactList(el.playbackFacts, [
+                ["State", "stopped"],
+                ["Playlist", state.playlist.items.length
+                    + (state.playlist.items.length === 1 ? " item" : " items")]
+            ]);
+            return;
+        }
+        const facts = [];
+        facts.push(["State", status.state]);
+        if (status.session_id) facts.push(["Session", shortId(status.session_id) + "…"]);
+        if (status.version !== undefined) facts.push(["Version", status.version]);
+        if (status.policy) facts.push(["Policy", status.policy]);
+
+        const current = status.current;
+        const currentOccurrence = current && (current.occurrence || current);
+        const displayed = status.displayed || (status.state === "armed" ? null : current);
+        const displayedOccurrence = displayed && (displayed.occurrence || displayed);
+        if (displayedOccurrence) {
+            facts.push(["Displayed", occurrenceText(displayedOccurrence)]);
+        } else if (status.state === "armed") {
+            facts.push(["Displayed", "the previous item stays until the cut"]);
+        }
+
+        if (currentOccurrence) {
+            const effective = Number(current && current.effective_server_ms !== undefined
+                ? current.effective_server_ms : status.effective_server_ms);
+            const future = status.state === "armed"
+                || (statusNow(status) !== null && Number.isFinite(effective)
+                    && statusNow(status) < effective);
+            if (!sameOccurrence(displayedOccurrence, currentOccurrence) || future) {
+                facts.push([future ? "Committed, future" : "Committed",
+                    occurrenceText(currentOccurrence)]);
+            }
+            if (Number.isFinite(effective)) {
+                facts.push([future ? "Cut anchor" : "Active anchor", msLabel(effective)]);
+            }
+            const reportedKind = current && (current.kind
+                || (current.media && current.media.kind) || status.current_kind);
+            const reportedDuration = current && (current.duration_ms !== undefined
+                ? current.duration_ms
+                : current.durationMs !== undefined ? current.durationMs
+                    : current.media && current.media.duration_ms !== undefined
+                        ? current.media.duration_ms : status.current_duration_ms);
+            const item = playlistItemFor(currentOccurrence);
+            if (reportedKind) {
+                facts.push(["Current media", String(reportedKind)
+                    + (reportedDuration !== undefined && reportedDuration !== null
+                        ? " · " + formatDuration(reportedDuration) : "")]);
+            } else if (item) {
+                facts.push(["Current media", itemKindText(item)]);
+            }
+        }
+
+        const remaining = ["blocked", "failed", "paused", "final"].indexOf(status.state) !== -1
+            ? null : remainingDwell(status);
+        if (remaining !== null) facts.push(["Remaining dwell", remainingText(remaining)]);
+        if (status.hold_deadline_ms !== undefined) {
+            facts.push(["Hold deadline", msLabel(status.hold_deadline_ms)]);
+        }
+        if (status.held) facts.push(["Holding", "yes"]);
+        if (Array.isArray(status.missed) && status.missed.length > 0) {
+            facts.push([status.policy === "strict" ? "Missing members" : "Online misses",
+                status.missed.map(function (id) {
+                    return deviceLabel(id, latestProfile(id));
+                }).join(", ")]);
+        }
+        if (status.blocked_reason) facts.push(["Blocked reason", status.blocked_reason]);
+        renderFactList(el.playbackFacts, facts);
+    }
+
+    function renderPlaybackPending(status) {
+        if (!el.playbackPending) return;
+        if (!status || !status.state || status.state === "stopped") {
+            renderFactList(el.playbackPending, [["Preparation", "none"]]);
+            return;
+        }
+        const pending = status.pending;
+        if (!pending) {
+            renderFactList(el.playbackPending, [["Preparation", "none"]]);
+            return;
+        }
+        const occurrence = pending.occurrence || pending;
+        const facts = [["Next item", occurrenceText(occurrence)]];
+        if (pending.preparation_id) {
+            facts.push(["Preparation", shortId(pending.preparation_id) + "…"]);
+        }
+        if (pending.effective_server_ms !== undefined) {
+            facts.push(["Cut anchor", msLabel(pending.effective_server_ms)]);
+            const remaining = statusNow(status) !== null
+                ? pending.effective_server_ms - statusNow(status) : null;
+            if (remaining !== null) facts.push(["Cut in", remainingText(remaining)]);
+        }
+        if (pending.prepare_deadline_ms !== undefined) {
+            facts.push(["Preparation deadline", msLabel(pending.prepare_deadline_ms)]);
+            if (statusNow(status) !== null) {
+                facts.push(["Deadline in",
+                    remainingText(pending.prepare_deadline_ms - statusNow(status))]);
+            }
+        }
+        const media = (pending.media && typeof pending.media === "object")
+            ? pending.media
+            : (status.pending_media && typeof status.pending_media === "object")
+                ? status.pending_media : null;
+        const item = playlistItemFor(occurrence);
+        if (media) {
+            if (media.kind === "video") {
+                facts.push(["Media", "video · " + formatDuration(media.duration_ms)]);
+            } else if (media.kind) {
+                facts.push(["Media", String(media.kind)]);
+            }
+            if (media.buffer_goal_ms !== undefined) {
+                facts.push(["Buffer goal", formatDuration(media.buffer_goal_ms)]);
+            }
+            if (media.start_lead_ms !== undefined) {
+                facts.push(["Start lead", formatDuration(media.start_lead_ms)]);
+            }
+            if (media.prepare_timeout_ms !== undefined) {
+                facts.push(["Prepare timeout", formatDuration(media.prepare_timeout_ms)]);
+            }
+        } else if (item && itemIsVideo(item)) {
+            const asset = libraryAsset(item.asset);
+            facts.push(["Media", "video · "
+                + formatDuration(asset && asset.durationMs !== null
+                    ? asset.durationMs : itemDurationMs(item))
+                + " (not reported in status)"]);
+        }
+        renderFactList(el.playbackPending, facts);
+    }
+
+    function renderPlaybackMembers(status) {
+        if (!el.playbackMembers) return;
+        clearChildren(el.playbackMembers);
+        const stateName = status && typeof status.state === "string" ? status.state : "stopped";
+        if (!status || stateName === "stopped") {
+            el.playbackMembersEmpty.hidden = false;
+            el.playbackMembersEmpty.textContent = "No preparation is active.";
+            return;
+        }
+        const info = memberState(status);
+        if (info.ids.length === 0) {
+            el.playbackMembersEmpty.hidden = false;
+            el.playbackMembersEmpty.textContent =
+                "The server did not report a cohort or member evidence for this state.";
+            return;
+        }
+        el.playbackMembersEmpty.hidden = true;
+
+        const media = status.pending && status.pending.media
+            && typeof status.pending.media === "object" ? status.pending.media
+            : (status.pending_media && typeof status.pending_media === "object")
+                ? status.pending_media : null;
+        const goal = media && media.buffer_goal_ms !== undefined
+            ? Number(media.buffer_goal_ms) : null;
+
+        info.ids.forEach(function (id) {
+            const lease = info.leases.get(id) || {};
+            const video = videoEvidence(status, lease, id);
+            const strict = status.policy === "strict";
+            const participant = info.cohort.indexOf(id) !== -1;
+            const required = info.required.has(id)
+                || (info.required.size === 0 && strict && participant);
+            const ready = info.ready.has(id);
+            const missingReason = info.missing.get(id);
+            const roster = state.roster[id] || {};
+            const online = lease.online !== undefined ? lease.online === true
+                : roster.online === true;
+
+            const row = document.createElement("li");
+            row.className = "playback-member";
+            row.dataset.state = missingReason !== undefined && missingReason !== ""
+                ? "missing" : ready ? "ready" : "waiting";
+
+            const head = document.createElement("div");
+            head.className = "playback-member-head";
+            appendText(head, "span", "playback-member-name",
+                deviceLabel(id, latestProfile(id)));
+            appendText(head, "code", "playback-member-id", shortId(id) + "…");
+            const chips = document.createElement("span");
+            chips.className = "playback-member-chips";
+            const requiredChip = appendText(chips, "span", "chip",
+                required ? "required" : participant ? "participant" : "optional");
+            requiredChip.dataset.kind = required ? "info" : "warn";
+            const stateChip = appendText(chips, "span", "chip",
+                ready ? "ready" : missingReason !== undefined ? "missing" : "waiting");
+            stateChip.dataset.kind = ready ? "ok" : missingReason !== undefined ? "err" : "warn";
+            const onlineChip = appendText(chips, "span", "chip", online ? "online" : "offline");
+            onlineChip.dataset.kind = online ? "ok" : "err";
+            head.appendChild(chips);
+            row.appendChild(head);
+
+            const meta = document.createElement("p");
+            meta.className = "playback-member-meta";
+            const bits = [];
+            if (lease.clock_ok !== undefined) bits.push("clock " + (lease.clock_ok ? "ok" : "stale"));
+            if (lease.mapping_revision !== undefined && lease.mapping_revision !== null) {
+                bits.push("mapping r" + lease.mapping_revision);
+            }
+            if (lease.protocol !== undefined && lease.protocol !== null) {
+                bits.push("protocol " + lease.protocol);
+            }
+            if (lease.unsupported === true) bits.push("protocol unsupported");
+            if (lease.reason) bits.push(String(lease.reason));
+            if (video) {
+                if (video.play_ok === "yes") bits.push("activation ok");
+                else if (video.play_ok === "needs_gesture") bits.push("activation needs a tap");
+                else if (video.play_ok === "no") bits.push("activation failed");
+                if (video.metadata !== undefined) {
+                    bits.push("metadata " + (video.metadata ? "yes" : "no"));
+                }
+                if (video.seeked !== undefined) bits.push("seek " + (video.seeked ? "yes" : "no"));
+                if (video.buffered_ahead_ms !== undefined) {
+                    bits.push("buffer " + formatSpan(video.buffered_ahead_ms)
+                        + (goal !== null ? " / " + formatSpan(goal) : ""));
+                }
+                if (video.rvfc !== undefined) bits.push("rVFC " + (video.rvfc ? "yes" : "no"));
+                if (video.drift_ms !== undefined) bits.push("drift " + Math.round(video.drift_ms) + " ms");
+                if (video.rate !== undefined) bits.push("rate " + Number(video.rate).toFixed(2));
+                if (video.source !== undefined) bits.push("source " + video.source);
+                if (video.age_ms !== undefined) bits.push("sample " + formatSpan(video.age_ms) + " old");
+                if (video.media_ms !== undefined) bits.push("media " + formatSpan(video.media_ms));
+            }
+            if (missingReason) bits.push("missing: " + missingReason);
+            meta.textContent = bits.length ? bits.join(" · ") : "No evidence reported yet.";
+            row.appendChild(meta);
+            el.playbackMembers.appendChild(row);
+        });
+    }
+
+    async function playbackAction(action) {
+        if (state.playbackBusy) return;
+        clearMsg(el.playbackMsg);
+        state.playbackBusy = true;
+        renderPlaybackButtons(state.playback);
+        try {
+            let status;
+            if (action === "start") {
+                const policy = el.playbackPolicy ? el.playbackPolicy.value : "";
+                status = await api("POST", API_PLAYBACK + "/start",
+                    policy ? { policy: policy } : undefined);
+            } else if (action === "resume") {
+                // Resume keeps the frozen policy and cohort; send no policy.
+                status = await api("POST", API_PLAYBACK + "/start");
+            } else {
+                if (state.playbackVersion === null) {
+                    setMsg(el.playbackMsg,
+                        "No playback version is loaded. Refresh the status first.", "err");
+                    return;
+                }
+                status = await api("POST", API_PLAYBACK + "/" + action, undefined,
+                    { ifMatch: String(state.playbackVersion) });
+            }
+            state.playbackError = null;
+            state.playbackFetchedAt = Date.now();
+            state.playbackOkAt = state.playbackFetchedAt;
+            applyPlaybackStatus(status);
+            setMsg(el.playbackMsg,
+                (action === "resume" ? "Resume" : action.charAt(0).toUpperCase() + action.slice(1))
+                    + " accepted.", "ok");
+        } catch (error) {
+            setMsg(el.playbackMsg, errorDetail(error), "err");
+            announce("Playback command failed.", "err");
+            refreshPlayback(false);
+        } finally {
+            state.playbackBusy = false;
+            renderPlaybackButtons(state.playback);
+        }
+    }
+
+    function actionFromPauseButton() {
+        const status = state.playback;
+        return status && status.state === "paused" ? "resume" : "pause";
+    }
+
+    /* ---------------------------------------------------------------- *
+     * Field check: diagnostics and rebinding
+     * ---------------------------------------------------------------- */
+
+    function diagChip() {
+        if (!el.diagState) return;
+        let text = "loading";
+        let kind = "info";
+        if (state.diagnosticsState === "refreshing") text = "refreshing";
+        else if (state.diagnosticsState === "ready") { text = "ready"; kind = "ok"; }
+        else if (state.diagnosticsState === "error") { text = "error"; kind = "err"; }
+        else if (state.diagnosticsState === "forbidden") { text = "unavailable"; kind = "warn"; }
+        setTextIfChanged(el.diagState, text);
+        el.diagState.dataset.kind = kind;
+    }
+
+    function wakeLockSummary(counts) {
+        const order = ["held", "released", "unsupported", "insecure", "denied"];
+        const source = counts && typeof counts === "object" ? counts : {};
+        return order.map(function (key) {
+            const value = Number(source[key]);
+            return key + " " + (Number.isFinite(value) ? value : 0);
+        }).join(" · ");
+    }
+
+    function problemText(problem) {
+        if (typeof problem === "string") return problem;
+        try { return JSON.stringify(problem); }
+        catch (error) { return String(problem); }
+    }
+
+    function renderIntegrity(integrity) {
+        if (!el.diagIntegrity) return;
+        if (!integrity || typeof integrity !== "object") {
+            el.diagIntegrity.hidden = true;
+            clearChildren(el.diagProblems);
+            return;
+        }
+        el.diagIntegrity.hidden = false;
+        const problems = Array.isArray(integrity.problems) ? integrity.problems : [];
+        const ok = integrity.ok === true && problems.length === 0;
+        el.diagIntegrity.dataset.state = ok ? "ok" : "bad";
+        if (el.diagIntegrityText) {
+            el.diagIntegrityText.textContent = ok
+                ? "All ready objects match their recorded ids."
+                : "Damaged or missing objects were found. These files do not match their recorded ids.";
+        }
+        clearChildren(el.diagProblems);
+        problems.forEach(function (problem) {
+            appendText(el.diagProblems, "li", "diag-problem", problemText(problem));
+        });
+    }
+
+    function renderDiagnostics() {
+        diagChip();
+        if (!el.diagGrid) return;
+        const data = state.diagnostics;
+        const facts = [];
+        if (!data) {
+            facts.push(["Status", state.diagnosticsState === "loading"
+                ? "Reading diagnostics…" : "No diagnostics loaded."]);
+        } else {
+            const media = data.media && typeof data.media === "object" ? data.media : {};
+            const db = data.db && typeof data.db === "object" ? data.db : {};
+            const backup = data.backup && typeof data.backup === "object" ? data.backup : {};
+            const clients = data.clients && typeof data.clients === "object" ? data.clients : {};
+            facts.push(["Storage",
+                formatBytes(media.used_bytes) + " used of " + formatBytes(media.quota_bytes)
+                + " (" + formatPercent(media.used_bytes, media.quota_bytes) + ")"]);
+            facts.push(["Free / reserve",
+                formatBytes(media.free_bytes) + " free · " + formatBytes(media.reserve_bytes)
+                + " reserve"]);
+            facts.push(["Objects",
+                (media.objects ?? "—") + " objects · " + (media.assets ?? "—") + " assets · "
+                + (media.orphans ?? "—") + " orphans"]);
+            facts.push(["Database",
+                "schema " + (db.schema ?? "—") + " · " + formatBytes(db.bytes)]);
+            facts.push(["Backup",
+                backup.last_manifest_at
+                    ? formatTime(backup.last_manifest_at) + " · "
+                        + relativeAge(backup.last_manifest_at)
+                    : "No backup manifest found"]);
+            facts.push(["Clients",
+                (clients.online ?? "—") + " online · " + (clients.total ?? "—") + " registered"]);
+            facts.push(["Wake lock", wakeLockSummary(clients.wake_lock)]);
+        }
+        renderFactList(el.diagGrid, facts);
+    }
+
+    async function loadDiagnostics(verify) {
+        if (state.diagnosticsLoading) return;
+        state.diagnosticsLoading = true;
+        state.diagnosticsState = state.diagnostics ? "refreshing" : "loading";
+        if (el.btnDiagRefresh) el.btnDiagRefresh.disabled = true;
+        if (el.btnDiagVerify) el.btnDiagVerify.disabled = true;
+        renderDiagnostics();
+        try {
+            const data = await api("GET", API_DIAGNOSTICS + (verify ? "?verify=1" : ""));
+            if (!data || typeof data !== "object" || !data.media || !data.db) {
+                throw new Error("the answer was not a diagnostics report");
+            }
+            state.diagnostics = data;
+            state.diagnosticsState = "ready";
+            state.diagnosticsError = null;
+            if (verify) {
+                const integrity = data.media && data.media.integrity
+                    ? data.media.integrity : data.integrity;
+                renderIntegrity(integrity);
+                setMsg(el.diagMsg, integrity
+                    ? (integrity.ok && (!Array.isArray(integrity.problems)
+                        || integrity.problems.length === 0)
+                        ? "Object integrity check passed." : "Object integrity check found problems.")
+                    : "This server did not return an integrity report.", integrity ? "ok" : "warn");
+            } else {
+                setMsg(el.diagMsg, "", null);
+            }
+            await refreshRoster();
+        } catch (error) {
+            const forbidden = error && error.status === 403;
+            state.diagnosticsState = forbidden ? "forbidden" : "error";
+            state.diagnosticsError = errorDetail(error);
+            setMsg(el.diagMsg, forbidden
+                ? "Diagnostics are unavailable while uploads are disabled."
+                : "Could not load diagnostics: " + state.diagnosticsError, "err");
+        } finally {
+            state.diagnosticsLoading = false;
+            if (el.btnDiagRefresh) el.btnDiagRefresh.disabled = false;
+            if (el.btnDiagVerify) el.btnDiagVerify.disabled = false;
+            renderDiagnostics();
+        }
+    }
+
+    async function refreshRoster() {
+        try {
+            const roster = await api("GET", API_DEVICES);
+            if (roster && typeof roster === "object") {
+                state.roster = roster;
+                ensureSelection();
+                renderDeviceList();
+                syncInspector();
+            }
+        } catch (error) {
+            // The last roster stays visible; diagnostics carries the error.
+        }
+    }
+
+    async function submitRebind(event) {
+        event.preventDefault();
+        if (state.rebindBusy) return;
+        clearMsg(el.rebindMsg);
+        const newId = (el.rebindNew ? el.rebindNew.value : "").trim().toLowerCase();
+        const replaces = (el.rebindReplaces ? el.rebindReplaces.value : "").trim().toLowerCase();
+        if (!UUID4_RE.test(newId)) {
+            setMsg(el.rebindMsg, "The new device id must be a UUID version 4.", "err");
+            if (el.rebindNew) el.rebindNew.focus();
+            return;
+        }
+        if (!UUID4_RE.test(replaces)) {
+            setMsg(el.rebindMsg, "The replaced device id must be a UUID version 4.", "err");
+            if (el.rebindReplaces) el.rebindReplaces.focus();
+            return;
+        }
+        if (newId === replaces) {
+            setMsg(el.rebindMsg, "The new and replaced device ids must differ.", "err");
+            return;
+        }
+        const body = { replaces: replaces };
+        const rawNumber = el.rebindNumber ? el.rebindNumber.value.trim() : "";
+        if (rawNumber !== "") {
+            const number = Number(rawNumber);
+            if (!Number.isInteger(number) || number < 1 || number > 512) {
+                setMsg(el.rebindMsg, "The display number must be a whole number from 1 to 512.", "err");
+                if (el.rebindNumber) el.rebindNumber.focus();
+                return;
+            }
+            body.number = number;
+        }
+
+        state.rebindBusy = true;
+        if (el.btnRebind) {
+            el.btnRebind.disabled = true;
+            el.btnRebind.textContent = "Rebinding…";
+        }
+        try {
+            const result = await api("POST", "/devices/" + encodeURIComponent(newId) + "/rebind", body);
+            const number = result && result.number !== undefined && result.number !== null
+                ? " as display number " + result.number : "";
+            setMsg(el.rebindMsg, "Rebound " + shortId(newId) + "… over " + shortId(replaces)
+                + "…" + number + ".", "ok");
+            announce("Tablet rebound.", "ok");
+            if (el.rebindNew) el.rebindNew.value = "";
+            if (el.rebindReplaces) el.rebindReplaces.value = "";
+            if (el.rebindNumber) el.rebindNumber.value = "";
+            if (!isDirty() && !state.profileDirty && !state.calDirty) {
+                await loadConfig();
+            } else {
+                await refreshRoster();
+            }
+        } catch (error) {
+            setMsg(el.rebindMsg, errorDetail(error), "err");
+            announce("Rebind failed.", "err");
+        } finally {
+            state.rebindBusy = false;
+            if (el.btnRebind) {
+                el.btnRebind.disabled = false;
+                el.btnRebind.textContent = "Rebind tablet";
+            }
+        }
+    }
+
+    /* ---------------------------------------------------------------- *
+     * Saved layouts
+     * ---------------------------------------------------------------- */
 
     async function loadLayouts() {
         try {
@@ -2289,26 +3679,129 @@
         el.calibrationForm.addEventListener("change", function () { state.calDirty = true; });
 
         el.layoutSaveForm.addEventListener("submit", saveLayout);
+        if (el.btnPlaylistAdd) {
+            el.btnPlaylistAdd.addEventListener("click", function () {
+                if (!el.playlistLibrary || !el.playlistLibrary.value) return;
+                addPlaylistAsset(el.playlistLibrary.value);
+            });
+        }
+        if (el.playlistLibrary) {
+            el.playlistLibrary.addEventListener("change", function () {
+                if (el.btnPlaylistAdd) el.btnPlaylistAdd.disabled = !el.playlistLibrary.value;
+            });
+        }
+        if (el.btnPlaylistLibraryRefresh) {
+            el.btnPlaylistLibraryRefresh.addEventListener("click", function () {
+                loadLibrary(false);
+            });
+        }
+        if (el.btnPlaylistRawAdd) {
+            el.btnPlaylistRawAdd.addEventListener("click", function () {
+                let value = el.playlistRawId ? el.playlistRawId.value.trim().toLowerCase() : "";
+                if (/^[0-9a-f]{64}$/.test(value)) value = "sha256:" + value;
+                if (!/^sha256:[0-9a-f]{64}$/.test(value)) {
+                    setMsg(el.playlistMsg, "Enter a sha256 content id.", "err");
+                    if (el.playlistRawId) el.playlistRawId.focus();
+                    return;
+                }
+                const dwell = el.playlistRawDwell
+                    ? clampDwell(el.playlistRawDwell.value) : 5000;
+                if (el.playlistRawDwell) el.playlistRawDwell.value = String(dwell);
+                addPlaylistAsset(value, dwell);
+                if (el.playlistRawId) el.playlistRawId.value = "";
+            });
+        }
+        if (el.playlistLoop) {
+            el.playlistLoop.addEventListener("change", function () {
+                state.playlist.loop = Boolean(el.playlistLoop.checked);
+                markPlaylistDirty();
+            });
+        }
         if (el.btnPlaylistSave) el.btnPlaylistSave.addEventListener("click", savePlaylist);
-        if (el.btnPlaybackRefresh) el.btnPlaybackRefresh.addEventListener("click", loadPlayback);
-        if (el.btnPlaybackStart) el.btnPlaybackStart.addEventListener("click", function () { playbackAction("start"); });
-        if (el.btnPlaybackPause) el.btnPlaybackPause.addEventListener("click", function () { playbackAction("pause"); });
-        if (el.btnPlaybackStop) el.btnPlaybackStop.addEventListener("click", function () { playbackAction("stop"); });
-        if (el.btnPlaybackPrevious) el.btnPlaybackPrevious.addEventListener("click", function () { playbackAction("previous"); });
-        if (el.btnPlaybackNext) el.btnPlaybackNext.addEventListener("click", function () { playbackAction("next"); });
+
+        if (el.btnPlaybackRefresh) {
+            el.btnPlaybackRefresh.addEventListener("click", function () {
+                refreshPlayback(true);
+            });
+        }
+        if (el.btnPlaybackStart) {
+            el.btnPlaybackStart.addEventListener("click", function () {
+                playbackAction("start");
+            });
+        }
+        if (el.btnPlaybackPause) {
+            el.btnPlaybackPause.addEventListener("click", function () {
+                playbackAction(actionFromPauseButton());
+            });
+        }
+        if (el.btnPlaybackStop) {
+            el.btnPlaybackStop.addEventListener("click", function () {
+                playbackAction("stop");
+            });
+        }
+        if (el.btnPlaybackRetry) {
+            el.btnPlaybackRetry.addEventListener("click", function () {
+                playbackAction("retry");
+            });
+        }
+        if (el.btnPlaybackPrevious) {
+            el.btnPlaybackPrevious.addEventListener("click", function () {
+                playbackAction("previous");
+            });
+        }
+        if (el.btnPlaybackNext) {
+            el.btnPlaybackNext.addEventListener("click", function () {
+                playbackAction("next");
+            });
+        }
+
+        if (el.btnDiagRefresh) {
+            el.btnDiagRefresh.addEventListener("click", function () {
+                loadDiagnostics(false);
+            });
+        }
+        if (el.btnDiagVerify) {
+            el.btnDiagVerify.addEventListener("click", function () {
+                loadDiagnostics(true);
+            });
+        }
+        if (el.rebindForm) el.rebindForm.addEventListener("submit", submitRebind);
+
         el.btnLayoutsRefresh.addEventListener("click", loadLayouts);
         el.layoutName.addEventListener("input", function () { clearMsg(el.layoutMsg); });
 
         document.addEventListener("keydown", onKeyDown);
+        document.addEventListener("visibilitychange", function () {
+            if (document.visibilityState !== "hidden") refreshPlayback(false);
+        });
+        window.addEventListener("online", function () {
+            refreshPlayback(false);
+        });
+    }
+
+    function startPlaybackPolling() {
+        if (state.playbackTimer !== null) return;
+        state.playbackTimer = window.setInterval(function () {
+            if (document.visibilityState === "hidden") return;
+            if (state.playbackBusy || state.playbackFetching) return;
+            refreshPlayback(false);
+        }, PLAYBACK_POLL_MS);
     }
 
     function init() {
         bindEvents();
         syncMeta();
         syncDraftUi();
+        renderPlaylist();
+        renderPlayback();
+        renderDiagnostics();
         loadConfig();
         loadLayouts();
-        loadPlayback();
+        loadLibrary(true);
+        loadPlaylist();
+        refreshPlayback(false);
+        loadDiagnostics(false);
+        startPlaybackPolling();
     }
 
     if (document.readyState === "loading") {
