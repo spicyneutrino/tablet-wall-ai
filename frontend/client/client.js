@@ -70,7 +70,9 @@
     }
 
     var BACKOFF_MIN_MS = 500;
-    var BACKOFF_MAX_MS = 15000;
+    /* A dropped network must recover inside the 10 s R5 gate. The old 15 s
+     * cap could sleep through the whole gate after connectivity returned. */
+    var BACKOFF_MAX_MS = 5000;
     var REGISTER_TIMEOUT_MS = 10000;
     var DEFAULT_HEARTBEAT_MS = 5000; // only used if welcome omits the value
 
@@ -2477,9 +2479,9 @@
         imageFailure = null;
         wallState = shown;
         render();
-        /* A still replaces a video: the picture is on the canvas first,
-         * then the element goes. */
-        releaseVideoSlot(videoPending);
+        /* A still replaces the videos that are already on the wall. The
+         * PENDING preparation is the next occurrence: the server sends it
+         * immediately after this commit, and it must survive this paint. */
         releaseVideoSlot(videoArmed);
         releaseVideoSlot(videoActive);
     }
@@ -2740,9 +2742,6 @@
         ) {
             return; /* a stale preparation cannot replace a newer one */
         }
-        /* A video prepare supersedes a still that was still preparing for
-         * the next occurrence. */
-        clearStillPlayback();
         releaseVideoSlot(videoPending);
         var url;
         try {
@@ -2805,8 +2804,11 @@
             startAttempt: 0,
             rvfcHandle: null,
         };
+        if (!layoutVideoSlot(slot)) {
+            warn("video layout failed");
+            return;
+        }
         videoPending = slot;
-        layoutVideoSlot(slot);
         layer.appendChild(el);
         document.body.appendChild(layer);
         bindVideoEvents(slot);
@@ -3414,11 +3416,16 @@
 
     function startVideoPlayback(slot, attempt) {
         var el = slot.el;
-        var result;
-        try {
-            result = el.play();
-        } catch (err) {
-            result = Promise.reject(err);
+        var settled = false;
+        var timer = null;
+        function settle() {
+            if (settled) return false;
+            settled = true;
+            if (timer !== null) {
+                clearTimeout(timer);
+                timer = null;
+            }
+            return true;
         }
         function started() {
             slot.needsGesture = false;
@@ -3431,16 +3438,40 @@
                 observeVideo(slot);
             }
         }
+        var result;
+        try {
+            result = el.play();
+        } catch (err) {
+            result = Promise.reject(err);
+        }
+        /* The play promise is bounded like the probe: a browser that
+         * neither starts nor rejects must not leave the picture frozen
+         * with no recovery. A timeout pauses, invalidates the attempt, and
+         * spends one of the bounded recoveries. */
+        timer = setTimeout(function () {
+            timer = null;
+            if (!settle()) return;
+            if (!videoAttemptLive(slot, attempt) || slot.dead) return;
+            try {
+                el.pause();
+            } catch (err) {
+                warn("could not pause the video", err);
+            }
+            slot.startAttempt += 1;
+            recoverPlayingVideo(slot, "play timed out");
+        }, VIDEO_PLAY_TIMEOUT_MS);
         if (!result || typeof result.then !== "function") {
-            started();
+            if (settle()) started();
             return;
         }
         result.then(
             function () {
+                if (!settle()) return;
                 if (!videoAttemptLive(slot, attempt) || slot.dead) return;
                 started();
             },
             function (err) {
+                if (!settle()) return;
                 if (!videoAttemptLive(slot, attempt) || slot.dead) return;
                 if (err && err.name === "NotAllowedError") {
                     /* Activation can be lost after a probe: ask for a tap
@@ -3542,25 +3573,34 @@
         var view = videoView();
         if (!view || typeof view.videoCorrection !== "function") return;
         var drift = view.videoDriftMs(mediaMs, targetMs);
-        var decision = view.videoCorrection({
-            driftMs: drift,
-            nowMs: now,
-            lastSeekMs: slot.lastSeekAt,
-        });
-        if (decision.seek) {
-            slot.lastSeekAt = now;
-            try {
-                el.currentTime = targetMs / 1000;
-            } catch (err) {
-                warn("video seek failed", err);
+        /* Correction belongs to a playing picture. A paused/needs-gesture
+         * or blocked element still reports samples (so the server sees the
+         * drift), but must not be seeked or rate-shifted underneath. */
+        if (
+            !slot.needsGesture &&
+            slot.phase !== "paused" &&
+            slot.phase !== "blocked"
+        ) {
+            var decision = view.videoCorrection({
+                driftMs: drift,
+                nowMs: now,
+                lastSeekMs: slot.lastSeekAt,
+            });
+            if (decision.seek) {
+                slot.lastSeekAt = now;
+                try {
+                    el.currentTime = targetMs / 1000;
+                } catch (err) {
+                    warn("video seek failed", err);
+                }
             }
-        }
-        if (decision.rate !== slot.rate) {
-            slot.rate = decision.rate;
-            try {
-                el.playbackRate = decision.rate;
-            } catch (err) {
-                warn("video rate change failed", err);
+            if (decision.rate !== slot.rate) {
+                slot.rate = decision.rate;
+                try {
+                    el.playbackRate = decision.rate;
+                } catch (err) {
+                    warn("video rate change failed", err);
+                }
             }
         }
         if (now - slot.lastSampleAt >= VIDEO_SAMPLE_MS) {

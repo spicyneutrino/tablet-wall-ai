@@ -46,6 +46,12 @@
  *   - on that grid, generations across lower revisions stay repeatable:
  *     a same-generation replay is a no-op, a new lineage at a lower
  *     revision refetches, and a stale in-flight lineage never paints.
+ *
+ * Native video player coverage (same harness): the pending/armed/active
+ * slot split, a next prepare immediately after a commit, duplicate commits,
+ * bounded play probes and activation, pause/cancel/stop/generation
+ * supersede, exact ranged buffer coverage, activation denial, rVFC samples,
+ * and the shared CSS physical transform.
  */
 
 "use strict";
@@ -3378,6 +3384,125 @@ test("video: the layer uses the still path's CSS physical transform", async () =
             ")",
         "video matrix is the still matrix shifted by the clip corner"
     );
+});
+
+test("video: a still commit followed by the next video prepare paints both", async () => {
+    const h = await startVideoHarness(VP);
+    h.setFetch(
+        route({
+            [ASSET_A]: okResponse(assetBlob("A", 400, 400)),
+            [ASSET_B]: okResponse(assetBlob("B", 1000, 1500)),
+        })
+    );
+    h.emit(wallFrame());
+    await drain();
+
+    const stillId = "sha256:" + ASSET_B;
+    h.emit({
+        type: "prepare",
+        session_id: "sess-1",
+        version: 3,
+        preparation_id: "still-1",
+        occurrence: { playlist_revision: 1, item_index: 0, loop: 0 },
+        asset: {
+            id: stillId,
+            url: "/assets/" + stillId,
+            intrinsicWidth: 1000,
+            intrinsicHeight: 1500,
+        },
+        plan: VIDEO_PLAN,
+        calibration: VIDEO_CALIBRATION,
+        connection_id: "conn-1",
+    });
+    await drain();
+
+    const stillEffective = h.now() + 800;
+    h.emit({
+        type: "commit",
+        session_id: "sess-1",
+        version: 4,
+        prepared_at_version: 3,
+        preparation_id: "still-1",
+        occurrence: { playlist_revision: 1, item_index: 0, loop: 0 },
+        effective_server_ms: stillEffective,
+        connection_id: "conn-1",
+    });
+
+    /* The server sends the next occurrence's prepare immediately after
+     * the commit: it must not cancel the still's pending cut. */
+    h.emit(
+        videoPrepare({
+            version: 4,
+            preparation_id: "prep-2",
+            occurrence: { playlist_revision: 1, item_index: 1, loop: 0 },
+        })
+    );
+    await drain();
+    const videoEl = playerVideos(h)[0];
+    await driveVideoReady(h, videoEl);
+
+    await activateAt(h, stillEffective);
+    assertCloseAll(
+        lastDrawImage(h).slice(1),
+        COVER_1000x1500,
+        "the still cut still painted"
+    );
+    assert.ok(
+        layerOf(h, videoEl),
+        "the next occurrence's video preparation survived the still paint"
+    );
+    assert.notStrictEqual(videoEl.src, "", "and kept its source");
+
+    const videoEffective = h.now() + 400;
+    h.emit(
+        videoCommit(h, {
+            version: 5,
+            prepared_at_version: 4,
+            preparation_id: "prep-2",
+            occurrence: { playlist_revision: 1, item_index: 1, loop: 0 },
+            effective_server_ms: videoEffective,
+        })
+    );
+    await activateAt(h, videoEffective);
+    assert.strictEqual(videoEl.playCalls, 2, "the next video started");
+    assert.strictEqual(
+        layerOf(h, videoEl).style.visibility,
+        "visible",
+        "the next video is on the wall"
+    );
+});
+
+test("video: a play promise that never settles is bounded and recovered", async () => {
+    const h = await startVideoHarness(VP);
+    h.emit(videoPrepare());
+    await drain();
+    const el = playerVideos(h)[0];
+    await driveVideoReady(h, el);
+
+    const hung = deferred();
+    el.playImpl = function (element) {
+        /* Call 1 is the probe; call 2 is activation, which hangs. */
+        if (element.playCalls === 1) return Promise.resolve();
+        if (element.playCalls === 2) return hung.promise;
+        return Promise.resolve();
+    };
+    const commit = videoCommit(h, { effective_server_ms: h.now() + 400 });
+    h.emit(commit);
+    await activateAt(h, commit.effective_server_ms);
+    assert.strictEqual(el.playCalls, 2, "activation is waiting on play()");
+    assert.strictEqual(el.wantFrame(), 0, "nothing is observing yet");
+
+    const fired = h.fireTimers((timer) => timer.delay === 3000);
+    assert.ok(fired >= 1, "the activation play deadline was armed");
+    await drain();
+    assert.ok(el.pauseCalls >= 2, "the hung play() was paused");
+    assert.strictEqual(el.playCalls, 3, "one bounded retry played again");
+    assert.ok(el.wantFrame() > 0, "the retry is being observed");
+
+    /* The original promise resolving late is inert. */
+    hung.resolve();
+    await drain();
+    assert.strictEqual(el.playCalls, 3, "the late resolution played nothing");
 });
 
 /* ------------------------------------------------------------------ */
