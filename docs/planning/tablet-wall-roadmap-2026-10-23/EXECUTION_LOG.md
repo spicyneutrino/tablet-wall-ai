@@ -659,8 +659,8 @@ remaining dwell, and a playing state after the commit. 10/10 checks at
 checked against a recorded status, not a live cap exhaustion.
 
 Verification at `64e57d3` (application code `72d2424`):
-- Python 839 passed (full suite).
-- Client 58, view 12, wake lock 10.
+- Python 840 passed (full suite).
+- Client 60, view 12, wake lock 10.
 - Browser base 106/106; video 20/20; field 12/12; group recovery 10/10;
   restored video 41/41.
 - Caddy + ingress + backup video: 13 passed, including the real Caddy skip
@@ -668,10 +668,44 @@ Verification at `64e57d3` (application code `72d2424`):
 - Worktrees and branches for the recovery/evidence workers were removed
   after merge; `main` is the only worktree and branch.
 
+### Red-team findings and fixes
+
+The DeepSeek red-team review of the recovery feature found:
+
+- **High, fixed.** A decoder can wedge while `currentTime` and `paused` stay
+  healthy. The client watchdog kept renewing the server's sample recency, so
+  the stale-sample trigger was masked until drift exceeded 60 s. The client
+  now treats 2500 ms without a presented frame as a stall and spends a local
+  recovery; after the third it sends the normal fault. Covered by a client VM
+  test; not exercised in a real browser, because the browser runner injects a
+  pause rather than a frame freeze.
+- **High, fixed.** The one-fault-per-occurrence/position guard survived a
+  recovery commit, so a second stall at the same position could not report.
+  The commit now clears the guard. Client test covers the same-position
+  retry.
+- **Low, fixed.** A fault before the current commit anchor could start a
+  recovery on an armed, not-yet-visible occurrence. The server now ignores
+  it; the model test covers both sides of the anchor.
+- **Low, documentation.** The stopped/`ended: false` trigger had no distinct
+  send path: it is the client `video_fault` with reason `stalled` after local
+  recovery is exhausted. Protocol and contract say so.
+
+Accepted or deferred:
+
+- The recovery deadline is the ordinary 30 s preparation window, so one
+  dropped tablet can hold the frozen wall for about 31 s before
+  blocked/failed. The controller can Stop throughout. This is the approved
+  whole-cohort bound, not a new defect.
+- An online-policy recovery failure ends the session; the controller offers
+  Start again rather than Retry. Retry remains for strict blocked.
+- Browser evidence still does not exercise a live timeout, the automatic cap,
+  a second device faulting during recovery, or a final-item recovery. The
+  blocked copy is rendered from a recorded capped status, not a real cap
+  exhaustion.
+
 Claude Opus 5.5 review was retried once on 2026-10-24 at max effort and failed
 again with `Claude API rate limit reached`. No Opus findings were produced for
-this pass; the independent DeepSeek red-team review of the recovery feature
-is recorded separately.
+this pass; the independent DeepSeek red-team review above is the substitute.
 
 ## Next actions
 

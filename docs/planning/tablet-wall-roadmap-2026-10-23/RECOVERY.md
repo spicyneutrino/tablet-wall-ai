@@ -108,14 +108,15 @@ wake-lock state reaches the controller roster, check the local-CA/origin
 migration docs against what actually ships, and record the software-only
 limits. There is no controller surface for diagnostics or rebind yet.
 
-## Completion state (2026-10-24, HEAD 64e57d3)
+## Completion state (2026-10-25, HEAD 3f5326d)
 
 R3, R4 and R5 software scope is implemented and verified. Counts at HEAD:
-Python 839; client 58; view 12; wake lock 10; browser base 106/106; video
+Python 840; client 60; view 12; wake lock 10; browser base 106/106; video
 20/20; field 12/12; group recovery 10/10; restored video 41/41; Caddy, ingress
-and backup video 13 tests. Bounded group video recovery is merged and proven
-in a real Chromium pair; the controller shows the recovery position, attempt,
-degraded time and missing members. Named exclusions and mid-video reconnect
+and backup video 13 tests. The red-team frame-stall and same-position faults
+are fixed and covered by client VM tests. Bounded group video recovery is
+merged and proven in a real Chromium pair; the controller shows the recovery
+position, attempt, degraded time and missing members. Named exclusions and mid-video reconnect
 remain the only in-scope software follow-ups. All optical/physical,
 deployment, Wi-Fi/OS, kiosk and soak gates remain MISSING. See
 `EXECUTION_LOG.md` for the commit list and the evidence boundary.
