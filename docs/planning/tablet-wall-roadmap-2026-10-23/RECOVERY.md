@@ -108,11 +108,11 @@ wake-lock state reaches the controller roster, check the local-CA/origin
 migration docs against what actually ships, and record the software-only
 limits. There is no controller surface for diagnostics or rebind yet.
 
-## Completion state (2026-10-24, HEAD c23d37d)
+## Completion state (2026-10-24, HEAD bae3280)
 
 R3, R4 and R5 software scope is implemented and verified. Counts at HEAD:
-Python 839; client 58; view 12; wake lock 10; browser base 105/105; video
-20/20; field 12/12; group recovery 6/6; restored video 41/41; Caddy, ingress
+Python 839; client 58; view 12; wake lock 10; browser base 106/106; video
+20/20; field 12/12; group recovery 9/9; restored video 41/41; Caddy, ingress
 and backup video 13 tests. Bounded group video recovery is merged and proven
 in a real Chromium pair; the controller shows the recovery position, attempt,
 degraded time and missing members. Named exclusions and mid-video reconnect

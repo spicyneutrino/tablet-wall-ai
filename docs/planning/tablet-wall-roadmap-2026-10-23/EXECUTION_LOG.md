@@ -624,7 +624,7 @@ Worktree reconciliation:
 ## Bounded group recovery and current evidence (2026-10-24)
 
 The feature Sol's fallback plan named next is implemented, merged and proven
-at the software boundary. HEAD `c23d37d`.
+at the software boundary. HEAD `bae3280`.
 
 - `2c9571c` server model: one recovery record per occurrence, fault intake
   from a playing device, three automatic attempts, strict cohort freeze,
@@ -639,18 +639,25 @@ at the software boundary. HEAD `c23d37d`.
 - `829f5f0` restored-video and real Caddy ingress evidence.
 - `c23d37d` controller recovery text/facts and the group recovery browser
   runner.
+- `09848f9` controller dwell correction: after a recovery commit the fact is
+  the recovered remainder, not the full clip duration.
+- `bae3280` the runner checks the live controller before the fault, its
+  recovery facts and dwell after the commit, and fresh samples on both
+  clients.
 
 Browser recovery proof (`simulator/browser/group_recovery_run.py`): one
 client's active video is frozen with a hanging play promise, its local
 retries exhaust, one `video_fault` is accepted, the server starts one
 recovery at the live playhead, both calibrated clients prepare there, one
 common commit resumes the clip, and the next boundary is the remaining
-duration. 6/6 checks at `c23d37d`; the run is software evidence only.
+duration. The live controller shows the same recovery record, a truthful
+remaining dwell, and a playing state after the commit. 9/9 checks at
+`bae3280`; the run is software evidence only.
 
-Verification at `c23d37d`:
+Verification at `bae3280` (application code `09848f9`):
 - Python 839 passed (full suite).
 - Client 58, view 12, wake lock 10.
-- Browser base 105/105; video 20/20; field 12/12; group recovery 6/6;
+- Browser base 106/106; video 20/20; field 12/12; group recovery 9/9;
   restored video 41/41.
 - Caddy + ingress + backup video: 13 passed, including the real Caddy skip
   path.
