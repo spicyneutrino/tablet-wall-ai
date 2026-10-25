@@ -96,6 +96,9 @@
         btnPlaybackNext: document.getElementById("btn-playback-next"),
         playbackMsg: document.getElementById("playback-msg"),
         playbackStatus: document.getElementById("playback-status"),
+        playbackCountdown: document.getElementById("playback-countdown"),
+        playbackCohortLine: document.getElementById("playback-cohort-line"),
+        playbackMore: document.getElementById("btn-playback-more"),
         playbackFacts: document.getElementById("playback-facts"),
         playbackPending: document.getElementById("playback-pending"),
         playbackMembers: document.getElementById("playback-members"),
@@ -141,6 +144,8 @@
         btnNudgeXPlus: document.getElementById("btn-nudge-x-plus"),
         btnNudgeYMinus: document.getElementById("btn-nudge-y-minus"),
         btnNudgeYPlus: document.getElementById("btn-nudge-y-plus"),
+        btnApplyLocal: document.getElementById("btn-apply-local"),
+        btnCancelLocal: document.getElementById("btn-cancel-local"),
         inspectorMissing: document.getElementById("inspector-missing"),
         slotMissingText: document.getElementById("slot-missing-text"),
         btnAddSlot: document.getElementById("btn-add-slot"),
@@ -581,6 +586,19 @@
         return Number.isInteger(value) && value > 0 ? value : null;
     }
 
+    function compareDeviceIds(left, right) {
+        const leftNumber = deviceNumber(left);
+        const rightNumber = deviceNumber(right);
+        if (leftNumber !== rightNumber) {
+            if (leftNumber === null) return 1;
+            if (rightNumber === null) return -1;
+            return leftNumber - rightNumber;
+        }
+        const byLabel = deviceLabel(left, latestProfile(left))
+            .localeCompare(deviceLabel(right, latestProfile(right)));
+        return byLabel !== 0 ? byLabel : left.localeCompare(right);
+    }
+
     function numberTag(id) {
         const number = deviceNumber(id);
         return number === null ? "#–" : "#" + number;
@@ -923,6 +941,11 @@
         setInputValue(el.boundsHeight, formatNumber(bounds.height, 3));
     }
 
+    function syncLocalDraftActions() {
+        if (el.btnApplyLocal) el.btnApplyLocal.disabled = el.btnApply.disabled;
+        if (el.btnCancelLocal) el.btnCancelLocal.disabled = el.btnCancel.disabled;
+    }
+
     function syncDraftUi() {
         if (!state.draft) {
             el.draftFlag.textContent = "No draft";
@@ -931,6 +954,7 @@
             el.btnCancel.disabled = true;
             el.btnUndo.disabled = true;
             el.btnRedo.disabled = true;
+            syncLocalDraftActions();
             updateSavedButtons();
             syncInspector();
             return;
@@ -959,6 +983,7 @@
         el.btnLayoutsRefresh.disabled = state.busy;
         el.btnConflictReload.disabled = state.busy;
 
+        syncLocalDraftActions();
         syncBoundsInputs();
         updateSavedButtons();
         syncInspector();
@@ -1296,7 +1321,7 @@
         const id = group.dataset.deviceId;
         if (!id || !state.draft || !state.draft.slots[id]) return;
 
-        selectDevice(id);
+        selectDevice(id, { reveal: false });
         const point = pointerToStage(event);
         if (!point) return;
 
@@ -1356,6 +1381,7 @@
         } catch (error) { /* capture already gone */ }
 
         if (!drag.moved) {
+            revealInspector();
             return;
         }
         if (!commit) {
@@ -1386,7 +1412,26 @@
      * Selection
      * ---------------------------------------------------------------- */
 
-    function selectDevice(id) {
+    function revealInspector() {
+        if (state.drag) return;
+        if (!el.inspectorBody || el.inspectorBody.hidden) return;
+        const card = el.inspectorBody.closest(".inspector") || el.inspectorBody;
+        if (card && typeof card.scrollIntoView === "function") {
+            let behavior = "smooth";
+            if (typeof window.matchMedia === "function"
+                    && window.matchMedia("(prefers-reduced-motion: reduce)").matches) {
+                behavior = "auto";
+            }
+            try { card.scrollIntoView({ block: "start", behavior: behavior }); }
+            catch (error) { card.scrollIntoView(); }
+        }
+        if (el.selectedTitle) {
+            try { el.selectedTitle.focus({ preventScroll: true }); }
+            catch (error) { el.selectedTitle.focus(); }
+        }
+    }
+
+    function selectDevice(id, options) {
         if (!id || state.busy) return;
         if (state.selectedId !== id) {
             state.selectedId = id;
@@ -1403,6 +1448,7 @@
             syncDeviceRows();
             syncInspector();
         }
+        if (options && options.reveal) revealInspector();
     }
 
     function syncDeviceRows() {
@@ -1534,7 +1580,7 @@
             pick.appendChild(flag);
             pick.appendChild(meta);
             pick.addEventListener("click", function () {
-                selectDevice(entry.id);
+                selectDevice(entry.id, { reveal: true });
             });
 
             item.appendChild(pick);
@@ -3352,12 +3398,15 @@
         if (!el.playbackExclusions) return;
         const frozen = Boolean(status) && hasSession && stateName !== "failed";
         const available = state.configLoaded || frozen;
-        el.playbackExclusions.hidden = !available;
-        if (!available) return;
+        if (!available) {
+            el.playbackExclusions.hidden = true;
+            return;
+        }
 
         syncPlaybackExclusions();
         const data = playbackExclusionData(status, frozen);
         const excluded = new Set(data.excluded);
+        el.playbackExclusions.hidden = frozen && data.excluded.length === 0;
         const title = frozen ? "This show's cohort" : "Exclude from this show";
         setTextIfChanged(el.playbackExclusionsTitle, title);
         el.playbackExclusions.dataset.frozen = frozen ? "true" : "false";
@@ -3553,6 +3602,21 @@
         return "a video stall";
     }
 
+    function renderPlaybackCohortLine(status, hasSession) {
+        if (!el.playbackCohortLine) return;
+        if (!hasSession) {
+            el.playbackCohortLine.hidden = true;
+            setTextIfChanged(el.playbackCohortLine, "");
+            return;
+        }
+        const data = playbackExclusionData(status, true);
+        const text = data.required.length + " required · "
+            + data.excluded.length + " excluded · "
+            + data.cohortCount + " in this show.";
+        setTextIfChanged(el.playbackCohortLine, text);
+        el.playbackCohortLine.hidden = false;
+    }
+
     function renderPlayback() {
         const status = state.playback;
         const stateName = status && typeof status.state === "string"
@@ -3571,6 +3635,7 @@
         if (el.playbackSession) el.playbackSession.hidden = !hasSession;
 
         renderPlaybackPreflight(gate);
+        renderPlaybackCohortLine(status, hasSession);
         renderPlaybackExclusions(status, hasSession, stateName);
         renderPlaybackPolicy(status, hasSession);
         renderPlaybackButtons(status, gate);
@@ -3653,6 +3718,19 @@
         if (el.playbackPolicy) el.playbackPolicy.disabled = busy || hasSession;
     }
 
+    function renderPlaybackCountdown(status, stateName) {
+        if (!el.playbackCountdown) return;
+        let text = "";
+        if (stateName === "paused") {
+            const lingered = remainingDwell(status);
+            if (lingered !== null) text = remainingText(lingered) + " at the pause.";
+        } else if (stateName === "playing") {
+            const remaining = remainingDwell(status);
+            if (remaining !== null) text = remainingText(remaining) + ".";
+        }
+        setTextIfChanged(el.playbackCountdown, text);
+    }
+
     function renderPlaybackSummary(status) {
         if (!el.playbackStatus) return;
         const stateName = status && typeof status.state === "string"
@@ -3686,8 +3764,6 @@
                 || liveSlotEntry(status, "current");
             text = "Paused on " + liveEntryLabel(pausedEntry)
                 + ". Resume restarts the item at a new anchor.";
-            const lingered = remainingDwell(status);
-            if (lingered !== null) text += " " + remainingText(lingered) + " at the pause.";
         } else if (stateName === "armed") {
             text = "Armed: " + liveEntryLabel(liveSlotEntry(status, "current"))
                 + " is committed for the next cut.";
@@ -3719,11 +3795,10 @@
             } else {
                 text = "Playing: " + liveEntryLabel(currentEntry) + ".";
                 if (pendingEntry) text += " Next: " + liveEntryLabel(pendingEntry) + ".";
-                const remaining = remainingDwell(status);
-                if (remaining !== null) text += " " + remainingText(remaining) + ".";
             }
         }
         setTextIfChanged(el.playbackStatus, text);
+        renderPlaybackCountdown(status, stateName);
     }
 
     function sameOccurrence(left, right) {
@@ -3901,7 +3976,7 @@
         const goal = media && media.buffer_goal_ms !== undefined
             ? Number(media.buffer_goal_ms) : null;
 
-        info.ids.forEach(function (id) {
+        info.ids.slice().sort(compareDeviceIds).forEach(function (id) {
             const lease = info.leases.get(id) || {};
             const video = videoEvidence(status, lease, id);
             const strict = status.policy === "strict";
@@ -3936,7 +4011,7 @@
                     required ? "required" : participant ? "participant" : "optional");
                 requiredChip.dataset.kind = "info";
                 const stateChip = appendText(chips, "span", "chip",
-                    ready ? "ready" : missingReason !== undefined ? "missing" : "waiting");
+                    ready ? "ready" : missingReason !== undefined ? "missing" : "preparing next");
                 stateChip.dataset.kind = ready ? "ok" : missingReason !== undefined ? "err" : "warn";
             }
             const onlineChip = appendText(chips, "span", "chip", online ? "online" : "offline");
@@ -4715,6 +4790,16 @@
         el.btnRedo.addEventListener("click", redoDraft);
         el.btnApply.addEventListener("click", applyLayout);
         el.btnCancel.addEventListener("click", cancelDraft);
+        if (el.btnApplyLocal) {
+            el.btnApplyLocal.addEventListener("click", function () {
+                el.btnApply.click();
+            });
+        }
+        if (el.btnCancelLocal) {
+            el.btnCancelLocal.addEventListener("click", function () {
+                el.btnCancel.click();
+            });
+        }
         el.btnReload.addEventListener("click", reloadConfigWithConfirm);
         el.btnConflictReload.addEventListener("click", reloadConfigWithConfirm);
 
@@ -4771,7 +4856,7 @@
                 ? event.target.closest(".slot") : null;
             if (!group) return;
             event.preventDefault();
-            selectDevice(group.dataset.deviceId);
+            selectDevice(group.dataset.deviceId, { reveal: true });
         });
 
         el.profileForm.addEventListener("submit", saveProfile);
@@ -4826,6 +4911,12 @@
         }
         if (el.playbackPolicy) {
             el.playbackPolicy.addEventListener("change", renderPlayback);
+        }
+        if (el.playbackMore) {
+            el.playbackMore.addEventListener("click", function () {
+                const expanded = el.playbackMore.getAttribute("aria-expanded") === "true";
+                el.playbackMore.setAttribute("aria-expanded", expanded ? "false" : "true");
+            });
         }
 
         if (el.btnPlaybackStart) {
