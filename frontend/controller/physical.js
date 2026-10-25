@@ -2412,8 +2412,8 @@
 
     function occurrenceLabel(occurrence) {
         if (!occurrence || typeof occurrence !== "object") return "none";
-        const index = Number(occurrence.item_index);
-        const loop = Number(occurrence.loop);
+        const index = liveNumber(occurrence.item_index);
+        const loop = liveNumber(occurrence.loop);
         return Number.isInteger(index)
             ? "item " + (index + 1) + " · loop "
                 + (Number.isInteger(loop) ? loop + 1 : "—")
