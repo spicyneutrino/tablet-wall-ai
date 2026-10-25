@@ -1,0 +1,220 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="color-scheme" content="dark">
+<title>Tablet wall device probe</title>
+<link rel="icon" href="data:,">
+<style>
+  :root {
+    color-scheme: dark;
+    --bg: #0c1116;
+    --panel: #151d25;
+    --panel-2: #1d2833;
+    --ink: #e7edf3;
+    --muted: #93a4b5;
+    --line: #2b3a48;
+    --accent: #62d3a4;
+    --warn: #f2b661;
+    --bad: #f27b7b;
+  }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; min-height: 100%; background: var(--bg); color: var(--ink); }
+  body { font: 15px/1.45 ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif; padding: 18px; }
+  h1 { font-size: 1.15rem; letter-spacing: .02em; margin: 0; }
+  header { display: flex; flex-wrap: wrap; gap: 8px 18px; align-items: baseline; justify-content: space-between; margin-bottom: 14px; }
+  .runline { color: var(--muted); font-size: .82rem; }
+  main { display: grid; grid-template-columns: minmax(0, 1.5fr) minmax(280px, .8fr); gap: 16px; }
+  section { background: var(--panel); border: 1px solid var(--line); border-radius: 10px; padding: 12px; }
+  video { width: 100%; aspect-ratio: 16 / 9; display: block; background: #000; border-radius: 7px; border: 1px solid var(--line); }
+  .controls { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 12px; }
+  button {
+    font: inherit; color: var(--ink); background: var(--panel-2);
+    border: 1px solid var(--line); border-radius: 7px; padding: 9px 13px; cursor: pointer;
+  }
+  button:hover { border-color: #476078; }
+  button[aria-pressed="true"] { border-color: var(--accent); color: var(--accent); }
+  button.primary { border-color: var(--accent); }
+  input[type="text"] {
+    font: inherit; color: var(--ink); background: #0e151b; border: 1px solid var(--line);
+    border-radius: 7px; padding: 9px 11px; min-width: 0;
+  }
+  .seek { display: grid; grid-template-columns: 1fr auto; gap: 10px; align-items: center; margin-top: 12px; }
+  .seek input { width: 100%; accent-color: var(--accent); }
+  .seek output { color: var(--muted); font-variant-numeric: tabular-nums; }
+  .marker { display: flex; gap: 8px; margin-top: 12px; }
+  .marker input { flex: 1; }
+  dl.grid { display: grid; grid-template-columns: auto 1fr; gap: 5px 12px; margin: 0; font-size: .82rem; }
+  dt { color: var(--muted); }
+  dd { margin: 0; font-variant-numeric: tabular-nums; overflow-wrap: anywhere; }
+  .bad { color: var(--bad); }
+  .good { color: var(--accent); }
+  .warn { color: var(--warn); }
+  h2 { font-size: .78rem; text-transform: uppercase; letter-spacing: .09em; color: var(--muted); margin: 0 0 9px; }
+  pre#log {
+    margin: 0; min-height: 120px; max-height: 210px; overflow: auto;
+    background: #0e151b; border: 1px solid var(--line); border-radius: 7px;
+    padding: 9px; font: 12px/1.4 ui-monospace, SFMono-Regular, Menlo, monospace; color: #b8c8d7;
+  }
+  .wide { grid-column: 1 / -1; }
+  .hint { color: var(--muted); font-size: .8rem; margin: 8px 0 0; }
+  @media (max-width: 850px) { main { grid-template-columns: 1fr; } }
+</style>
+</head>
+<body>
+<header>
+  <div>
+    <h1>Tablet wall device probe</h1>
+    <div class="runline">Burned-in frame/time fixture. Evidence is bounded local storage, not a physical claim.</div>
+  </div>
+  <div class="runline" id="page-line">page: initializing</div>
+</header>
+
+<main>
+  <section>
+    <video id="video" playsinline preload="auto" muted></video>
+    <div class="controls">
+      <button id="play" class="primary" type="button">Play</button>
+      <button id="pause" type="button">Pause</button>
+      <button id="loop" type="button" aria-pressed="false">Loop: off</button>
+      <button id="mute" type="button" aria-pressed="true">Muted</button>
+      <button id="wake-lock" type="button">Wake lock</button>
+      <button id="fullscreen" type="button">Fullscreen</button>
+      <button id="download" type="button">Download JSON</button>
+      <button id="reset" type="button">Reset stored evidence</button>
+    </div>
+    <div class="seek">
+      <input id="seek" type="range" min="0" max="10" step="0.05" value="0" aria-label="Seek position in seconds">
+      <output id="seek-value">0.00 s</output>
+    </div>
+    <div class="marker">
+      <input id="marker-label" type="text" placeholder="Operator marker label (optional)" autocomplete="off">
+      <button id="mark-button" type="button">Mark</button>
+    </div>
+    <p class="hint">For operator use: mark before and after an external action. A page that disappears leaves an
+      unobserved interval, never an inferred cause.</p>
+  </section>
+
+  <section>
+    <h2>Live state</h2>
+    <dl class="grid">
+      <dt>time</dt><dd id="readout-time">0.00 s</dd>
+      <dt>readyState</dt><dd id="readout-ready">0</dd>
+      <dt>frames</dt><dd id="readout-frames">0</dd>
+      <dt>dropped</dt><dd id="readout-dropped">n/a</dd>
+      <dt>last gap</dt><dd id="readout-gap">n/a</dd>
+      <dt>visibility</dt><dd id="readout-visibility">?</dd>
+      <dt>wake lock</dt><dd id="readout-wake">?</dd>
+      <dt>fullscreen</dt><dd id="readout-fullscreen">?</dd>
+      <dt>sequence</dt><dd id="readout-sequence">1</dd>
+      <dt>source</dt><dd id="readout-source">?</dd>
+    </dl>
+    <p class="hint" id="support-line">API support: checking</p>
+  </section>
+
+  <section class="wide">
+    <h2>Recent media events</h2>
+    <pre id="log">waiting for media</pre>
+  </section>
+</main>
+
+<script type="application/json" id="probe-contract">
+{
+  "schema": "tablet-wall-device-probe/1",
+  "probe_version": "1",
+  "required_payload_fields": [
+    "page.instance_id",
+    "page.run_id",
+    "page.sequence",
+    "page.previous_instance_id",
+    "page.navigation",
+    "page.started_at",
+    "page.started_monotonic_ms",
+    "environment.user_agent",
+    "environment.platform",
+    "environment.viewport",
+    "environment.device_pixel_ratio",
+    "environment.orientation",
+    "environment.display_mode",
+    "environment.codec_support",
+    "environment.api_support",
+    "environment.wake_lock",
+    "environment.fullscreen",
+    "source.src",
+    "source.name",
+    "source.size",
+    "source.sha256",
+    "source.media",
+    "play.attempts",
+    "counters",
+    "media_events",
+    "samples",
+    "frame_callbacks",
+    "lifecycle",
+    "actions",
+    "markers",
+    "lineage",
+    "persistence",
+    "unavailable"
+  ],
+  "required_media_events": [
+    "loadstart",
+    "loadedmetadata",
+    "loadeddata",
+    "canplay",
+    "canplaythrough",
+    "playing",
+    "pause",
+    "seeking",
+    "seeked",
+    "waiting",
+    "stalled",
+    "ended",
+    "error",
+    "volumechange",
+    "ratechange",
+    "durationchange",
+    "emptied",
+    "suspend",
+    "abort",
+    "resize"
+  ],
+  "core_media_events": ["loadstart", "loadedmetadata", "canplay", "playing"],
+  "required_frame_metadata": [
+    "mediaTime",
+    "presentedFrames",
+    "expectedDisplayTime",
+    "width",
+    "height"
+  ],
+  "api_checks": [
+    "requestVideoFrameCallback",
+    "wakeLock",
+    "fullscreen",
+    "getVideoPlaybackQuality",
+    "playbackQuality",
+    "deviceMemory",
+    "screenOrientation"
+  ],
+  "limits": {
+    "events": 800,
+    "samples": 2400,
+    "frame_callbacks": 1200,
+    "markers": 100,
+    "gaps": 200,
+    "lifecycle": 200,
+    "actions": 300,
+    "play_attempts": 50,
+    "ledger_sessions": 50,
+    "lineage_gaps": 20,
+    "summary_events": 40,
+    "summary_samples": 12
+  },
+  "sample_interval_ms": 250,
+  "gap_threshold_ms": 250
+}
+</script>
+<script src="probe.js"></script>
+</body>
+</html>
