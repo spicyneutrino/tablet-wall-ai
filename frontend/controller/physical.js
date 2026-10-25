@@ -3549,6 +3549,7 @@
         if (value === "stalled") return "a stalled video";
         if (value === "play_failed") return "a failed play";
         if (value === "buffer_lost") return "lost buffering";
+        if (value === "reconnect") return "a reconnected tablet";
         return "a video stall";
     }
 
