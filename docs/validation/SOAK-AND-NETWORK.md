@@ -352,8 +352,8 @@ restores the context, and measures the origin and the client page. It proves
 the polling, timestamping, distribution and report path.
 
 The committed dry run completed 20 trials and all 7 checks. No trial failed.
-The nearest-rank distribution was p50 0.237 seconds, p95 0.242 seconds,
-minimum 0.124 seconds and maximum 0.243 seconds. Every trial observed its
+The nearest-rank distribution was p50 0.236 seconds, p95 0.245 seconds,
+minimum 0.128 seconds and maximum 0.248 seconds. Every trial observed its
 emulated offline interval, dropped the device socket, and recovered both the
 loopback origin and the client page.
 
