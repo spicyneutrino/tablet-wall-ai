@@ -108,10 +108,10 @@ wake-lock state reaches the controller roster, check the local-CA/origin
 migration docs against what actually ships, and record the software-only
 limits. There is no controller surface for diagnostics or rebind yet.
 
-## Completion state (2026-10-25, HEAD 3f5326d)
+## Completion state (2026-10-25, HEAD d093647)
 
 R3, R4 and R5 software scope is implemented and verified. Counts at HEAD:
-Python 840; client 60; view 12; wake lock 10; browser base 106/106; video
+Python 840; client 60; view 12; wake lock 10; browser base 105/105; video
 20/20; field 12/12; group recovery 10/10; restored video 41/41; Caddy, ingress
 and backup video 13 tests. The red-team frame-stall and same-position faults
 are fixed and covered by client VM tests. Bounded group video recovery is

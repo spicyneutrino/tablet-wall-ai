@@ -658,11 +658,12 @@ remaining dwell, and a playing state after the commit. 10/10 checks at
 `64e57d3`; the run is software evidence only. The blocked presentation is
 checked against a recorded status, not a live cap exhaustion.
 
-Verification at `64e57d3` (application code `72d2424`):
+Verification at `3f5326d` (docs at `d093647`):
 - Python 840 passed (full suite).
 - Client 60, view 12, wake lock 10.
-- Browser base 106/106; video 20/20; field 12/12; group recovery 10/10;
-  restored video 41/41.
+- Browser base 105/105; video 20/20; field 12/12; group recovery 10/10;
+  restored video 41/41. The base count varies by one conditional API
+  evidence line; the earlier run emitted 106/106.
 - Caddy + ingress + backup video: 13 passed, including the real Caddy skip
   path.
 - Worktrees and branches for the recovery/evidence workers were removed
