@@ -1894,7 +1894,6 @@ async def exercise(artifacts: Path, report: dict[str, Any], observation_seconds:
                   [entry["colour"] for entry in observed][:2] == ["green", "yellow"],
                   observed=observed)
 
-            await editor_page.click("#btn-playback-refresh")
             await editor_page.wait_for_function(
                 "document.querySelector('#playback-status').dataset.state === 'playing'",
                 timeout=5000,
