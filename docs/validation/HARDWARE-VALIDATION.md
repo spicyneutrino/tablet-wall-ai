@@ -6,7 +6,8 @@ a workstation; a kit pass proves the tool, not the hardware. A gate changes
 from MISSING only when the operator records the required physical evidence and
 signs the row.
 
-The acceptance numbers are the published targets in
+The acceptance numbers are frozen in [ACCEPTANCE.md](ACCEPTANCE.md), copied
+from the published targets in
 `../planning/tablet-wall-roadmap-2026-10-23/ROADMAP.md:500-522`. This page does
 not revise them. The approved recovery window remains the ordinary ~31 s
 preparation deadline; no run may trim it out of a full-run result.
