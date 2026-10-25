@@ -8,8 +8,8 @@ they show.
 
 This project began as a copy of `tablet-wall`. New development happens here.
 
-> **Status: R1-R4 software scope implemented; R5 software closeout and all
-> physical validation pending.** Tablets self-register, hold a live WebSocket,
+> **Status: R1-R5 software scope implemented; all physical and optical
+> validation pending.** Tablets self-register, hold a live WebSocket,
 > heartbeat, reconnect, and stop fighting over one identity. The operator can
 > upload stills and H.264 MP4 clips (when an admission mode is configured),
 > show stills on the logical wall, measure and calibrate physical panels, place
