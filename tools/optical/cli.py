@@ -29,10 +29,12 @@ def _config_from_args(args: argparse.Namespace) -> AnalysisConfig:
 
 def _manifest_evidence_kind(path: Path) -> str | None:
     try:
-        raw = json.loads(path.read_text())
-    except (OSError, json.JSONDecodeError):
+        raw = json.loads(path.read_bytes())
+    except (OSError, UnicodeError, ValueError):
         return None
     kind = raw.get("evidence_kind") if isinstance(raw, dict) else None
+    if isinstance(kind, str):
+        kind = kind.strip()
     return kind if kind in ("synthetic", "operator-hardware") else None
 
 

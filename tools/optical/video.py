@@ -12,6 +12,7 @@ import io
 import re
 import shutil
 import subprocess
+import tempfile
 from pathlib import Path
 from typing import Any
 
@@ -146,39 +147,49 @@ def decode_video(
     timestamps = probe_frame_timestamps(source, ffprobe_cmd=ffprobe_cmd)
     destination = Path(output_dir)
     destination.mkdir(parents=True, exist_ok=True)
-    for existing in destination.iterdir():
-        if existing.is_file() and re.fullmatch(r"\d{6}\.png", existing.name):
-            existing.unlink()
 
     prefix = [
         ffmpeg_cmd, "-v", "error", "-i", str(source), "-map", "0:v:0",
     ]
-    suffix = ["-start_number", "0", str(destination / "%06d.png")]
-    done = _run([*prefix, "-fps_mode", "passthrough", *suffix])
-    if done.returncode != 0:
-        # Older ffmpeg releases use -vsync instead of -fps_mode.
-        done = _run([*prefix, "-vsync", "0", *suffix])
-    if done.returncode != 0:
-        message = (done.stderr or b"").decode("utf-8", "replace").strip()
-        raise ValueError(f"ffmpeg frame extraction failed: {message}")
+    with tempfile.TemporaryDirectory(
+        prefix=".optical-frames-", dir=destination
+    ) as temporary:
+        staging = Path(temporary)
+        suffix = ["-start_number", "0", str(staging / "%06d.png")]
+        done = _run([*prefix, "-fps_mode", "passthrough", *suffix])
+        if done.returncode != 0:
+            # Older ffmpeg releases use -vsync instead of -fps_mode.
+            done = _run([*prefix, "-vsync", "0", *suffix])
+        if done.returncode != 0:
+            message = (done.stderr or b"").decode("utf-8", "replace").strip()
+            raise ValueError(f"ffmpeg frame extraction failed: {message}")
 
-    extracted = sorted(
-        path for path in destination.glob("*.png")
-        if re.fullmatch(r"\d{6}\.png", path.name)
-    )
-    if len(extracted) != len(timestamps):
-        raise ValueError(
-            f"ffmpeg extracted {len(extracted)} frames but ffprobe reported "
-            f"{len(timestamps)} timestamps; frame alignment is not trustworthy"
+        extracted = sorted(
+            path for path in staging.glob("*.png")
+            if path.is_file() and re.fullmatch(r"[0-9]{6}\.png", path.name)
         )
+        if len(extracted) != len(timestamps):
+            raise ValueError(
+                f"ffmpeg extracted {len(extracted)} frames but ffprobe reported "
+                f"{len(timestamps)} timestamps; frame alignment is not trustworthy"
+            )
+        for existing in destination.iterdir():
+            if existing.is_file() and re.fullmatch(r"[0-9]{6}\.png", existing.name):
+                existing.unlink()
+        final_paths: list[Path] = []
+        for path in extracted:
+            target = destination / path.name
+            shutil.move(str(path), str(target))
+            final_paths.append(target)
+
     return tuple(
         Frame(index=index, path=path, timestamp_s=timestamp)
-        for index, (path, timestamp) in enumerate(zip(extracted, timestamps))
+        for index, (path, timestamp) in enumerate(zip(final_paths, timestamps))
     )
 
 
 def parse_source_frame_text(text: str, digits: int) -> int | None:
-    sequences = re.findall(r"\d+", text)
+    sequences = re.findall(r"[0-9]+", text)
     if not sequences:
         return None
     joined = "".join(sequences)

@@ -39,7 +39,7 @@ from .timing import sensor_to_delivered
 def _read_json(path: Path) -> Any:
     try:
         return json.loads(path.read_text())
-    except (OSError, json.JSONDecodeError) as error:
+    except (OSError, UnicodeError, json.JSONDecodeError) as error:
         raise ValueError(f"cannot read JSON {path}: {error}") from error
 
 
@@ -57,10 +57,12 @@ def _integer(value: Any, field: str) -> int:
     if isinstance(value, bool):
         raise ValueError(f"{field} must be an integer")
     try:
-        number = int(value)
+        number = float(value)
     except (TypeError, ValueError) as error:
         raise ValueError(f"{field} must be an integer") from error
-    return number
+    if not math.isfinite(number) or not number.is_integer():
+        raise ValueError(f"{field} must be an integer")
+    return int(number)
 
 
 def _boolean(value: Any, field: str) -> bool:

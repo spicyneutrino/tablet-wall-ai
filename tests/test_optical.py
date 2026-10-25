@@ -22,6 +22,7 @@ from tools.optical.detect import analyze_capture
 from tools.optical.inputs import load_capture, load_events, load_rois
 from tools.optical.metrics import (
     EventMeasurement,
+    build_metrics,
     evaluate_thresholds,
     window_metrics,
 )
@@ -509,6 +510,8 @@ def test_evidence_report_keeps_the_gate_missing_and_hashes_artifacts(
         assert row["bytes"] is not None
         assert len(row["sha256"]) == 64
     analysis_json = json.loads(Path(result["analysis"]).read_text())
+    assert "gate" not in analysis_json
+    assert "hardware_gate_status" not in json.dumps(analysis_json)
     assert analysis_json["metrics"]["full_run"]["complete_events"] == 1
     assert len(analysis_json["events"]) == 1
     assert analysis_json["timing"]["source"] == "manifest"
@@ -655,8 +658,11 @@ def test_video_decode_uses_ffprobe_timestamps(tmp_path, suite):
     decoded_dir.mkdir()
     sentinel = decoded_dir / "important.png"
     sentinel.write_bytes(b"keep me")
+    unicode_sentinel = decoded_dir / "\u0660\u0660\u0660\u0660\u0660\u0660.png"
+    unicode_sentinel.write_bytes(b"keep me too")
     frames = decode_video(video, decoded_dir)
     assert sentinel.exists()
+    assert unicode_sentinel.exists()
     assert len(timestamps) == 8
     assert len(frames) == 8
     intervals = [
@@ -736,6 +742,19 @@ def test_camera_metadata_is_required(tmp_path, suite, key, message):
     path.write_text(json.dumps(manifest))
     with pytest.raises(ValueError, match=message):
         load_capture(path)
+
+
+def test_fractional_integer_metadata_is_rejected(tmp_path, suite):
+    manifest = json.loads(
+        (Path(_case(suite, "offset-30")["directory"]) / "manifest.json").read_text()
+    )
+    for value in (90.5, -0.5):
+        broken = json.loads(json.dumps(manifest))
+        broken["camera"]["orientation_deg"] = value
+        path = tmp_path / f"orientation-{value}.json"
+        path.write_text(json.dumps(broken))
+        with pytest.raises(ValueError, match="must be an integer"):
+            load_capture(path)
 
 
 def test_noise_reference_is_required_and_must_stay_inside_the_panel(tmp_path, suite):
@@ -846,12 +865,31 @@ def test_unmeasured_readout_is_not_gate_evaluable(tmp_path, suite):
     capture = load_capture(manifest_path)
     rois = load_rois(case_dir / "rois.json", capture=capture)
     events = load_events(case_dir / "events.json")
-    analysis = analyze_capture(capture, rois, events)
+    one = analyze_capture(capture, rois, events)
+
+    template = one.events[0]
+    results = [
+        replace(
+            template,
+            event=replace(template.event, event_id=f"cut-{index:03d}"),
+            panels=[replace(panel) for panel in template.panels],
+        )
+        for index in range(100)
+    ]
+    config = AnalysisConfig()
+    metrics = build_metrics(
+        results, config, timing_source="manifest", capture=capture
+    )
     assert any(
         "not marked measured" in reason
-        for reason in analysis.metrics["full_run"]["evaluable_reasons"]
+        for reason in metrics["full_run"]["evaluable_reasons"]
     )
-    assert analysis.metrics["thresholds"]["gate_evaluable"] is False
+    assert metrics["full_run"]["complete_events"] == 100
+    assert metrics["thresholds"]["gate_evaluable"] is False
+    assert metrics["thresholds"]["status"] == "within-threshold"
+    assert metrics["thresholds"]["within_threshold_observation_only"] is False
+
+    analysis = replace(one, events=results, metrics=metrics)
     result = write_outputs(analysis, tmp_path / "out", repo_root=Path.cwd())
     report = evidence.load_report(Path(result["report"]))
     check = next(
@@ -859,6 +897,13 @@ def test_unmeasured_readout_is_not_gate_evaluable(tmp_path, suite):
         if item["name"] == "rolling-shutter readout measured"
     )
     assert check["passed"] is False
+    threshold_check = next(
+        item for item in report["checks"]
+        if item["name"] == "threshold observation is within-threshold-observation-only"
+    )
+    assert threshold_check["passed"] is False
+    assert report["hardware_gate_status"] == "MISSING"
+    assert report["hardware_claim"] is False
 
 
 def test_cli_error_report_preserves_synthetic_evidence_kind(tmp_path, suite):
@@ -874,6 +919,51 @@ def test_cli_error_report_preserves_synthetic_evidence_kind(tmp_path, suite):
     assert code == 2
     report = evidence.load_report(out / "report.json")
     assert report["evidence_kind"] == "synthetic"
+    assert report["gate"] == "optical-cut-timing"
+    assert report["hardware_gate_status"] == "MISSING"
+    assert report["hardware_claim"] is False
+    assert "analysis completed" in report["failure_reasons"]
+
+
+@pytest.mark.parametrize(("declared", "expected"), [
+    ("operator-hardware", "operator-hardware"),
+    (" synthetic ", "synthetic"),
+])
+def test_cli_error_report_preserves_declared_kind(tmp_path, suite, declared, expected):
+    case_dir = Path(_case(suite, "offset-30")["directory"])
+    manifest = json.loads((case_dir / "manifest.json").read_text())
+    manifest["evidence_kind"] = declared
+    manifest_path = tmp_path / "manifest.json"
+    manifest_path.write_text(json.dumps(manifest))
+    out = tmp_path / "out"
+    code = optical_main([
+        "analyze",
+        "--manifest", str(manifest_path),
+        "--rois", str(case_dir / "missing-rois.json"),
+        "--events", str(case_dir / "events.json"),
+        "--out", str(out),
+    ])
+    assert code == 2
+    report = evidence.load_report(out / "report.json")
+    assert report["evidence_kind"] == expected
+    assert report["hardware_gate_status"] == "MISSING"
+
+
+def test_cli_writes_evidence_for_an_unreadable_manifest(tmp_path, suite):
+    case_dir = Path(_case(suite, "offset-30")["directory"])
+    manifest = json.loads((case_dir / "manifest.json").read_text())
+    manifest_path = tmp_path / "manifest-utf16.json"
+    manifest_path.write_bytes(json.dumps(manifest).encode("utf-16"))
+    out = tmp_path / "out"
+    code = optical_main([
+        "analyze",
+        "--manifest", str(manifest_path),
+        "--rois", str(case_dir / "rois.json"),
+        "--events", str(case_dir / "events.json"),
+        "--out", str(out),
+    ])
+    assert code == 2
+    report = evidence.load_report(out / "report.json")
     assert report["gate"] == "optical-cut-timing"
     assert report["hardware_gate_status"] == "MISSING"
     assert report["hardware_claim"] is False
@@ -905,6 +995,23 @@ def _source_frame_events(tmp_path, suite, sources, references):
     events_path = tmp_path / "events.json"
     events_path.write_text(json.dumps(events))
     return case_dir, rois_path, events_path
+
+
+def test_video_failure_leaves_the_existing_frame_set_untouched(tmp_path):
+    if shutil.which("ffprobe") is None:
+        pytest.skip("ffprobe not installed")
+    destination = tmp_path / "decoded"
+    destination.mkdir()
+    old_frame = destination / "000000.png"
+    old_frame.write_bytes(b"old frame")
+    sentinel = destination / "keep.png"
+    sentinel.write_bytes(b"keep")
+    bad_video = tmp_path / "bad.mp4"
+    bad_video.write_bytes(b"not a video")
+    with pytest.raises((ValueError, ToolUnavailable)):
+        decode_video(bad_video, destination)
+    assert old_frame.exists()
+    assert sentinel.exists()
 
 
 def test_source_frame_tracking_requires_every_declared_check(tmp_path, suite, monkeypatch):

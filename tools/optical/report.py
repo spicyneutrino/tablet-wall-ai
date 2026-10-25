@@ -611,9 +611,10 @@ def _checks(analysis: Analysis) -> list[dict[str, Any]]:
         ),
         evidence.check_row(
             "threshold observation is within-threshold-observation-only",
-            thresholds["status"] == "within-threshold",
+            thresholds["within_threshold_observation_only"] is True,
             threshold_status=thresholds["status"],
             observation=thresholds["observation"],
+            within_threshold_observation_only=thresholds["within_threshold_observation_only"],
             failed_events=len(full["failed_event_ids"]),
             ambiguous_events=len(full["ambiguous_event_ids"]),
             unobserved_events=len(full["unobserved_event_ids"]),

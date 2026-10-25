@@ -137,8 +137,10 @@ when the extracted frame count and ffprobe timestamp count disagree. A nominal
 `avg_frame_rate` is not a timestamp source. Use `--decode-video` to force the
 video path even if extracted frames also exist, and `--frames-dir` to choose a
 bounded decoded-frame directory. Only files named `NNNNNN.png` (six digits) in
-that directory are replaced; unrelated files are left alone. A directory that
-already holds a partial extraction is safest replaced with a fresh directory.
+that directory are replaced; unrelated files are left alone. Extraction is
+staged, so a failed or mismatched decode leaves the previous frame set in place.
+A directory that already holds a partial extraction is safest replaced with a
+fresh directory.
 
 ## 4. Numbered flash and reference frames
 
@@ -225,7 +227,7 @@ Rules:
   against a resized preview with different geometry.
 - Keep the polygon inside the active panel area. Exclude bezels, borders,
   reflections, status bars, logos and bright room reflections.
-- Use several rows and columns. The default grid is four columns by three rows;
+- Use several rows and columns. The default grid is five columns by four rows;
   explicit `sample_points` is allowed, but the points must span at least two
   rows and two columns. A 12–20 point grid is a better default than the
   three-point hard minimum. `sample_rows` and `sample_columns` are fractions
