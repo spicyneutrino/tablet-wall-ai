@@ -67,19 +67,26 @@
         playlistHint: document.getElementById("playlist-hint"),
         playlistLoop: document.getElementById("playlist-loop"),
         btnPlaylistSave: document.getElementById("btn-playlist-save"),
+        playlistUndo: document.getElementById("playlist-undo"),
         playlistMsg: document.getElementById("playlist-msg"),
         playlistRawId: document.getElementById("playlist-raw-id"),
         playlistRawDwell: document.getElementById("playlist-raw-dwell"),
         btnPlaylistRawAdd: document.getElementById("btn-playlist-raw-add"),
         playbackPolicy: document.getElementById("playback-policy"),
+        playbackPolicyBlock: document.getElementById("playback-policy-block"),
         playbackEffectivePolicy: document.getElementById("playback-effective-policy"),
+        playbackCard: document.getElementById("playback-card"),
+        playbackStale: document.getElementById("playback-stale"),
+        playbackStateWord: document.getElementById("playback-state-word"),
+        playbackPreflight: document.getElementById("playback-preflight"),
+        playbackSession: document.getElementById("playback-session"),
+        playbackSteps: document.getElementById("playback-steps"),
         btnPlaybackStart: document.getElementById("btn-playback-start"),
         btnPlaybackPause: document.getElementById("btn-playback-pause"),
         btnPlaybackStop: document.getElementById("btn-playback-stop"),
         btnPlaybackRetry: document.getElementById("btn-playback-retry"),
         btnPlaybackPrevious: document.getElementById("btn-playback-previous"),
         btnPlaybackNext: document.getElementById("btn-playback-next"),
-        btnPlaybackRefresh: document.getElementById("btn-playback-refresh"),
         playbackMsg: document.getElementById("playback-msg"),
         playbackStatus: document.getElementById("playback-status"),
         playbackFacts: document.getElementById("playback-facts"),
@@ -99,6 +106,10 @@
         rebindNew: document.getElementById("rebind-new"),
         rebindReplaces: document.getElementById("rebind-replaces"),
         rebindNumber: document.getElementById("rebind-number"),
+        rebindNewNote: document.getElementById("rebind-new-note"),
+        rebindReplacesNote: document.getElementById("rebind-replaces-note"),
+        rebindNumberNote: document.getElementById("rebind-number-note"),
+        rebindSummary: document.getElementById("rebind-summary"),
         rebindMsg: document.getElementById("rebind-msg"),
         btnRebind: document.getElementById("btn-rebind"),
         btnLayoutSave: document.getElementById("btn-layout-save"),
@@ -109,6 +120,7 @@
         inspectorBody: document.getElementById("inspector-body"),
         selectedTitle: document.getElementById("selected-title"),
         selectedId: document.getElementById("selected-id"),
+        btnCopySelectedId: document.getElementById("btn-copy-selected-id"),
         selectedState: document.getElementById("selected-state"),
         selectedNote: document.getElementById("selected-note"),
         slotCenterX: document.getElementById("slot-center-x"),
@@ -128,7 +140,6 @@
         deviceCardEmpty: document.getElementById("device-card-empty"),
         deviceCardBody: document.getElementById("device-card-body"),
         deviceCardName: document.getElementById("device-card-name"),
-        deviceCardId: document.getElementById("device-card-id"),
         deviceCardCal: document.getElementById("device-card-cal"),
         profileForm: document.getElementById("profile-form"),
         profileCurrent: document.getElementById("profile-current"),
@@ -172,6 +183,7 @@
         revision: null,
         generation: null,
         layoutKind: null,
+        configLoaded: false,
         base: null,
         draft: null,
         displays: [],
@@ -189,10 +201,13 @@
         busy: false,
         playlistEtag: null,
         playlist: { items: [], loop: true, revision: null },
+        savedPlaylist: null,
         playlistLoaded: false,
+        playlistLoading: true,
         playlistDirty: false,
         playlistSaving: false,
         playlistFocus: null,
+        playlistRemoval: null,
         library: [],
         libraryState: "pending",
         libraryLoading: false,
@@ -337,6 +352,30 @@
 
     function finiteOr(value, fallback) {
         return Number.isFinite(Number(value)) ? Number(value) : fallback;
+    }
+
+    async function copyText(text) {
+        if (!text) return false;
+        if (navigator.clipboard && navigator.clipboard.writeText) {
+            try {
+                await navigator.clipboard.writeText(text);
+                return true;
+            } catch (error) {
+                // Plain-HTTP LAN pages are not a secure context; fall through.
+            }
+        }
+        const area = document.createElement("textarea");
+        area.value = text;
+        area.setAttribute("readonly", "");
+        area.style.position = "fixed";
+        area.style.top = "-1000px";
+        document.body.appendChild(area);
+        area.select();
+        let copied = false;
+        try { copied = document.execCommand("copy"); }
+        catch (error) { copied = false; }
+        document.body.removeChild(area);
+        return copied;
     }
 
     function setInputValue(input, value) {
@@ -526,13 +565,35 @@
         return profile && profile.label ? profile.label : "Tablet " + shortId(id);
     }
 
+    function deviceNumber(id) {
+        const record = state.roster[id];
+        const value = record ? Number(record.number) : NaN;
+        return Number.isInteger(value) && value > 0 ? value : null;
+    }
+
+    function numberTag(id) {
+        const number = deviceNumber(id);
+        return number === null ? "#–" : "#" + number;
+    }
+
+    function numberedLabel(id, profile) {
+        return numberTag(id) + " · " + deviceLabel(id, profile);
+    }
+
+    function isOnline(id) {
+        const record = state.roster[id];
+        return Boolean(record && record.online === true);
+    }
+
     function deviceEntries() {
         const ids = new Set();
         Object.keys(state.roster).forEach(function (id) { ids.add(id); });
         state.displays.forEach(function (profile) { ids.add(profile.device_id); });
-        if (state.draft && state.draft.slots) {
-            Object.keys(state.draft.slots).forEach(function (id) { ids.add(id); });
-        }
+        [state.base, state.draft].forEach(function (layout) {
+            if (layout && layout.slots) {
+                Object.keys(layout.slots).forEach(function (id) { ids.add(id); });
+            }
+        });
         const entries = [];
         ids.forEach(function (id) {
             const profile = latestProfile(id);
@@ -541,10 +602,18 @@
                 profile: profile,
                 calibration: latestCalibration(id),
                 slot: state.draft && state.draft.slots ? state.draft.slots[id] || null : null,
+                baseSlot: state.base && state.base.slots ? state.base.slots[id] || null : null,
                 label: deviceLabel(id, profile)
             });
         });
         entries.sort(function (left, right) {
+            const leftNumber = deviceNumber(left.id);
+            const rightNumber = deviceNumber(right.id);
+            if (leftNumber !== rightNumber) {
+                if (leftNumber === null) return 1;
+                if (rightNumber === null) return -1;
+                return leftNumber - rightNumber;
+            }
             const byLabel = left.label.localeCompare(right.label);
             return byLabel !== 0 ? byLabel : left.id.localeCompare(right.id);
         });
@@ -703,6 +772,7 @@
         state.revision = config.revision === undefined ? null : config.revision;
         state.generation = config.generation === undefined ? null : config.generation;
         state.layoutKind = config.layout && config.layout.kind ? config.layout.kind : null;
+        state.configLoaded = true;
         state.displays = Array.isArray(config.displays) ? config.displays : [];
         state.calibrations = Array.isArray(config.calibrations) ? config.calibrations : [];
         state.displays.forEach(rememberProfile);
@@ -788,6 +858,7 @@
         renderDeviceList();
         renderStage();
         populateDeviceCard(false);
+        renderPlayback();
     }
 
     function syncMeta() {
@@ -886,6 +957,7 @@
     function afterDraftChange() {
         syncDraftUi();
         renderStage();
+        renderPlaybackPreflight(playbackPreflight());
     }
 
     function mutateDraft(mutator) {
@@ -1087,7 +1159,7 @@
             const centerY = stage.offY
                 + (finiteOr(slot.center_y_mm, 0) + finiteOr(slot.nudge_y_mm, 0)) * scale;
             const angle = finiteOr(slot.mount_angle, 0);
-            const label = deviceLabel(id, profile);
+            const label = numberedLabel(id, profile);
 
             const group = svgNode("g", {
                 "class": "slot",
@@ -1326,8 +1398,14 @@
     }
 
     function renderDeviceCount() {
-        el.deviceCount.textContent = String(deviceRows.size);
-        el.deviceEmpty.hidden = deviceRows.size > 0;
+        let online = 0;
+        deviceRows.forEach(function (row, id) {
+            if (isOnline(id)) online += 1;
+        });
+        const total = deviceRows.size;
+        el.deviceCount.textContent = total === 0
+            ? "0 online" : online + " of " + total + " online";
+        el.deviceEmpty.hidden = total > 0;
     }
 
     function renderDeviceList() {
@@ -1340,6 +1418,8 @@
         const entries = deviceEntries();
 
         entries.forEach(function (entry) {
+            const online = isOnline(entry.id);
+            const number = deviceNumber(entry.id);
             const item = document.createElement("li");
             item.className = "dev-row";
             item.dataset.deviceId = entry.id;
@@ -1351,9 +1431,25 @@
             pick.dataset.deviceId = entry.id;
             pick.setAttribute("aria-pressed", entry.id === state.selectedId ? "true" : "false");
 
+            const identity = document.createElement("span");
+            identity.className = "dev-identity";
+
+            const dot = document.createElement("span");
+            dot.className = "dev-dot";
+            dot.dataset.online = online ? "true" : "false";
+            dot.setAttribute("aria-hidden", "true");
+            dot.title = online ? "Online" : "Offline";
+            identity.appendChild(dot);
+
+            const numberNode = document.createElement("span");
+            numberNode.className = "dev-number";
+            numberNode.textContent = number === null ? "#–" : "#" + number;
+            identity.appendChild(numberNode);
+
             const label = document.createElement("span");
             label.className = "dev-label";
             label.textContent = entry.label;
+            identity.appendChild(label);
 
             const flag = document.createElement("span");
             flag.className = "dev-flag";
@@ -1390,25 +1486,33 @@
             const record = state.roster[entry.id];
             const wakeLock = record && typeof record.wake_lock === "string"
                 ? record.wake_lock : null;
-            if (wakeLock) {
+            if (wakeLock && wakeLock !== "held") {
                 const wake = document.createElement("span");
                 wake.className = "dev-wake";
                 wake.dataset.kind = wakeLock;
                 wake.textContent = WAKE_LOCK_TEXT[wakeLock] || ("Wake lock " + wakeLock);
+                if (wakeLock === "unsupported") {
+                    wake.title = "Normal on plain HTTP. The tablet may let its screen sleep.";
+                } else {
+                    wake.title = "The screen may sleep during playback. Bring the tablet page to the foreground.";
+                }
                 meta.appendChild(wake);
             }
 
-            pick.setAttribute("aria-label", entry.label + ", device " + shortId(entry.id)
+            pick.setAttribute("aria-label", numberedLabel(entry.id, entry.profile)
+                + ", " + (online ? "online" : "offline")
+                + ", device " + shortId(entry.id)
                 + ", " + (entry.profile
                     ? formatNumber(entry.profile.active_width_mm, 1) + " by "
                         + formatNumber(entry.profile.active_height_mm, 1) + " millimetres active"
                     : "size unknown")
                 + ", " + (entry.profile ? "profile revision " + entry.profile.revision : "no profile")
                 + ", " + status.text
-                + (wakeLock ? ", " + (WAKE_LOCK_TEXT[wakeLock] || wakeLock) : "")
+                + (wakeLock && wakeLock !== "held"
+                    ? ", " + (WAKE_LOCK_TEXT[wakeLock] || wakeLock) : "")
                 + (entry.id === state.selectedId ? ", selected" : ""));
 
-            pick.appendChild(label);
+            pick.appendChild(identity);
             pick.appendChild(flag);
             pick.appendChild(meta);
             pick.addEventListener("click", function () {
@@ -1448,6 +1552,7 @@
         });
 
         renderDeviceCount();
+        renderRebindOptions();
 
         if (focusedId) {
             const row = deviceRows.get(focusedId);
@@ -1468,6 +1573,7 @@
             el.inspectorEmpty.hidden = false;
             el.inspectorBody.hidden = true;
             el.inspectorMissing.hidden = true;
+            if (el.btnCopySelectedId) el.btnCopySelectedId.hidden = true;
             return;
         }
 
@@ -1493,8 +1599,13 @@
 
         el.inspectorBody.hidden = false;
         el.inspectorMissing.hidden = true;
-        el.selectedTitle.textContent = label;
+        el.selectedTitle.textContent = numberedLabel(id, profile);
         el.selectedId.textContent = id;
+        if (el.btnCopySelectedId) {
+            el.btnCopySelectedId.hidden = false;
+            el.btnCopySelectedId.dataset.deviceId = id;
+            el.btnCopySelectedId.textContent = "Copy full id";
+        }
 
         const participating = slot.participating !== false;
         el.selectedState.textContent = participating ? "On the wall" : "Not participating";
@@ -1892,8 +2003,7 @@
     function updateDeviceCardHeadings() {
         const id = state.selectedId;
         const profile = latestProfile(id);
-        el.deviceCardName.textContent = deviceLabel(id, profile);
-        el.deviceCardId.textContent = id;
+        el.deviceCardName.textContent = id ? numberedLabel(id, profile) : "–";
         const status = calibrationStatus(profile, latestCalibration(id));
         el.deviceCardCal.textContent = status.text;
         el.deviceCardCal.dataset.kind = status.kind;
@@ -2102,13 +2212,6 @@
         return null;
     }
 
-    function playlistHasVideo() {
-        return state.playlist.items.some(function (item) {
-            const asset = libraryAsset(item.asset);
-            return Boolean(asset && asset.kind === "video");
-        });
-    }
-
     async function loadLibrary(quiet) {
         if (state.libraryLoading) return false;
         state.libraryLoading = true;
@@ -2175,10 +2278,12 @@
     }
 
     async function loadPlaylist() {
+        state.playlistLoading = true;
         try {
             const payload = await api("GET", API_PLAYLIST);
             state.playlistEtag = payload && typeof payload.etag === "string" ? payload.etag : null;
             const document = normalizePlaylistDocument(payload ? payload.playlist : null);
+            state.savedPlaylist = document === null ? null : clone(document);
             if (document !== null && !state.playlistDirty) {
                 state.playlist = document;
                 state.playlistDirty = false;
@@ -2190,6 +2295,9 @@
         } catch (error) {
             setMsg(el.playlistMsg, "Could not load the playlist: " + errorDetail(error), "err");
             return false;
+        } finally {
+            state.playlistLoading = false;
+            renderPlayback();
         }
     }
 
@@ -2306,6 +2414,7 @@
                 catch (error) { node.focus(); }
             }
         }
+        syncPlaylistCurrent();
     }
 
     function syncPlaylistFooter() {
@@ -2318,9 +2427,30 @@
             el.playlistHint.textContent = text;
             el.playlistHint.dataset.kind = state.playlistDirty ? "warn" : "";
         }
+        if (el.playlistUndo) {
+            el.playlistUndo.hidden = !state.playlistRemoval;
+        }
         if (el.btnPlaylistSave) {
             el.btnPlaylistSave.disabled = state.playlistSaving || count === 0;
             el.btnPlaylistSave.textContent = state.playlistSaving ? "Saving…" : "Save playlist";
+        }
+    }
+
+    function syncPlaylistCurrent() {
+        if (!el.playlistItems) return;
+        const status = state.playback;
+        const current = status && status.current
+            ? (status.current.occurrence || status.current) : null;
+        const index = current ? Number(current.item_index) : NaN;
+        const revision = current ? Number(current.playlist_revision) : NaN;
+        const sameRevision = state.playlist.revision === null
+            || !Number.isFinite(revision) || revision === state.playlist.revision;
+        const rows = el.playlistItems.querySelectorAll(".playlist-item");
+        for (let offset = 0; offset < rows.length; offset += 1) {
+            const row = rows[offset];
+            const match = !state.playlistDirty && sameRevision
+                && Number.isFinite(index) && Number(row.dataset.index) === index;
+            row.dataset.current = match ? "true" : "false";
         }
     }
 
@@ -2354,8 +2484,10 @@
         body.className = "playlist-item-body";
         const head = document.createElement("div");
         head.className = "playlist-item-head";
+        appendText(head, "span", "playlist-index", String(index + 1) + ".");
         appendText(head, "span", "playlist-name",
             asset ? asset.name : "Unknown asset " + shortId(item.asset) + "…");
+        appendText(head, "span", "playlist-now", "Now");
         const kind = appendText(head, "span", "playlist-kind",
             asset ? (isVideo ? "Video" : "Still") : "Unknown");
         kind.dataset.kind = asset ? asset.kind : "unknown";
@@ -2440,8 +2572,25 @@
     }
 
     function markPlaylistDirty() {
-        state.playlistDirty = true;
+        const saved = state.savedPlaylist;
+        state.playlistDirty = saved
+            ? playlistSignature(state.playlist) !== playlistSignature(saved)
+            : state.playlist.items.length > 0;
         syncPlaylistFooter();
+        const gate = playbackPreflight();
+        renderPlaybackPreflight(gate);
+        renderPlaybackButtons(state.playback, gate);
+    }
+
+    function playlistSignature(playlist) {
+        if (!playlist) return "";
+        const items = Array.isArray(playlist.items) ? playlist.items : [];
+        return JSON.stringify({
+            loop: playlist.loop !== false,
+            items: items.map(function (item) {
+                return [item.asset, clampDwell(item.dwell_ms)];
+            })
+        });
     }
 
     function movePlaylistItem(index, delta) {
@@ -2457,13 +2606,31 @@
     }
 
     function removePlaylistItem(index) {
+        const item = state.playlist.items[index];
+        if (!item) return;
         state.playlist.items.splice(index, 1);
+        state.playlistRemoval = { item: clone(item), index: index };
         state.playlistFocus = {
             index: Math.min(index, state.playlist.items.length - 1),
             action: "remove"
         };
         markPlaylistDirty();
         renderPlaylist();
+        announce("Removed " + (libraryAsset(item.asset)
+            ? libraryAsset(item.asset).name : shortId(item.asset) + "…")
+            + " from the playlist. Undo is available.", "info");
+    }
+
+    function undoPlaylistRemoval() {
+        const removal = state.playlistRemoval;
+        if (!removal) return;
+        const index = Math.min(removal.index, state.playlist.items.length);
+        state.playlist.items.splice(index, 0, removal.item);
+        state.playlistRemoval = null;
+        state.playlistFocus = { index: index, action: "remove" };
+        markPlaylistDirty();
+        renderPlaylist();
+        announce("Restored the removed playlist item.", "ok");
     }
 
     function addPlaylistAsset(id, dwell) {
@@ -2481,16 +2648,16 @@
     }
 
     async function savePlaylist() {
-        if (state.playlistSaving) return;
+        if (state.playlistSaving) return false;
         clearMsg(el.playlistMsg);
         const items = state.playlist.items;
         if (items.length === 0) {
             setMsg(el.playlistMsg, "Add at least one item before saving.", "err");
-            return;
+            return false;
         }
         if (state.playlistEtag === null) {
             setMsg(el.playlistMsg, "The playlist did not load, so there is no ETag to save against. Refresh the page.", "err");
-            return;
+            return false;
         }
         const payloadItems = items.map(function (item) {
             const asset = libraryAsset(item.asset);
@@ -2502,6 +2669,7 @@
 
         state.playlistSaving = true;
         syncPlaylistFooter();
+        let savedOk = false;
         try {
             const saved = await api("PUT", API_PLAYLIST, {
                 items: payloadItems,
@@ -2513,6 +2681,9 @@
             else state.playlist.loop = Boolean(el.playlistLoop && el.playlistLoop.checked);
             state.playlistLoaded = true;
             state.playlistDirty = false;
+            state.playlistRemoval = null;
+            state.savedPlaylist = clone(state.playlist);
+            savedOk = true;
             setMsg(el.playlistMsg, "Playlist saved: "
                 + state.playlist.items.length
                 + (state.playlist.items.length === 1 ? " item." : " items."), "ok");
@@ -2528,6 +2699,7 @@
             renderPlaylist();
             renderPlayback();
         }
+        return savedOk;
     }
 
     /* ---------------------------------------------------------------- *
@@ -2750,25 +2922,21 @@
         renderPlayback();
     }
 
-    async function refreshPlayback(manual) {
+    async function refreshPlayback() {
         if (state.playbackFetching) return;
         state.playbackFetching = true;
-        if (el.btnPlaybackRefresh) el.btnPlaybackRefresh.disabled = true;
         try {
             const status = await api("GET", API_PLAYBACK);
             state.playbackError = null;
             state.playbackFetchedAt = Date.now();
             state.playbackOkAt = state.playbackFetchedAt;
             applyPlaybackStatus(status);
-            if (manual) setMsg(el.playbackMsg, "Playback status refreshed.", "ok");
         } catch (error) {
             state.playbackError = errorDetail(error);
             state.playbackFetchedAt = Date.now();
             renderPlayback();
-            if (manual) setMsg(el.playbackMsg, "Could not refresh playback: " + state.playbackError, "err");
         } finally {
             state.playbackFetching = false;
-            if (el.btnPlaybackRefresh) el.btnPlaybackRefresh.disabled = false;
             renderPlaybackPollNote();
         }
     }
@@ -2781,12 +2949,13 @@
             kind = "err";
             text = "Status unavailable: " + state.playbackError;
             if (state.playbackOkAt) {
-                text += ". Showing the last answer from " + new Date(state.playbackOkAt)
+                text += ". Last answer from " + new Date(state.playbackOkAt)
                     .toLocaleTimeString([], { hour: "2-digit", minute: "2-digit", second: "2-digit" })
                     + ".";
             } else {
                 text += ".";
             }
+            text += " Retrying every second.";
         } else if (state.playbackFetchedAt) {
             text = "Live status, read at " + new Date(state.playbackFetchedAt)
                 .toLocaleTimeString([], { hour: "2-digit", minute: "2-digit", second: "2-digit" })
@@ -2795,58 +2964,263 @@
         setTextIfChanged(el.playbackPollNote, text);
         if (kind) el.playbackPollNote.dataset.kind = kind;
         else el.playbackPollNote.removeAttribute("data-kind");
+
+        if (el.playbackStale) {
+            el.playbackStale.hidden = !state.playbackError;
+            if (state.playbackError) {
+                el.playbackStale.textContent = state.playbackOkAt ? "stale" : "no status";
+                el.playbackStale.title = state.playbackOkAt
+                    ? "The last status read was at " + new Date(state.playbackOkAt).toLocaleTimeString()
+                    : "No playback status has been read yet.";
+            }
+        }
+    }
+
+    function savedPlaylistItems() {
+        return state.savedPlaylist && Array.isArray(state.savedPlaylist.items)
+            ? state.savedPlaylist.items : [];
+    }
+
+    function savedPlaylistHasVideo() {
+        if (!state.savedPlaylist) return null;
+        if (state.libraryState !== "ready") return null;
+        return savedPlaylistItems().some(function (item) {
+            const asset = libraryAsset(item.asset);
+            return Boolean(asset && asset.kind === "video");
+        });
+    }
+
+    function committedRequiredIds() {
+        const slots = state.base && state.base.slots ? state.base.slots : {};
+        return Object.keys(slots).filter(function (id) {
+            return slots[id] && slots[id].participating !== false;
+        });
+    }
+
+    function chosenPolicy() {
+        const value = el.playbackPolicy ? el.playbackPolicy.value : "";
+        if (value === "strict" || value === "online") return value;
+        const video = savedPlaylistHasVideo();
+        if (video === null) return null;
+        return video ? "strict" : "online";
+    }
+
+    function firstSavedItemName() {
+        const items = savedPlaylistItems();
+        if (!items.length) return "";
+        const asset = libraryAsset(items[0].asset);
+        return asset ? asset.name : shortId(items[0].asset) + "…";
+    }
+
+    function playbackPreflight() {
+        const savedCount = savedPlaylistItems().length;
+        const draftCount = state.playlist.items.length;
+        const dirty = state.playlistDirty;
+        const canSaveDraft = dirty && draftCount > 0
+            && state.playlistEtag !== null && state.playlistLoaded;
+        const physical = state.layoutKind === "physical";
+        const required = committedRequiredIds();
+        const online = required.filter(isOnline);
+        const parts = [];
+        const blockers = [];
+
+        if (!state.configLoaded) {
+            return {
+                ready: false, kind: "", text: "Checking the saved wall layout…",
+                label: "Start", required: required, online: online
+            };
+        }
+
+        if (!state.playlistLoaded && state.playlistLoading) {
+            parts.push("Checking the saved playlist…");
+        } else if (state.playlistLoaded) {
+            if (savedCount > 0) {
+                parts.push("Saved playlist: " + savedCount
+                    + (savedCount === 1 ? " item" : " items")
+                    + " · first “" + firstSavedItemName() + "”.");
+            } else if (canSaveDraft) {
+                parts.push("No saved playlist; Save and start saves the "
+                    + draftCount + (draftCount === 1 ? " draft item" : " draft items") + " first.");
+            } else {
+                parts.push("No saved playlist.");
+                blockers.push("Add items under Playlist, then choose Save playlist.");
+            }
+            if (canSaveDraft && savedCount > 0) {
+                parts.push("Draft: " + draftCount
+                    + (draftCount === 1 ? " item" : " items")
+                    + ", not saved; Save and start saves first.");
+            }
+            if (dirty && draftCount === 0) {
+                blockers.push("The playlist draft is empty. Undo the removal or add an item.");
+            }
+        } else {
+            parts.push("The saved playlist could not be read.");
+            blockers.push("Reload this page to read the saved playlist.");
+        }
+
+        if (physical) {
+            parts.push("Layout: " + required.length
+                + " required · " + online.length + " online.");
+            if (required.length === 0) {
+                blockers.push("The saved layout has no tablets on the wall. Add tablets under Tablets, then Apply layout.");
+            }
+        } else {
+            parts.push("No saved physical layout.");
+            blockers.push("Set the wall bounds and choose Apply layout before starting.");
+        }
+
+        const policy = chosenPolicy();
+        if (policy === "strict") {
+            parts.push("Policy: strict (all required ready).");
+        } else if (policy === "online") {
+            parts.push("Policy: online (hold, then record misses).");
+        } else {
+            parts.push("Policy: server default.");
+        }
+
+        if (physical && required.length > 0 && online.length === 0) {
+            parts.push("No wall tablets are online. Open /client/ on a tablet on the same LAN.");
+        }
+        if (isDirty()) {
+            parts.push("Unapplied layout changes are not part of Start.");
+        }
+
+        const ready = blockers.length === 0 && state.playlistLoaded;
+        let kind = "";
+        if (blockers.length > 0) kind = "err";
+        else if (!state.playlistLoaded) kind = "";
+        else if (physical && required.length > 0 && online.length === 0) kind = "warn";
+        else if (dirty) kind = "warn";
+
+        const text = parts.concat(blockers).join(" ");
+        return {
+            ready: ready,
+            kind: kind,
+            text: text,
+            label: canSaveDraft ? "Save and start" : "Start",
+            required: required,
+            online: online
+        };
+    }
+
+    function renderPlaybackPreflight(gate) {
+        if (!el.playbackPreflight) return;
+        setTextIfChanged(el.playbackPreflight, gate.text);
+        if (gate.kind) el.playbackPreflight.dataset.kind = gate.kind;
+        else el.playbackPreflight.removeAttribute("data-kind");
+    }
+
+    function failureText(status) {
+        const value = status.blocked_reason || status.failure;
+        if (typeof value === "string" && value !== "") return value;
+        if (value && typeof value === "object") {
+            if (typeof value.reason === "string" && value.reason !== "") return value.reason;
+            try { return JSON.stringify(value); }
+            catch (error) { return String(value); }
+        }
+        return "the session stopped after a failure";
+    }
+
+    function sentence(text) {
+        const value = String(text === null || text === undefined ? "" : text).trim();
+        if (!value) return "";
+        return /[.!?]$/.test(value) ? value : value + ".";
     }
 
     function renderPlayback() {
         const status = state.playback;
-        renderPlaybackPolicy(status);
-        renderPlaybackButtons(status);
+        const stateName = status && typeof status.state === "string"
+            ? status.state
+            : (state.playbackError ? "unknown" : "stopped");
+        const hasSession = Boolean(status)
+            && stateName !== "stopped" && stateName !== "unknown";
+        const gate = playbackPreflight();
+
+        if (el.playbackCard) el.playbackCard.dataset.session = hasSession ? "true" : "false";
+        if (el.playbackStateWord) {
+            el.playbackStateWord.textContent = stateName;
+            el.playbackStateWord.dataset.state = stateName;
+        }
+        if (el.playbackPreflight) el.playbackPreflight.hidden = hasSession;
+        if (el.playbackSession) el.playbackSession.hidden = !hasSession;
+
+        renderPlaybackPreflight(gate);
+        renderPlaybackPolicy(status, hasSession);
+        renderPlaybackButtons(status, gate);
         renderPlaybackSummary(status);
         renderPlaybackFacts(status);
         renderPlaybackPending(status);
         renderPlaybackMembers(status);
         renderPlaybackPollNote();
+        syncPlaylistCurrent();
     }
 
-    function renderPlaybackPolicy(status) {
+    function renderPlaybackPolicy(status, hasSession) {
         if (!el.playbackEffectivePolicy) return;
+        const field = el.playbackPolicy
+            ? el.playbackPolicy.closest(".field") : null;
+        if (field) field.hidden = hasSession;
+
         let text;
-        if (status && status.state && status.state !== "stopped" && status.policy) {
-            text = "Effective policy: " + status.policy + " (from status).";
-        } else if (status && status.policy) {
-            text = "Effective policy: " + status.policy + " (last session).";
-        } else if (playlistHasVideo()) {
-            text = "No active session. Server default: strict, because the playlist has a video.";
+        if (hasSession) {
+            text = "Effective policy: " + (status.policy || "unknown")
+                + " — frozen for this session.";
         } else {
-            text = "No active session. Server default: online, because the playlist has only stills.";
+            const choice = el.playbackPolicy ? el.playbackPolicy.value : "";
+            const policy = chosenPolicy();
+            if (choice) {
+                text = "Effective on Start: " + choice + ".";
+            } else if (policy === "strict") {
+                text = "Effective on Start: strict (server default because the saved playlist has video).";
+            } else if (policy === "online") {
+                text = "Effective on Start: online (server default because the saved playlist has no video).";
+            } else {
+                text = "Effective on Start: server default.";
+            }
         }
         setTextIfChanged(el.playbackEffectivePolicy, text);
     }
 
-    function renderPlaybackButtons(status) {
+    function renderPlaybackButtons(status, gate) {
         const stateName = status && typeof status.state === "string" ? status.state : "stopped";
-        const hasSession = Boolean(status) && stateName !== "stopped";
+        const hasSession = Boolean(status)
+            && stateName !== "stopped" && stateName !== "unknown";
         const paused = stateName === "paused";
-        const active = hasSession && stateName !== "failed";
+        const blocked = stateName === "blocked";
+        const failed = stateName === "failed";
         const busy = state.playbackBusy;
-        const canPause = active && stateName !== "blocked" && stateName !== "paused";
-        const canResume = paused;
 
         if (el.btnPlaybackStart) {
-            el.btnPlaybackStart.disabled = busy || paused
-                || (hasSession && stateName !== "failed");
-            el.btnPlaybackStart.textContent = "Start";
-            el.btnPlaybackStart.title = paused
-                ? "Use Resume to continue the paused item." : "Start a new playback session.";
+            const visible = !hasSession || failed;
+            el.btnPlaybackStart.hidden = !visible;
+            el.btnPlaybackStart.disabled = busy || !gate.ready;
+            el.btnPlaybackStart.textContent = failed && gate.label === "Start"
+                ? "Start again" : gate.label;
+            el.btnPlaybackStart.title = gate.ready
+                ? (state.playlistDirty
+                    ? "Save the draft playlist, then start playback."
+                    : "Start a new playback session.")
+                : gate.text;
         }
         if (el.btnPlaybackPause) {
-            el.btnPlaybackPause.disabled = busy || (!canPause && !canResume);
+            const canPause = hasSession && !paused && !blocked && !failed;
+            el.btnPlaybackPause.hidden = !(canPause || paused);
+            el.btnPlaybackPause.disabled = busy || !(canPause || paused);
             el.btnPlaybackPause.textContent = paused ? "Resume" : "Pause";
+            el.btnPlaybackPause.classList.toggle("btn-primary", paused);
+            el.btnPlaybackPause.title = paused
+                ? "Resume the paused item at a new anchor." : "Pause playback.";
         }
-        if (el.btnPlaybackStop) el.btnPlaybackStop.disabled = busy || !hasSession;
         if (el.btnPlaybackRetry) {
-            el.btnPlaybackRetry.disabled = busy || stateName !== "blocked";
+            el.btnPlaybackRetry.hidden = !blocked;
+            el.btnPlaybackRetry.disabled = busy || !blocked;
+            el.btnPlaybackRetry.classList.toggle("btn-primary", blocked);
         }
+        if (el.btnPlaybackStop) {
+            el.btnPlaybackStop.hidden = !hasSession;
+            el.btnPlaybackStop.disabled = busy || !hasSession;
+        }
+        if (el.playbackSteps) el.playbackSteps.hidden = !hasSession;
         if (el.btnPlaybackPrevious) el.btnPlaybackPrevious.disabled = busy || !hasSession;
         if (el.btnPlaybackNext) el.btnPlaybackNext.disabled = busy || !hasSession;
         if (el.playbackPolicy) el.playbackPolicy.disabled = busy || hasSession;
@@ -2854,22 +3228,29 @@
 
     function renderPlaybackSummary(status) {
         if (!el.playbackStatus) return;
-        const stateName = status && typeof status.state === "string" ? status.state : "stopped";
+        const stateName = status && typeof status.state === "string"
+            ? status.state
+            : (state.playbackError ? "unknown" : "stopped");
         if (el.playbackStatus.dataset.state !== stateName) {
             el.playbackStatus.dataset.state = stateName;
         }
         let text;
-        if (stateName === "stopped") {
+        if (stateName === "unknown") {
+            text = "Playback status is unavailable. The page keeps retrying every second.";
+        } else if (stateName === "stopped") {
             text = "Playback is stopped.";
         } else if (stateName === "blocked") {
-            text = "Blocked: " + (status.blocked_reason
-                || "the cohort was not ready before the preparation deadline") + " Retry or Stop.";
+            text = "Blocked: " + sentence(status.blocked_reason
+                || "the cohort was not ready before the preparation deadline")
+                + " Retry this item, or Stop to end the session.";
         } else if (stateName === "failed") {
-            text = "Failed: " + (status.blocked_reason || status.failure
-                || "the session stopped after a failure") + " Stop, then start again.";
+            text = "Failed: " + sentence(failureText(status))
+                + " Start begins a new session; Stop clears the failed session.";
         } else if (stateName === "paused") {
             text = "Paused on " + occurrenceText(status.current && (status.current.occurrence
                 || status.current)) + ". Resume restarts the item at a new anchor.";
+            const lingered = remainingDwell(status);
+            if (lingered !== null) text += " " + remainingText(lingered) + " at the pause.";
         } else if (stateName === "armed") {
             text = "Armed: " + occurrenceText(status.current && (status.current.occurrence
                 || status.current)) + " is committed for the next cut.";
@@ -2877,7 +3258,8 @@
             const current = status.current && (status.current.occurrence || status.current);
             const pending = status.pending && status.pending.occurrence;
             if (stateName === "final") {
-                text = "Final item: " + occurrenceText(current) + " Stop to leave it on screen.";
+                text = "Final item: " + occurrenceText(current)
+                    + ". Playback holds here; Stop ends playback.";
             } else if (stateName === "preparing") {
                 text = current
                     ? "Preparing the next item. On screen: " + occurrenceText(current) + "."
@@ -2886,8 +3268,10 @@
             } else if (!current && pending) {
                 text = "Preparing: " + occurrenceText(pending) + ".";
             } else {
-                text = "Playing: " + occurrenceText(current);
+                text = "Playing: " + occurrenceText(current) + ".";
                 if (pending) text += " Next: " + occurrenceText(pending) + ".";
+                const remaining = remainingDwell(status);
+                if (remaining !== null) text += " " + remainingText(remaining) + ".";
             }
         }
         setTextIfChanged(el.playbackStatus, text);
@@ -2904,12 +3288,18 @@
 
     function renderPlaybackFacts(status) {
         if (!el.playbackFacts) return;
+        const savedCount = savedPlaylistItems().length;
+        const draftCount = state.playlist.items.length;
         if (!status || !status.state || status.state === "stopped") {
-            renderFactList(el.playbackFacts, [
-                ["State", "stopped"],
-                ["Playlist", state.playlist.items.length
-                    + (state.playlist.items.length === 1 ? " item" : " items")]
-            ]);
+            const facts = [
+                ["State", !status && state.playbackError ? "status unavailable" : "stopped"],
+                ["Saved playlist", savedCount + (savedCount === 1 ? " item" : " items")]
+            ];
+            if (state.playlistDirty) {
+                facts.push(["Draft playlist", draftCount
+                    + (draftCount === 1 ? " item" : " items") + " · not saved"]);
+            }
+            renderFactList(el.playbackFacts, facts);
             return;
         }
         const facts = [];
@@ -2963,7 +3353,7 @@
             }
         }
 
-        const remaining = ["blocked", "failed", "paused", "final"].indexOf(status.state) !== -1
+        const remaining = ["blocked", "failed", "final"].indexOf(status.state) !== -1
             ? null : remainingDwell(status);
         if (remaining !== null) facts.push(["Remaining dwell", remainingText(remaining)]);
         if (status.hold_deadline_ms !== undefined && status.hold_deadline_ms !== null
@@ -2974,7 +3364,7 @@
         if (Array.isArray(status.missed) && status.missed.length > 0) {
             facts.push([status.policy === "strict" ? "Missing members" : "Online misses",
                 status.missed.map(function (id) {
-                    return deviceLabel(id, latestProfile(id));
+                    return numberedLabel(id, latestProfile(id));
                 }).join(", ")]);
         }
         if (status.blocked_reason) facts.push(["Blocked reason", status.blocked_reason]);
@@ -3046,14 +3436,16 @@
         const stateName = status && typeof status.state === "string" ? status.state : "stopped";
         if (!status || stateName === "stopped") {
             el.playbackMembersEmpty.hidden = false;
-            el.playbackMembersEmpty.textContent = "No preparation is active.";
+            el.playbackMembersEmpty.textContent = "Readiness appears when a session starts.";
             return;
         }
         const info = memberState(status);
         if (info.ids.length === 0) {
             el.playbackMembersEmpty.hidden = false;
-            el.playbackMembersEmpty.textContent =
-                "The server did not report a cohort or member evidence for this state.";
+            const anyOnline = Object.keys(state.roster).some(isOnline);
+            el.playbackMembersEmpty.textContent = anyOnline
+                ? "The server did not report readiness for this session."
+                : "No wall tablets are online. Open /client/ on a tablet on the same LAN.";
             return;
         }
         el.playbackMembersEmpty.hidden = true;
@@ -3086,13 +3478,13 @@
             const head = document.createElement("div");
             head.className = "playback-member-head";
             appendText(head, "span", "playback-member-name",
-                deviceLabel(id, latestProfile(id)));
+                numberedLabel(id, latestProfile(id)));
             appendText(head, "code", "playback-member-id", shortId(id) + "…");
             const chips = document.createElement("span");
             chips.className = "playback-member-chips";
             const requiredChip = appendText(chips, "span", "chip",
                 required ? "required" : participant ? "participant" : "optional");
-            requiredChip.dataset.kind = required ? "info" : "warn";
+            requiredChip.dataset.kind = "info";
             const stateChip = appendText(chips, "span", "chip",
                 ready ? "ready" : missingReason !== undefined ? "missing" : "waiting");
             stateChip.dataset.kind = ready ? "ok" : missingReason !== undefined ? "err" : "warn";
@@ -3133,17 +3525,58 @@
                 if (video.media_ms !== undefined) bits.push("media " + formatSpan(video.media_ms));
             }
             if (missingReason) bits.push("missing: " + missingReason);
-            meta.textContent = bits.length ? bits.join(" · ") : "No evidence reported yet.";
-            row.appendChild(meta);
+            if (bits.length) {
+                meta.textContent = bits.join(" · ");
+                row.appendChild(meta);
+            }
             el.playbackMembers.appendChild(row);
         });
     }
 
+    function friendlyPlaybackError(error) {
+        const detail = errorDetail(error);
+        if (error instanceof ApiError && error.status === 409) {
+            if (/no eligible physical endpoints/i.test(detail)) {
+                return "No wall tablets are online. Open /client/ on a tablet on the same LAN, then start again.";
+            }
+            if (/save a playlist/i.test(detail)) {
+                return "Save a playlist before starting playback.";
+            }
+            if (/physical layout is required/i.test(detail)) {
+                return "Apply a physical layout before starting playback.";
+            }
+        }
+        return detail;
+    }
+
     async function playbackAction(action) {
         if (state.playbackBusy) return;
+        if (action === "start" && state.playlistSaving) return;
         clearMsg(el.playbackMsg);
+
+        if (action === "start") {
+            const gate = playbackPreflight();
+            if (!gate.ready) {
+                setMsg(el.playbackMsg, gate.text, "err");
+                return;
+            }
+            if (state.playlistDirty) {
+                const saved = await savePlaylist();
+                if (!saved) {
+                    setMsg(el.playbackMsg,
+                        "The playlist was not saved, so playback did not start.", "err");
+                    return;
+                }
+                const afterSave = playbackPreflight();
+                if (!afterSave.ready) {
+                    setMsg(el.playbackMsg, afterSave.text, "err");
+                    return;
+                }
+            }
+        }
+
         state.playbackBusy = true;
-        renderPlaybackButtons(state.playback);
+        renderPlaybackButtons(state.playback, playbackPreflight());
         try {
             let status;
             let retried = false;
@@ -3173,7 +3606,7 @@
                     if (!retried && error instanceof ApiError && error.status === 412
                             && action !== "start" && action !== "resume") {
                         retried = true;
-                        await refreshPlayback(false);
+                        await refreshPlayback();
                         continue;
                     }
                     throw error;
@@ -3183,16 +3616,14 @@
             state.playbackFetchedAt = Date.now();
             state.playbackOkAt = state.playbackFetchedAt;
             applyPlaybackStatus(status);
-            setMsg(el.playbackMsg,
-                (action === "resume" ? "Resume" : action.charAt(0).toUpperCase() + action.slice(1))
-                    + " accepted.", "ok");
         } catch (error) {
-            setMsg(el.playbackMsg, errorDetail(error), "err");
-            announce("Playback command failed.", "err");
-            refreshPlayback(false);
+            const detail = friendlyPlaybackError(error);
+            setMsg(el.playbackMsg, detail, "err");
+            announce(detail, "err");
+            refreshPlayback();
         } finally {
             state.playbackBusy = false;
-            renderPlaybackButtons(state.playback);
+            renderPlaybackButtons(state.playback, playbackPreflight());
         }
     }
 
@@ -3210,7 +3641,7 @@
         let text = "loading";
         let kind = "info";
         if (state.diagnosticsState === "refreshing") text = "refreshing";
-        else if (state.diagnosticsState === "ready") { text = "ready"; kind = "ok"; }
+        else if (state.diagnosticsState === "ready") { text = "loaded"; kind = "ok"; }
         else if (state.diagnosticsState === "error") { text = "error"; kind = "err"; }
         else if (state.diagnosticsState === "forbidden") { text = "unavailable"; kind = "warn"; }
         setTextIfChanged(el.diagState, text);
@@ -3341,9 +3772,153 @@
                 ensureSelection();
                 renderDeviceList();
                 syncInspector();
+                renderPlayback();
             }
         } catch (error) {
             // The last roster stays visible; diagnostics carries the error.
+        }
+    }
+
+    function rebindOldEntries() {
+        return deviceEntries().filter(function (entry) { return entry.baseSlot; });
+    }
+
+    function rebindNewEntries() {
+        return deviceEntries().filter(function (entry) {
+            return !entry.baseSlot && state.roster[entry.id];
+        });
+    }
+
+    function rebindOptionText(id) {
+        const profile = latestProfile(id);
+        return numberTag(id) + " · " + deviceLabel(id, profile)
+            + " · " + (isOnline(id) ? "online" : "offline")
+            + " · " + id;
+    }
+
+    function fillRebindSelect(select, entries, placeholder) {
+        if (!select) return;
+        const previous = select.value;
+        clearChildren(select);
+        const first = document.createElement("option");
+        first.value = "";
+        first.textContent = entries.length === 0 ? placeholder : "Choose a tablet";
+        select.appendChild(first);
+        entries.forEach(function (entry) {
+            const option = document.createElement("option");
+            option.value = entry.id;
+            option.textContent = rebindOptionText(entry.id);
+            select.appendChild(option);
+        });
+        if (previous && entries.some(function (entry) { return entry.id === previous; })) {
+            select.value = previous;
+        } else {
+            select.value = "";
+        }
+        select.disabled = state.rebindBusy;
+    }
+
+    function renderRebindOptions() {
+        if (!el.rebindNew || !el.rebindReplaces) return;
+        const oldEntries = rebindOldEntries();
+        const newEntries = rebindNewEntries();
+        fillRebindSelect(el.rebindNew, newEntries,
+            "No unplaced registration. Open /client/ on the new tablet, then reload this page.");
+        fillRebindSelect(el.rebindReplaces, oldEntries,
+            "No tablet is on the saved wall yet.");
+
+        if (el.rebindNewNote) {
+            el.rebindNewNote.textContent = newEntries.length === 0
+                ? "The new tablet must register first; its picker shows the full id."
+                : "Pick the registration that is not on the saved wall. Full id is in the option.";
+        }
+        if (el.rebindReplacesNote) {
+            el.rebindReplacesNote.textContent = oldEntries.length === 0
+                ? "Add a tablet to the wall and apply the layout first."
+                : "The replaced tablet must be offline before the hand-over.";
+        }
+        updateRebindSummary();
+    }
+
+    function onRebindOldChange() {
+        const oldId = el.rebindReplaces ? el.rebindReplaces.value : "";
+        const number = oldId ? deviceNumber(oldId) : null;
+        if (el.rebindNumber) {
+            el.rebindNumber.value = oldId && number !== null ? String(number) : "";
+        }
+        updateRebindSummary();
+    }
+
+    function updateRebindSummary() {
+        if (el.btnRebind) el.btnRebind.disabled = true;
+        if (!el.rebindSummary) return;
+        const newId = el.rebindNew ? el.rebindNew.value : "";
+        const oldId = el.rebindReplaces ? el.rebindReplaces.value : "";
+        if (!newId || !oldId) {
+            el.rebindSummary.hidden = true;
+            el.rebindSummary.textContent = "";
+            return;
+        }
+
+        const oldProfile = latestProfile(oldId);
+        const newProfile = latestProfile(newId);
+        const oldNumber = deviceNumber(oldId);
+        const rawNumber = el.rebindNumber ? el.rebindNumber.value.trim() : "";
+        const nextNumber = rawNumber === "" ? null : Number(rawNumber);
+        const oldOnline = isOnline(oldId);
+        const newPlaced = Boolean(state.base && state.base.slots
+            && state.base.slots[newId]);
+        const numberOwner = Number.isInteger(nextNumber)
+            ? Object.keys(state.roster).find(function (id) {
+                return id !== oldId && id !== newId && deviceNumber(id) === nextNumber;
+            }) : null;
+
+        const parts = [
+            "Rebind " + numberedLabel(newId, newProfile) + " over "
+                + numberedLabel(oldId, oldProfile) + "."
+        ];
+        if (oldOnline) {
+            parts.push("The replaced tablet is online; disconnect it from /client/ first.");
+        }
+        if (newPlaced) {
+            parts.push("The new registration is already on the saved wall.");
+        }
+        const slot = state.base && state.base.slots ? state.base.slots[oldId] : null;
+        parts.push(slot
+            ? "Its saved wall slot moves to the new id."
+            : "No saved wall slot moves; the display number still transfers.");
+        if (numberOwner) {
+            parts.push("Display number #" + nextNumber + " is already used by "
+                + numberedLabel(numberOwner, latestProfile(numberOwner)) + ".");
+        } else if (oldNumber !== null && nextNumber === oldNumber) {
+            parts.push("Display number #" + oldNumber + " stays with the tablet.");
+        } else if (oldNumber !== null && Number.isInteger(nextNumber)) {
+            parts.push("Display number changes from #" + oldNumber + " to #" + nextNumber + ".");
+        } else if (Number.isInteger(nextNumber)) {
+            parts.push("Display number becomes #" + nextNumber + ".");
+        }
+        parts.push("Saved layouts keep the old id; recall and save them again afterwards.");
+        parts.push("New id " + newId + " · old id " + oldId + ".");
+
+        el.rebindSummary.textContent = parts.join(" ");
+        el.rebindSummary.hidden = false;
+        const blocked = oldOnline || newPlaced || Boolean(numberOwner)
+            || !/^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(newId);
+        el.rebindSummary.dataset.kind = blocked ? "warn" : "";
+        if (el.btnRebind) el.btnRebind.disabled = state.rebindBusy || blocked;
+
+        if (el.rebindNumberNote) {
+            if (oldNumber === null) {
+                el.rebindNumberNote.textContent = Number.isInteger(nextNumber)
+                    ? "New display number #" + nextNumber + "." : "Choose a display number.";
+            } else if (nextNumber === oldNumber) {
+                el.rebindNumberNote.textContent = "Keep #" + oldNumber + ".";
+            } else if (Number.isInteger(nextNumber)) {
+                el.rebindNumberNote.textContent = "Move from #" + oldNumber
+                    + " to #" + nextNumber + ".";
+            } else {
+                el.rebindNumberNote.textContent = "Keep #" + oldNumber + " or enter a new number.";
+            }
         }
     }
 
@@ -3354,17 +3929,27 @@
         const newId = (el.rebindNew ? el.rebindNew.value : "").trim().toLowerCase();
         const replaces = (el.rebindReplaces ? el.rebindReplaces.value : "").trim().toLowerCase();
         if (!UUID4_RE.test(newId)) {
-            setMsg(el.rebindMsg, "The new device id must be a UUID version 4.", "err");
+            setMsg(el.rebindMsg, "Choose the new registration.", "err");
             if (el.rebindNew) el.rebindNew.focus();
             return;
         }
         if (!UUID4_RE.test(replaces)) {
-            setMsg(el.rebindMsg, "The replaced device id must be a UUID version 4.", "err");
+            setMsg(el.rebindMsg, "Choose the tablet this registration replaces.", "err");
             if (el.rebindReplaces) el.rebindReplaces.focus();
             return;
         }
         if (newId === replaces) {
-            setMsg(el.rebindMsg, "The new and replaced device ids must differ.", "err");
+            setMsg(el.rebindMsg, "The new registration and the replaced tablet must differ.", "err");
+            return;
+        }
+        if (isOnline(replaces)) {
+            setMsg(el.rebindMsg,
+                "The replaced tablet is online. Close /client/ on that tablet, then try again.", "err");
+            return;
+        }
+        if (state.base && state.base.slots && state.base.slots[newId]) {
+            setMsg(el.rebindMsg,
+                "The new registration is already on the saved wall; choose an unplaced tablet.", "err");
             return;
         }
         const body = { replaces: replaces };
@@ -3379,6 +3964,16 @@
             body.number = number;
         }
 
+        const oldProfile = latestProfile(replaces);
+        const newProfile = latestProfile(newId);
+        const accepted = window.confirm(
+            "Rebind \"" + numberedLabel(newId, newProfile) + "\" (" + newId + ") over \""
+            + numberedLabel(replaces, oldProfile) + "\" (" + replaces + ")?\n\n"
+            + "The replaced tablet must stay offline. Its saved wall slot and display number move to the new registration. "
+            + "Saved layouts keep the old id and must be recalled and saved again."
+        );
+        if (!accepted) return;
+
         state.rebindBusy = true;
         if (el.btnRebind) {
             el.btnRebind.disabled = true;
@@ -3387,27 +3982,30 @@
         try {
             const result = await api("POST", "/devices/" + encodeURIComponent(newId) + "/rebind", body);
             const number = result && result.number !== undefined && result.number !== null
-                ? " as display number " + result.number : "";
-            setMsg(el.rebindMsg, "Rebound " + shortId(newId) + "… over " + shortId(replaces)
-                + "…" + number + ".", "ok");
+                ? " Display number #" + result.number + "." : "";
+            setMsg(el.rebindMsg, "Rebound " + numberedLabel(newId, newProfile)
+                + " over " + numberedLabel(replaces, oldProfile) + "." + number
+                + " Recall and save any saved layouts that name the old id.", "ok");
             announce("Tablet rebound.", "ok");
-            if (el.rebindNew) el.rebindNew.value = "";
-            if (el.rebindReplaces) el.rebindReplaces.value = "";
+            state.selectedId = newId;
             if (el.rebindNumber) el.rebindNumber.value = "";
             if (!isDirty() && !state.profileDirty && !state.calDirty) {
                 await loadConfig();
             } else {
                 await refreshRoster();
             }
+            renderRebindOptions();
         } catch (error) {
             setMsg(el.rebindMsg, errorDetail(error), "err");
             announce("Rebind failed.", "err");
         } finally {
             state.rebindBusy = false;
+            renderRebindOptions();
             if (el.btnRebind) {
                 el.btnRebind.disabled = false;
                 el.btnRebind.textContent = "Rebind tablet";
             }
+            updateRebindSummary();
         }
     }
 
@@ -3619,6 +4217,10 @@
         if (isEditableTarget(event.target)) return;
         if (event.altKey || event.ctrlKey || event.metaKey) return;
 
+        const nudgeHost = event.target && event.target.closest
+            ? event.target.closest("#stage-svg, .nudge-block") : null;
+        if (!nudgeHost) return;
+
         const step = event.shiftKey ? 10 : 1;
         let deltaX = 0;
         let deltaY = 0;
@@ -3744,12 +4346,13 @@
             });
         }
         if (el.btnPlaylistSave) el.btnPlaylistSave.addEventListener("click", savePlaylist);
-
-        if (el.btnPlaybackRefresh) {
-            el.btnPlaybackRefresh.addEventListener("click", function () {
-                refreshPlayback(true);
-            });
+        if (el.playlistUndo) {
+            el.playlistUndo.addEventListener("click", undoPlaylistRemoval);
         }
+        if (el.playbackPolicy) {
+            el.playbackPolicy.addEventListener("change", renderPlayback);
+        }
+
         if (el.btnPlaybackStart) {
             el.btnPlaybackStart.addEventListener("click", function () {
                 playbackAction("start");
@@ -3792,16 +4395,33 @@
             });
         }
         if (el.rebindForm) el.rebindForm.addEventListener("submit", submitRebind);
+        if (el.rebindNew) el.rebindNew.addEventListener("change", updateRebindSummary);
+        if (el.rebindReplaces) el.rebindReplaces.addEventListener("change", onRebindOldChange);
+        if (el.rebindNumber) el.rebindNumber.addEventListener("input", updateRebindSummary);
+
+        if (el.btnCopySelectedId) {
+            el.btnCopySelectedId.addEventListener("click", async function () {
+                const id = el.btnCopySelectedId.dataset.deviceId || state.selectedId;
+                const copied = await copyText(id);
+                el.btnCopySelectedId.textContent = copied ? "Copied" : "Copy failed";
+                announce(copied
+                    ? "Copied the full tablet id."
+                    : "Could not copy the tablet id.", copied ? "ok" : "err");
+                window.setTimeout(function () {
+                    if (el.btnCopySelectedId) el.btnCopySelectedId.textContent = "Copy full id";
+                }, 1600);
+            });
+        }
 
         el.btnLayoutsRefresh.addEventListener("click", loadLayouts);
         el.layoutName.addEventListener("input", function () { clearMsg(el.layoutMsg); });
 
         document.addEventListener("keydown", onKeyDown);
         document.addEventListener("visibilitychange", function () {
-            if (document.visibilityState !== "hidden") refreshPlayback(false);
+            if (document.visibilityState !== "hidden") refreshPlayback();
         });
         window.addEventListener("online", function () {
-            refreshPlayback(false);
+            refreshPlayback();
         });
     }
 
@@ -3810,7 +4430,7 @@
         state.playbackTimer = window.setInterval(function () {
             if (document.visibilityState === "hidden") return;
             if (state.playbackBusy || state.playbackFetching) return;
-            refreshPlayback(false);
+            refreshPlayback();
         }, PLAYBACK_POLL_MS);
     }
 
@@ -3825,7 +4445,7 @@
         loadLayouts();
         loadLibrary(true);
         loadPlaylist();
-        refreshPlayback(false);
+        refreshPlayback();
         loadDiagnostics(false);
         startPlaybackPolling();
     }
