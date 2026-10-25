@@ -40,6 +40,20 @@ fleet runs cannot close a gate.
 | Kiosk operation | Devices stay on or return to the intended page; measured viewport/calibration remains valid; operator can enter and exit safely; recovery meets the same connectivity targets | `docs/validation/KIOSK-CHECK.md` checklist + `deploy/KIOSK.md` | Real devices, OS management/pinning, charging, Auto-Lock/Guided Access settings, operator exit procedure | **MISSING** |
 | Sustained soak | At least 2-hour media soak; overnight still soak if unattended; no unplanned stalls, lost members, stale paints or unexplained restarts; resource/temperature envelope agreed before the run | `simulator/browser/fleet_soak.py` (harness only) | Intended physical fleet, trusted ingress, charging, temperature/resource monitoring, continuous or sampled recording | **MISSING** |
 
+## Kit dry-run status
+
+This table proves the tools run; it is not hardware acceptance.
+
+| Workstream | Latest dry run | Gate |
+| --- | --- | --- |
+| Device probe | 40/40 checks; desktop Chromium and WebKit passed; iOS scenario unsupported as intended | physical decode/suspend and iOS Safari remain **MISSING** |
+| Trust and origin | 72/72 checks, 8/8 scenarios against disposable Caddy with a fresh local CA; supplied-bundle verifier trust only | installed CA trust remains **MISSING** |
+| Calibration | synthetic worksheet pass/fail/inconclusive cases; 1/1 dry scenario | mixed-model calibration remains **MISSING** |
+| Fleet soak harness | 4 clients, 60 s; 22/22 checks, 6/6 scenarios; shared-host limitations recorded | the two-hour media and overnight still runs remain **MISSING** |
+| Network trial harness | dry loopback 20 trials; 7/7 checks, 20/20 scenarios; not Wi-Fi | real Wi-Fi/OS remains **MISSING** |
+| Kiosk | browser/OS checklist; no physical device | kiosk remains **MISSING** |
+| Optical analyzer | synthetic fixture suite; analyzer tests; no camera | optical cut timing remains **MISSING** |
+
 ## Operator prerequisites
 
 Supply and record:
