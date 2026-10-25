@@ -2061,12 +2061,6 @@
     padding: 0 12px;
 }
 
-.physical .topbar > a.btn {
-    flex: 0 0 auto;
-    min-height: 44px;
-    white-space: nowrap;
-}
-
 /* One card owns the rail; its sections are divided by hairlines. */
 .physical .rail {
     display: flex;
@@ -2253,7 +2247,6 @@
 /* Phone: stage first, then only the compact Show card. */
 @media (max-width: 719px) {
     .physical .topbar-note,
-    .physical .topbar > a.btn,
     .physical .skip-controls {
         display: none;
     }
@@ -2276,14 +2269,6 @@
         border-radius: 0;
         background: transparent;
         overflow: visible;
-    }
-
-    .physical #rail-panels > .rail-panel {
-        display: none;
-    }
-
-    .physical #rail-panels > #panel-show {
-        display: block !important;
     }
 
     .physical .rail-panel > .playback-card {

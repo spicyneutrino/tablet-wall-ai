@@ -29,6 +29,8 @@
     const MAX_DWELL_MS = 600000;
     const TAB_STORAGE_KEY = "tablet-wall-console-tab-v1";
     const TAB_NAMES = ["show", "tablet", "content", "system"];
+    const COMPACT_MEDIA = typeof window.matchMedia === "function"
+        ? window.matchMedia("(max-width: 719px)") : null;
 
     const el = {
         railTabs: document.getElementById("rail-tabs"),
@@ -711,23 +713,28 @@
         catch (error) { /* The current view still switches. */ }
     }
 
+    function compactView() {
+        return Boolean(COMPACT_MEDIA && COMPACT_MEDIA.matches);
+    }
+
     function showTab(name, options) {
         const settings = options || {};
         const entries = tabEntries();
+        const resolved = compactView() ? "show" : name;
         let target = null;
         entries.forEach(function (entry) {
-            if (entry.name === name) target = entry;
+            if (entry.name === resolved) target = entry;
         });
         if (!target || !target.tab || !target.panel) return false;
 
         entries.forEach(function (entry) {
             if (!entry.tab || !entry.panel) return;
-            const active = entry.name === name;
+            const active = entry.name === resolved;
             entry.tab.setAttribute("aria-selected", active ? "true" : "false");
             entry.tab.tabIndex = active ? 0 : -1;
             entry.panel.hidden = !active;
         });
-        if (settings.persist) {
+        if (settings.persist && !compactView()) {
             storeTab(name);
             state.tabDecided = true;
         }
@@ -761,6 +768,11 @@
 
         event.preventDefault();
         showTab(entries[next].name, { focus: true, persist: true });
+    }
+
+    function onCompactChange() {
+        const stored = compactView() ? null : readStoredTab();
+        showTab(stored || "show", { persist: false });
     }
 
     function activePlaybackSession() {
@@ -1571,7 +1583,7 @@
      * ---------------------------------------------------------------- */
 
     function revealInspector() {
-        if (state.drag) return;
+        if (state.drag || compactView()) return;
         if (!el.inspectorBody || el.inspectorBody.hidden) return;
         showTab("tablet", { persist: true });
         const card = el.inspectorBody.closest(".inspector") || el.inspectorBody;
@@ -4961,6 +4973,13 @@
             });
         });
         if (el.railTabs) el.railTabs.addEventListener("keydown", onTabKeyDown);
+        if (COMPACT_MEDIA) {
+            if (typeof COMPACT_MEDIA.addEventListener === "function") {
+                COMPACT_MEDIA.addEventListener("change", onCompactChange);
+            } else if (typeof COMPACT_MEDIA.addListener === "function") {
+                COMPACT_MEDIA.addListener(onCompactChange);
+            }
+        }
 
         el.btnUndo.addEventListener("click", undoDraft);
         el.btnRedo.addEventListener("click", redoDraft);
