@@ -118,4 +118,4 @@ orphans}, db: {schema, bytes}, backup: {last_manifest_at|null}, clients:
 | harness | `simulator/**` |
 | video-server | `tabletwall/media*.py`, new `tabletwall/video.py`, `tabletwall/persist.py` (only for video schema), media routes in `main.py`, video backup closure, tests |
 | field | `deploy/**`, `GET /diagnostics`, wake-lock + origin-rebinding in `client.js`, tests |
-| video-client (wave B) | `client.js`, `view.js`, `controller.js` playback panel, `PROTOCOL.md` video section, client tests |
+| video-client (wave B) | `client.js`, `view.js`, `physical.js` playback panel, `PROTOCOL.md` video section, client tests |
