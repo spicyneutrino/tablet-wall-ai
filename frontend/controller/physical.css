@@ -2202,12 +2202,21 @@
 
     /* The rail is too narrow for thumb, body, dwell and three controls on one
        line. Put the name above the dwell and controls. */
+    .physical .playlist-add {
+        grid-template-columns: minmax(0, 1fr) auto;
+    }
+
+    .physical .playlist-pick {
+        grid-column: 1 / -1;
+    }
+
     .physical .playlist-item {
         grid-template-columns: 56px 92px minmax(0, 1fr);
         grid-template-areas:
             "thumb body body"
             "thumb dwell controls";
         align-items: start;
+        column-gap: 8px;
         row-gap: 8px;
     }
 
