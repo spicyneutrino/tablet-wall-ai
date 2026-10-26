@@ -1,0 +1,53 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 960 560" role="img" aria-labelledby="sys-title sys-desc">
+<title id="sys-title">One FastAPI process, tablet sockets, two operator pages, and two stores.</title>
+<desc id="sys-desc">One FastAPI process, tablet sockets, two operator pages, and two stores.</desc>
+<defs>
+  <marker id="sys-arrow" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+    <path d="M 0 0 L 10 5 L 0 10 z" fill="var(--fig-muted, #56655d)"/>
+  </marker>
+  <pattern id="sys-dots" width="22" height="22" patternUnits="userSpaceOnUse">
+    <circle cx="1" cy="1" r="1" fill="var(--fig-dot, #d6e0d9)"/>
+  </pattern>
+</defs>
+
+<style>
+svg .bg { fill: var(--fig-bg, #f6f8f4); }
+svg .surface { fill: var(--fig-surface, #ffffff); stroke: var(--fig-line, #ccd8d0); stroke-width: 1.2; }
+svg .surface-2 { fill: var(--fig-surface-2, #eef3ef); stroke: var(--fig-line, #ccd8d0); stroke-width: 1.2; }
+svg .surface-accent { fill: var(--fig-accent-soft, #dff1ec); stroke: var(--fig-accent, #0b6b63); stroke-width: 1.4; }
+svg .surface-warn { fill: var(--fig-warn-soft, #f6ead8); stroke: var(--fig-warn, #985a00); stroke-width: 1.2; }
+svg .surface-bad { fill: var(--fig-bad-soft, #f6e1df); stroke: var(--fig-bad, #a43a31); stroke-width: 1.2; }
+svg .wall { fill: var(--fig-wall, #101b17); stroke: var(--fig-wall-line, #2b3b34); stroke-width: 1.2; }
+svg .line { stroke: var(--fig-line, #ccd8d0); stroke-width: 1.2; }
+svg .line-strong { stroke: var(--fig-line-strong, #9fb0a6); stroke-width: 1.6; }
+svg .arrow { stroke: var(--fig-muted, #56655d); stroke-width: 1.5; fill: none; }
+svg .arrow-accent { stroke: var(--fig-accent, #0b6b63); stroke-width: 1.8; fill: none; }
+svg .arrow-warn { stroke: var(--fig-warn, #985a00); stroke-width: 1.6; fill: none; }
+svg .dot { fill: var(--fig-accent, #0b6b63); }
+svg .dot-warn { fill: var(--fig-warn, #985a00); }
+svg .dot-bad { fill: var(--fig-bad, #a43a31); }
+svg .dot-muted { fill: var(--fig-muted, #56655d); }
+svg text { font-family: Cantarell, ui-sans-serif, system-ui, sans-serif; fill: var(--fig-ink, #15211b); }
+svg .t { font-size: 14px; }
+svg .small { font-size: 12.5px; fill: var(--fig-muted, #56655d); }
+svg .tiny { font-size: 11.5px; fill: var(--fig-muted, #56655d); letter-spacing: .02em; }
+svg .label { font-size: 14.5px; }
+svg .label-strong { font-size: 14px; font-weight: 700; }
+svg .title { font-size: 18px; font-weight: 700; letter-spacing: -.01em; }
+svg .display { font-size: 34px; font-weight: 700; letter-spacing: -.03em; }
+svg .num { font-family: 'Source Code Pro', ui-monospace, SFMono-Regular, monospace; font-size: 11.5px; fill: var(--fig-accent, #0b6b63); letter-spacing: .04em; }
+svg .mono { font-family: 'Source Code Pro', ui-monospace, SFMono-Regular, monospace; font-size: 12.5px; }
+svg .mono-strong { font-family: 'Source Code Pro', ui-monospace, SFMono-Regular, monospace; font-size: 12.5px; font-weight: 600; }
+svg .accent { fill: var(--fig-accent, #0b6b63); }
+svg .warn { fill: var(--fig-warn, #985a00); }
+svg .bad { fill: var(--fig-bad, #a43a31); }
+svg .muted { fill: var(--fig-muted, #56655d); }
+svg .ink { fill: var(--fig-ink, #15211b); }
+svg .panel-label { font-size: 12px; font-weight: 700; fill: var(--fig-wall-ink, #e6efe9); }
+svg .panel-small { font-family: 'Source Code Pro', ui-monospace, SFMono-Regular, monospace; font-size: 9.5px; fill: var(--fig-wall-muted, #93a69c); }
+</style>
+
+<rect class="bg" width="960" height="560"/>
+<rect width="960" height="560" fill="url(#sys-dots)" opacity=".55"/>
+<text class="mono" x="52" y="38" text-anchor="start" >RUNTIME TOPOLOGY</text><text class="small" x="908" y="38" text-anchor="end" >one host · one process · one database</text><rect class="surface-2" x="44" y="84" width="190" height="330" rx="6"/><text class="label-strong" x="58" y="110" text-anchor="start" >Tablets</text><text class="small" x="58" y="128" text-anchor="start" >browser clients</text><rect class="wall" x="58" y="150" width="162" height="58" rx="3"/><text class="num" x="72" y="173" text-anchor="start" >#1</text><text class="panel-label" x="104" y="173" text-anchor="start" >client.js</text><text class="panel-small" x="104" y="190" text-anchor="start" >canvas / video</text><circle class="dot" cx="202" cy="164" r="3"/><rect class="wall" x="58" y="226" width="162" height="58" rx="3"/><text class="num" x="72" y="249" text-anchor="start" >#2</text><text class="panel-label" x="104" y="249" text-anchor="start" >client.js</text><text class="panel-small" x="104" y="266" text-anchor="start" >canvas / video</text><circle class="dot" cx="202" cy="240" r="3"/><rect class="wall" x="58" y="302" width="162" height="58" rx="3"/><text class="num" x="72" y="325" text-anchor="start" >#3</text><text class="panel-label" x="104" y="325" text-anchor="start" >client.js</text><text class="panel-small" x="104" y="342" text-anchor="start" >canvas / video</text><circle class="dot" cx="202" cy="316" r="3"/><text class="mono" x="58" y="394" text-anchor="start" >WebSocket v3</text><text class="small" x="58" y="410" text-anchor="start" >HTTP assets</text><rect class="surface" x="322" y="72" width="320" height="384" rx="8"/><text class="label-strong" x="340" y="98" text-anchor="start" >FastAPI process</text><text class="mono" x="340" y="116" text-anchor="start" >main.py</text><rect class="surface-2" x="340" y="140" width="132" height="58" rx="3"/><text class="mono-strong" x="350" y="162" text-anchor="start" >state.py</text><text class="tiny" x="350" y="180" text-anchor="start" >roster · sockets · wall</text><rect class="surface-2" x="486" y="140" width="132" height="58" rx="3"/><text class="mono-strong" x="496" y="162" text-anchor="start" >playback.py</text><text class="tiny" x="496" y="180" text-anchor="start" >leases · commits</text><rect class="surface-2" x="340" y="216" width="132" height="58" rx="3"/><text class="mono-strong" x="350" y="238" text-anchor="start" >geometry.py</text><text class="tiny" x="350" y="256" text-anchor="start" >N → P plans</text><rect class="surface-2" x="486" y="216" width="132" height="58" rx="3"/><text class="mono-strong" x="496" y="238" text-anchor="start" >media.py</text><text class="tiny" x="496" y="256" text-anchor="start" >admit · publish</text><rect class="surface-2" x="340" y="292" width="132" height="58" rx="3"/><text class="mono-strong" x="350" y="314" text-anchor="start" >persist.py</text><text class="tiny" x="350" y="332" text-anchor="start" >SQLite docs</text><rect class="surface-2" x="486" y="292" width="132" height="58" rx="3"/><text class="mono-strong" x="496" y="314" text-anchor="start" >writer.py / hub.py</text><text class="tiny" x="496" y="332" text-anchor="start" >queues · broadcast</text><text class="small" x="340" y="390" text-anchor="start" >one event loop</text><text class="tiny" x="340" y="408" text-anchor="start" >server clock · 100 ms playback tick</text><text class="mono" x="340" y="428" text-anchor="start" >loopback :8000</text><rect class="surface-2" x="724" y="84" width="190" height="144" rx="6"/><text class="label-strong" x="738" y="110" text-anchor="start" >Physical console</text><text class="mono" x="738" y="128" text-anchor="start" >physical.html</text><text class="small" x="738" y="156" text-anchor="start" >HTTP poll 1 s</text><text class="small" x="738" y="174" text-anchor="start" >no controller socket</text><text class="tiny" x="738" y="200" text-anchor="start" >stage + tabs</text><rect class="surface-2" x="724" y="252" width="190" height="128" rx="6"/><text class="label-strong" x="738" y="278" text-anchor="start" >Legacy console</text><text class="mono" x="738" y="296" text-anchor="start" >index.html</text><text class="small" x="738" y="324" text-anchor="start" >WS v2 listener</text><text class="small" x="738" y="342" text-anchor="start" >upload + logical wall</text><text class="tiny" x="738" y="368" text-anchor="start" >phase 3 retirement</text><rect class="surface-accent" x="322" y="484" width="152" height="48" rx="4"/><text class="mono-strong" x="338" y="504" text-anchor="start" >wall_state</text><text class="tiny" x="338" y="520" text-anchor="start" >SQLite schema 3</text><rect class="surface-accent" x="490" y="484" width="152" height="48" rx="4"/><text class="mono-strong" x="506" y="504" text-anchor="start" >objects/</text><text class="tiny" x="506" y="520" text-anchor="start" >content-addressed</text><line class="arrow-accent" x1="234" y1="250" x2="312" y2="250" marker-end="url(#sys-arrow)"/><line class="arrow" x1="312" y1="300" x2="234" y2="300" marker-end="url(#sys-arrow)"/><line class="arrow" x1="724" y1="156" x2="650" y2="156" marker-end="url(#sys-arrow)"/><line class="arrow" x1="724" y1="316" x2="650" y2="316" marker-end="url(#sys-arrow)"/><line class="arrow" x1="410" y1="456" x2="398" y2="476" marker-end="url(#sys-arrow)"/><line class="arrow" x1="560" y1="456" x2="566" y2="476" marker-end="url(#sys-arrow)"/><text class="mono" x="244" y="240" text-anchor="start" >WS</text><text class="tiny" x="244" y="320" text-anchor="start" >frames</text><text class="mono" x="670" y="146" text-anchor="end" >HTTP</text><text class="mono" x="670" y="340" text-anchor="end" >WS</text><text class="small" x="480" y="468" text-anchor="middle" >commit before broadcast</text>
+</svg>

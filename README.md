@@ -29,6 +29,11 @@ This project began as a copy of `tablet-wall`. New development happens here.
 > the [review-fix round](docs/planning/tablet-wall-roadmap-2026-10-23/EXECUTION_LOG.md#review-fix-round-2026-10-25)
 > and the [durable browser runners](simulator/README.md#durable-browser-acceptance-runners).
 
+> New to the codebase? Read the [field guide](docs/field-guide/index.html)
+> (open it in a browser) or its [Markdown source](docs/field-guide/GUIDE.md).
+> It explains the architecture, the playback model, the geometry, the media
+> pipeline, the security boundary, and the current roadmap.
+
 ## Requirements
 
 - Python 3.13+

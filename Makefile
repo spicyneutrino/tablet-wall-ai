@@ -9,7 +9,7 @@ HOST ?= 127.0.0.1
 
 .DEFAULT_GOAL := help
 
-.PHONY: help sync dev run test sim clean
+.PHONY: help sync dev run test sim guide clean
 
 help: ## Show this help
 	@echo "tablet-wall-ai:"
@@ -33,6 +33,9 @@ test: ## Run Python and client JavaScript tests
 sim: ## Exercise 18 virtual tablets against an isolated app/database
 	@cd "$(ROOT)" && uv run python simulator/run.py
 	@cd "$(ROOT)" && uv run pytest -q simulator/test_simulator_selftest.py
+
+guide: ## Rebuild the field guide from GUIDE.md
+	@cd "$(ROOT)" && uv run --group docs python docs/field-guide/build.py
 
 clean: ## Remove the virtualenv and Python caches
 	@cd "$(ROOT)" && rm -rf .venv .pytest_cache

@@ -1,0 +1,53 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 960 560" role="img" aria-labelledby="state-title state-desc">
+<title id="state-title">Playback is a state machine with explicit terminal states.</title>
+<desc id="state-desc">Playback is a state machine with explicit terminal states.</desc>
+<defs>
+  <marker id="state-arrow" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+    <path d="M 0 0 L 10 5 L 0 10 z" fill="var(--fig-muted, #56655d)"/>
+  </marker>
+  <pattern id="state-dots" width="22" height="22" patternUnits="userSpaceOnUse">
+    <circle cx="1" cy="1" r="1" fill="var(--fig-dot, #d6e0d9)"/>
+  </pattern>
+</defs>
+
+<style>
+svg .bg { fill: var(--fig-bg, #f6f8f4); }
+svg .surface { fill: var(--fig-surface, #ffffff); stroke: var(--fig-line, #ccd8d0); stroke-width: 1.2; }
+svg .surface-2 { fill: var(--fig-surface-2, #eef3ef); stroke: var(--fig-line, #ccd8d0); stroke-width: 1.2; }
+svg .surface-accent { fill: var(--fig-accent-soft, #dff1ec); stroke: var(--fig-accent, #0b6b63); stroke-width: 1.4; }
+svg .surface-warn { fill: var(--fig-warn-soft, #f6ead8); stroke: var(--fig-warn, #985a00); stroke-width: 1.2; }
+svg .surface-bad { fill: var(--fig-bad-soft, #f6e1df); stroke: var(--fig-bad, #a43a31); stroke-width: 1.2; }
+svg .wall { fill: var(--fig-wall, #101b17); stroke: var(--fig-wall-line, #2b3b34); stroke-width: 1.2; }
+svg .line { stroke: var(--fig-line, #ccd8d0); stroke-width: 1.2; }
+svg .line-strong { stroke: var(--fig-line-strong, #9fb0a6); stroke-width: 1.6; }
+svg .arrow { stroke: var(--fig-muted, #56655d); stroke-width: 1.5; fill: none; }
+svg .arrow-accent { stroke: var(--fig-accent, #0b6b63); stroke-width: 1.8; fill: none; }
+svg .arrow-warn { stroke: var(--fig-warn, #985a00); stroke-width: 1.6; fill: none; }
+svg .dot { fill: var(--fig-accent, #0b6b63); }
+svg .dot-warn { fill: var(--fig-warn, #985a00); }
+svg .dot-bad { fill: var(--fig-bad, #a43a31); }
+svg .dot-muted { fill: var(--fig-muted, #56655d); }
+svg text { font-family: Cantarell, ui-sans-serif, system-ui, sans-serif; fill: var(--fig-ink, #15211b); }
+svg .t { font-size: 14px; }
+svg .small { font-size: 12.5px; fill: var(--fig-muted, #56655d); }
+svg .tiny { font-size: 11.5px; fill: var(--fig-muted, #56655d); letter-spacing: .02em; }
+svg .label { font-size: 14.5px; }
+svg .label-strong { font-size: 14px; font-weight: 700; }
+svg .title { font-size: 18px; font-weight: 700; letter-spacing: -.01em; }
+svg .display { font-size: 34px; font-weight: 700; letter-spacing: -.03em; }
+svg .num { font-family: 'Source Code Pro', ui-monospace, SFMono-Regular, monospace; font-size: 11.5px; fill: var(--fig-accent, #0b6b63); letter-spacing: .04em; }
+svg .mono { font-family: 'Source Code Pro', ui-monospace, SFMono-Regular, monospace; font-size: 12.5px; }
+svg .mono-strong { font-family: 'Source Code Pro', ui-monospace, SFMono-Regular, monospace; font-size: 12.5px; font-weight: 600; }
+svg .accent { fill: var(--fig-accent, #0b6b63); }
+svg .warn { fill: var(--fig-warn, #985a00); }
+svg .bad { fill: var(--fig-bad, #a43a31); }
+svg .muted { fill: var(--fig-muted, #56655d); }
+svg .ink { fill: var(--fig-ink, #15211b); }
+svg .panel-label { font-size: 12px; font-weight: 700; fill: var(--fig-wall-ink, #e6efe9); }
+svg .panel-small { font-family: 'Source Code Pro', ui-monospace, SFMono-Regular, monospace; font-size: 9.5px; fill: var(--fig-wall-muted, #93a69c); }
+</style>
+
+<rect class="bg" width="960" height="560"/>
+<rect width="960" height="560" fill="url(#state-dots)" opacity=".55"/>
+<text class="mono" x="52" y="38" text-anchor="start" >SESSION STATES</text><text class="small" x="908" y="38" text-anchor="end" >the state machine owns the work it cancels</text><rect class="surface" x="80" y="100" width="150" height="54" rx="4"/><text class="label-strong" x="155.0" y="132.0" text-anchor="middle" >preparing</text><rect class="surface-accent" x="300" y="100" width="150" height="54" rx="4"/><text class="label-strong" x="375.0" y="132.0" text-anchor="middle" >armed</text><rect class="surface-accent" x="520" y="100" width="150" height="54" rx="4"/><text class="label-strong" x="595.0" y="132.0" text-anchor="middle" >playing</text><rect class="surface" x="760" y="100" width="140" height="54" rx="4"/><text class="label-strong" x="830.0" y="132.0" text-anchor="middle" >final</text><rect class="surface-warn" x="520" y="230" width="150" height="54" rx="4"/><text class="label-strong" x="595.0" y="262.0" text-anchor="middle" >paused</text><rect class="surface-bad" x="80" y="300" width="150" height="54" rx="4"/><text class="label-strong" x="155.0" y="332.0" text-anchor="middle" >blocked</text><rect class="surface-bad" x="300" y="300" width="150" height="54" rx="4"/><text class="label-strong" x="375.0" y="332.0" text-anchor="middle" >failed</text><rect class="surface-warn" x="520" y="370" width="160" height="54" rx="4"/><text class="label-strong" x="600.0" y="402.0" text-anchor="middle" >recovering</text><rect class="surface-2" x="760" y="250" width="140" height="54" rx="4"/><text class="label-strong" x="830.0" y="282.0" text-anchor="middle" >stopped</text><line class="arrow" x1="230" y1="127" x2="292" y2="127" marker-end="url(#state-arrow)"/><text class="tiny" x="261" y="117" text-anchor="middle" >hold</text><line class="arrow" x1="450" y1="127" x2="512" y2="127" marker-end="url(#state-arrow)"/><text class="tiny" x="481" y="117" text-anchor="middle" >commit</text><line class="arrow" x1="670" y1="127" x2="752" y2="127" marker-end="url(#state-arrow)"/><text class="tiny" x="711" y="117" text-anchor="middle" >last</text><line class="arrow" x1="595" y1="154" x2="595" y2="222" marker-end="url(#state-arrow)"/><text class="tiny" x="607" y="190" text-anchor="start" >pause</text><path class="arrow" d="M 670 257 L 700 257 L 700 60 L 155 60 L 155 92" /><text class="tiny" x="400" y="72" text-anchor="middle" >resume: re-prepare</text><line class="arrow" x1="155" y1="154" x2="155" y2="292" marker-end="url(#state-arrow)"/><text class="tiny" x="167" y="226" text-anchor="start" >timeout</text><line class="arrow" x1="375" y1="154" x2="375" y2="292" stroke-dasharray="5 5" marker-end="url(#state-arrow)"/><text class="tiny" x="387" y="226" text-anchor="start" >no ready member</text><path class="arrow" d="M 520 154 L 492 154 L 492 370 L 512 370" /><text class="tiny" x="500" y="310" text-anchor="start" >fault ↓</text><path class="arrow" d="M 520 397 L 468 397 L 468 154 L 512 154" /><text class="tiny" x="460" y="410" text-anchor="end" >↑ retry</text><text class="mono" x="760" y="340" text-anchor="start" >stopped = Stop</text><text class="tiny" x="760" y="358" text-anchor="start" >from any active state</text><text class="small" x="80" y="430" text-anchor="start" >blocked = strict terminal</text><text class="small" x="300" y="430" text-anchor="start" >failed = online terminal</text><text class="tiny" x="540" y="486" text-anchor="start" >armed = online hold only · playing = committed, not yet painted</text><text class="small" x="540" y="462" text-anchor="start" >recovering = same occurrence at the playhead</text><text class="small" x="80" y="498" text-anchor="start" >Retry starts a fresh episode after the automatic cap. Pause cancels an armed commit.</text>
+</svg>

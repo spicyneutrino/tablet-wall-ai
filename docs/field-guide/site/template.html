@@ -1,0 +1,155 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="color-scheme" content="light dark">
+  <meta name="description" content="{{ meta.description }}">
+  <title>{{ meta.title }} · {{ meta.subtitle }}</title>
+  <link rel="stylesheet" href="site/style.css">
+  <script>
+    (function () {
+      try {
+        var pref = localStorage.getItem("twg-theme") || "auto";
+        var dark = pref === "dark" || (pref === "auto" && window.matchMedia("(prefers-color-scheme: dark)").matches);
+        if (dark) document.documentElement.dataset.theme = "dark";
+        if (pref === "light") document.documentElement.dataset.theme = "light";
+        document.documentElement.dataset.themePreference = pref;
+      } catch (error) { /* the default theme still works */ }
+    }());
+  </script>
+</head>
+<body>
+<a class="skip-link" href="#main">Skip to the guide</a>
+<div class="reading-progress" aria-hidden="true"><span id="reading-progress-bar"></span></div>
+
+<header class="topbar">
+  <a class="brand" href="#top" aria-label="Tablet Wall field guide, back to top">
+    <svg class="brand-mark" viewBox="0 0 28 28" aria-hidden="true">
+      <rect x="3" y="4" width="9" height="8" rx="1"></rect>
+      <rect x="14" y="4" width="11" height="8" rx="1"></rect>
+      <rect x="3" y="14" width="11" height="10" rx="1"></rect>
+      <rect x="16" y="14" width="9" height="10" rx="1"></rect>
+    </svg>
+    <span class="brand-text"><strong>Tablet Wall</strong><span>field guide</span></span>
+  </a>
+  <div class="top-actions">
+    <span class="status-chip" title="{{ meta.status_detail }}"><span class="status-dot"></span>{{ meta.status_label }}</span>
+    <a class="text-link" href="GUIDE.md">Markdown</a>
+    <button class="icon-button" id="theme-toggle" type="button" aria-label="Theme: auto">
+      <span class="theme-glyph" aria-hidden="true"></span>
+      <span class="theme-label">Auto</span>
+    </button>
+    <button class="icon-button contents-toggle" id="contents-toggle" type="button" aria-expanded="false" aria-controls="sidebar">
+      Contents
+    </button>
+  </div>
+</header>
+
+<div class="shell">
+  <aside class="sidebar" id="sidebar" aria-label="Guide contents">
+    <div class="sidebar-inner">
+      <p class="sidebar-title">Contents</p>
+      <nav class="chapter-nav">
+        {% for group in nav %}
+        <div class="nav-group">
+          <p class="nav-group-label">{{ group.label }}</p>
+          <ol class="nav-list">
+            {% for chapter in group["items"] %}
+            <li>
+              <a class="nav-link" href="#{{ chapter.id }}" data-chapter="{{ chapter.number }}">
+                <span class="nav-number">{{ "%02d"|format(chapter.number) }}</span>
+                <span class="nav-text">{{ chapter.title }}</span>
+              </a>
+            </li>
+            {% endfor %}
+          </ol>
+        </div>
+        {% endfor %}
+      </nav>
+      <div class="sidebar-foot">
+        <a href="GUIDE.md">Read the Markdown source</a>
+        <span>Updated {{ meta.updated }}</span>
+      </div>
+    </div>
+  </aside>
+  <div class="sidebar-backdrop" id="sidebar-backdrop" hidden></div>
+
+  <main id="main">
+    <section class="hero" id="top">
+      <div class="hero-copy">
+        <p class="hero-kicker">tablet-wall-ai / operator field guide</p>
+        <h1>{{ meta.title }}</h1>
+        <p class="hero-sub">{{ meta.subtitle }}</p>
+        <p class="hero-description">{{ meta.description }}</p>
+        <div class="hero-status">
+          <span class="status-dot"></span>
+          <span><strong>{{ meta.status_label }}</strong>. {{ meta.status_detail }}.</span>
+        </div>
+        <div class="hero-actions">
+          <a class="button" href="#{{ chapters[0].id }}">Start with the mental model</a>
+          <a class="button button-quiet" href="GUIDE.md">Read the Markdown</a>
+        </div>
+      </div>
+      <div class="hero-figure" aria-hidden="true">{{ hero_svg|safe }}</div>
+    </section>
+
+    <section class="stat-strip" aria-label="Project at a glance">
+      {% for stat in meta.stats %}
+      <div class="stat">
+        <span class="stat-value">{{ stat.value }}</span>
+        <span class="stat-label">{{ stat.label }}</span>
+        <span class="stat-note">{{ stat.note }}</span>
+      </div>
+      {% endfor %}
+    </section>
+
+    <section class="intro" aria-label="How to use this guide">
+      {{ intro|safe }}
+    </section>
+
+    <div class="chapters">
+      {% for chapter in chapters %}
+      <section class="chapter" id="{{ chapter.id }}-chapter" data-chapter="{{ chapter.number }}">
+        {{ chapter.html|safe }}
+        <nav class="chapter-pager" aria-label="Chapter navigation">
+          {% if not loop.first %}
+          <a class="pager-prev" href="#{{ chapters[loop.index0 - 1].id }}"><span>Previous</span>{{ chapters[loop.index0 - 1].title }}</a>
+          {% else %}<span></span>{% endif %}
+          {% if not loop.last %}
+          <a class="pager-next" href="#{{ chapters[loop.index0 + 1].id }}"><span>Next</span>{{ chapters[loop.index0 + 1].title }}</a>
+          {% endif %}
+        </nav>
+      </section>
+      {% endfor %}
+    </div>
+
+    <footer class="site-footer">
+      <div>
+        <strong>Tablet Wall field guide</strong>
+        <p>Generated from <code>GUIDE.md</code>. Rebuild with <code>python docs/field-guide/build.py</code>.</p>
+      </div>
+      <div class="footer-links">
+        <a href="GUIDE.md">Markdown</a>
+        <a href="../../README.md">README</a>
+        <a href="../validation/HARDWARE-VALIDATION.md">Validation gates</a>
+        <a href="#top">Back to top</a>
+      </div>
+    </footer>
+  </main>
+</div>
+
+<dialog class="figure-dialog" id="figure-dialog" aria-labelledby="figure-dialog-title">
+  <div class="dialog-head">
+    <p class="dialog-kicker" id="figure-dialog-title">Figure</p>
+    <form method="dialog">
+      <button class="icon-button" type="submit" aria-label="Close figure">Close</button>
+    </form>
+  </div>
+  <div class="dialog-art" id="dialog-art"></div>
+  <p class="dialog-caption" id="dialog-caption"></p>
+</dialog>
+
+<script src="site/site.js"></script>
+</body>
+</html>

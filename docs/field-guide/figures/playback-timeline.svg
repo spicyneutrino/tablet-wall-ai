@@ -1,0 +1,53 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 960 560" role="img" aria-labelledby="line-title line-desc">
+<title id="line-title">A cut is a future timestamp backed by a lease per tablet.</title>
+<desc id="line-desc">A cut is a future timestamp backed by a lease per tablet.</desc>
+<defs>
+  <marker id="line-arrow" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+    <path d="M 0 0 L 10 5 L 0 10 z" fill="var(--fig-muted, #56655d)"/>
+  </marker>
+  <pattern id="line-dots" width="22" height="22" patternUnits="userSpaceOnUse">
+    <circle cx="1" cy="1" r="1" fill="var(--fig-dot, #d6e0d9)"/>
+  </pattern>
+</defs>
+
+<style>
+svg .bg { fill: var(--fig-bg, #f6f8f4); }
+svg .surface { fill: var(--fig-surface, #ffffff); stroke: var(--fig-line, #ccd8d0); stroke-width: 1.2; }
+svg .surface-2 { fill: var(--fig-surface-2, #eef3ef); stroke: var(--fig-line, #ccd8d0); stroke-width: 1.2; }
+svg .surface-accent { fill: var(--fig-accent-soft, #dff1ec); stroke: var(--fig-accent, #0b6b63); stroke-width: 1.4; }
+svg .surface-warn { fill: var(--fig-warn-soft, #f6ead8); stroke: var(--fig-warn, #985a00); stroke-width: 1.2; }
+svg .surface-bad { fill: var(--fig-bad-soft, #f6e1df); stroke: var(--fig-bad, #a43a31); stroke-width: 1.2; }
+svg .wall { fill: var(--fig-wall, #101b17); stroke: var(--fig-wall-line, #2b3b34); stroke-width: 1.2; }
+svg .line { stroke: var(--fig-line, #ccd8d0); stroke-width: 1.2; }
+svg .line-strong { stroke: var(--fig-line-strong, #9fb0a6); stroke-width: 1.6; }
+svg .arrow { stroke: var(--fig-muted, #56655d); stroke-width: 1.5; fill: none; }
+svg .arrow-accent { stroke: var(--fig-accent, #0b6b63); stroke-width: 1.8; fill: none; }
+svg .arrow-warn { stroke: var(--fig-warn, #985a00); stroke-width: 1.6; fill: none; }
+svg .dot { fill: var(--fig-accent, #0b6b63); }
+svg .dot-warn { fill: var(--fig-warn, #985a00); }
+svg .dot-bad { fill: var(--fig-bad, #a43a31); }
+svg .dot-muted { fill: var(--fig-muted, #56655d); }
+svg text { font-family: Cantarell, ui-sans-serif, system-ui, sans-serif; fill: var(--fig-ink, #15211b); }
+svg .t { font-size: 14px; }
+svg .small { font-size: 12.5px; fill: var(--fig-muted, #56655d); }
+svg .tiny { font-size: 11.5px; fill: var(--fig-muted, #56655d); letter-spacing: .02em; }
+svg .label { font-size: 14.5px; }
+svg .label-strong { font-size: 14px; font-weight: 700; }
+svg .title { font-size: 18px; font-weight: 700; letter-spacing: -.01em; }
+svg .display { font-size: 34px; font-weight: 700; letter-spacing: -.03em; }
+svg .num { font-family: 'Source Code Pro', ui-monospace, SFMono-Regular, monospace; font-size: 11.5px; fill: var(--fig-accent, #0b6b63); letter-spacing: .04em; }
+svg .mono { font-family: 'Source Code Pro', ui-monospace, SFMono-Regular, monospace; font-size: 12.5px; }
+svg .mono-strong { font-family: 'Source Code Pro', ui-monospace, SFMono-Regular, monospace; font-size: 12.5px; font-weight: 600; }
+svg .accent { fill: var(--fig-accent, #0b6b63); }
+svg .warn { fill: var(--fig-warn, #985a00); }
+svg .bad { fill: var(--fig-bad, #a43a31); }
+svg .muted { fill: var(--fig-muted, #56655d); }
+svg .ink { fill: var(--fig-ink, #15211b); }
+svg .panel-label { font-size: 12px; font-weight: 700; fill: var(--fig-wall-ink, #e6efe9); }
+svg .panel-small { font-family: 'Source Code Pro', ui-monospace, SFMono-Regular, monospace; font-size: 9.5px; fill: var(--fig-wall-muted, #93a69c); }
+</style>
+
+<rect class="bg" width="960" height="560"/>
+<rect width="960" height="560" fill="url(#line-dots)" opacity=".55"/>
+<text class="mono" x="52" y="38" text-anchor="start" >ONE CUT</text><text class="small" x="908" y="38" text-anchor="end" >readiness, commit, and a future effective time</text><line class="line-strong" x1="150" y1="92" x2="900" y2="92" /><line class="line" x1="150.0" y1="87" x2="150.0" y2="97" /><text class="tiny" x="150.0" y="78" text-anchor="middle" >0 ms</text><line class="line" x1="300.0" y1="87" x2="300.0" y2="97" /><text class="tiny" x="300.0" y="78" text-anchor="middle" >500 ms</text><line class="line" x1="450.0" y1="87" x2="450.0" y2="97" /><text class="tiny" x="450.0" y="78" text-anchor="middle" >1000 ms</text><line class="line" x1="600.0" y1="87" x2="600.0" y2="97" /><text class="tiny" x="600.0" y="78" text-anchor="middle" >1500 ms</text><line class="line" x1="750.0" y1="87" x2="750.0" y2="97" /><text class="tiny" x="750.0" y="78" text-anchor="middle" >2000 ms</text><line class="line" x1="900.0" y1="87" x2="900.0" y2="97" /><text class="tiny" x="900.0" y="78" text-anchor="middle" >2500 ms</text><text class="mono-strong" x="44" y="170" text-anchor="start" >prepare</text><rect class="surface-accent" x="150.0" y="150" width="40.0" height="30" rx="2"/><text class="small" x="198.0" y="170" text-anchor="start" >prepare()</text><text class="mono-strong" x="44" y="234" text-anchor="start" >lease</text><rect class="surface-accent" x="172.5" y="214" width="500.0" height="30" rx="2"/><text class="small" x="180.5" y="234" text-anchor="start" >renew every 500 ms</text><text class="mono-strong" x="44" y="298" text-anchor="start" >armed</text><rect class="surface-accent" x="400.0" y="278" width="85.0" height="30" rx="2"/><text class="small" x="493.0" y="298" text-anchor="start" >commit arrives</text><text class="mono-strong" x="44" y="362" text-anchor="start" >glass</text><rect class="surface-warn" x="485.0" y="342" width="15.0" height="30" rx="2"/><text class="small" x="508.0" y="362" text-anchor="start" >cut</text><text class="mono-strong" x="44" y="426" text-anchor="start" >next</text><rect class="surface-accent" x="525.0" y="406" width="55.0" height="30" rx="2"/><text class="small" x="588.0" y="426" text-anchor="start" >next prepare</text><line class="arrow-warn" x1="485.0" y1="120" x2="485.0" y2="468" stroke-dasharray="4 5"/><text class="mono-strong" x="493.0" y="132" text-anchor="start" >effective_server_ms</text><text class="small" x="150" y="500" text-anchor="start" >Lease: 2 s, renewed every 500 ms</text><text class="small" x="470" y="500" text-anchor="start" >Commit lead: 1 s</text><text class="small" x="700" y="500" text-anchor="start" >Online hold: min(dwell / 2, 5 s)</text>
+</svg>
