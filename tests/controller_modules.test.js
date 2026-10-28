@@ -52,3 +52,45 @@ assert.equal(snapshotMessages.hidden, false);
 assert.equal(snapshotMessages.dataset.kind, "err");
 snapshots.setSnapMsg("layout", null);
 assert.equal(snapshotMessages.hidden, true);
+load("controller-stage.js");
+context.setTimeout = () => 1;
+context.clearTimeout = () => {};
+const editor = { selectedId: "tablet", pendingNudge: null, stageNudgeTimer: null, stageUndo: [], stageRedo: [] };
+let currentWall = { width: 100, height: 100, placements: { tablet: { x: 60, y: 10, w: 30, h: 20, bezel: { top: 0, right: 0, bottom: 0, left: 0 } } } };
+const stageNodes = {
+    inspX: {}, inspY: {}, inspW: {}, inspH: {}, inspShape: {}, inspWarning: {},
+    inspStep: { value: "20" }, btnUndoStage: {}, btnRedoStage: {}, statusUndo: {}
+};
+const stageController = context.window.ControllerStage.create({
+    editor, stage: stageNodes, devices: new Map(),
+    fmtNumber: String, shortId: String, updateStageReadout: () => {},
+    runtime: { get wall() { return currentWall; } }
+});
+stageController.nudgeSelected(1, 0);
+assert.equal(editor.pendingNudge.placement.x, 70, "nudge clamps to the wall edge");
+assert.equal(currentWall.placements.tablet.x, 60, "preview must not write server state");
+stageController.nudgeSelected(-1, 0);
+assert.equal(editor.pendingNudge.placement.x, 50, "successive nudges use the pending preview");
+editor.pendingNudge = null;
+currentWall = { ...currentWall, placements: { tablet: { ...currentWall.placements.tablet, x: 0 } } };
+stageController.nudgeSelected(1, 0);
+assert.equal(editor.pendingNudge.placement.x, 20, "replacement wall state is read at call time");
+stageController.renderStageHistory();
+assert.equal(stageNodes.btnUndoStage.disabled, true);
+editor.stageUndo.push({});
+stageController.renderStageHistory();
+assert.equal(stageNodes.btnUndoStage.disabled, false);
+assert.equal(stageNodes.statusUndo.hidden, false);
+
+// Execute each page's classic scripts in markup order before DOMContentLoaded.
+// This catches missing dependencies and initialization cycles in the VM path.
+for (const page of ["index.html", "physical.html"]) {
+    const boot = vm.createContext({ window: {}, document: {
+        readyState: "loading", getElementById: () => null,
+        querySelector: () => null, querySelectorAll: () => [], addEventListener: () => {}
+    } });
+    const html = fs.readFileSync(path.join(__dirname, "../frontend/controller", page), "utf8");
+    for (const match of html.matchAll(/<script src="([^"?]+)(?:\?[^\"]*)?"><\/script>/g)) {
+        vm.runInContext(fs.readFileSync(path.join(__dirname, "../frontend/controller", match[1]), "utf8"), boot, { filename: match[1] });
+    }
+}
