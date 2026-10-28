@@ -23,6 +23,7 @@ from collections.abc import Callable
 from contextlib import asynccontextmanager
 from copy import deepcopy
 from math import sqrt
+from pathlib import Path
 from typing import Any
 from urllib.parse import urlsplit
 
@@ -77,7 +78,7 @@ from tabletwall.protocol import (
 # Curated still-image assets (PROTOCOL.md "Still images"): the directory scan,
 # content IDs, and byte-verified serving behind ``GET /assets``.
 from tabletwall import assets, clock, displays, geometry, media, media_video, playback
-from tabletwall import persist
+from tabletwall import persist, workers
 from tabletwall import writer as writers
 from tabletwall.media_limits import (
     MAX_SOURCE_BYTES,
@@ -166,46 +167,47 @@ def _restore_wall_state() -> None:
 @asynccontextmanager
 async def lifespan(_: FastAPI):
     global _sweeper_task, _upload_semaphore, _server_clock, _playback_task, _roster_checkpoint_task
-    # Before the first yield: no socket may be accepted against state that
-    # has not been loaded from the database.
-    restore_devices()
-    _restore_wall_state()
-    # Startup scan (PROTOCOL.md "Still images"): inventory the curated image
-    # directory before the first request, so a directory that exists but
-    # cannot be read fails loudly at boot rather than on the first inventory
-    # read. Every later read path re-scans anyway — this pass only establishes
-    # the initial inventory (an absent directory is an empty one).
-    assets.refresh()
-    # Managed media (R1): create the store layout before the first upload and
-    # remove only stale staging directories left by an interrupted job.
-    media.ensure_dirs()
-    media.cleanup_staging()
-    _upload_semaphore = asyncio.Semaphore(1)
-    _server_clock = clock.ServerClock()
-    _sweeper_task = asyncio.create_task(_sweep_loop())
-    _roster_checkpoint_task = asyncio.create_task(checkpoint_loop())
-    _playback_task = asyncio.create_task(_playback_loop())
-    try:
-        yield
-    finally:
-        checkpoint_task = _roster_checkpoint_task
-        _roster_checkpoint_task = None
-        if checkpoint_task is not None:
-            checkpoint_task.cancel()
-            with contextlib.suppress(asyncio.CancelledError):
-                await checkpoint_task
-        checkpoint_devices()
-        task = _sweeper_task
-        _sweeper_task = None
-        if task is not None:
-            task.cancel()
-            with contextlib.suppress(asyncio.CancelledError):
-                await task
-        playback_task = _playback_task
-        if playback_task is not None:
-            playback_task.cancel()
-            with contextlib.suppress(asyncio.CancelledError):
-                await playback_task
+    with workers.single_worker():
+        # Before the first yield: no socket may be accepted against state that
+        # has not been loaded from the database.
+        restore_devices()
+        _restore_wall_state()
+        # Startup scan (PROTOCOL.md "Still images"): inventory the curated image
+        # directory before the first request, so a directory that exists but
+        # cannot be read fails loudly at boot rather than on the first inventory
+        # read. Every later read path re-scans anyway — this pass only establishes
+        # the initial inventory (an absent directory is an empty one).
+        assets.refresh()
+        # Managed media (R1): create the store layout before the first upload and
+        # remove only stale staging directories left by an interrupted job.
+        media.ensure_dirs()
+        media.cleanup_staging()
+        _upload_semaphore = asyncio.Semaphore(1)
+        _server_clock = clock.ServerClock()
+        _sweeper_task = asyncio.create_task(_sweep_loop())
+        _roster_checkpoint_task = asyncio.create_task(checkpoint_loop())
+        _playback_task = asyncio.create_task(_playback_loop())
+        try:
+            yield
+        finally:
+            checkpoint_task = _roster_checkpoint_task
+            _roster_checkpoint_task = None
+            if checkpoint_task is not None:
+                checkpoint_task.cancel()
+                with contextlib.suppress(asyncio.CancelledError):
+                    await checkpoint_task
+            checkpoint_devices()
+            task = _sweeper_task
+            _sweeper_task = None
+            if task is not None:
+                task.cancel()
+                with contextlib.suppress(asyncio.CancelledError):
+                    await task
+            playback_task = _playback_task
+            if playback_task is not None:
+                playback_task.cancel()
+                with contextlib.suppress(asyncio.CancelledError):
+                    await playback_task
 
 
 # ---------------------------------------------------------------------------
@@ -536,13 +538,13 @@ class RevalidatedStaticFiles(StaticFiles):
 
 app.mount(
     "/client",
-    RevalidatedStaticFiles(directory="frontend/client", html=True),
+    RevalidatedStaticFiles(directory=Path(__file__).resolve().parent / "frontend/client", html=True),
     name="client"
 )
 
 app.mount(
     "/controller",
-    RevalidatedStaticFiles(directory="frontend/controller", html=True),
+    RevalidatedStaticFiles(directory=Path(__file__).resolve().parent / "frontend/controller", html=True),
     name="controller"
 )
 
