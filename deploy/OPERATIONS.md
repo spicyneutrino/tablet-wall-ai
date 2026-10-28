@@ -74,10 +74,10 @@ origins byte-for-byte what the browser sends, including scheme and port.
    process-local: two workers or two replicas against the same database would
    diverge and can overwrite each other's state. Do not add `--workers`, do
    not scale this horizontally, and do not point another wall at the same file.
-3. **The roster is process-local.** A restart empties the roster; tablets
+3. **Presence is process-local.** Safe device metadata and colours persist. A restart restores every device offline; tablets
    re-register and reconnect on their own, and placements whose tablet has not
-   come back appear as vacant reservations. Plan restarts for moments when a
-   blank roster is acceptable, and re-check the controller afterwards.
+   come back appear as vacant reservations. Plan restarts for moments when an
+   offline roster is acceptable, and re-check the controller afterwards.
 4. Logs go to the journal (`journalctl -u tablet-wall.service`, or
    `journalctl --user -u ...`); `Restart=on-failure` covers crashes, not
    wedged processes — confirm the wall still renders after any restart.

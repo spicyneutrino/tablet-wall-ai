@@ -68,7 +68,7 @@ Disconnecting **never** removes a device from the roster — it only flips
 `online` to `false`. Only `DELETE` removes it.
 
 The client re-registers before *every* connection attempt, because server state
-is in memory and may be lost to a restart.
+is persisted as safe device metadata, but live presence always resets to offline after restart.
 
 ## Device record
 
@@ -216,7 +216,7 @@ server restart; the server keeps it only while it is free.
 
 Response is unchanged: `{"registered": true, "device": "<device_id>"}`.
 
-This is the one unauthenticated write, so every field is bounded before the
+When optional authentication is disabled this is a public write, so every field is bounded before the
 record enters memory:
 
 | Field         | Bound                                            | `422` when |
@@ -540,9 +540,7 @@ Clears the placement and returns the new wall state.
 - `200` when the device is known and had no placement — nothing to do.
 - `404` when there is neither a known device nor a placement to remove.
 
-**A placement can outlive the roster.** Placements are persisted and the roster
-is not, so after a restart a placement may belong to a device that has not yet
-re-registered. That is a **reservation, not a leak**: a tablet that comes back
+**A placement can outlive the roster.** Placements and safe device metadata are persisted. A placement can still refer to a deleted or absent device. Online presence is not persisted, so after a restart a placement may belong to an offline device that has not yet re-registered. That is a **reservation, not a leak**: a tablet that comes back
 reclaims its slot, which is the whole point of persisting placements. It is
 removable either by that device returning, or by the operator releasing it
 explicitly through this endpoint — which is why a valid id with a placement
@@ -1113,15 +1111,18 @@ onset, physical sleep or mixed-model claim follows from it.
 
 ## Persistence
 
-The active layout, the active scene, the revision, and the generation are
-persisted; sockets, presence, and heartbeat timestamps stay in memory. A commit
+The active layout, scene, revision, and generation are persisted. Safe device identity, dimensions, type, number, last-seen timestamp, and assigned colour also persist. Sockets, online presence, negotiated capabilities, clock samples, and playback leases stay in memory. Restored metadata starts offline. A commit
 happens before notification, so a controller is never told about state that
 would not survive a restart.
 
 Run **one server worker per wall/SQLite database**. The active wall and socket
 registries are process-local; this version does not coordinate revisions or
-broadcasts across multiple workers or replicas.
+broadcasts across multiple workers or replicas. A database-scoped runtime file lock refuses a second live owner before startup writes. See `docs/ROBUSTNESS.md`.
 
 The generation exists because of this: a restored or replaced database can come
 back at a lower revision than a connected tablet holds, and the client must
 resynchronise rather than reject the server's state as stale.
+
+## Optional authentication
+
+`TABLET_WALL_AUTH_TOKEN` enables shared-secret protection for HTTP routes, static mounts, and both WebSocket endpoints. API clients use `Authorization: Bearer <token>`; browsers POST a token at `/auth/login` and receive a signed, expiring HttpOnly cookie. Cookie writes and WebSocket connections require a same-origin Origin header. Existing operator-Origin checks also apply. Successful authenticated responses use private, no-store caching. See `docs/AUTH.md` for expiry, token rotation, TLS, and proxy setup.

@@ -1,0 +1,216 @@
+{
+  "checks": [
+    {
+      "name": "the client registered a display number",
+      "passed": true,
+      "old": {
+        "id": "d8343d16-299c-465a-92a3-c7bc0437c9e0",
+        "number": 1,
+        "wake_lock": "released"
+      }
+    },
+    {
+      "name": "the roster carries a valid wake-lock state",
+      "passed": true,
+      "wake_lock": "released"
+    },
+    {
+      "name": "the old client gets a placement",
+      "passed": true,
+      "text": "{\"width\":2000,\"height\":1000,\"revision\":1,\"generation\":\"3141f98d\",\"placements\":{\"d8343d16-299c-465a-92a3-c7bc0437c9e0\":{\"device_id\":\"d8343d16-299c-465a-92a3-c7bc0437c9e0\",\"x\":0,\"y\":0,\"w\":2000,\"h\":1000,\"bezel\":{\"top\":0,\"right\":0,\"bottom\":0,\"left\":0}}},\"scene\":{\"content\":{\"type\":\"color\"},\"layout\":\"active\"}}"
+    },
+    {
+      "name": "diagnostics is admitted on the loopback operator origin",
+      "passed": true
+    },
+    {
+      "name": "diagnostics reports media, db, backup and clients",
+      "passed": true,
+      "body": {
+        "media": {
+          "quota_bytes": 2147483648,
+          "used_bytes": 0,
+          "free_bytes": 13689802752,
+          "reserve_bytes": 536870912,
+          "objects": 0,
+          "assets": 0,
+          "orphans": 0
+        },
+        "db": {
+          "schema": 3,
+          "bytes": 90112
+        },
+        "backup": {
+          "last_manifest_at": null
+        },
+        "clients": {
+          "online": 1,
+          "total": 1,
+          "wake_lock": {
+            "denied": 0,
+            "held": 0,
+            "insecure": 0,
+            "released": 1,
+            "unsupported": 0
+          }
+        }
+      }
+    },
+    {
+      "name": "diagnostics counts the reported wake-lock state",
+      "passed": true,
+      "counts": {
+        "denied": 0,
+        "held": 0,
+        "insecure": 0,
+        "released": 1,
+        "unsupported": 0
+      }
+    },
+    {
+      "name": "a write without the operator Origin is refused",
+      "passed": true,
+      "status": 403
+    },
+    {
+      "name": "the replacement is a different, unplaced identity",
+      "passed": true
+    },
+    {
+      "name": "clean integrity has a success message",
+      "passed": true
+    },
+    {
+      "name": "diagnostics download contains the captured report and software evidence label",
+      "passed": true
+    },
+    {
+      "name": "refresh clears the old integrity result",
+      "passed": true
+    },
+    {
+      "name": "failed integrity is an error with a visible problem",
+      "passed": true
+    },
+    {
+      "name": "failed refresh blocks stale exports and hides integrity",
+      "passed": true
+    },
+    {
+      "name": "mobile diagnostics has no horizontal overflow",
+      "passed": true
+    },
+    {
+      "name": "mobile task tabs expose diagnostics and support keyboard navigation",
+      "passed": true
+    },
+    {
+      "name": "mobile Home selects Show",
+      "passed": true
+    },
+    {
+      "name": "mobile End returns to System",
+      "passed": true
+    },
+    {
+      "name": "mobile reload preserves the selected task",
+      "passed": true
+    },
+    {
+      "name": "the operator rebind form moves the placement and number",
+      "passed": true,
+      "response": {
+        "message": "Rebound #2 \u00b7 Tablet 34dc3e93 over #1 \u00b7 Tablet d8343d16. Display number #1. Recall and save any saved layouts that name the old id.",
+        "placements": [
+          "34dc3e93-ae6f-4e46-8717-a1b21c450880"
+        ],
+        "number": 1
+      }
+    },
+    {
+      "name": "the old identity is gone and the new one holds its place",
+      "passed": true,
+      "placements": [
+        "34dc3e93-ae6f-4e46-8717-a1b21c450880"
+      ]
+    },
+    {
+      "name": "the old roster record disappears",
+      "passed": true
+    },
+    {
+      "name": "the rebound tablet reloads and reconnects under the new number",
+      "passed": true,
+      "after": {
+        "devices": {
+          "34dc3e93": {
+            "number": 1,
+            "online": true,
+            "wake_lock": "released"
+          }
+        },
+        "status": "connected"
+      }
+    }
+  ],
+  "artifacts": "/tmp/tw-final-field",
+  "root": "/tmp/tw-field-gw4pmjmo",
+  "origin": "http://127.0.0.1:42603",
+  "old": {
+    "id": "d8343d16-299c-465a-92a3-c7bc0437c9e0",
+    "number": 1,
+    "wake_lock": "released"
+  },
+  "diagnostics": {
+    "media": {
+      "quota_bytes": 2147483648,
+      "used_bytes": 0,
+      "free_bytes": 13689802752,
+      "reserve_bytes": 536870912,
+      "objects": 0,
+      "assets": 0,
+      "orphans": 0
+    },
+    "db": {
+      "schema": 3,
+      "bytes": 90112
+    },
+    "backup": {
+      "last_manifest_at": null
+    },
+    "clients": {
+      "online": 1,
+      "total": 1,
+      "wake_lock": {
+        "denied": 0,
+        "held": 0,
+        "insecure": 0,
+        "released": 1,
+        "unsupported": 0
+      }
+    }
+  },
+  "new": {
+    "id": "34dc3e93-ae6f-4e46-8717-a1b21c450880",
+    "number": 2
+  },
+  "rebind": {
+    "message": "Rebound #2 \u00b7 Tablet 34dc3e93 over #1 \u00b7 Tablet d8343d16. Display number #1. Recall and save any saved layouts that name the old id.",
+    "placements": [
+      "34dc3e93-ae6f-4e46-8717-a1b21c450880"
+    ],
+    "number": 1
+  },
+  "after": {
+    "devices": {
+      "34dc3e93": {
+        "number": 1,
+        "online": true,
+        "wake_lock": "released"
+      }
+    },
+    "status": "connected"
+  },
+  "checks_passed": 22,
+  "checks_total": 22
+}

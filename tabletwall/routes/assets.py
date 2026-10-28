@@ -22,7 +22,7 @@ def get_assets():
     refresh instead of answering from a cached copy.
 
     Sync rather than async on purpose: this re-scans, re-hashes, and now
-    fully decodes every file in the directory, and Starlette runs a plain
+    validates current bytes, reusing decoded facts by content hash, and Starlette runs a plain
     ``def`` route in a worker thread, so the event loop — which is also
     pushing heartbeats — never waits on the filesystem. The re-scan itself is
     the contract: inventory refreshes on request.

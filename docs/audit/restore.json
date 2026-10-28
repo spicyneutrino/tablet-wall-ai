@@ -1,0 +1,998 @@
+{
+  "label": "software, not optical or physical",
+  "started_utc": "2026-10-28T06:23:28.702211+00:00",
+  "artifacts": "/tmp/tw-restore-integrated",
+  "checks": {
+    "closure": [
+      {
+        "name": "the operator route publishes the still",
+        "passed": true,
+        "descriptor": {
+          "id": "sha256:c2d7bc870fa687be8c082f850ec661af92aea5d9b3df223b874e6371810d4c15",
+          "asset_id": "98d802eb-5376-4294-9590-340ef7b488eb",
+          "name": "still.jpg",
+          "mime": "image/jpeg",
+          "intrinsicWidth": 48,
+          "intrinsicHeight": 32,
+          "bytes": 296,
+          "url": "/assets/sha256:c2d7bc870fa687be8c082f850ec661af92aea5d9b3df223b874e6371810d4c15",
+          "state": "ready",
+          "created_at": "2026-10-28T06:23:29.907168+00:00",
+          "thumbnail": {
+            "id": "sha256:cc7263171187df6fcb1b74c8987501e9ea9c4e55af215b61ffe6b0242636ee25",
+            "url": "/assets/sha256:cc7263171187df6fcb1b74c8987501e9ea9c4e55af215b61ffe6b0242636ee25",
+            "width": 48,
+            "height": 32
+          }
+        }
+      },
+      {
+        "name": "the playlist names the video and the still",
+        "passed": true,
+        "items": [
+          {
+            "asset": "sha256:7eac378b5e3d20a0ed59ce80600026180eb834abd1742b96cd60343b5d95b1c5",
+            "dwell_ms": 3000
+          },
+          {
+            "asset": "sha256:c2d7bc870fa687be8c082f850ec661af92aea5d9b3df223b874e6371810d4c15",
+            "dwell_ms": 5000
+          }
+        ]
+      },
+      {
+        "name": "the server takes the video dwell from its metadata",
+        "passed": true,
+        "dwell": 3000,
+        "duration": 3000
+      },
+      {
+        "name": "deploy/backup.py exits 0 while the app runs",
+        "passed": true,
+        "stderr": ""
+      },
+      {
+        "name": "the snapshot verifies",
+        "passed": true,
+        "stderr": ""
+      },
+      {
+        "name": "the snapshot is manifest 3 and carries the video reference",
+        "passed": true,
+        "version": 3,
+        "references": [
+          "sha256:7eac378b5e3d20a0ed59ce80600026180eb834abd1742b96cd60343b5d95b1c5",
+          "sha256:c2d7bc870fa687be8c082f850ec661af92aea5d9b3df223b874e6371810d4c15"
+        ]
+      },
+      {
+        "name": "the closure holds the video, its poster and the still",
+        "passed": true,
+        "object_ids": [
+          "sha256:66cacca7ba42ac3cf1d57ba6cf4bad0e66a2b2f42f1afb6b79cf1371b9f0331d",
+          "sha256:7eac378b5e3d20a0ed59ce80600026180eb834abd1742b96cd60343b5d95b1c5",
+          "sha256:c2d7bc870fa687be8c082f850ec661af92aea5d9b3df223b874e6371810d4c15",
+          "sha256:cc7263171187df6fcb1b74c8987501e9ea9c4e55af215b61ffe6b0242636ee25"
+        ],
+        "omitted": []
+      },
+      {
+        "name": "the video object's manifest digest and size match its descriptor",
+        "passed": true,
+        "entry": {
+          "bytes": 313256,
+          "height": 360,
+          "mime": "video/mp4",
+          "object_id": "sha256:7eac378b5e3d20a0ed59ce80600026180eb834abd1742b96cd60343b5d95b1c5",
+          "path": "media/objects/7e/7eac378b5e3d20a0ed59ce80600026180eb834abd1742b96cd60343b5d95b1c5.mp4",
+          "sha256": "7eac378b5e3d20a0ed59ce80600026180eb834abd1742b96cd60343b5d95b1c5",
+          "width": 640
+        }
+      },
+      {
+        "name": "deploy/backup.py restore exits 0 into fresh targets",
+        "passed": true,
+        "stderr": ""
+      },
+      {
+        "name": "restore refuses to overwrite its targets",
+        "passed": true,
+        "stderr": "backup.py: error: database target already exists; refusing to overwrite: /tmp/tablet-wall-restore-t1093pxx/restored/wall.db\n"
+      },
+      {
+        "name": "the restored playlist is identical",
+        "passed": true,
+        "playlist": {
+          "items": [
+            {
+              "asset": "sha256:7eac378b5e3d20a0ed59ce80600026180eb834abd1742b96cd60343b5d95b1c5",
+              "dwell_ms": 3000
+            },
+            {
+              "asset": "sha256:c2d7bc870fa687be8c082f850ec661af92aea5d9b3df223b874e6371810d4c15",
+              "dwell_ms": 5000
+            }
+          ],
+          "loop": false,
+          "revision": 1
+        }
+      }
+    ],
+    "bytes": [
+      {
+        "name": "source, snapshot and restored video objects are byte-identical",
+        "passed": true,
+        "bytes": 313256
+      },
+      {
+        "name": "the restored object still hashes to its content id",
+        "passed": true
+      },
+      {
+        "name": "the poster bytes survived the round trip",
+        "passed": true
+      },
+      {
+        "name": "the still bytes survived the round trip",
+        "passed": true
+      },
+      {
+        "name": "the restored app serves the whole video",
+        "passed": true,
+        "status": 200,
+        "bytes": 313256
+      },
+      {
+        "name": "the restored app serves a byte range from the same bytes",
+        "passed": true,
+        "status": 206,
+        "content_range": "bytes 0-99/313256"
+      },
+      {
+        "name": "the restored app serves a suffix range",
+        "passed": true,
+        "status": 206
+      },
+      {
+        "name": "the restored app answers HEAD with the full length",
+        "passed": true,
+        "status": 200,
+        "length": "313256"
+      },
+      {
+        "name": "the restored app serves the poster",
+        "passed": true,
+        "status": 200
+      },
+      {
+        "name": "the restored app serves the still",
+        "passed": true,
+        "status": 200
+      }
+    ],
+    "playback": [
+      {
+        "name": "the operator route publishes a ready H.264 video",
+        "passed": true,
+        "descriptor": {
+          "id": "sha256:7eac378b5e3d20a0ed59ce80600026180eb834abd1742b96cd60343b5d95b1c5",
+          "asset_id": "2fb75430-bf82-408a-910e-cb5cb92c2d4e",
+          "name": "clip.mp4",
+          "mime": "video/mp4",
+          "intrinsicWidth": 640,
+          "intrinsicHeight": 360,
+          "bytes": 313256,
+          "url": "/assets/sha256:7eac378b5e3d20a0ed59ce80600026180eb834abd1742b96cd60343b5d95b1c5",
+          "state": "ready",
+          "created_at": "2026-10-28T06:23:29.803405+00:00",
+          "thumbnail": {
+            "id": "sha256:66cacca7ba42ac3cf1d57ba6cf4bad0e66a2b2f42f1afb6b79cf1371b9f0331d",
+            "url": "/assets/sha256:66cacca7ba42ac3cf1d57ba6cf4bad0e66a2b2f42f1afb6b79cf1371b9f0331d",
+            "width": 256,
+            "height": 144
+          },
+          "kind": "video",
+          "durationMs": 3000,
+          "codec": "avc1.42C01E",
+          "profile": "Constrained Baseline",
+          "level": "3.0",
+          "pixelFormat": "yuv420p",
+          "frameRate": 30.0,
+          "bitrate": 835349,
+          "faststart": true,
+          "audio": false,
+          "poster": {
+            "id": "sha256:66cacca7ba42ac3cf1d57ba6cf4bad0e66a2b2f42f1afb6b79cf1371b9f0331d",
+            "url": "/assets/sha256:66cacca7ba42ac3cf1d57ba6cf4bad0e66a2b2f42f1afb6b79cf1371b9f0331d",
+            "width": 256,
+            "height": 144
+          }
+        }
+      },
+      {
+        "name": "a real Chromium client connects to the source",
+        "passed": true,
+        "device_id": "e4e549c7-5035-4c7a-8d91-6e1ac50ba84b"
+      },
+      {
+        "name": "the calibrated client paints the still scene",
+        "passed": true,
+        "scene": "74e01ebe"
+      },
+      {
+        "name": "source: playback starts",
+        "passed": true,
+        "status": 200,
+        "text": "\",\"kind\":\"video\",\"duration_ms\":3000,\"dwell_ms\":3000}},\"cohort\":[\"e4e549c7-5035-4c7a-8d91-6e1ac50ba84b\"],\"required\":[\"e4e549c7-5035-4c7a-8d91-6e1ac50ba84b\"],\"excluded\":[],\"missed\":[],\"held\":false,\"hold_deadline_ms\":null,\"policy\":\"strict\",\"blocked_reason\":null,\"final\":false,\"paused_at_ms\":null,\"recovery\":null,\"video\":{},\"members\":{\"e4e549c7-5035-4c7a-8d91-6e1ac50ba84b\":{\"ready\":false,\"video\":null}}}"
+      },
+      {
+        "name": "source: a video playlist starts in strict policy",
+        "passed": true,
+        "policy": "strict",
+        "cohort": [
+          "e4e549c7-5035-4c7a-8d91-6e1ac50ba84b"
+        ]
+      },
+      {
+        "name": "source: the client decodes the video at its coded size",
+        "passed": true,
+        "video": {
+          "src": "http://127.0.0.1:35751/assets/sha256:7eac378b5e3d20a0ed59ce80600026180eb834abd1742b96cd60343b5d95b1c5",
+          "visibility": "visible",
+          "paused": false,
+          "ended": false,
+          "readyState": 4,
+          "networkState": 1,
+          "currentTime": 0.361701,
+          "duration": 3,
+          "videoWidth": 640,
+          "videoHeight": 360,
+          "error": null,
+          "rect": {
+            "width": 426.6666259765625,
+            "height": 240
+          }
+        }
+      },
+      {
+        "name": "source: the video element points at the served content id",
+        "passed": true,
+        "src": "http://127.0.0.1:35751/assets/sha256:7eac378b5e3d20a0ed59ce80600026180eb834abd1742b96cd60343b5d95b1c5"
+      },
+      {
+        "name": "source: media time advances",
+        "passed": true,
+        "before": {
+          "src": "http://127.0.0.1:35751/assets/sha256:7eac378b5e3d20a0ed59ce80600026180eb834abd1742b96cd60343b5d95b1c5",
+          "visibility": "visible",
+          "paused": false,
+          "ended": false,
+          "readyState": 4,
+          "networkState": 1,
+          "currentTime": 0.364402,
+          "duration": 3,
+          "videoWidth": 640,
+          "videoHeight": 360,
+          "error": null,
+          "rect": {
+            "width": 426.6666259765625,
+            "height": 240
+          }
+        },
+        "after": {
+          "src": "http://127.0.0.1:35751/assets/sha256:7eac378b5e3d20a0ed59ce80600026180eb834abd1742b96cd60343b5d95b1c5",
+          "visibility": "visible",
+          "paused": false,
+          "ended": false,
+          "readyState": 4,
+          "networkState": 1,
+          "currentTime": 0.768026,
+          "duration": 3,
+          "videoWidth": 640,
+          "videoHeight": 360,
+          "error": null,
+          "rect": {
+            "width": 426.6666259765625,
+            "height": 240
+          }
+        }
+      },
+      {
+        "name": "source: the server reports the video as the current occurrence",
+        "passed": true,
+        "state": "playing",
+        "current": {
+          "playlist_revision": 1,
+          "item_index": 0,
+          "loop": 0
+        }
+      },
+      {
+        "name": "the restored library resolves the video descriptor",
+        "passed": true,
+        "descriptor": {
+          "id": "sha256:7eac378b5e3d20a0ed59ce80600026180eb834abd1742b96cd60343b5d95b1c5",
+          "asset_id": "2fb75430-bf82-408a-910e-cb5cb92c2d4e",
+          "name": "clip.mp4",
+          "mime": "video/mp4",
+          "intrinsicWidth": 640,
+          "intrinsicHeight": 360,
+          "bytes": 313256,
+          "url": "/assets/sha256:7eac378b5e3d20a0ed59ce80600026180eb834abd1742b96cd60343b5d95b1c5",
+          "state": "ready",
+          "created_at": "2026-10-28T06:23:29.803405+00:00",
+          "thumbnail": {
+            "id": "sha256:66cacca7ba42ac3cf1d57ba6cf4bad0e66a2b2f42f1afb6b79cf1371b9f0331d",
+            "url": "/assets/sha256:66cacca7ba42ac3cf1d57ba6cf4bad0e66a2b2f42f1afb6b79cf1371b9f0331d",
+            "width": 256,
+            "height": 144
+          },
+          "kind": "video",
+          "durationMs": 3000,
+          "codec": "avc1.42C01E",
+          "profile": "Constrained Baseline",
+          "level": "3.0",
+          "pixelFormat": "yuv420p",
+          "frameRate": 30.0,
+          "bitrate": 835349,
+          "faststart": true,
+          "audio": false,
+          "poster": {
+            "id": "sha256:66cacca7ba42ac3cf1d57ba6cf4bad0e66a2b2f42f1afb6b79cf1371b9f0331d",
+            "url": "/assets/sha256:66cacca7ba42ac3cf1d57ba6cf4bad0e66a2b2f42f1afb6b79cf1371b9f0331d",
+            "width": 256,
+            "height": 144
+          }
+        }
+      },
+      {
+        "name": "a fresh Chromium client reconnects to the restored app with the restored identity",
+        "passed": true,
+        "device_id": "e4e549c7-5035-4c7a-8d91-6e1ac50ba84b"
+      },
+      {
+        "name": "restored: playback starts",
+        "passed": true,
+        "status": 200,
+        "text": "\",\"kind\":\"video\",\"duration_ms\":3000,\"dwell_ms\":3000}},\"cohort\":[\"e4e549c7-5035-4c7a-8d91-6e1ac50ba84b\"],\"required\":[\"e4e549c7-5035-4c7a-8d91-6e1ac50ba84b\"],\"excluded\":[],\"missed\":[],\"held\":false,\"hold_deadline_ms\":null,\"policy\":\"strict\",\"blocked_reason\":null,\"final\":false,\"paused_at_ms\":null,\"recovery\":null,\"video\":{},\"members\":{\"e4e549c7-5035-4c7a-8d91-6e1ac50ba84b\":{\"ready\":false,\"video\":null}}}"
+      },
+      {
+        "name": "restored: a video playlist starts in strict policy",
+        "passed": true,
+        "policy": "strict",
+        "cohort": [
+          "e4e549c7-5035-4c7a-8d91-6e1ac50ba84b"
+        ]
+      },
+      {
+        "name": "restored: the client decodes the video at its coded size",
+        "passed": true,
+        "video": {
+          "src": "http://127.0.0.1:37233/assets/sha256:7eac378b5e3d20a0ed59ce80600026180eb834abd1742b96cd60343b5d95b1c5",
+          "visibility": "visible",
+          "paused": false,
+          "ended": false,
+          "readyState": 4,
+          "networkState": 1,
+          "currentTime": 0.352341,
+          "duration": 3,
+          "videoWidth": 640,
+          "videoHeight": 360,
+          "error": null,
+          "rect": {
+            "width": 426.6666259765625,
+            "height": 240
+          }
+        }
+      },
+      {
+        "name": "restored: the video element points at the served content id",
+        "passed": true,
+        "src": "http://127.0.0.1:37233/assets/sha256:7eac378b5e3d20a0ed59ce80600026180eb834abd1742b96cd60343b5d95b1c5"
+      },
+      {
+        "name": "restored: media time advances",
+        "passed": true,
+        "before": {
+          "src": "http://127.0.0.1:37233/assets/sha256:7eac378b5e3d20a0ed59ce80600026180eb834abd1742b96cd60343b5d95b1c5",
+          "visibility": "visible",
+          "paused": false,
+          "ended": false,
+          "readyState": 4,
+          "networkState": 1,
+          "currentTime": 0.356147,
+          "duration": 3,
+          "videoWidth": 640,
+          "videoHeight": 360,
+          "error": null,
+          "rect": {
+            "width": 426.6666259765625,
+            "height": 240
+          }
+        },
+        "after": {
+          "src": "http://127.0.0.1:37233/assets/sha256:7eac378b5e3d20a0ed59ce80600026180eb834abd1742b96cd60343b5d95b1c5",
+          "visibility": "visible",
+          "paused": false,
+          "ended": false,
+          "readyState": 4,
+          "networkState": 1,
+          "currentTime": 0.760764,
+          "duration": 3,
+          "videoWidth": 640,
+          "videoHeight": 360,
+          "error": null,
+          "rect": {
+            "width": 426.6666259765625,
+            "height": 240
+          }
+        }
+      },
+      {
+        "name": "restored: the server reports the video as the current occurrence",
+        "passed": true,
+        "state": "playing",
+        "current": {
+          "playlist_revision": 1,
+          "item_index": 0,
+          "loop": 0
+        }
+      },
+      {
+        "name": "the restored client fetched the video from the restored origin",
+        "passed": true,
+        "urls": [
+          "http://127.0.0.1:37233/assets/sha256:7eac378b5e3d20a0ed59ce80600026180eb834abd1742b96cd60343b5d95b1c5"
+        ]
+      },
+      {
+        "name": "the restored video request succeeded and never 404'd",
+        "passed": true,
+        "statuses": [
+          206
+        ],
+        "failures": []
+      },
+      {
+        "name": "no asset request on the restored client returned 404",
+        "passed": true,
+        "asset_responses": [
+          {
+            "time": 19508.640397192,
+            "kind": "http",
+            "url": "http://127.0.0.1:37233/assets/sha256:c2d7bc870fa687be8c082f850ec661af92aea5d9b3df223b874e6371810d4c15",
+            "status": 200
+          },
+          {
+            "time": 19508.65491833,
+            "kind": "http",
+            "url": "http://127.0.0.1:37233/assets/sha256:7eac378b5e3d20a0ed59ce80600026180eb834abd1742b96cd60343b5d95b1c5",
+            "status": 206
+          },
+          {
+            "time": 19508.735565364,
+            "kind": "http",
+            "url": "http://127.0.0.1:37233/assets/sha256:c2d7bc870fa687be8c082f850ec661af92aea5d9b3df223b874e6371810d4c15",
+            "status": 200
+          }
+        ]
+      }
+    ]
+  },
+  "limitations": [
+    "software evidence on one host clock; not optical output",
+    "no physical decode, tablet, TLS, Caddy ingress or host restart"
+  ],
+  "fixture": {
+    "argv": [
+      "/usr/bin/ffmpeg",
+      "-hide_banner",
+      "-loglevel",
+      "error",
+      "-y",
+      "-f",
+      "lavfi",
+      "-i",
+      "testsrc2=size=640x360:rate=30:duration=3",
+      "-c:v",
+      "libx264",
+      "-profile:v",
+      "baseline",
+      "-level",
+      "3.0",
+      "-pix_fmt",
+      "yuv420p",
+      "-movflags",
+      "+faststart",
+      "-an",
+      "/tmp/tablet-wall-restore-t1093pxx/clip.mp4"
+    ],
+    "bytes": 313330
+  },
+  "source_origin": "http://127.0.0.1:35751",
+  "descriptors": {
+    "source_video": {
+      "id": "sha256:7eac378b5e3d20a0ed59ce80600026180eb834abd1742b96cd60343b5d95b1c5",
+      "asset_id": "2fb75430-bf82-408a-910e-cb5cb92c2d4e",
+      "name": "clip.mp4",
+      "mime": "video/mp4",
+      "intrinsicWidth": 640,
+      "intrinsicHeight": 360,
+      "bytes": 313256,
+      "url": "/assets/sha256:7eac378b5e3d20a0ed59ce80600026180eb834abd1742b96cd60343b5d95b1c5",
+      "state": "ready",
+      "created_at": "2026-10-28T06:23:29.803405+00:00",
+      "thumbnail": {
+        "id": "sha256:66cacca7ba42ac3cf1d57ba6cf4bad0e66a2b2f42f1afb6b79cf1371b9f0331d",
+        "url": "/assets/sha256:66cacca7ba42ac3cf1d57ba6cf4bad0e66a2b2f42f1afb6b79cf1371b9f0331d",
+        "width": 256,
+        "height": 144
+      },
+      "kind": "video",
+      "durationMs": 3000,
+      "codec": "avc1.42C01E",
+      "profile": "Constrained Baseline",
+      "level": "3.0",
+      "pixelFormat": "yuv420p",
+      "frameRate": 30.0,
+      "bitrate": 835349,
+      "faststart": true,
+      "audio": false,
+      "poster": {
+        "id": "sha256:66cacca7ba42ac3cf1d57ba6cf4bad0e66a2b2f42f1afb6b79cf1371b9f0331d",
+        "url": "/assets/sha256:66cacca7ba42ac3cf1d57ba6cf4bad0e66a2b2f42f1afb6b79cf1371b9f0331d",
+        "width": 256,
+        "height": 144
+      }
+    },
+    "source_still": {
+      "id": "sha256:c2d7bc870fa687be8c082f850ec661af92aea5d9b3df223b874e6371810d4c15",
+      "asset_id": "98d802eb-5376-4294-9590-340ef7b488eb",
+      "name": "still.jpg",
+      "mime": "image/jpeg",
+      "intrinsicWidth": 48,
+      "intrinsicHeight": 32,
+      "bytes": 296,
+      "url": "/assets/sha256:c2d7bc870fa687be8c082f850ec661af92aea5d9b3df223b874e6371810d4c15",
+      "state": "ready",
+      "created_at": "2026-10-28T06:23:29.907168+00:00",
+      "thumbnail": {
+        "id": "sha256:cc7263171187df6fcb1b74c8987501e9ea9c4e55af215b61ffe6b0242636ee25",
+        "url": "/assets/sha256:cc7263171187df6fcb1b74c8987501e9ea9c4e55af215b61ffe6b0242636ee25",
+        "width": 48,
+        "height": 32
+      }
+    },
+    "restored_video": {
+      "id": "sha256:7eac378b5e3d20a0ed59ce80600026180eb834abd1742b96cd60343b5d95b1c5",
+      "asset_id": "2fb75430-bf82-408a-910e-cb5cb92c2d4e",
+      "name": "clip.mp4",
+      "mime": "video/mp4",
+      "intrinsicWidth": 640,
+      "intrinsicHeight": 360,
+      "bytes": 313256,
+      "url": "/assets/sha256:7eac378b5e3d20a0ed59ce80600026180eb834abd1742b96cd60343b5d95b1c5",
+      "state": "ready",
+      "created_at": "2026-10-28T06:23:29.803405+00:00",
+      "thumbnail": {
+        "id": "sha256:66cacca7ba42ac3cf1d57ba6cf4bad0e66a2b2f42f1afb6b79cf1371b9f0331d",
+        "url": "/assets/sha256:66cacca7ba42ac3cf1d57ba6cf4bad0e66a2b2f42f1afb6b79cf1371b9f0331d",
+        "width": 256,
+        "height": 144
+      },
+      "kind": "video",
+      "durationMs": 3000,
+      "codec": "avc1.42C01E",
+      "profile": "Constrained Baseline",
+      "level": "3.0",
+      "pixelFormat": "yuv420p",
+      "frameRate": 30.0,
+      "bitrate": 835349,
+      "faststart": true,
+      "audio": false,
+      "poster": {
+        "id": "sha256:66cacca7ba42ac3cf1d57ba6cf4bad0e66a2b2f42f1afb6b79cf1371b9f0331d",
+        "url": "/assets/sha256:66cacca7ba42ac3cf1d57ba6cf4bad0e66a2b2f42f1afb6b79cf1371b9f0331d",
+        "width": 256,
+        "height": 144
+      }
+    }
+  },
+  "playlist": {
+    "items": [
+      {
+        "asset": "sha256:7eac378b5e3d20a0ed59ce80600026180eb834abd1742b96cd60343b5d95b1c5",
+        "dwell_ms": 3000
+      },
+      {
+        "asset": "sha256:c2d7bc870fa687be8c082f850ec661af92aea5d9b3df223b874e6371810d4c15",
+        "dwell_ms": 5000
+      }
+    ],
+    "loop": false,
+    "revision": 1
+  },
+  "source_playback": {
+    "states": [
+      {
+        "src": "http://127.0.0.1:35751/assets/sha256:7eac378b5e3d20a0ed59ce80600026180eb834abd1742b96cd60343b5d95b1c5",
+        "visibility": "visible",
+        "paused": false,
+        "ended": false,
+        "readyState": 4,
+        "networkState": 1,
+        "currentTime": 0.361701,
+        "duration": 3,
+        "videoWidth": 640,
+        "videoHeight": 360,
+        "error": null,
+        "rect": {
+          "width": 426.6666259765625,
+          "height": 240
+        }
+      }
+    ],
+    "before": {
+      "src": "http://127.0.0.1:35751/assets/sha256:7eac378b5e3d20a0ed59ce80600026180eb834abd1742b96cd60343b5d95b1c5",
+      "visibility": "visible",
+      "paused": false,
+      "ended": false,
+      "readyState": 4,
+      "networkState": 1,
+      "currentTime": 0.364402,
+      "duration": 3,
+      "videoWidth": 640,
+      "videoHeight": 360,
+      "error": null,
+      "rect": {
+        "width": 426.6666259765625,
+        "height": 240
+      }
+    },
+    "after": {
+      "src": "http://127.0.0.1:35751/assets/sha256:7eac378b5e3d20a0ed59ce80600026180eb834abd1742b96cd60343b5d95b1c5",
+      "visibility": "visible",
+      "paused": false,
+      "ended": false,
+      "readyState": 4,
+      "networkState": 1,
+      "currentTime": 0.768026,
+      "duration": 3,
+      "videoWidth": 640,
+      "videoHeight": 360,
+      "error": null,
+      "rect": {
+        "width": 426.6666259765625,
+        "height": 240
+      }
+    },
+    "session": {
+      "now_ms": 19505741.227068,
+      "session_id": "9098105afee74c3b8fef28867533ba35",
+      "version": 1,
+      "generation": "74e01ebe",
+      "clock_epoch": "ca805fbb",
+      "state": "preparing",
+      "current": null,
+      "displayed": null,
+      "current_effective_ms": null,
+      "pending": {
+        "preparation_id": "79a829479eb24200a06c75f9be0067d0",
+        "version": 1,
+        "occurrence": {
+          "playlist_revision": 1,
+          "item_index": 0,
+          "loop": 0
+        },
+        "asset": "sha256:7eac378b5e3d20a0ed59ce80600026180eb834abd1742b96cd60343b5d95b1c5",
+        "prepare_deadline_ms": 19536739.985579,
+        "effective_server_ms": 19506739.985579,
+        "media": {
+          "kind": "video",
+          "duration_ms": 3000,
+          "buffer_goal_ms": 5000,
+          "start_lead_ms": 1000,
+          "prepare_timeout_ms": 30000
+        }
+      },
+      "playlist_revision": 1,
+      "live": {
+        "current": null,
+        "displayed": null,
+        "pending": {
+          "occurrence": {
+            "playlist_revision": 1,
+            "item_index": 0,
+            "loop": 0
+          },
+          "asset": "sha256:7eac378b5e3d20a0ed59ce80600026180eb834abd1742b96cd60343b5d95b1c5",
+          "kind": "video",
+          "duration_ms": 3000,
+          "dwell_ms": 3000
+        }
+      },
+      "cohort": [
+        "e4e549c7-5035-4c7a-8d91-6e1ac50ba84b"
+      ],
+      "required": [
+        "e4e549c7-5035-4c7a-8d91-6e1ac50ba84b"
+      ],
+      "excluded": [],
+      "missed": [],
+      "held": false,
+      "hold_deadline_ms": null,
+      "policy": "strict",
+      "blocked_reason": null,
+      "final": false,
+      "paused_at_ms": null,
+      "recovery": null,
+      "video": {},
+      "members": {
+        "e4e549c7-5035-4c7a-8d91-6e1ac50ba84b": {
+          "ready": false,
+          "video": null
+        }
+      }
+    }
+  },
+  "manifest": {
+    "manifest_version": 3,
+    "schema_version": 3,
+    "references": [
+      "sha256:7eac378b5e3d20a0ed59ce80600026180eb834abd1742b96cd60343b5d95b1c5",
+      "sha256:c2d7bc870fa687be8c082f850ec661af92aea5d9b3df223b874e6371810d4c15"
+    ],
+    "media_assets": [
+      {
+        "asset_id": "2fb75430-bf82-408a-910e-cb5cb92c2d4e",
+        "display_object": "sha256:7eac378b5e3d20a0ed59ce80600026180eb834abd1742b96cd60343b5d95b1c5",
+        "master_object": "sha256:7eac378b5e3d20a0ed59ce80600026180eb834abd1742b96cd60343b5d95b1c5",
+        "renditions": [
+          {
+            "height": 144,
+            "object_id": "sha256:66cacca7ba42ac3cf1d57ba6cf4bad0e66a2b2f42f1afb6b79cf1371b9f0331d",
+            "role": "thumbnail",
+            "width": 256
+          },
+          {
+            "height": 360,
+            "object_id": "sha256:7eac378b5e3d20a0ed59ce80600026180eb834abd1742b96cd60343b5d95b1c5",
+            "role": "video",
+            "width": 640
+          }
+        ]
+      },
+      {
+        "asset_id": "98d802eb-5376-4294-9590-340ef7b488eb",
+        "display_object": "sha256:c2d7bc870fa687be8c082f850ec661af92aea5d9b3df223b874e6371810d4c15",
+        "master_object": "sha256:c2d7bc870fa687be8c082f850ec661af92aea5d9b3df223b874e6371810d4c15",
+        "renditions": [
+          {
+            "height": 32,
+            "object_id": "sha256:c2d7bc870fa687be8c082f850ec661af92aea5d9b3df223b874e6371810d4c15",
+            "role": "display",
+            "width": 48
+          },
+          {
+            "height": 32,
+            "object_id": "sha256:c2d7bc870fa687be8c082f850ec661af92aea5d9b3df223b874e6371810d4c15",
+            "role": "fallback",
+            "width": 48
+          },
+          {
+            "height": 32,
+            "object_id": "sha256:c2d7bc870fa687be8c082f850ec661af92aea5d9b3df223b874e6371810d4c15",
+            "role": "master",
+            "width": 48
+          },
+          {
+            "height": 32,
+            "object_id": "sha256:cc7263171187df6fcb1b74c8987501e9ea9c4e55af215b61ffe6b0242636ee25",
+            "role": "thumbnail",
+            "width": 48
+          }
+        ]
+      }
+    ],
+    "media_objects": [
+      {
+        "bytes": 5062,
+        "height": 144,
+        "mime": "image/jpeg",
+        "object_id": "sha256:66cacca7ba42ac3cf1d57ba6cf4bad0e66a2b2f42f1afb6b79cf1371b9f0331d",
+        "path": "media/objects/66/66cacca7ba42ac3cf1d57ba6cf4bad0e66a2b2f42f1afb6b79cf1371b9f0331d.jpg",
+        "sha256": "66cacca7ba42ac3cf1d57ba6cf4bad0e66a2b2f42f1afb6b79cf1371b9f0331d",
+        "width": 256
+      },
+      {
+        "bytes": 313256,
+        "height": 360,
+        "mime": "video/mp4",
+        "object_id": "sha256:7eac378b5e3d20a0ed59ce80600026180eb834abd1742b96cd60343b5d95b1c5",
+        "path": "media/objects/7e/7eac378b5e3d20a0ed59ce80600026180eb834abd1742b96cd60343b5d95b1c5.mp4",
+        "sha256": "7eac378b5e3d20a0ed59ce80600026180eb834abd1742b96cd60343b5d95b1c5",
+        "width": 640
+      },
+      {
+        "bytes": 296,
+        "height": 32,
+        "mime": "image/jpeg",
+        "object_id": "sha256:c2d7bc870fa687be8c082f850ec661af92aea5d9b3df223b874e6371810d4c15",
+        "path": "media/objects/c2/c2d7bc870fa687be8c082f850ec661af92aea5d9b3df223b874e6371810d4c15.jpg",
+        "sha256": "c2d7bc870fa687be8c082f850ec661af92aea5d9b3df223b874e6371810d4c15",
+        "width": 48
+      },
+      {
+        "bytes": 295,
+        "height": 32,
+        "mime": "image/jpeg",
+        "object_id": "sha256:cc7263171187df6fcb1b74c8987501e9ea9c4e55af215b61ffe6b0242636ee25",
+        "path": "media/objects/cc/cc7263171187df6fcb1b74c8987501e9ea9c4e55af215b61ffe6b0242636ee25.jpg",
+        "sha256": "cc7263171187df6fcb1b74c8987501e9ea9c4e55af215b61ffe6b0242636ee25",
+        "width": 48
+      }
+    ],
+    "omitted_media": []
+  },
+  "restored_origin": "http://127.0.0.1:37233",
+  "restored_playback": {
+    "states": [
+      {
+        "src": "http://127.0.0.1:37233/assets/sha256:7eac378b5e3d20a0ed59ce80600026180eb834abd1742b96cd60343b5d95b1c5",
+        "visibility": "visible",
+        "paused": false,
+        "ended": false,
+        "readyState": 4,
+        "networkState": 1,
+        "currentTime": 0.352341,
+        "duration": 3,
+        "videoWidth": 640,
+        "videoHeight": 360,
+        "error": null,
+        "rect": {
+          "width": 426.6666259765625,
+          "height": 240
+        }
+      }
+    ],
+    "before": {
+      "src": "http://127.0.0.1:37233/assets/sha256:7eac378b5e3d20a0ed59ce80600026180eb834abd1742b96cd60343b5d95b1c5",
+      "visibility": "visible",
+      "paused": false,
+      "ended": false,
+      "readyState": 4,
+      "networkState": 1,
+      "currentTime": 0.356147,
+      "duration": 3,
+      "videoWidth": 640,
+      "videoHeight": 360,
+      "error": null,
+      "rect": {
+        "width": 426.6666259765625,
+        "height": 240
+      }
+    },
+    "after": {
+      "src": "http://127.0.0.1:37233/assets/sha256:7eac378b5e3d20a0ed59ce80600026180eb834abd1742b96cd60343b5d95b1c5",
+      "visibility": "visible",
+      "paused": false,
+      "ended": false,
+      "readyState": 4,
+      "networkState": 1,
+      "currentTime": 0.760764,
+      "duration": 3,
+      "videoWidth": 640,
+      "videoHeight": 360,
+      "error": null,
+      "rect": {
+        "width": 426.6666259765625,
+        "height": 240
+      }
+    },
+    "session": {
+      "now_ms": 19508646.241788,
+      "session_id": "c95dd737a492421b8acbdf4f6d409382",
+      "version": 1,
+      "generation": "fe072eca",
+      "clock_epoch": "79c97c0f",
+      "state": "preparing",
+      "current": null,
+      "displayed": null,
+      "current_effective_ms": null,
+      "pending": {
+        "preparation_id": "7e42329498084d0e93bb2a5ebc0539dc",
+        "version": 1,
+        "occurrence": {
+          "playlist_revision": 1,
+          "item_index": 0,
+          "loop": 0
+        },
+        "asset": "sha256:7eac378b5e3d20a0ed59ce80600026180eb834abd1742b96cd60343b5d95b1c5",
+        "prepare_deadline_ms": 19539644.386054,
+        "effective_server_ms": 19509644.386054,
+        "media": {
+          "kind": "video",
+          "duration_ms": 3000,
+          "buffer_goal_ms": 5000,
+          "start_lead_ms": 1000,
+          "prepare_timeout_ms": 30000
+        }
+      },
+      "playlist_revision": 1,
+      "live": {
+        "current": null,
+        "displayed": null,
+        "pending": {
+          "occurrence": {
+            "playlist_revision": 1,
+            "item_index": 0,
+            "loop": 0
+          },
+          "asset": "sha256:7eac378b5e3d20a0ed59ce80600026180eb834abd1742b96cd60343b5d95b1c5",
+          "kind": "video",
+          "duration_ms": 3000,
+          "dwell_ms": 3000
+        }
+      },
+      "cohort": [
+        "e4e549c7-5035-4c7a-8d91-6e1ac50ba84b"
+      ],
+      "required": [
+        "e4e549c7-5035-4c7a-8d91-6e1ac50ba84b"
+      ],
+      "excluded": [],
+      "missed": [],
+      "held": false,
+      "hold_deadline_ms": null,
+      "policy": "strict",
+      "blocked_reason": null,
+      "final": false,
+      "paused_at_ms": null,
+      "recovery": null,
+      "video": {},
+      "members": {
+        "e4e549c7-5035-4c7a-8d91-6e1ac50ba84b": {
+          "ready": false,
+          "video": null
+        }
+      }
+    }
+  },
+  "network": {
+    "asset_responses": [
+      {
+        "time": 19508.640397192,
+        "kind": "http",
+        "url": "http://127.0.0.1:37233/assets/sha256:c2d7bc870fa687be8c082f850ec661af92aea5d9b3df223b874e6371810d4c15",
+        "status": 200
+      },
+      {
+        "time": 19508.65491833,
+        "kind": "http",
+        "url": "http://127.0.0.1:37233/assets/sha256:7eac378b5e3d20a0ed59ce80600026180eb834abd1742b96cd60343b5d95b1c5",
+        "status": 206
+      },
+      {
+        "time": 19508.735565364,
+        "kind": "http",
+        "url": "http://127.0.0.1:37233/assets/sha256:c2d7bc870fa687be8c082f850ec661af92aea5d9b3df223b874e6371810d4c15",
+        "status": 200
+      }
+    ],
+    "video_responses": [
+      {
+        "time": 19508.65491833,
+        "kind": "http",
+        "url": "http://127.0.0.1:37233/assets/sha256:7eac378b5e3d20a0ed59ce80600026180eb834abd1742b96cd60343b5d95b1c5",
+        "status": 206
+      }
+    ],
+    "video_request_failures": []
+  },
+  "summary": {
+    "checks_passed": 41,
+    "checks_total": 41,
+    "passed": true
+  },
+  "finished_utc": "2026-10-28T06:23:35.606272+00:00"
+}

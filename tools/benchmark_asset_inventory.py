@@ -42,6 +42,9 @@ def main():
     exec(compile(source, "baseline-assets.py", "exec"), baseline.__dict__)
     with tempfile.TemporaryDirectory(prefix="tablet-wall-benchmark-") as temporary:
         scratch = Path(temporary)
+        for key in tuple(os.environ):
+            if key.startswith("TABLET_WALL_"):
+                del os.environ[key]
         os.environ.update({
             "TABLET_WALL_DB": str(scratch / "wall.db"),
             "TABLET_WALL_MEDIA_DIR": str(scratch / "media"),
@@ -82,8 +85,8 @@ def main():
                 return original(data)
 
             module._read_capped, module._inspect = count_read, count_decode
-        endpoint = next(route.endpoint for route in server.app.routes if getattr(route, "path", None) == "/assets")
-        endpoint_globals = endpoint.__globals__
+        from tabletwall.routes.assets import get_assets
+        endpoint_globals = get_assets.__globals__
         original_assets = endpoint_globals["assets"]
         try:
             with TestClient(server.app) as client:

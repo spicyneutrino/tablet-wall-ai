@@ -1,7 +1,7 @@
 # tablet-wall-ai developer tasks. Run `make` with no target to list them.
 #
-# Every recipe cds to the repository root first, because main.py mounts its
-# static directories by relative path and therefore only imports from there.
+# Recipes run from the repository root so configuration and data defaults
+# resolve consistently. Frontend paths are resolved relative to main.py.
 
 ROOT := $(dir $(realpath $(firstword $(MAKEFILE_LIST))))
 PORT ?= 8000
