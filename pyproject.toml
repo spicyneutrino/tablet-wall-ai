@@ -52,9 +52,11 @@ warn_redundant_casts = true
 [tool.coverage.run]
 source = ["main", "tabletwall", "deploy"]
 branch = true
+# Include the real ingest worker and test servers launched by the suite.
+patch = ["subprocess"]
 
 [tool.coverage.report]
 show_missing = true
 skip_covered = true
 # Established by the full suite. Raise this as uncovered branches gain tests.
-fail_under = 70
+fail_under = 80
