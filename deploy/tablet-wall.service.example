@@ -68,6 +68,8 @@ Environment=TABLET_WALL_TABLET_ORIGIN=https://REPLACE-tablet-host.example:8443
 # Caddy's own private configuration, not this backend service. If additional
 # backend settings need an environment file, create it outside the checkout
 # with mode 600 and uncomment this line after filling in its real path:
+# Proxy uploads also need TABLET_WALL_OPERATOR_CREDENTIAL in that private file,
+# matching Caddy's WALL_OPERATOR_CREDENTIAL. Never store its value in this unit.
 # EnvironmentFile=/REPLACE/with/private/tablet-wall.env
 
 # Exactly one process, one worker: active wall state, revisions and sockets
