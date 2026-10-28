@@ -6,3 +6,4 @@
 - Data. Restart persistence restores safe device metadata as offline; online state must come from live sockets.
 - Delivery. Use feature branches and logical PRs; no deploy or merge is authorized.
 - Extraction. Moved asset HTTP handlers to `tabletwall/routes/assets.py` unchanged. The module depends on existing asset/media services and has no mutable app context or circular main import. This reduces main.py while preserving patchable service dependencies.
+- Extraction. Moved read-only registry and registration-help routes into `tabletwall/routes/devices.py`. Mutation and WebSocket ownership remain together in main.py pending larger extractions. Full tests bracket each extraction.

@@ -499,6 +499,10 @@ from tabletwall.routes.assets import router as assets_router
 
 app.include_router(assets_router)
 
+from tabletwall.routes.devices import router as devices_router
+
+app.include_router(devices_router)
+
 
 class RevalidatedStaticFiles(StaticFiles):
     """Static files that browsers must revalidate on every load.
@@ -811,17 +815,10 @@ async def _deny_websocket(websocket: WebSocket, response: JSONResponse) -> None:
 # ---------------------------------------------------------------------------
 
 
-@app.get("/device/{device_id}")
-async def get_device(device_id: str):
-    key = _parse_device_id(device_id)
-    if key is None or key not in devices:
-        raise HTTPException(status_code=404, detail="Unknown device")
-    return _device_record(key)
 
 
-@app.get("/devices/register")
-async def registration_info():
-    return {"message": "Use POST to register a device"}
+
+
 
 
 @app.post("/devices/register")
@@ -1072,9 +1069,7 @@ async def rebind_device(device_id: str, command: RebindCommand):
     }
 
 
-@app.get("/devices")
-async def get_devices():
-    return {device_id: _device_record(device_id) for device_id in list(devices)}
+
 
 
 # ---------------------------------------------------------------------------
@@ -1496,11 +1491,7 @@ async def delete_saved_scene(name: str):
     return {"deleted": True, "name": canonical}
 
 
-@app.get("/")
-async def root():
-    return {
-        "message": "Hello Tablet Wall"
-    }
+
 
 
 # ---------------------------------------------------------------------------
