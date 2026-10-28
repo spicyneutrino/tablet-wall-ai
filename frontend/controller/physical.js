@@ -67,6 +67,10 @@
         stageSvg: document.getElementById("stage-svg"),
         stageScale: document.getElementById("stage-scale"),
         deviceCount: document.getElementById("device-count"),
+        wallHealth: document.getElementById("wall-health"),
+        btnWallHealth: document.getElementById("btn-wall-health"),
+        rosterStatus: document.getElementById("roster-status"),
+        btnRosterRefresh: document.getElementById("btn-roster-refresh"),
         deviceList: document.getElementById("device-list"),
         deviceEmpty: document.getElementById("device-empty"),
         boundsX: document.getElementById("bounds-x"),
@@ -223,6 +227,9 @@
         displays: [],
         calibrations: [],
         roster: {},
+        rosterCheckedAt: null,
+        rosterError: null,
+        rosterLoading: false,
         savedLayouts: [],
         selectedId: null,
         undo: [],
@@ -1042,6 +1049,8 @@
                 api("GET", API_DEVICES)
             ]);
             state.roster = results[1] && typeof results[1] === "object" ? results[1] : {};
+            state.rosterCheckedAt = new Date().toISOString();
+            state.rosterError = null;
             ingestConfig(results[0], { resetHistory: true, resetForms: true });
             clearError();
             announce("Loaded wall revision " + (state.revision === null ? "?" : state.revision) + ".", "ok");
@@ -1254,7 +1263,7 @@
      * ---------------------------------------------------------------- */
 
     const {
-        addSelectedDevice, deleteSelectedSlot, endDrag, nudgeSelected, onPointerCancel, onPointerDown, onPointerMove, onPointerUp, renderDeviceList, renderStage, rotateSelected, selectDevice, syncInspector
+        addSelectedDevice, deleteSelectedSlot, endDrag, nudgeSelected, onPointerCancel, onPointerDown, onPointerMove, onPointerUp, renderDeviceHealth, renderDeviceList, renderStage, rotateSelected, selectDevice, syncInspector
     } = window.PhysicalStage.create({
         DRAG_THRESHOLD_PX, STAGE_H, STAGE_MARGIN, STAGE_W, SVG_NS, WAKE_LOCK_TEXT, afterDraftChange, announce, bodyMetrics, calibrationFor, calibrationStatus, clearMsg, clone, compactView, deviceEntries, deviceLabel, deviceNumber, deviceRows, el, finiteOr, formatNumber, isOnline, latestProfile, mutateDraft, niceStep, numberedLabel, populateDeviceCard, profileFor, pushUndo, renderRebindOptions, roundTo, selectedSlot, setInputValue, shortId, showError, showTab, state, syncTabDots, validPair
     });
@@ -2377,17 +2386,24 @@
     }
 
     async function refreshRoster() {
+        if (state.rosterLoading) return;
+        state.rosterLoading = true;
+        if (el.btnRosterRefresh) el.btnRosterRefresh.disabled = true;
         try {
             const roster = await api("GET", API_DEVICES);
-            if (roster && typeof roster === "object") {
-                state.roster = roster;
-                ensureSelection();
-                renderDeviceList();
-                syncInspector();
-                renderPlayback();
-            }
+            state.roster = roster;
+            state.rosterCheckedAt = new Date().toISOString();
+            state.rosterError = null;
+            ensureSelection();
+            renderDeviceList();
+            syncInspector();
+            renderPlayback();
         } catch (error) {
-            // The last roster stays visible; diagnostics carries the error.
+            state.rosterError = errorDetail(error);
+        } finally {
+            state.rosterLoading = false;
+            if (el.btnRosterRefresh) el.btnRosterRefresh.disabled = false;
+            renderDeviceHealth();
         }
     }
 
@@ -3066,6 +3082,13 @@
             });
         }
 
+        if (el.btnWallHealth) {
+            el.btnWallHealth.addEventListener("click", function () {
+                showTab("tablet", { focus: true, persist: true });
+                if (el.rosterStatus) el.rosterStatus.scrollIntoView({ block: "nearest" });
+            });
+        }
+        if (el.btnRosterRefresh) el.btnRosterRefresh.addEventListener("click", refreshRoster);
         if (el.btnDiagDownload) {
             el.btnDiagDownload.addEventListener("click", downloadDiagnostics);
         }

@@ -182,3 +182,28 @@ assert.equal(physicalEditor.draft.slots.tablet.center_x_mm, 99, "a different poi
 physicalStage.onPointerCancel({ pointerId: 3 });
 assert.equal(physicalEditor.draft.slots.tablet.center_x_mm, 10);
 assert.equal(physicalHistory.length, 2, "a cancelled drag adds no history entry");
+const healthState = {
+    roster: { a: { wake_lock: "unsupported" }, b: {} }, rosterCheckedAt: "2026-10-28T12:00:00Z",
+    rosterError: null, base: { slots: { a: {} } }, basePlacements: {}
+};
+const healthNodes = { deviceCount: {}, wallHealth: {}, btnWallHealth: { dataset: {} }, rosterStatus: { dataset: {} } };
+const health = context.window.PhysicalStage.create({
+    state: healthState, el: healthNodes, deviceRows: new Map([["a", {}], ["b", {}]]),
+    isOnline: id => id === "a", validPair: id => id === "a" ? {} : null
+});
+health.renderDeviceHealth();
+assert.equal(healthNodes.wallHealth.textContent, "1 online · 1 offline · 1 needs calibration · 1 unplaced");
+assert.equal(healthNodes.btnWallHealth.dataset.kind, "warn");
+assert.ok(!healthNodes.wallHealth.textContent.includes("wake-lock"), "unsupported wake lock is normal on HTTP");
+healthState.roster.a.wake_lock = "denied";
+health.renderDeviceHealth();
+assert.ok(healthNodes.wallHealth.textContent.includes("1 wake-lock warning"));
+healthState.rosterError = "503 unavailable";
+health.renderDeviceHealth();
+assert.equal(healthNodes.deviceCount.textContent, "1 of 2 last known online");
+assert.ok(healthNodes.wallHealth.textContent.startsWith("Last known:"));
+assert.ok(healthNodes.rosterStatus.textContent.includes("Showing last known status"));
+healthState.rosterCheckedAt = null;
+health.renderDeviceHealth();
+assert.equal(healthNodes.deviceCount.textContent, "Status unknown");
+assert.equal(healthNodes.wallHealth.textContent, "Tablet status unavailable");

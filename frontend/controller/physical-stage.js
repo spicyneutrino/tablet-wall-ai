@@ -401,14 +401,53 @@ window.PhysicalStage = {
         }
 
         function renderDeviceCount() {
+            el.deviceEmpty.hidden = deviceRows.size > 0;
+            renderDeviceHealth();
+        }
+
+        function renderDeviceHealth() {
             let online = 0;
-            deviceRows.forEach(function (row, id) {
-                if (isOnline(id)) online += 1;
+            let uncalibrated = 0;
+            let unplaced = 0;
+            let wakeWarnings = 0;
+            deviceRows.forEach(function (_row, id) {
+                const connected = isOnline(id);
+                if (connected) online += 1;
+                if (!validPair(id)) uncalibrated += 1;
+                if (!(state.base && state.base.slots && state.base.slots[id])
+                        && !state.basePlacements[id]) unplaced += 1;
+                const wake = state.roster[id] && state.roster[id].wake_lock;
+                if (connected && ["released", "denied", "insecure"].indexOf(wake) !== -1) {
+                    wakeWarnings += 1;
+                }
             });
             const total = deviceRows.size;
-            el.deviceCount.textContent = total === 0
-                ? "0 online" : online + " of " + total + " online";
-            el.deviceEmpty.hidden = total > 0;
+            const stale = Boolean(state.rosterError);
+            const checked = Boolean(state.rosterCheckedAt);
+            el.deviceCount.textContent = !checked ? "Status unknown"
+                : online + " of " + total + (stale ? " last known online" : " online");
+            const facts = [online + " online", (total - online) + " offline"];
+            if (uncalibrated) facts.push(uncalibrated + " needs calibration");
+            if (unplaced) facts.push(unplaced + " unplaced");
+            if (wakeWarnings) facts.push(wakeWarnings + " wake-lock warning" + (wakeWarnings === 1 ? "" : "s"));
+            if (el.wallHealth) {
+                el.wallHealth.textContent = checked
+                    ? (stale ? "Last known: " : "") + (total ? facts.join(" · ") : "No known tablets")
+                    : (stale ? "Tablet status unavailable" : "Checking tablet status…");
+            }
+            if (el.btnWallHealth) {
+                el.btnWallHealth.dataset.kind = stale || (checked && (online < total || uncalibrated || unplaced || wakeWarnings))
+                    ? "warn" : checked ? "ok" : "info";
+            }
+            if (el.rosterStatus) {
+                const stamp = checked ? new Date(state.rosterCheckedAt).toLocaleTimeString() : null;
+                el.rosterStatus.textContent = stale
+                    ? "Tablet status could not refresh. " + (stamp ? "Last checked " + stamp + ". Showing last known status." : "No status has been loaded.")
+                    : stamp ? "Tablet status checked at " + stamp + ". Refresh to check again."
+                        : "Tablet status has not been checked.";
+                el.rosterStatus.dataset.kind = stale ? "warn" : "info";
+                el.rosterStatus.title = state.rosterError || state.rosterCheckedAt || "";
+            }
         }
 
         function renderDeviceList() {
@@ -736,6 +775,6 @@ window.PhysicalStage = {
          * Bounds and slot inputs
          * ---------------------------------------------------------------- */
 
-        return { addSelectedDevice, deleteSelectedSlot, endDrag, nudgeSelected, onPointerCancel, onPointerDown, onPointerMove, onPointerUp, renderDeviceList, renderStage, rotateSelected, selectDevice, syncInspector };
+        return { addSelectedDevice, deleteSelectedSlot, endDrag, nudgeSelected, onPointerCancel, onPointerDown, onPointerMove, onPointerUp, renderDeviceHealth, renderDeviceList, renderStage, rotateSelected, selectDevice, syncInspector };
     }
 };
