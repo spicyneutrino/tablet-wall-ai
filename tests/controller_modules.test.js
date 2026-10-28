@@ -122,3 +122,35 @@ assert.deepEqual([...members.required], ["b", "a"]);
 assert.equal(members.missing.get("b"), "offline");
 assert.equal(members.excluded.has("c"), true);
 assert.equal(members.ready.has("a"), true);
+load("controller-inventory.js");
+const inventoryState = {
+    assets: [{ id: "still", name: "Still", kind: "still" }], mediaAssets: [],
+    selectedAsset: "still", assetsLoaded: true, mediaState: "ready"
+};
+const inventoryRuntime = { wall: { revision: 1 }, pendingContent: null, contentView: null };
+let imageRequest = null;
+const inventoryController = context.window.ControllerInventory.create({
+    inventory: inventoryState, runtime: inventoryRuntime, el: {},
+    aspectOf: geometry.aspectOf, compareIds: (a, b) => a < b ? -1 : a > b ? 1 : 0,
+    requestJson: async (method, route, body) => { imageRequest = { method, route, body }; return { revision: 2 }; },
+    normalizeWall: value => value, renderWall: () => {}, renderWallContent: () => {}, logStatus: () => {}, wallReady: () => true
+});
+const normalizedAssets = inventoryController.model.normalizeAssets({ assets: [
+    { id: "A".repeat(64), name: "Zulu", mime: "image/png", width: "20", height: 10 },
+    { id: "sha256:" + "a".repeat(64), name: "Duplicate" },
+    { id: "clip", name: "Alpha", mime: "video/mp4", duration_ms: "1234" }
+] });
+assert.equal(normalizedAssets.length, 2, "bare and prefixed digests are one asset");
+assert.equal(normalizedAssets[0].id, "clip");
+assert.equal(normalizedAssets[0].durationMs, 1234);
+assert.equal(normalizedAssets[1].width, 20);
+assert.equal(inventoryController.model.normalizeAssets({}), null);
+(async () => {
+    await inventoryController.applyImageScene();
+    assert.equal(imageRequest.method, "PUT");
+    assert.equal(imageRequest.route, "/scene");
+    assert.equal(imageRequest.body.content.asset, "still");
+    assert.equal(inventoryRuntime.wall.revision, 2);
+    assert.equal(inventoryRuntime.contentView, "image");
+    assert.equal(inventoryRuntime.pendingContent, null);
+})().catch(error => { console.error(error); process.exitCode = 1; });
