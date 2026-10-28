@@ -94,3 +94,31 @@ for (const page of ["index.html", "physical.html"]) {
         vm.runInContext(fs.readFileSync(path.join(__dirname, "../frontend/controller", match[1]), "utf8"), boot, { filename: match[1] });
     }
 }
+load("physical-playback.js");
+const playback = context.window.PhysicalPlayback.create({}).model;
+const occurrence = { playlist_revision: 3, item_index: 0, loop: 0 };
+const status = {
+    state: "playing", now_ms: 11000, current_effective_ms: 10000,
+    live: { current: { occurrence, asset: "frozen-video", kind: "video", duration_ms: 2500 } }
+};
+assert.equal(playback.liveSlotEntry(status, "current").asset, "frozen-video");
+assert.equal(playback.remainingDwell(status), 1500);
+assert.equal(playback.remainingDwell({ ...status, state: "paused", paused_at_ms: 10500, now_ms: 90000 }), 2000,
+    "paused dwell uses the pause instant rather than the current server clock");
+assert.equal(playback.remainingDwell({ ...status, state: "paused" }), null,
+    "an absent pause instant must not invent a countdown");
+assert.equal(playback.remainingDwell({ ...status, pending: {
+    occurrence: { ...occurrence, item_index: 1 }, effective_server_ms: 12000
+} }), 1000);
+assert.equal(playback.liveSlotEntry({ state: "armed", live: { current: status.live.current } }, "displayed"), null);
+assert.equal(playback.liveSlotEntry({ state: "playing", current: {
+    occurrence, asset_id: "legacy", media: { kind: "video", duration_ms: 3000 }
+} }, "current").duration_ms, 3000);
+const members = playback.memberState({
+    required: ["b", "a"], ready: ["a"], missing: [{ device_id: "b", reason: "offline" }],
+    excluded: ["c"], pending: { leases: { a: { ready: true } } }
+});
+assert.deepEqual([...members.required], ["b", "a"]);
+assert.equal(members.missing.get("b"), "offline");
+assert.equal(members.excluded.has("c"), true);
+assert.equal(members.ready.has("a"), true);
