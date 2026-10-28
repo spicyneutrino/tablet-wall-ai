@@ -27,3 +27,5 @@ Pending manual checks: physical tablets, iOS Safari, optical timing, mixed-devic
 
 Evidence: AUDIT_ROUNDS.md, audit-decisions.tsv, DECISIONS.md, UNTRACKED_REVIEW.md, and docs/audit/.
 Draft PRs preserve logical chunks; nothing was merged or deployed.
+
+PR stack: [foundation](https://github.com/spicyneutrino/tablet-wall-ai/pull/1), [authentication](https://github.com/spicyneutrino/tablet-wall-ai/pull/2), [tooling/deployment](https://github.com/spicyneutrino/tablet-wall-ai/pull/3), [runtime](https://github.com/spicyneutrino/tablet-wall-ai/pull/4), [frontend](https://github.com/spicyneutrino/tablet-wall-ai/pull/5), [audit closure](https://github.com/spicyneutrino/tablet-wall-ai/pull/6).
