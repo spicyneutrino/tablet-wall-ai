@@ -25,3 +25,30 @@ assert.equal(geometry.contentLabel("future"), "Unsupported content: future");
 assert.equal(geometry.deviceCaps({}).image, null);
 assert.equal(geometry.deviceCaps({ caps: [] }).image, false);
 console.log("Controller module contracts passed");
+load("controller-snapshots.js");
+let savedWall = null;
+const snapshotMessages = { hidden: true, dataset: {}, textContent: "" };
+const snapshots = context.window.ControllerSnapshots.create({
+    snapEl: { layout: { msg: snapshotMessages }, scene: {} },
+    wallReady: () => !!savedWall, getWall: () => savedWall,
+    shortAsset: id => id.slice(0, 8), compareIds: (a, b) => a < b ? -1 : a > b ? 1 : 0
+});
+assert.equal(snapshots.snapSaveAvailable("layout"), false);
+savedWall = { content: { type: "color" } };
+assert.equal(snapshots.snapSaveAvailable("scene"), true);
+assert.deepEqual(plain(snapshots.validateSnapshotName("  Main wall  ")), { name: "Main wall" });
+assert.ok(snapshots.validateSnapshotName("../wall").error);
+assert.ok(snapshots.validateSnapshotName("x".repeat(65)).error);
+assert.deepEqual(plain(snapshots.normalizeSnapshotList({ layouts: [
+    { name: "Zulu", layout: { width: 10, height: 20, placements: {} } },
+    { name: "Alpha", invalid: true }, { name: "Zulu" }
+] }, "layout")), [
+    { name: "Alpha", meta: "INVALID SAVED DATA · delete or replace this snapshot" },
+    { name: "Zulu", meta: "10 × 20 u · 0 placements" }
+]);
+assert.equal(snapshots.normalizeSnapshotList({}, "scene"), null);
+snapshots.setSnapMsg("layout", "Reading failed", "err");
+assert.equal(snapshotMessages.hidden, false);
+assert.equal(snapshotMessages.dataset.kind, "err");
+snapshots.setSnapMsg("layout", null);
+assert.equal(snapshotMessages.hidden, true);
