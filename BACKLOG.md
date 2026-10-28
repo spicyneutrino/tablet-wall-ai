@@ -18,6 +18,11 @@ Severity order is broken, confusing, missing, polish. Check an item only with re
 - [ ] B12 [confusing] Service template placeholders need validation and accurate documentation.
 - [ ] B13 [confusing] Review all 59 untracked files; commit project documents and ignore local artifacts.
 
+## Round 2, connected tablet and failure boundaries
+
+- [ ] B14 [confusing] Existing annotated Python paths fail the new type gate. Narrow optional values and separate clock evidence from playback preparation variables.
+- [ ] B15 [confusing] Historical deployment and persistence docs describe pre-media backups and an empty roster after restart. Update them with verified behavior.
+
 ## Operator feature ranking
 
 | Rank | Improvement | Value | Effort | Decision |
