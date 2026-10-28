@@ -31,7 +31,6 @@ import tempfile
 import time
 import urllib.error
 import urllib.request
-import uuid
 from io import BytesIO
 from pathlib import Path
 

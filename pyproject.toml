@@ -13,8 +13,11 @@ browser = [
 ]
 dev = [
     "httpx2>=2.13.1",
+    "mypy>=2.4.0",
     "pytest>=9.1.1",
+    "pytest-cov>=7.1.0",
     "pytest-timeout>=2.4.0",
+    "ruff>=0.17.3",
 ]
 docs = [
     "Jinja2>=3.1",
@@ -29,3 +32,29 @@ pythonpath = ["."]
 # a regression ever stops the server closing a socket, a bound here turns a hang
 # into a failure.
 timeout = 30
+
+[tool.ruff]
+target-version = "py313"
+
+[tool.ruff.lint]
+# Start with syntax, undefined names, unused imports/locals and ambiguous names.
+select = ["E4", "E7", "E9", "F"]
+
+[tool.mypy]
+python_version = "3.13"
+files = ["main.py", "tabletwall", "deploy"]
+# Simulator/browser tooling is a separate test dependency, not an app module.
+follow_imports = "silent"
+ignore_missing_imports = true
+warn_unused_ignores = true
+warn_redundant_casts = true
+
+[tool.coverage.run]
+source = ["main", "tabletwall", "deploy"]
+branch = true
+
+[tool.coverage.report]
+show_missing = true
+skip_covered = true
+# Established by the full suite. Raise this as uncovered branches gain tests.
+fail_under = 70

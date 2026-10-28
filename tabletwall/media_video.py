@@ -26,7 +26,7 @@ def validate_facts(facts: Any) -> dict[str, Any]:
     """Re-check a worker-reported fact set at the trust boundary."""
     if not isinstance(facts, dict):
         raise ValueError("video facts are not an object")
-    expected = {
+    expected: dict[str, type | tuple[type, ...]] = {
         "intrinsicWidth": int, "intrinsicHeight": int, "durationMs": int, "codec": str,
         "profile": str, "level": str, "pixelFormat": str, "frameRate": (int, float),
         "bitrate": int, "faststart": bool, "audio": bool,

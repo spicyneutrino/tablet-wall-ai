@@ -1,10 +1,9 @@
 """Verified backup, verify and restore for the tablet-wall data (Phase 3b).
 
-Two files carry the wall's durable state: the SQLite database (``wall_state``
-plus the named snapshots) and the curated JPEG/PNG assets that the active and
-saved scenes reference by content ID (``sha256:<hex>``). This tool snapshots
-both into one versioned directory, checks that snapshot independently, and
-restores it. Standard library only, so it runs anywhere the server runs.
+Durable state includes the SQLite database, curated JPEG/PNG assets, and
+managed image/video objects referenced by the active scene, saved scenes or
+playlist. This tool snapshots the database and referenced content into one
+versioned directory, checks that snapshot independently, and restores it. Standard library only, so it runs anywhere the server runs.
 
 What a snapshot is:
 
@@ -35,13 +34,14 @@ only a staging directory whose name is never mistaken for one.
 
 What this tool deliberately will not do: overwrite or force anything (restore
 accepts only brand-new targets), migrate the schema, follow symlinks, or
-claim an atomic cutover. The restore targets are **two** paths — a database
-file and an asset directory — written one after the other, so recovery from
+claim an atomic cutover. The restore targets are a database file, an asset
+directory and, for managed content, a media directory, written one after the
+other, so recovery from
 an interrupted restore is "delete the targets that run created and run it
 again"; rollback here removes only targets this run created itself. Restoring
 also assumes the wall service is stopped: the tool refuses targets that
-``TABLET_WALL_DB`` or ``TABLET_WALL_ASSET_DIR`` still name, but it cannot
-otherwise see whether the process is running, so stop it yourself.
+``TABLET_WALL_DB``, ``TABLET_WALL_ASSET_DIR`` or ``TABLET_WALL_MEDIA_DIR``
+still name, but it cannot otherwise see whether the process is running, so stop it yourself.
 
 Integrity caveats: verification proves byte-for-byte agreement with the
 manifest plus SQLite's own page-level integrity, not that the images decode
@@ -584,7 +584,7 @@ def _read_media_closure(
     finally:
         connection.close()
 
-    objects = {
+    objects: dict[str, dict[str, Any]] = {
         str(row[0]): {
             "object_id": str(row[0]), "mime": str(row[1]), "bytes": int(row[2]),
             "width": int(row[3]), "height": int(row[4]), "path": str(row[5]),
@@ -1738,6 +1738,7 @@ def cmd_restore(args: argparse.Namespace) -> int:
                 expected_bytes=entry["bytes"],
             )
         if manifest["manifest_version"] >= 2 and manifest["media_objects"]:
+            assert media_target is not None
             try:
                 os.mkdir(media_target, 0o777)
             except OSError as exc:

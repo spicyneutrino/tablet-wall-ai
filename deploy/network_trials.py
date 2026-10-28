@@ -343,10 +343,8 @@ def make_http_probe(base: str, tablet_id: str, timeout: float):
 async def _poll(probe, predicate, timeout: float, interval: float = 0.1,
                 threaded: bool = False) -> dict[str, Any] | None:
     deadline = time.monotonic() + timeout
-    last = None
     while time.monotonic() < deadline:
         state = await asyncio.to_thread(probe) if threaded else await probe()
-        last = state
         if predicate(state):
             return state
         await asyncio.sleep(interval)

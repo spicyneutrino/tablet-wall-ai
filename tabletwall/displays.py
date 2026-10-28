@@ -8,7 +8,7 @@ against, so editing a measurement never silently changes an old layout.
 import math
 import uuid
 from datetime import datetime, timezone
-from typing import Any
+from typing import Any, cast
 
 from tabletwall import persist
 
@@ -65,6 +65,8 @@ def save_profile(
     top = _nonnegative(bezels.get("top"), "bezel top")
     right = _nonnegative(bezels.get("right"), "bezel right")
     bottom = _nonnegative(bezels.get("bottom"), "bezel bottom")
+    pixel_width: float | None
+    pixel_height: float | None
     if panel_pixels is not None:
         pixel_width = _positive(panel_pixels.get("width"), "panel pixel width")
         pixel_height = _positive(panel_pixels.get("height"), "panel pixel height")
@@ -87,7 +89,7 @@ def save_profile(
             (device, revision, width, height, left, top, right, bottom,
              pixel_width, pixel_height, label, provenance, _now()),
         )
-    return profile(device, revision)
+    return cast(dict[str, Any], profile(device, revision))
 
 
 def save_calibration(
@@ -145,7 +147,7 @@ def save_calibration(
              mode, quarter_turn, offset_x, offset_y, mm_x, mm_y, anchor_edge,
              uncertainty, method, _now()),
         )
-    return calibration(device, revision)
+    return cast(dict[str, Any], calibration(device, revision))
 
 
 def copy_records(source_id: str, target_id: str) -> dict[str, int]:
@@ -270,7 +272,7 @@ def list_profiles() -> list[dict[str, Any]]:
             "ON latest.device_id = p.device_id AND latest.revision = p.revision "
             "ORDER BY p.device_id"
         ).fetchall()
-    return [_profile_row(row) for row in rows]
+    return [cast(dict[str, Any], _profile_row(row)) for row in rows]
 
 
 def list_calibrations() -> list[dict[str, Any]]:
@@ -286,7 +288,7 @@ def list_calibrations() -> list[dict[str, Any]]:
             "ON latest.device_id = c.device_id AND latest.revision = c.revision "
             "ORDER BY c.device_id"
         ).fetchall()
-    return [_calibration_row(row) for row in rows]
+    return [cast(dict[str, Any], _calibration_row(row)) for row in rows]
 
 
 def _profile_row(row: Any) -> dict[str, Any] | None:

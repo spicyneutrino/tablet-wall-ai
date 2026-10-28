@@ -9,7 +9,7 @@ HOST ?= 127.0.0.1
 
 .DEFAULT_GOAL := help
 
-.PHONY: help sync dev run test sim guide clean
+.PHONY: help sync dev run test lint typecheck coverage sim guide clean
 
 help: ## Show this help
 	@echo "tablet-wall-ai:"
@@ -29,6 +29,15 @@ test: ## Run Python and client JavaScript tests
 	@command -v node >/dev/null 2>&1 || { echo "make test needs Node.js for the client tests"; exit 1; }
 	@cd "$(ROOT)" && uv run pytest
 	@cd "$(ROOT)" && for test in tests/*.test.js; do node "$$test" || exit $$?; done
+
+lint: ## Check production Python for syntax and common defects
+	@cd "$(ROOT)" && uv run ruff check main.py tabletwall deploy
+
+typecheck: ## Check annotated production Python types
+	@cd "$(ROOT)" && uv run mypy
+
+coverage: ## Measure Python line/branch coverage and enforce the baseline
+	@cd "$(ROOT)" && uv run pytest --cov --cov-report=term-missing --cov-report=xml
 
 sim: ## Exercise 18 virtual tablets against an isolated app/database
 	@cd "$(ROOT)" && uv run python simulator/run.py

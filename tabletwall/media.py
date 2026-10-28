@@ -50,7 +50,6 @@ from tabletwall.media_limits import (
     MAX_OBJECT_BYTES,
     MAX_SOURCE_BYTES,
     MAX_VIDEO_BYTES,
-    MAX_WAITING_UPLOADS,
     PIPELINE_VERSION,
     QUOTA_BYTES,
     RECEIVE_TIMEOUT_S,
@@ -852,6 +851,8 @@ def _forwarded(headers: Any) -> bool:
 
 def _loopback_peer(request: Any) -> bool:
     host = request.client.host if request.client else None
+    if host is None:
+        return False
     try:
         return ipaddress.ip_address(host).is_loopback
     except (TypeError, ValueError):
