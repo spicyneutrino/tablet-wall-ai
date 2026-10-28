@@ -8,10 +8,10 @@ scanning, addressed by the opaque content ID ``sha256:`` plus the lowercase
 SHA-256 of their bytes, and read-only. Identical bytes therefore have one
 identity, a rename preserves it, and replacing the bytes mints a new one.
 
-Every read path re-scans the directory — startup, ``GET /assets``, scene
-acceptance, and serving — so the inventory cannot go stale in one place and
-fresh in another: a file copied in is usable at once, and an ID whose bytes
-are gone 404s instead of serving something old.
+Every read path scans the directory and hashes its current bytes. Decoded
+format and dimensions are cached by content hash, with a bounded entry count.
+A copied file is usable at once, and an ID whose bytes are gone returns 404.
+File metadata alone never establishes that bytes passed image validation.
 
 Two invariants are worth spelling out because the design hangs off them:
 
@@ -41,8 +41,10 @@ import hashlib
 import logging
 import os
 import stat
+from collections import OrderedDict
 from dataclasses import dataclass
 from io import BytesIO
+from threading import Lock
 from typing import Any
 
 from PIL import Image
@@ -143,6 +145,12 @@ class Asset:
 # wholesale by ``refresh`` (never updated in place), so a concurrent reader
 # sees either the previous inventory or the new one, never a partial one.
 _inventory: dict[str, Asset] = {}
+
+# Cache only validation facts, never file paths or bytes. A hash from a new
+# capped read is required on every hit, even if stat metadata was preserved.
+_decoded: OrderedDict[tuple[str, int], tuple[str, int, int]] = OrderedDict()
+_decode_lock = Lock()
+_MAX_DECODE_CACHE = 256
 
 
 def asset_dir() -> str:
@@ -314,12 +322,23 @@ def _load(name: str, path: str) -> Asset:
         # is also what bounds the decode below: nothing over the cap can be
         # opened, let alone decoded.
         raise _Rejected("larger than the 10 MiB limit")
-    image_format, width, height = _inspect(data)
+    asset_id = ASSET_ID_PREFIX + hashlib.sha256(data).hexdigest()
+    key = (asset_id, MAX_ASSET_PIXELS)
+    with _decode_lock:
+        inspected = _decoded.get(key)
+        if inspected is None:
+            inspected = _inspect(data)
+            _decoded[key] = inspected
+            if len(_decoded) > _MAX_DECODE_CACHE:
+                _decoded.popitem(last=False)
+        else:
+            _decoded.move_to_end(key)
+    image_format, width, height = inspected
     lowered = name.lower()
     if not any(lowered.endswith(ext) for ext in _EXTENSIONS_BY_FORMAT[image_format]):
         raise _Rejected(f"extension does not match the {image_format} content")
     return Asset(
-        id=ASSET_ID_PREFIX + hashlib.sha256(data).hexdigest(),
+        id=asset_id,
         name=name,
         mime=_MIME_BY_FORMAT[image_format],
         width=width,
