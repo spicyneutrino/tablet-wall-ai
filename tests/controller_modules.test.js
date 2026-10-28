@@ -154,3 +154,31 @@ assert.equal(inventoryController.model.normalizeAssets({}), null);
     assert.equal(inventoryRuntime.contentView, "image");
     assert.equal(inventoryRuntime.pendingContent, null);
 })().catch(error => { console.error(error); process.exitCode = 1; });
+load("physical-stage.js");
+const physicalEditor = {
+    busy: false, selectedId: "tablet", draft: { slots: { tablet: {
+        center_x_mm: 10, center_y_mm: 20, nudge_x_mm: 0, nudge_y_mm: 0, mount_angle: 270
+    } } }
+};
+const physicalHistory = [];
+const physicalStage = context.window.PhysicalStage.create({
+    state: physicalEditor, selectedSlot: () => physicalEditor.draft.slots.tablet,
+    clone: plain, finiteOr: (value, fallback) => Number.isFinite(Number(value)) ? Number(value) : fallback,
+    roundTo: (value, digits) => Math.round(value * 10 ** digits) / 10 ** digits,
+    formatNumber: String, pushUndo: before => physicalHistory.push(before),
+    afterDraftChange: () => {}, announce: () => {},
+    el: { stageSvg: { classList: { remove: () => {} }, hasPointerCapture: () => false } }
+});
+physicalStage.nudgeSelected(0.1, -0.2);
+assert.equal(physicalEditor.draft.slots.tablet.nudge_x_mm, 0.1);
+assert.equal(physicalHistory[0].slots.tablet.nudge_x_mm, 0, "history holds the draft before the nudge");
+physicalStage.rotateSelected();
+assert.equal(physicalEditor.draft.slots.tablet.mount_angle, 0);
+const preDrag = plain(physicalEditor.draft);
+physicalEditor.draft.slots.tablet.center_x_mm = 99;
+physicalEditor.drag = { id: "tablet", pointerId: 3, moved: true, preDraft: preDrag };
+physicalStage.onPointerCancel({ pointerId: 2 });
+assert.equal(physicalEditor.draft.slots.tablet.center_x_mm, 99, "a different pointer cannot cancel a drag");
+physicalStage.onPointerCancel({ pointerId: 3 });
+assert.equal(physicalEditor.draft.slots.tablet.center_x_mm, 10);
+assert.equal(physicalHistory.length, 2, "a cancelled drag adds no history entry");
