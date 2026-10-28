@@ -8,7 +8,7 @@
     <title>Wall console · tablet-wall-ai</title>
     <link rel="icon" href="favicon.svg" type="image/svg+xml">
     <link rel="stylesheet" href="physical-legacy.css?v=2">
-    <link rel="stylesheet" href="physical.css?v=9">
+    <link rel="stylesheet" href="physical.css?v=10">
 </head>
 <body class="physical">
 <a class="skip" href="#stage-title">Skip to the wall stage</a>
@@ -534,6 +534,7 @@
             <div class="field-actions">
                 <button type="button" class="btn" id="btn-diag-refresh">Refresh diagnostics</button>
                 <button type="button" class="btn btn-ghost" id="btn-diag-verify">Verify object bytes</button>
+                <button type="button" class="btn btn-ghost" id="btn-diag-download" disabled>Download report</button>
             </div>
             <p class="form-msg" id="diag-msg" role="status" aria-live="polite" hidden></p>
             <dl class="diag-grid" id="diag-grid"></dl>
@@ -601,6 +602,6 @@
     <p class="noscript">This page needs JavaScript. It talks to the server over plain HTTP.</p>
 </noscript>
 
-<script src="physical.js?v=8"></script>
+<script src="physical.js?v=9"></script>
 </body>
 </html>

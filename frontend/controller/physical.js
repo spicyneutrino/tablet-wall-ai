@@ -127,6 +127,7 @@
         diagState: document.getElementById("diag-state"),
         btnDiagRefresh: document.getElementById("btn-diag-refresh"),
         btnDiagVerify: document.getElementById("btn-diag-verify"),
+        btnDiagDownload: document.getElementById("btn-diag-download"),
         diagMsg: document.getElementById("diag-msg"),
         diagGrid: document.getElementById("diag-grid"),
         diagIntegrity: document.getElementById("diag-integrity"),
@@ -257,6 +258,7 @@
         playbackAnnouncedState: null,
         playbackTimer: null,
         diagnostics: null,
+        diagnosticsCapturedAt: null,
         diagnosticsState: "pending",
         diagnosticsError: null,
         diagnosticsLoading: false,
@@ -723,7 +725,7 @@
     function showTab(name, options) {
         const settings = options || {};
         const entries = tabEntries();
-        const resolved = compactView() ? "show" : name;
+        const resolved = name;
         let target = null;
         entries.forEach(function (entry) {
             if (entry.name === resolved) target = entry;
@@ -745,7 +747,7 @@
         if (changed && el.railPanels) {
             el.railPanels.scrollTop = state.tabScroll[resolved] || 0;
         }
-        if (settings.persist && !compactView()) {
+        if (settings.persist) {
             storeTab(name);
             state.tabDecided = true;
         }
@@ -782,8 +784,7 @@
     }
 
     function onCompactChange() {
-        const stored = compactView() ? null : readStoredTab();
-        showTab(stored || "show", { persist: false });
+        showTab(state.tabName || readStoredTab() || "show", { persist: false });
     }
 
     function activePlaybackSession() {
@@ -4420,6 +4421,10 @@
 
     function renderDiagnostics() {
         diagChip();
+        if (el.btnDiagDownload) {
+            el.btnDiagDownload.disabled = state.diagnosticsLoading
+                || state.diagnosticsState !== "ready";
+        }
         if (!el.diagGrid) return;
         const data = state.diagnostics;
         const facts = [];
@@ -4431,6 +4436,7 @@
             const db = data.db && typeof data.db === "object" ? data.db : {};
             const backup = data.backup && typeof data.backup === "object" ? data.backup : {};
             const clients = data.clients && typeof data.clients === "object" ? data.clients : {};
+            facts.push(["Last checked", new Date(state.diagnosticsCapturedAt).toLocaleString()]);
             facts.push(["Storage",
                 formatBytes(media.used_bytes) + " used of " + formatBytes(media.quota_bytes)
                 + " (" + formatPercent(media.used_bytes, media.quota_bytes) + ")"]);
@@ -4457,6 +4463,7 @@
     async function loadDiagnostics(verify) {
         if (state.diagnosticsLoading) return;
         state.diagnosticsLoading = true;
+        renderIntegrity(null);
         state.diagnosticsState = state.diagnostics ? "refreshing" : "loading";
         if (el.btnDiagRefresh) el.btnDiagRefresh.disabled = true;
         if (el.btnDiagVerify) el.btnDiagVerify.disabled = true;
@@ -4467,17 +4474,18 @@
                 throw new Error("the answer was not a diagnostics report");
             }
             state.diagnostics = data;
+            state.diagnosticsCapturedAt = new Date().toISOString();
             state.diagnosticsState = "ready";
             state.diagnosticsError = null;
             if (verify) {
                 const integrity = data.media && data.media.integrity
                     ? data.media.integrity : data.integrity;
+                const passed = integrity && integrity.ok === true
+                    && (!Array.isArray(integrity.problems) || integrity.problems.length === 0);
                 renderIntegrity(integrity);
                 setMsg(el.diagMsg, integrity
-                    ? (integrity.ok && (!Array.isArray(integrity.problems)
-                        || integrity.problems.length === 0)
-                        ? "Object integrity check passed." : "Object integrity check found problems.")
-                    : "This server did not return an integrity report.", integrity ? "ok" : "warn");
+                    ? (passed ? "Object integrity check passed." : "Object integrity check found problems.")
+                    : "This server did not return an integrity report.", integrity ? (passed ? "ok" : "err") : "warn");
             } else {
                 setMsg(el.diagMsg, "", null);
             }
@@ -4495,6 +4503,29 @@
             if (el.btnDiagVerify) el.btnDiagVerify.disabled = false;
             renderDiagnostics();
         }
+    }
+
+    function downloadDiagnostics() {
+        if (state.diagnosticsLoading || state.diagnosticsState !== "ready") return;
+        const report = {
+            format: "tablet-wall-diagnostics-v1",
+            captured_at: state.diagnosticsCapturedAt,
+            evidence: "Software diagnostics only. Physical tablet validation is pending.",
+            diagnostics: state.diagnostics,
+        };
+        const blob = new Blob([JSON.stringify(report, null, 2) + "\n"], {
+            type: "application/json",
+        });
+        const url = URL.createObjectURL(blob);
+        const link = document.createElement("a");
+        link.href = url;
+        link.download = "tablet-wall-diagnostics-"
+            + state.diagnosticsCapturedAt.replace(/[:.]/g, "-") + ".json";
+        document.body.appendChild(link);
+        link.click();
+        link.remove();
+        setTimeout(function () { URL.revokeObjectURL(url); }, 1000);
+        setMsg(el.diagMsg, "Diagnostics report downloaded. Review it before sharing.", "ok");
     }
 
     async function refreshRoster() {
@@ -5187,6 +5218,9 @@
             });
         }
 
+        if (el.btnDiagDownload) {
+            el.btnDiagDownload.addEventListener("click", downloadDiagnostics);
+        }
         if (el.btnDiagRefresh) {
             el.btnDiagRefresh.addEventListener("click", function () {
                 loadDiagnostics(false);

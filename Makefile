@@ -28,7 +28,7 @@ run: ## Run the server without auto-reload
 test: ## Run Python and client JavaScript tests
 	@command -v node >/dev/null 2>&1 || { echo "make test needs Node.js for the client tests"; exit 1; }
 	@cd "$(ROOT)" && uv run pytest
-	@cd "$(ROOT)" && node tests/client_image.test.js
+	@cd "$(ROOT)" && for test in tests/*.test.js; do node "$$test" || exit $$?; done
 
 sim: ## Exercise 18 virtual tablets against an isolated app/database
 	@cd "$(ROOT)" && uv run python simulator/run.py

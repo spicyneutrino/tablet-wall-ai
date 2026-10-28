@@ -2799,6 +2799,7 @@ async def _device_loop(websocket: WebSocket, device_id: str) -> None:
             record = devices.get(device_id)
             if (
                 record is not None
+                and device_sockets.get(device_id) is websocket
                 and isinstance(sample_id, str)
                 and isinstance(c3, (int, float))
                 and not isinstance(c3, bool)

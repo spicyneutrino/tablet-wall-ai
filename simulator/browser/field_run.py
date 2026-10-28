@@ -167,6 +167,71 @@ async def main(artifacts: Path) -> int:
             "() => document.querySelector('#panel-system')?.hidden === false",
             timeout=5000,
         )
+        await editor.wait_for_function("!document.querySelector('#btn-diag-download').disabled")
+        await editor.click("#btn-diag-verify")
+        await editor.wait_for_function("document.querySelector('#diag-msg').textContent.includes('passed')")
+        check("clean integrity has a success message",
+              await editor.locator("#diag-msg").get_attribute("data-kind") == "ok")
+        async with editor.expect_download() as pending_download:
+            await editor.click("#btn-diag-download")
+        download = await pending_download.value
+        await download.save_as(str(artifacts / "diagnostics.json"))
+        exported = json.loads((artifacts / "diagnostics.json").read_text())
+        check("diagnostics download contains the captured report and software evidence label",
+              exported["format"] == "tablet-wall-diagnostics-v1"
+              and exported["captured_at"].endswith("Z")
+              and exported["diagnostics"]["media"]["integrity"]["ok"] is True
+              and "Physical tablet validation is pending" in exported["evidence"])
+        await editor.click("#btn-diag-refresh")
+        await editor.wait_for_function("!document.querySelector('#btn-diag-download').disabled")
+        check("refresh clears the old integrity result",
+              await editor.locator("#diag-integrity").is_hidden())
+
+        async def damaged_diagnostics(route):
+            response = await route.fetch()
+            data = await response.json()
+            data["media"]["integrity"] = {"ok": False, "problems": ["missing fixture object"]}
+            await route.fulfill(response=response, json=data)
+
+        await editor.route("**/diagnostics?verify=1", damaged_diagnostics)
+        await editor.click("#btn-diag-verify")
+        await editor.wait_for_function("document.querySelector('#diag-msg').textContent.includes('found problems')")
+        check("failed integrity is an error with a visible problem",
+              await editor.locator("#diag-msg").get_attribute("data-kind") == "err"
+              and "missing fixture object" in await editor.locator("#diag-problems").inner_text())
+        await editor.screenshot(path=str(artifacts / "diagnostics-error-desktop.png"), full_page=True)
+        await editor.unroute("**/diagnostics?verify=1", damaged_diagnostics)
+
+        async def unavailable_diagnostics(route):
+            await route.fulfill(status=503, json={"detail": "fixture outage"})
+
+        await editor.route("**/diagnostics", unavailable_diagnostics)
+        await editor.click("#btn-diag-refresh")
+        await editor.wait_for_function("document.querySelector('#diag-state').textContent === 'error'")
+        check("failed refresh blocks stale exports and hides integrity",
+              await editor.locator("#btn-diag-download").is_disabled()
+              and await editor.locator("#diag-integrity").is_hidden())
+        await editor.unroute("**/diagnostics", unavailable_diagnostics)
+        await editor.click("#btn-diag-refresh")
+        await editor.wait_for_function("!document.querySelector('#btn-diag-download').disabled")
+        await editor.set_viewport_size({"width": 390, "height": 844})
+        await editor.click("#tab-system")
+        check("mobile diagnostics has no horizontal overflow",
+              await editor.evaluate("document.documentElement.scrollWidth <= innerWidth"))
+        check("mobile task tabs expose diagnostics and support keyboard navigation",
+              await editor.locator("#btn-diag-download").is_visible()
+              and await editor.locator("#tab-system").get_attribute("aria-selected") == "true")
+        await editor.locator("#tab-system").focus()
+        await editor.keyboard.press("Home")
+        check("mobile Home selects Show", await editor.locator("#panel-show").is_visible())
+        await editor.keyboard.press("End")
+        check("mobile End returns to System", await editor.locator("#panel-system").is_visible())
+        await editor.reload(wait_until="networkidle")
+        check("mobile reload preserves the selected task",
+              await editor.locator("#panel-system").is_visible())
+        await editor.locator("#btn-diag-download").scroll_into_view_if_needed()
+        await editor.screenshot(path=str(artifacts / "diagnostics-mobile.png"))
+        await editor.set_viewport_size({"width": 1440, "height": 1000})
         await editor.select_option("#rebind-new", new_id)
         await editor.select_option("#rebind-replaces", old_id)
         await editor.fill("#rebind-number", str(old_number))

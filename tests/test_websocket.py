@@ -9,9 +9,12 @@ contract.
 performs the handshake, and exiting it simulates a clean disconnect.
 """
 
+import asyncio
 import time
 import uuid
 from datetime import datetime, timedelta, timezone
+from types import SimpleNamespace
+from unittest.mock import AsyncMock
 
 import pytest
 from fastapi.testclient import TestClient
@@ -129,6 +132,25 @@ class TestControllerSocket:
 
 
 class TestDeviceSocket:
+    def test_replaced_socket_cannot_consume_clock_sample(self, client, device_payload):
+        client.post("/devices/register", json=device_payload)
+        record = main.devices[DEVICE_ID]
+        record["clock_pending"] = {
+            "probe": {"c0": 1.0, "s1": 2.0, "s2": 3.0}
+        }
+        replaced = SimpleNamespace(receive=AsyncMock(side_effect=[
+            {"type": "websocket.receive",
+             "text": '{"type":"clock_result","id":"probe","c3":4.0}'},
+            {"type": "websocket.disconnect"},
+        ]))
+        main.device_sockets[DEVICE_ID] = object()
+
+        asyncio.run(main._device_loop(replaced, DEVICE_ID))
+
+        assert "probe" in record["clock_pending"]
+        assert "clock_samples" not in record
+        assert "clock" not in record
+
     def test_welcome_carries_the_heartbeat_interval(self, client, device_payload):
         client.post("/devices/register", json=device_payload)
 
