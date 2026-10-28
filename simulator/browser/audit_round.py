@@ -59,10 +59,11 @@ async def run(round_number: int, artifacts: Path) -> None:
                             try:
                                 page = await context.new_page()
                                 errors = report["errors"]
-                                page.on("pageerror", lambda error: errors.append({"kind":"pageerror","message":str(error)}))
-                                page.on("console", lambda message: errors.append({"kind":"console","message":message.text}) if message.type == "error" else None)
-                                page.on("response", lambda response: errors.append({"kind":"http","status":response.status,"url":response.url}) if response.status >= 400 else None)
-                                page.on("requestfailed", lambda request: errors.append({"kind":"network","url":request.url,"failure":request.failure}))
+                                probe = {"offline": False}
+                                page.on("pageerror", lambda error: errors.append({"kind":"pageerror","message":str(error),"probe":probe["offline"]}))
+                                page.on("console", lambda message: errors.append({"kind":"console","message":message.text,"probe":probe["offline"]}) if message.type == "error" else None)
+                                page.on("response", lambda response: errors.append({"kind":"http","status":response.status,"url":response.url,"probe":probe["offline"]}) if response.status >= 400 else None)
+                                page.on("requestfailed", lambda request: errors.append({"kind":"network","url":request.url,"failure":request.failure,"probe":probe["offline"]}))
                                 if round_number % 2 == 0:
                                     client = await context.new_page()
                                     await client.goto(origin + "/client/")
@@ -82,10 +83,13 @@ async def run(round_number: int, artifacts: Path) -> None:
                                     assert metrics["scroll"] <= width, (label,path,metrics)
                                     await page.screenshot(path=str(artifacts / f"{label}-{'physical' if 'physical' in path else 'logical'}.png"), full_page=True)
                                 if round_number >= 3:
+                                    probe["offline"] = True
                                     await context.set_offline(True)
                                     await page.wait_for_timeout(500)
                                     await context.set_offline(False)
                                     await page.reload(wait_until="networkidle")
+                                    await page.wait_for_function("document.querySelector('#etag-state').textContent === 'current'")
+                                    probe["offline"] = False
                                     report["checks"].append(f"{label} recovered after offline and reload")
                             finally:
                                 await context.close()
@@ -93,7 +97,7 @@ async def run(round_number: int, artifacts: Path) -> None:
                         await browser.close()
                 report["checks"].append("all viewport document widths fit")
                 # Reconnect probes intentionally generate transport errors while offline.
-                unexpected=[e for e in report["errors"] if not (round_number >= 3 and e["kind"] == "network" and "ERR_INTERNET_DISCONNECTED" in str(e))]
+                unexpected=[e for e in report["errors"] if not (e.get("probe") and e["kind"] in {"network", "console"} and any(message in str(e) for message in ("ERR_INTERNET_DISCONNECTED", "ERR_ABORTED")))]
                 report["unexpected_errors"] = unexpected
                 assert not unexpected, unexpected
     finally:

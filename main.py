@@ -31,7 +31,6 @@ from fastapi import (
     HTTPException,
     Query,
     Request,
-    Response,
     WebSocket,
     WebSocketDisconnect,
 )
@@ -43,7 +42,7 @@ from starlette.datastructures import Headers
 # ``tabletwall.hub`` is imported both as a module and as its individual names:
 # the tests patch the sweeper's timing constants on the reader module, i.e.
 # ``monkeypatch.setattr(main.hub, "HEARTBEAT_TIMEOUT_S", ...)``.
-from tabletwall import hub
+from tabletwall import hub as hub
 from tabletwall.hub import (
     _broadcast,
     _broadcast_offline,
@@ -76,7 +75,7 @@ from tabletwall.protocol import (
 )
 # Curated still-image assets (PROTOCOL.md "Still images"): the directory scan,
 # content IDs, and byte-verified serving behind ``GET /assets``.
-from tabletwall import assets, clock, displays, geometry, media, media_serve, media_video, playback
+from tabletwall import assets, clock, displays, geometry, media, media_video, playback
 from tabletwall import persist
 from tabletwall import writer as writers
 from tabletwall.media_limits import (
@@ -122,6 +121,9 @@ from tabletwall.state import (
     devices,
     wall,
 )
+
+from tabletwall.routes.assets import router as assets_router
+from tabletwall.routes.devices import router as devices_router
 
 _sweeper_task: asyncio.Task[Any] | None = None
 
@@ -495,11 +497,9 @@ def _valid_saved_content(saved: Any) -> bool:
 
 app = FastAPI(lifespan=lifespan)
 
-from tabletwall.routes.assets import router as assets_router
 
 app.include_router(assets_router)
 
-from tabletwall.routes.devices import router as devices_router
 
 app.include_router(devices_router)
 
@@ -694,7 +694,7 @@ def _origin_denial(headers: Headers) -> JSONResponse | None:
     state, origin = _origin_env_state(OPERATOR_ORIGIN_ENV)
     if state == _ORIGIN_UNSET:
         return None
-    if state == _ORIGIN_INVALID:
+    if state == _ORIGIN_INVALID or origin is None:
         # Fail closed, loudly: the operator asked for the guard and the value
         # they gave it cannot match anything a browser sends.
         return JSONResponse(
@@ -773,7 +773,7 @@ async def operator_config():
     state, origin = _origin_env_state(TABLET_ORIGIN_ENV)
     if state == _ORIGIN_UNSET:
         return {"tablet_origin": None}
-    if state == _ORIGIN_INVALID:
+    if state == _ORIGIN_INVALID or origin is None:
         return JSONResponse(
             status_code=500,
             content={
@@ -1116,6 +1116,7 @@ async def put_scene(update: SceneUpdate):
         # managed ID falls back to the curated scan. Intrinsic dimensions come
         # from the published record or the file this scan just validated —
         # never from the caller.
+        assert content.asset is not None
         managed = await asyncio.to_thread(media.find_object, content.asset)
         if managed is not None:
             asset_id, width, height = managed["id"], managed["width"], managed["height"]
@@ -1935,9 +1936,9 @@ async def put_physical_layout_v3(command: PhysicalLayoutCommand, request: Reques
                 raise HTTPException(status_code=422, detail=f"slot {field} is required")
         profile_revision = slot.get("profile_revision")
         calibration_revision = slot.get("calibration_revision")
-        if displays.profile(device_id, profile_revision) is None:
+        if not isinstance(profile_revision, int) or displays.profile(device_id, profile_revision) is None:
             raise HTTPException(status_code=422, detail="slot profile does not exist")
-        calibration = displays.calibration(device_id, calibration_revision)
+        calibration = displays.calibration(device_id, calibration_revision) if isinstance(calibration_revision, int) else None
         if calibration is None or calibration["profile_revision"] != profile_revision:
             raise HTTPException(
                 status_code=422,
@@ -2160,6 +2161,7 @@ def _playback_status() -> dict[str, Any]:
                     lease.ready
                     and lease.clock_ok
                     and lease.lease_expires_ms > now
+                    and session.pending is not None
                     and lease.lease_expires_ms >= max(now, session.pending.effective_ms)
                 ),
                 "video": lease.video,
@@ -2480,7 +2482,7 @@ def _playback_connections(cohort: list[str]) -> dict[str, str]:
 async def start_playback_v3(command: PlaybackStartCommand | None = None):
     global _playback_session
     supplied = command is not None and "policy" in command.model_fields_set
-    explicit = command.policy if supplied else None
+    explicit = command.policy if command is not None and supplied else None
     if supplied and explicit not in playback.POLICIES:
         raise HTTPException(status_code=422, detail='policy must be "online" or "strict"')
     session = _playback_session
@@ -2772,10 +2774,10 @@ async def _device_loop(websocket: WebSocket, device_id: str) -> None:
                     best is not None
                     and best["uncertainty_ms"] <= clock.MAX_UNCERTAINTY_MS
                 )
-                pending = session.pending
+                preparation = session.pending
                 expected = (
-                    pending.leases[device_id].mapping_revision
-                    if pending is not None and device_id in pending.leases else None
+                    preparation.leases[device_id].mapping_revision
+                    if preparation is not None and device_id in preparation.leases else None
                 )
                 try:
                     accepted = playback.accept_ready(
@@ -2911,7 +2913,7 @@ async def ws_device(
     record["protocol"] = negotiated
     record["caps"] = _parse_caps(caps)
     record["connection_id"] = uuid.uuid4().hex
-    if None not in (w, h, dpr, orientation, mode):
+    if w is not None and h is not None and dpr is not None and orientation is not None and mode is not None:
         try:
             record["viewport"] = {
                 "width": float(w), "height": float(h), "dpr": float(dpr),
