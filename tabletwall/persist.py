@@ -4,8 +4,10 @@ One table, one row: the active layout, the active scene, the revision, and
 the generation. Two further tables hold the *saved* layouts and scenes behind
 named save/recall: they are keyed by name and written by their own CRUD calls,
 which never touch the wall row — saving or deleting a snapshot therefore
-cannot bump the revision or move the active wall. Sockets, presence, heartbeat
-timestamps, and the device roster stay in memory. Standard library ``sqlite3``
+cannot bump the revision or move the active wall. Sockets, live presence, and monotonic
+heartbeat clocks stay in memory. A versioned metadata document stores only the
+validated device identity, display number, color, dimensions, type, and last
+contact time. Presence and negotiated connection details are never stored. Standard library ``sqlite3``
 only — no new dependencies.
 
 The database file comes from ``TABLET_WALL_DB`` (read at call time, so tests
@@ -20,6 +22,7 @@ import secrets
 import sqlite3
 from collections.abc import Iterator, Mapping
 from contextlib import contextmanager
+from contextvars import ContextVar
 from datetime import datetime, timezone
 from typing import Any
 
@@ -414,6 +417,22 @@ def db_path() -> str:
     return os.environ.get("TABLET_WALL_DB") or DEFAULT_DB_FILENAME
 
 
+_active_connection: ContextVar[tuple[str, sqlite3.Connection] | None] = ContextVar(
+    "tablet_wall_transaction", default=None,
+)
+
+
+@contextmanager
+def transaction() -> Iterator[None]:
+    """Commit synchronous persistence calls together. The body must not await."""
+    with _connection() as connection:
+        token = _active_connection.set((db_path(), connection))
+        try:
+            yield
+        finally:
+            _active_connection.reset(token)
+
+
 @contextmanager
 def _connection() -> Iterator[sqlite3.Connection]:
     """A connection to a migrated database; commits on success, always closes.
@@ -425,6 +444,12 @@ def _connection() -> Iterator[sqlite3.Connection]:
     connection closes with its open transaction rolled back, so a failed
     mutation never half-persists.
     """
+    active = _active_connection.get()
+    if active is not None:
+        if active[0] != db_path():
+            raise RuntimeError("database path changed during a transaction")
+        yield active[1]
+        return
     ensure_schema()
     connection = sqlite3.connect(db_path())
     try:
@@ -770,3 +795,81 @@ def save_meta(key: str, value: Any) -> None:
             "ON CONFLICT(key) DO UPDATE SET value = excluded.value",
             (key, document),
         )
+
+
+_DEVICE_ROSTER_KEY = "device_roster.v1"
+_DEVICE_FIELDS = frozenset({
+    "device_id", "width", "height", "type", "color", "number", "last_seen",
+})
+
+
+def _validate_devices(document: Any) -> dict[str, dict[str, Any]]:
+    from tabletwall.protocol import (
+        MAX_DEVICE_DIMENSION, MAX_DEVICE_TYPE_LENGTH, MAX_DEVICES,
+        _normalise_color, _parse_device_id,
+    )
+
+    if not isinstance(document, dict) or len(document) > MAX_DEVICES:
+        raise SchemaError("device roster must be a bounded mapping")
+    numbers: set[int] = set()
+    for key, record in document.items():
+        if (
+            _parse_device_id(key) != key
+            or not isinstance(record, dict)
+            or set(record) - _DEVICE_FIELDS
+            or not (_DEVICE_FIELDS - {"number"}) <= set(record)
+            or record.get("device_id") != key
+        ):
+            raise SchemaError("device roster contains an invalid identity or fields")
+        if any(
+            type(record.get(dimension)) is not int
+            or not 0 < record[dimension] <= MAX_DEVICE_DIMENSION
+            for dimension in ("width", "height")
+        ):
+            raise SchemaError("device roster contains invalid dimensions")
+        label = record.get("type")
+        if (
+            not isinstance(label, str)
+            or not 0 < len(label) <= MAX_DEVICE_TYPE_LENGTH
+            or any(not 0x20 <= ord(char) <= 0x7E for char in label)
+        ):
+            raise SchemaError("device roster contains an invalid device type")
+        color = record.get("color")
+        try:
+            if color is not None and _normalise_color(color) != color:
+                raise ValueError("noncanonical color")
+            contact = datetime.fromisoformat(record["last_seen"])
+            if contact.utcoffset() is None:
+                raise ValueError("contact time has no timezone")
+        except (KeyError, TypeError, ValueError) as error:
+            raise SchemaError("device roster contains an invalid color or contact time") from error
+        number = record.get("number")
+        if number is not None:
+            if type(number) is not int or not 0 < number <= MAX_DEVICES or number in numbers:
+                raise SchemaError("device roster contains an invalid or duplicate number")
+            numbers.add(number)
+    return document
+
+
+def load_devices() -> dict[str, dict[str, Any]]:
+    """Load validated durable metadata, or an empty roster for older databases."""
+    with _connection() as connection:
+        row = connection.execute(
+            "SELECT value FROM schema_meta WHERE key = ?", (_DEVICE_ROSTER_KEY,)
+        ).fetchone()
+    if row is None:
+        return {}
+    try:
+        document = json.loads(row[0])
+    except (TypeError, json.JSONDecodeError) as error:
+        raise SchemaError("device roster is not valid JSON") from error
+    return _validate_devices(document)
+
+
+def save_devices(records: Mapping[str, Mapping[str, Any]]) -> None:
+    """Whitelist durable fields so sockets and live presence cannot reach SQLite."""
+    document = {
+        key: {field: value for field, value in record.items() if field in _DEVICE_FIELDS}
+        for key, record in records.items()
+    }
+    save_meta(_DEVICE_ROSTER_KEY, _validate_devices(document))

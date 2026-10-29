@@ -734,7 +734,7 @@ class TestPlacement:
     def test_a_reservation_survives_a_restart_and_can_be_released(
         self, device_payload
     ):
-        """Register + place, restart (roster gone, placement kept), release."""
+        """A legacy snapshot can retain a placement without device metadata."""
         with TestClient(main.app) as first:
             register(first, device_payload, DEVICE_ID)
             assert first.put(
@@ -742,14 +742,13 @@ class TestPlacement:
                 json={"x": 0, "y": 0, "w": 1000, "h": 1000},
             ).status_code == 200
 
-        # A real restart loses the roster and the sockets (they are
-        # memory-only); the two TestClients below share a process, so drop
-        # them by hand exactly as the process exit would.
+        # Databases from before durable roster metadata keep reservations.
+        persist.save_devices({})
         main.devices.clear()
         main.device_sockets.clear()
 
         with TestClient(main.app) as second:
-            # The roster was never persisted, but the placement was.
+            # A missing legacy roster must not hide a persisted reservation.
             assert DEVICE_ID not in second.get("/devices").json()
             assert DEVICE_ID in second.get("/wall").json()["placements"]
 

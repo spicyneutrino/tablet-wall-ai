@@ -12,10 +12,9 @@ tablets with the numbers they remember, as real tablets do after a restart.
 It never touches the configured database, never binds port 8000 and removes
 its temp directory. Exit 0 means every check passed; 1 prints each failure.
 
-What it does not prove: the roster and display numbers are memory-only, so the
-backup carries neither (tablets re-send their number; this checks that the
-restored server honours it and that placements are still attached). It does
-not exercise a real host, TLS, a real tablet, or elapsed time.
+The backup carries durable roster metadata and display numbers. The restored
+roster starts offline and tablets retain their numbers when they re-register.
+The drill does not exercise a real host, TLS, a real tablet, or elapsed time.
 """
 
 from __future__ import annotations
@@ -194,6 +193,7 @@ def observe(instance: Instance) -> dict:
     library = must(api("GET", "/media"), 200, "library")["assets"]
     return {
         "wall": wall,
+        "devices": must(api("GET", "/devices"), 200, "devices"),
         "layouts": must(api("GET", "/layouts"), 200, "layouts"),
         "scenes": must(api("GET", "/scenes"), 200, "scenes"),
         "playlist": must(api("GET", "/api/v3/playlist"), 200, "playlist")["playlist"],
@@ -279,7 +279,9 @@ def drill(work: Path) -> None:
         thumb = uploads["active"]["thumbnail"]["id"]
         check(served_sha(restored, thumb)[0] == 200, "a restored rendition (thumbnail) is served")
         check(served_sha(restored, omitted["id"])[0] == 404, "the omitted upload is not served")
-        check(restored.request("GET", "/devices")[1] == {}, "the roster starts empty (it is memory-only)")
+        roster = must(restored.request("GET", "/devices"), 200, "restored devices")
+        check(roster == expected["snapshot"]["devices"], "durable roster metadata is identical")
+        check(all(record["online"] is False for record in roster.values()), "every restored tablet starts offline")
 
         print("5. tablets re-register with the numbers they remember")
         for device_id, (number, _x) in TABLETS.items():

@@ -23,6 +23,7 @@ from collections.abc import Callable
 from contextlib import asynccontextmanager
 from copy import deepcopy
 from math import sqrt
+from pathlib import Path
 from typing import Any
 from urllib.parse import urlsplit
 
@@ -77,7 +78,7 @@ from tabletwall.protocol import (
 # Curated still-image assets (PROTOCOL.md "Still images"): the directory scan,
 # content IDs, and byte-verified serving behind ``GET /assets``.
 from tabletwall import assets, clock, displays, geometry, media, media_video, playback
-from tabletwall import persist
+from tabletwall import persist, workers
 from tabletwall import writer as writers
 from tabletwall.media_limits import (
     MAX_SOURCE_BYTES,
@@ -86,8 +87,8 @@ from tabletwall.media_limits import (
     PIPELINE_VERSION,
     VIDEO_RECEIVE_TIMEOUT_S,
 )
-# Persistence of the wall state (PROTOCOL.md "Persistence"): the roster,
-# sockets, presence, and heartbeat timestamps stay in memory. The snapshot
+# Durable wall and roster metadata. Sockets and live presence stay in
+# memory. The snapshot
 # calls save and read the named layouts/scenes beside that one row and never
 # write to it themselves.
 from tabletwall.persist import (
@@ -107,6 +108,10 @@ from tabletwall.persist import (
 # and must keep mutating what the running app uses.
 from tabletwall.state import (
     _device_record,
+    device_changes,
+    checkpoint_devices,
+    checkpoint_loop,
+    restore_devices,
     _ensure_device_number,
     _fresh_wall,
     _is_online,
@@ -126,6 +131,7 @@ from tabletwall.routes.devices import router as devices_router
 from tabletwall.routes.diagnostics import router as diagnostics_router
 
 _sweeper_task: asyncio.Task[Any] | None = None
+_roster_checkpoint_task: asyncio.Task[None] | None = None
 
 # One decoder at a time, with at most two requests waiting (R1). Created in
 # the lifespan so each app start gets a primitive bound to its own loop.
@@ -160,38 +166,48 @@ def _restore_wall_state() -> None:
 
 @asynccontextmanager
 async def lifespan(_: FastAPI):
-    global _sweeper_task, _upload_semaphore, _server_clock, _playback_task
-    # Before the first yield: no socket may be accepted against state that
-    # has not been loaded from the database.
-    _restore_wall_state()
-    # Startup scan (PROTOCOL.md "Still images"): inventory the curated image
-    # directory before the first request, so a directory that exists but
-    # cannot be read fails loudly at boot rather than on the first inventory
-    # read. Every later read path re-scans anyway — this pass only establishes
-    # the initial inventory (an absent directory is an empty one).
-    assets.refresh()
-    # Managed media (R1): create the store layout before the first upload and
-    # remove only stale staging directories left by an interrupted job.
-    media.ensure_dirs()
-    media.cleanup_staging()
-    _upload_semaphore = asyncio.Semaphore(1)
-    _server_clock = clock.ServerClock()
-    _sweeper_task = asyncio.create_task(_sweep_loop())
-    _playback_task = asyncio.create_task(_playback_loop())
-    try:
-        yield
-    finally:
-        task = _sweeper_task
-        _sweeper_task = None
-        if task is not None:
-            task.cancel()
-            with contextlib.suppress(asyncio.CancelledError):
-                await task
-        playback_task = _playback_task
-        if playback_task is not None:
-            playback_task.cancel()
-            with contextlib.suppress(asyncio.CancelledError):
-                await playback_task
+    global _sweeper_task, _upload_semaphore, _server_clock, _playback_task, _roster_checkpoint_task
+    with workers.single_worker():
+        # Before the first yield: no socket may be accepted against state that
+        # has not been loaded from the database.
+        restore_devices()
+        _restore_wall_state()
+        # Startup scan (PROTOCOL.md "Still images"): inventory the curated image
+        # directory before the first request, so a directory that exists but
+        # cannot be read fails loudly at boot rather than on the first inventory
+        # read. Every later read path re-scans anyway — this pass only establishes
+        # the initial inventory (an absent directory is an empty one).
+        assets.refresh()
+        # Managed media (R1): create the store layout before the first upload and
+        # remove only stale staging directories left by an interrupted job.
+        media.ensure_dirs()
+        media.cleanup_staging()
+        _upload_semaphore = asyncio.Semaphore(1)
+        _server_clock = clock.ServerClock()
+        _sweeper_task = asyncio.create_task(_sweep_loop())
+        _roster_checkpoint_task = asyncio.create_task(checkpoint_loop())
+        _playback_task = asyncio.create_task(_playback_loop())
+        try:
+            yield
+        finally:
+            checkpoint_task = _roster_checkpoint_task
+            _roster_checkpoint_task = None
+            if checkpoint_task is not None:
+                checkpoint_task.cancel()
+                with contextlib.suppress(asyncio.CancelledError):
+                    await checkpoint_task
+            checkpoint_devices()
+            task = _sweeper_task
+            _sweeper_task = None
+            if task is not None:
+                task.cancel()
+                with contextlib.suppress(asyncio.CancelledError):
+                    await task
+            playback_task = _playback_task
+            if playback_task is not None:
+                playback_task.cancel()
+                with contextlib.suppress(asyncio.CancelledError):
+                    await playback_task
 
 
 # ---------------------------------------------------------------------------
@@ -522,13 +538,13 @@ class RevalidatedStaticFiles(StaticFiles):
 
 app.mount(
     "/client",
-    RevalidatedStaticFiles(directory="frontend/client", html=True),
+    RevalidatedStaticFiles(directory=Path(__file__).resolve().parent / "frontend/client", html=True),
     name="client"
 )
 
 app.mount(
     "/controller",
-    RevalidatedStaticFiles(directory="frontend/controller", html=True),
+    RevalidatedStaticFiles(directory=Path(__file__).resolve().parent / "frontend/controller", html=True),
     name="controller"
 )
 
@@ -829,59 +845,61 @@ async def device_register(device: DeviceRegistration):
     device_id = str(device.device_id)
     existing = devices.get(device_id)
 
-    if existing is None and len(devices) >= MAX_DEVICES:
-        # The roster is memory-only, so a full one is a process that has met a
-        # lot of endpoints. Old tablets get replaced; keeping a dead record
-        # forever would block the replacement. Evict the least recently
-        # contacted *offline* record — never a live socket, never a placement
-        # (placements are persisted separately and survive as reservations).
-        offline = [
-            (record.get("last_seen_mono", 0.0), key)
-            for key, record in devices.items()
-            if key not in device_sockets
-        ]
-        if not offline:
-            raise HTTPException(
-                status_code=429,
-                detail="Device roster is full and every device is online",
-            )
-        evicted = min(offline)[1]
-        devices.pop(evicted, None)
-        # The controller may still render the evicted tile; removal is the
-        # event that tells it to drop it. Its placement is left in the wall as
-        # a reservation, so a later re-registration reclaims the same cell.
-        await _broadcast({"type": "device_removed", "device_id": evicted})
+    with device_changes():
+        evicted = None
+        if existing is None and len(devices) >= MAX_DEVICES:
+            # A full roster has met many endpoints. Old tablets get replaced; keeping a dead record
+            # forever would block the replacement. Evict the least recently
+            # contacted *offline* record — never a live socket, never a placement
+            # (placements are persisted separately and survive as reservations).
+            offline = [
+                (record.get("last_seen_mono", 0.0), key)
+                for key, record in devices.items()
+                if key not in device_sockets
+            ]
+            if not offline:
+                raise HTTPException(
+                    status_code=429,
+                    detail="Device roster is full and every device is online",
+                )
+            evicted = min(offline)[1]
+            devices.pop(evicted, None)
+            # The controller may still render the evicted tile; removal is the
+            # event that tells it to drop it. Its placement is left in the wall as
+            # a reservation, so a later re-registration reclaims the same cell.
 
-    # The record is complete before anything is awaited; re-registering keeps
-    # the assigned colour, any open socket, and the protocol negotiated by that
-    # socket (the client re-registers before every connection attempt, so the
-    # record would otherwise flap back to "no protocol" while still online).
-    record: dict[str, Any] = {
-        "device_id": device_id,
-        "width": device.width,
-        "height": device.height,
-        "type": device.device_type,
-        "color": existing["color"] if existing is not None else None,
-        "protocol": existing.get("protocol") if existing is not None else None,
-        "caps": list(existing.get("caps") or []) if existing is not None else [],
-        "number": existing.get("number") if existing is not None else None,
-        "last_seen": _now_iso(),
-    }
-    if existing is not None:
-        # Re-registration keeps the live socket's ephemeral facts: a resize
-        # re-registers while the same socket stays connected, and dropping
-        # the viewport would silently invalidate a physical plan.
-        for key in ("viewport", "connection_id", "clock", "clock_ok",
-                    "clock_samples", "clock_pending", "render_seq", "wake_lock"):
-            if key in existing:
-                record[key] = existing[key]
-    wake_lock = _wake_lock_value(device.wake_lock)
-    if wake_lock is not None:
-        record["wake_lock"] = wake_lock
-    devices[device_id] = record
-    # Stamp the monotonic contact reading too; presence expiry uses it.
-    _touch_device(device_id)
-    released = _ensure_device_number(device_id, device.number)
+        # The record is complete before anything is awaited; re-registering keeps
+        # the assigned colour, any open socket, and the protocol negotiated by that
+        # socket (the client re-registers before every connection attempt, so the
+        # record would otherwise flap back to "no protocol" while still online).
+        record: dict[str, Any] = {
+            "device_id": device_id,
+            "width": device.width,
+            "height": device.height,
+            "type": device.device_type,
+            "color": existing["color"] if existing is not None else None,
+            "protocol": existing.get("protocol") if existing is not None else None,
+            "caps": list(existing.get("caps") or []) if existing is not None else [],
+            "number": existing.get("number") if existing is not None else None,
+            "last_seen": _now_iso(),
+        }
+        if existing is not None:
+            # Re-registration keeps the live socket's ephemeral facts: a resize
+            # re-registers while the same socket stays connected, and dropping
+            # the viewport would silently invalidate a physical plan.
+            for key in ("viewport", "connection_id", "clock", "clock_ok",
+                        "clock_samples", "clock_pending", "render_seq", "wake_lock"):
+                if key in existing:
+                    record[key] = existing[key]
+        wake_lock = _wake_lock_value(device.wake_lock)
+        if wake_lock is not None:
+            record["wake_lock"] = wake_lock
+        devices[device_id] = record
+        # Stamp the monotonic contact reading too; presence expiry uses it.
+        _touch_device(device_id)
+        released = _ensure_device_number(device_id, device.number)
+    if evicted is not None:
+        await _broadcast({"type": "device_removed", "device_id": evicted})
     for old_id in released:
         if old_id in devices:
             await _broadcast({"type": "device_updated", "device": _device_record(old_id)})
@@ -900,8 +918,9 @@ async def change_all_colors(command: ColorCommand):
     color = command.color
     device_ids = list(devices)
 
-    for device_id in device_ids:
-        devices[device_id]["color"] = color
+    with device_changes():
+        for device_id in device_ids:
+            devices[device_id]["color"] = color
     records = [_device_record(device_id) for device_id in device_ids]
 
     delivered = 0
@@ -921,7 +940,8 @@ async def change_color(device_id: str, command: ColorCommand):
         raise HTTPException(status_code=404, detail="Unknown device")
 
     color = command.color
-    devices[key]["color"] = color
+    with device_changes():
+        devices[key]["color"] = color
     record = _device_record(key)
 
     delivered = await _send_color_to_device(key, color)
@@ -937,22 +957,14 @@ async def delete_device(device_id: str):
     if key is None or key not in devices:
         raise HTTPException(status_code=404, detail="Unknown device")
 
-    # The placement goes with the device: left behind, it keeps the wall map
-    # drawing a panel that no longer exists and reserves a hole on the wall
-    # that nothing can ever fill. The removal is *committed* first — the copy
-    # is persisted before the live wall is touched and long before the roster
-    # and socket entries are popped below — so a failed save cannot remove a
-    # device in memory while leaving its placement on disk.
     dropped_placement = key in wall["layout"]["placements"]
-    if dropped_placement:
-        def apply(target: dict[str, Any]) -> None:
-            target["layout"]["placements"].pop(key, None)
+    with device_changes():
+        if dropped_placement:
+            def apply(target: dict[str, Any]) -> None:
+                target["layout"]["placements"].pop(key, None)
 
-        _commit_wall(apply)
-
-    # Both pops happen before the first await, so no request can observe a
-    # half-removed device — and only after any wall change above is durable.
-    record = devices.pop(key)
+            _commit_wall(apply)
+        record = devices.pop(key)
     websocket = device_sockets.pop(key, None)
 
     if websocket is not None:
@@ -974,9 +986,9 @@ async def delete_device(device_id: str):
 class RebindCommand(BaseModel):
     """``POST /devices/{device_id}/rebind`` body.
 
-    ``replaces`` is the id the wall remembers (a placement, slot or roster
-    record). ``number`` is only needed when the server restarted too: numbers
-    live in the roster, so the operator supplies the label on the glass.
+    ``replaces`` is the id the wall remembers in its placement, slot, or
+    roster. ``number`` can recover a physical label absent from legacy
+    metadata. Current metadata preserves numbers across a server restart.
     """
 
     replaces: UUID4
@@ -1021,30 +1033,29 @@ async def rebind_device(device_id: str, command: RebindCommand):
     ):
         raise HTTPException(status_code=409, detail="That display number is in use")
 
+    moved = old_id in held
+    record = devices[new_id]
+    renumbered = number is not None and record.get("number") != number
     try:
-        copied = displays.copy_records(old_id, new_id)
+        with device_changes():
+            copied = displays.copy_records(old_id, new_id)
+            if moved:
+                def apply(target: dict[str, Any]) -> None:
+                    bucket = target["layout"]["slots" if physical else "placements"]
+                    entry = bucket.pop(old_id)
+                    if not physical:
+                        entry["device_id"] = new_id
+                    bucket[new_id] = entry
+
+                _commit_wall(apply)
+            if number is not None:
+                record["number"] = number
+            devices.pop(old_id, None)
     except displays.DisplayError as error:
         raise HTTPException(status_code=409, detail=str(error)) from error
 
-    # The frozen cohort and its prepared geometry belong to the old identity.
+    # Stop the old cohort before any socket can observe the committed rebind.
     await _abort_playback("rebind")
-
-    moved = old_id in held
-    if moved:
-        def apply(target: dict[str, Any]) -> None:
-            bucket = target["layout"]["slots" if physical else "placements"]
-            entry = bucket.pop(old_id)
-            if not physical:
-                entry["device_id"] = new_id
-            bucket[new_id] = entry
-
-        _commit_wall(apply)
-
-    record = devices[new_id]
-    renumbered = number is not None and record.get("number") != number
-    if number is not None:
-        record["number"] = number
-    devices.pop(old_id, None)
     stale_socket = device_sockets.pop(old_id, None)
     live_socket = device_sockets.get(new_id)
 
@@ -1190,8 +1201,8 @@ async def delete_placement(device_id: str):
     _require_logical_wall()
     key = _parse_device_id(device_id)
     # 404 only when there is *neither* a known device nor a placement to
-    # remove. Placements are persisted and the roster is not, so a restart
-    # can leave a placement owned by a device the server has forgotten: that
+    # remove. Legacy snapshots and evictions can leave placements owned by
+    # devices absent from the roster. Such a placement
     # is a reservation the operator must be able to release, so a valid id
     # with a placement succeeds even when the device is absent (PROTOCOL.md
     # "DELETE /devices/{device_id}/placement").
@@ -2801,9 +2812,10 @@ async def ws_device(
     # await, and the replaced socket's own task finds it no longer owns the
     # slot, so it closes with 4409 without broadcasting device_offline.
     record = devices[key]
+    with device_changes():
+        _touch_device(key)
+        released = _ensure_device_number(key)
     replaced = _claim_device_socket(key, websocket, record)
-    _touch_device(key)
-    released = _ensure_device_number(key)
     for old_id in released:
         if old_id in devices:
             await _broadcast({"type": "device_updated", "device": _device_record(old_id)})

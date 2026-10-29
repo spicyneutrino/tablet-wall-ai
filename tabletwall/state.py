@@ -6,20 +6,23 @@ names must be imported, never copied.
 
 The wall keeps its four contract pieces separate (PROTOCOL.md "Wall state"):
 ``layout`` (width, height, placements), ``scene`` (content plus its layout
-reference), ``revision``, and ``generation``. The roster and the socket
-registries are memory-only; ``tabletwall.persist`` writes the wall dict to
-SQLite.
+reference), ``revision``, and ``generation``. Durable roster metadata and the
+wall are stored in SQLite. Socket registries and live connection facts remain process-local.
 """
 
+import asyncio
+import logging
 import time
 import uuid
+from collections.abc import Iterator
+from contextlib import contextmanager
 from copy import deepcopy
 from datetime import datetime, timezone
 from typing import Any
 
 from fastapi import WebSocket
 
-from tabletwall import geometry
+from tabletwall import geometry, persist
 from tabletwall.protocol import HEARTBEAT_TIMEOUT_S, _asset_url, _now_iso
 
 # Wall defaults (PROTOCOL.md "Wall state"): a 2x1 wall of landscape panels.
@@ -30,6 +33,8 @@ DEFAULT_WALL_HEIGHT = 1000
 # number is not identity: a tablet that is gone for this long releases it for
 # a replacement, so physical labels do not accumulate dead numbers.
 DEVICE_NUMBER_LEASE_S = 15 * 60
+ROSTER_CHECKPOINT_S = 60
+_logger = logging.getLogger(__name__)
 
 
 def _new_generation() -> str:
@@ -77,6 +82,51 @@ controller_protocols: dict[WebSocket, int] = {}
 wall: dict[str, Any] = _fresh_wall()
 
 
+def restore_devices() -> None:
+    """Restore metadata with no live sockets or negotiated connection facts."""
+    restored = persist.load_devices()
+    devices.clear()
+    devices.update(restored)
+    device_sockets.clear()
+    controller_sockets.clear()
+    controller_protocols.clear()
+
+
+@contextmanager
+def device_changes() -> Iterator[None]:
+    """Commit synchronous roster and wall mutations together before notification."""
+    original = dict(devices)
+    previous = deepcopy(devices)
+    previous_wall = deepcopy(wall)
+    try:
+        with persist.transaction():
+            yield
+            persist.save_devices(devices)
+    except Exception:
+        for key, record in original.items():
+            record.clear()
+            record.update(previous[key])
+        devices.clear()
+        devices.update(original)
+        wall.clear()
+        wall.update(previous_wall)
+        raise
+
+
+def checkpoint_devices() -> None:
+    """Keep last contact times durable without a write for every heartbeat."""
+    try:
+        persist.save_devices(devices)
+    except Exception:
+        _logger.exception("could not checkpoint device metadata; the next checkpoint will retry")
+
+
+async def checkpoint_loop() -> None:
+    while True:
+        await asyncio.sleep(ROSTER_CHECKPOINT_S)
+        checkpoint_devices()
+
+
 def _touch_device(device_id: str) -> None:
     """Record that ``device_id`` just made contact.
 
@@ -96,9 +146,9 @@ def _touch_device(device_id: str) -> None:
 def _seconds_since_last_seen(device_id: str) -> float | None:
     """Seconds since this device last checked in, or None if it is unknown.
 
-    Uses the monotonic contact reading; a record that predates it (only
-    possible in tests or within one process, never across a restart) falls
-    back to its UTC timestamp so presence still degrades to a sane answer.
+    Uses the monotonic contact reading while the process runs. Restored
+    metadata has only its historical UTC contact time, which is used until
+    the device contacts this process again.
     """
     record = devices.get(device_id)
     if record is None:
