@@ -23,7 +23,7 @@ caller supplies the required cohort; a strict cohort includes offline slots.
 
 import uuid
 from dataclasses import dataclass, field
-from typing import Any
+from typing import Any, TypeGuard
 
 LEAD_MS = 1000
 PREPARE_TIMEOUT_MS = 30_000
@@ -261,10 +261,10 @@ def validate_playlist(
         if not isinstance(asset, str) or not asset.startswith("sha256:"):
             raise PlaybackError("playlist asset must be a content id")
         if videos is not None and asset in videos:
-            dwell = videos[asset]
-            if type(dwell) is not int or not MIN_DWELL_MS <= dwell <= MAX_DWELL_MS:
+            video_dwell = videos[asset]
+            if type(video_dwell) is not int or not MIN_DWELL_MS <= video_dwell <= MAX_DWELL_MS:
                 raise PlaybackError("video duration must be 1000..600000 ms")
-            cleaned.append({"asset": asset, "dwell_ms": dwell})
+            cleaned.append({"asset": asset, "dwell_ms": video_dwell})
             continue
         dwell = item.get("dwell_ms")
         if type(dwell) is not int or not MIN_DWELL_MS <= dwell <= MAX_DWELL_MS:
@@ -280,11 +280,11 @@ def _preparation(
     effective_ms: float,
     connections: dict[str, str] | None,
     *,
-    start_media_ms: int = 0,
+    start_media_ms: int | float = 0,
     recovery_id: str | None = None,
 ) -> Preparation:
     """The one place a preparation is built, so no path forgets a field."""
-    media = None
+    media: dict[str, Any] | None = None
     if occurrence.item_index < len(session.items):
         asset = session.items[occurrence.item_index]["asset"]
         if asset in session.videos:
@@ -427,7 +427,7 @@ def accept_ready(
     return True
 
 
-def _bounded(value: Any, low: float, high: float) -> bool:
+def _bounded(value: Any, low: float, high: float) -> TypeGuard[int | float]:
     return type(value) in (int, float) and low <= value <= high
 
 
@@ -496,6 +496,7 @@ def _recovery_attempts_for(session: Session, occurrence: Occurrence) -> int:
 
 def _playhead_ms(session: Session, now_ms: float) -> int:
     """The committed video position at ``now_ms``, bounded by its duration."""
+    assert session.current_media is not None
     duration = int(session.current_media["duration_ms"])
     elapsed = 0.0
     if session.current_effective_ms is not None:
@@ -532,7 +533,7 @@ def stalled_device(session: Session, now_ms: float) -> tuple[str, int] | None:
 def _start_recovery(
     session: Session,
     occurrence: Occurrence,
-    position_ms: int,
+    position_ms: int | float,
     reason: str,
     device_id: str,
     now_ms: float,
@@ -626,7 +627,7 @@ def accept_reconnect(
 def _recovery_failure(
     session: Session,
     occurrence: Occurrence,
-    position_ms: int,
+    position_ms: int | float,
     reason: str,
     device_id: str,
     now_ms: float,

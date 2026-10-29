@@ -34,14 +34,14 @@ class GeometryError(ValueError):
 def multiply(left: Matrix, right: Matrix) -> Matrix:
     """``left * right``: the result applies ``right`` first."""
     a, b, c, d, e, f = left
-    g, h, i, j, k, l = right
+    g, h, i, j, k, last = right
     return (
         a * g + c * h,
         b * g + d * h,
         a * i + c * j,
         b * i + d * j,
-        a * k + c * l + e,
-        b * k + d * l + f,
+        a * k + c * last + e,
+        b * k + d * last + f,
     )
 
 

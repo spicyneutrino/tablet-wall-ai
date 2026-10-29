@@ -32,7 +32,8 @@ them, and none of it makes this deployment unattended.
 | [OPERATIONS.md](OPERATIONS.md) | placeholders, service lifecycle, backup/verify/restore drill, rollback, open decisions |
 | [KIOSK.md](KIOSK.md) | OS-side display behaviour (screen sleep, fullscreen, launch surface) and real-device gates |
 | [tablet-wall.service.example](tablet-wall.service.example) | placeholder-only systemd unit template; you choose and install the unit yourself |
-| [`backup.py`](backup.py) (this directory) | verified snapshot of the database plus only its referenced assets, with verify and new-target-only restore — commands and exit codes in [OPERATIONS.md](OPERATIONS.md#backups) |
+| [`validate_service.py`](validate_service.py) | static preflight for a filled system or user service unit, without installing or starting it |
+| [`backup.py`](backup.py) (this directory) | verified snapshot of the database plus its referenced curated assets and managed image/video objects, with verify and new-target-only restore — commands and exit codes in [OPERATIONS.md](OPERATIONS.md#backups) |
 
 Cross-links: the parent [../README.md](../README.md) describes what the
 software does; this directory describes how traffic reaches it.
@@ -74,6 +75,16 @@ software does; this directory describes how traffic reaches it.
    both origins **with operator credentials** as described below. Keep the
    asset directory curated: its bytes are intentionally
    accessible to every device on the hotspot.
+
+Managed uploads stay disabled by default. To enable them behind this proxy,
+set the backend's `TABLET_WALL_UPLOAD_MODE=proxy` and an absolute
+`TABLET_WALL_MEDIA_DIR`. Generate a separate random secret of at least 16
+characters and provide the same value as `TABLET_WALL_OPERATOR_CREDENTIAL`
+to the backend and `WALL_OPERATOR_CREDENTIAL` to Caddy. Load it from private
+host configuration in both processes; do not put it in the repository or
+reuse the operator password. Caddy overwrites the internal header only after
+authentication and strips it on tablet requests. Missing or mismatched
+credentials make upload and media-library requests fail closed.
 
 **Do not expose `:8000` to the hotspot.** `make run` now binds loopback by
 default; `make run HOST=0.0.0.0` bypasses the proxy and is insecure for this

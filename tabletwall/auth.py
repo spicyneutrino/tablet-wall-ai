@@ -116,6 +116,7 @@ class AuthMiddleware:
             await self.app(scope, receive, send)
             return
         connection = HTTPConnection(scope)
+        response: Response
         if len(secret.encode()) < 32:
             response = JSONResponse(
                 {"detail": f"{TOKEN_ENV} must contain at least 32 bytes"}, status_code=503

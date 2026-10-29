@@ -22,6 +22,7 @@ import math
 import os
 import stat
 import sys
+from types import ModuleType
 import tempfile
 import warnings
 from io import BytesIO
@@ -43,7 +44,8 @@ from tabletwall.media_limits import (
 )
 
 try:
-    import resource
+    import resource as _resource
+    resource: ModuleType | None = _resource
 except ImportError:  # pragma: no cover - the server runs on POSIX
     resource = None
 
@@ -214,13 +216,14 @@ def _to_srgb(image: Image.Image) -> tuple[Image.Image, bool]:
         source = ImageCms.ImageCmsProfile(BytesIO(profile))
         target = ImageCms.createProfile("sRGB")
         converted = ImageCms.profileToProfile(
-            image, source, target, outputMode="RGB", renderingIntent=0
+            image, source, target, outputMode="RGB", renderingIntent=ImageCms.Intent.PERCEPTUAL
         )
     except Exception as error:
         raise Rejected(
             "The image's ICC profile could not be converted to sRGB; "
             "re-export it in sRGB or without a profile."
         ) from error
+    assert converted is not None
     return converted, True
 
 

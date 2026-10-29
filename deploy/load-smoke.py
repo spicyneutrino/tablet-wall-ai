@@ -16,6 +16,7 @@ from urllib.parse import urlsplit
 from urllib.request import HTTPSHandler, ProxyHandler, Request, build_opener
 
 import websockets
+from websockets.typing import Origin
 
 
 def fetch(url: str, context: ssl.SSLContext, body: dict | None = None) -> bytes:
@@ -51,7 +52,7 @@ async def device(
 
     socket_url = "wss://" + urlsplit(origin).netloc + "/ws/device?device_id=" + device_id + "&protocol=2&caps=image,calibration"
     async with websockets.connect(
-        socket_url, ssl=context, origin=origin, proxy=None, open_timeout=15
+        socket_url, ssl=context, origin=Origin(origin), proxy=None, open_timeout=15
     ) as socket:
         welcome = json.loads(await asyncio.wait_for(socket.recv(), 15))
         wall = json.loads(await asyncio.wait_for(socket.recv(), 15))

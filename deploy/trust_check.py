@@ -38,6 +38,7 @@ The output is one ``tablet-wall-validation-evidence/1`` report with
 from __future__ import annotations
 
 import argparse
+from _ssl import ENCODING_DER
 import hashlib
 import ipaddress
 import re
@@ -104,12 +105,12 @@ class Origin:
 
     @property
     def normalized(self) -> str:
-        host = f"[{self.host}]" if self.is_ip and self.address.version == 6 else self.host
+        host = f"[{self.host}]" if self.address is not None and self.address.version == 6 else self.host
         return f"https://{host}:{self.port}"
 
     @property
     def host_header(self) -> str:
-        return f"[{self.host}]" if self.is_ip and self.address.version == 6 else self.host
+        return f"[{self.host}]" if self.address is not None and self.address.version == 6 else self.host
 
 
 def parse_origin(value: str) -> Origin:
@@ -257,7 +258,7 @@ def _chain_der(tls: ssl.SSLSocket, verified: bool) -> list[bytes]:
                 chain.append(bytes(item))
                 continue
             try:
-                chain.append(item.public_bytes(ssl._ssl.ENCODING_DER))
+                chain.append(item.public_bytes(ENCODING_DER))
             except (AttributeError, ssl.SSLError):
                 continue
     if not chain:
@@ -395,7 +396,8 @@ def _handshake(origin: Origin, context: ssl.SSLContext, timeout: float,
     tls.settimeout(timeout)
     try:
         inspection.tls_version = tls.version()
-        inspection.cipher = list(tls.cipher()) if tls.cipher() else None
+        cipher = tls.cipher()
+        inspection.cipher = list(cipher) if cipher else None
         inspection.transport_source = (
             "verified-handshake" if verified else "unverified-diagnostic-handshake"
         )
@@ -523,10 +525,11 @@ def request_probe(origin: Origin, context: ssl.SSLContext, timeout: float,
         request = ("\r\n".join(lines) + "\r\n\r\n").encode("ascii") + probe.body
         tls.sendall(request)
         head = _read_head(tls)
+        cipher = tls.cipher()
         if not head:
             return ProbeResult(
                 status=None, tls_version=tls.version(),
-                cipher=tls.cipher()[0] if tls.cipher() else None,
+                cipher=cipher[0] if cipher else None,
                 duration_ms=int((time.monotonic() - started) * 1000),
                 error={"type": "EmptyResponse",
                        "message": "server closed without a response"},
@@ -538,13 +541,13 @@ def request_probe(origin: Origin, context: ssl.SSLContext, timeout: float,
         except (IndexError, ValueError):
             return ProbeResult(
                 status=None, tls_version=tls.version(),
-                cipher=tls.cipher()[0] if tls.cipher() else None,
+                cipher=cipher[0] if cipher else None,
                 duration_ms=int((time.monotonic() - started) * 1000),
                 error={"type": "BadStatusLine", "message": lines_head[0][:200]},
             )
         return ProbeResult(
             status=status, tls_version=tls.version(),
-            cipher=tls.cipher()[0] if tls.cipher() else None,
+            cipher=cipher[0] if cipher else None,
             duration_ms=int((time.monotonic() - started) * 1000),
         )
     except (ssl.SSLError, OSError) as exc:

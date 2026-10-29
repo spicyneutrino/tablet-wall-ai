@@ -29,6 +29,7 @@ import os
 import stat
 import subprocess
 import sys
+from types import ModuleType
 from typing import Any
 
 from PIL import Image
@@ -61,7 +62,8 @@ from tabletwall.media_worker import (
 )
 
 try:
-    import resource
+    import resource as _resource
+    resource: ModuleType | None = _resource
 except ImportError:  # pragma: no cover - the server runs on POSIX
     resource = None
 
@@ -343,7 +345,8 @@ def facts_from_probe(document: dict[str, Any]) -> tuple[dict[str, Any], int, int
     rotation = 0
     for datum in video.get("side_data_list") or []:
         if isinstance(datum, dict) and datum.get("side_data_type") == "Display Matrix":
-            rotation = datum.get("rotation") if type(datum.get("rotation")) is int else 0
+            reported_rotation = datum.get("rotation")
+            rotation = reported_rotation if type(reported_rotation) is int else 0
     if rotation % 180 != 0:
         width, height = height, width
     if max(width, height) > MAX_VIDEO_LONG_EDGE or min(width, height) > MAX_VIDEO_SHORT_EDGE:
@@ -361,7 +364,9 @@ def facts_from_probe(document: dict[str, Any]) -> tuple[dict[str, Any], int, int
             + _REENCODE_HINT
         )
 
-    container = document.get("format") if isinstance(document.get("format"), dict) else {}
+    container = document.get("format")
+    if not isinstance(container, dict):
+        container = {}
     seconds = _number(container.get("duration"))
     if seconds is None:
         seconds = _number(video.get("duration"))

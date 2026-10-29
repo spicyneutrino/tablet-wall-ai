@@ -333,8 +333,8 @@ def _render_frame(
     scene = _project_scene(wall["scene"])
     record["render_seq"] = int(record.get("render_seq", 0)) + 1
     if layout.get("kind") != "physical":
-        frame = _wall_frame(device_id, record)
-        return {"type": "render", "mode": "logical", "render_seq": record["render_seq"], **frame}
+        logical_frame = _wall_frame(device_id, record)
+        return {"type": "render", "mode": "logical", "render_seq": record["render_seq"], **logical_frame}
 
     bounds = layout["bounds"]
     slot = layout["slots"].get(device_id)

@@ -38,7 +38,7 @@ rules are all part of the trust boundary and change with the shape.
 | Placeholder | Meaning | Where |
 | --- | --- | --- |
 | `/REPLACE/with/checkout/of/tablet-wall-ai` | absolute path to this repository checkout | service example (`WorkingDirectory`, `ExecStart`, `Documentation`) |
-| `/REPLACE/with/data-dir` | absolute directory holding the database and curated assets; back this up | service example (`TABLET_WALL_DB`, `TABLET_WALL_ASSET_DIR`) |
+| `/REPLACE/with/data-dir` | absolute directory holding the database, curated assets and managed media; back this up | service example (`TABLET_WALL_DB`, `TABLET_WALL_ASSET_DIR`, `TABLET_WALL_MEDIA_DIR`) |
 | `https://REPLACE-operator-host.example:8444` | exact operator origin as the browser shows it | service example (`TABLET_WALL_OPERATOR_ORIGIN`) |
 | `https://REPLACE-tablet-host.example:8443` | exact tablet origin as the browser shows it | service example (`TABLET_WALL_TABLET_ORIGIN`) |
 | `WALL_HOTSPOT_IP` | IPv4 of the laptop's hotspot interface | `deploy/run-hotspot.sh`, `deploy/hotspot.Caddyfile` |
@@ -53,7 +53,19 @@ origins byte-for-byte what the browser sends, including scheme and port.
 
 1. Decide **user unit vs system unit yourself** (see the header of
     [tablet-wall.service.example](tablet-wall.service.example)), copy the file,
-    fill in every placeholder, then `daemon-reload` and enable it manually if
+    fill in every placeholder, and run the static preflight:
+
+    ```sh
+    uv run python deploy/validate_service.py /path/to/tablet-wall.service --scope user
+    ```
+
+    Use `--scope system` for a system unit. It rejects leftover placeholders,
+    missing data paths and origins, a public backend bind, extra workers, and
+    a missing or root system account. It does not install or start anything.
+    After it passes, use `systemd-analyze --user verify /path/to/tablet-wall.service`
+    for a user unit, or `systemd-analyze verify /path/to/tablet-wall.service`
+    for a system unit, and check permissions and ingress on the host. Then
+    `daemon-reload` and enable it manually if
     you want it supervised at boot. For a system unit, set a dedicated
     non-root `User=`/`Group=` with access to the checkout and data; otherwise
     systemd defaults to root. A user unit runs as your account. The repository
@@ -94,13 +106,13 @@ is a usage error; `130` is an interrupt. There is no force flag.
 A snapshot directory holds `manifest.json`, `database/wall.db`, `assets/`
 with only the referenced curated files, and `media/objects/` with the
 transitive closure of referenced managed uploads (master, display, fallback
-and thumbnail). Manifest version 2 records the schema, pipeline, referenced
-scope, object/rendition relationships and omitted uploads; version 1
-snapshots remain readable and restorable. `backup` verifies its own staging directory
+and thumbnail for images, video and thumbnail for clips). Manifest version 2
+records image relationships; version 3 adds video objects and playlist-only
+references. Version 1 snapshots remain readable and restorable. `backup` verifies its own staging directory
 with the same code path as `verify` before publishing it by one rename, so a
 snapshot that exists is one that already passed. `restore` verifies first,
 writes only new targets, and rolls back only what that run created; it refuses
-targets `TABLET_WALL_DB`/`TABLET_WALL_ASSET_DIR` still name, but it cannot see
+targets `TABLET_WALL_DB`/`TABLET_WALL_ASSET_DIR`/`TABLET_WALL_MEDIA_DIR` still name, but it cannot see
 whether the service is running — stopping it is yours.
 
 Take a snapshot (while the service runs; the tool uses SQLite's online backup
@@ -131,7 +143,7 @@ retention window are **open decisions** below.
    force flag to override this.
 2. Choose **new** paths for the database and assets — for example
    `/REPLACE/with/data-dir/restored-YYYYMMDD/{wall.db,assets,media}`. Restore
-   refuses to overwrite, so nothing that exists today is touched. A manifest 2
+   refuses to overwrite, so nothing that exists today is touched. A manifest version 2 or 3
    snapshot that carries managed media needs `--media`:
 
    ```sh
