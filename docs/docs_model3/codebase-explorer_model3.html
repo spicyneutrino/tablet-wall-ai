@@ -1,0 +1,447 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>tablet-wall-ai Explorer</title>
+<style>
+:root{--bg:#0f1218;--panel:#171c26;--panel2:#1e2532;--line:#2c3547;--text:#e6eaf2;--muted:#93a0b8;
+--accent:#6aa9ff;--green:#4ade80;--amber:#fbbf24;--red:#f87171;--violet:#b394ff;--teal:#2dd4bf;
+--mono:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace}
+:root[data-theme=light]{--bg:#f6f7fa;--panel:#fff;--panel2:#eef1f6;--line:#d5dbe6;--text:#1a2030;--muted:#5a667d;
+--accent:#1f6fe0;--green:#15803d;--amber:#b45309;--red:#c62828;--violet:#6d4fd6;--teal:#0f766e}
+*{box-sizing:border-box}
+html{scroll-behavior:smooth}
+body{margin:0;background:var(--bg);color:var(--text);font:16px/1.6 system-ui,-apple-system,Segoe UI,sans-serif}
+a{color:var(--accent)}
+code,.mono{font-family:var(--mono);font-size:.88em;background:var(--panel2);padding:.1em .35em;border-radius:4px}
+.layout{display:grid;grid-template-columns:260px 1fr;min-height:100vh}
+nav{position:sticky;top:0;height:100vh;overflow:auto;background:var(--panel);border-right:1px solid var(--line);padding:16px}
+nav h1{font-size:1rem;margin:0 0 4px}
+nav .sub{color:var(--muted);font-size:.8rem;margin-bottom:12px}
+nav input{width:100%;padding:8px;border-radius:8px;border:1px solid var(--line);background:var(--panel2);color:var(--text)}
+nav a{display:block;padding:6px 10px;border-radius:8px;color:var(--muted);text-decoration:none;font-size:.92rem}
+nav a:hover,nav a.on{background:var(--panel2);color:var(--text)}
+.ctl{display:flex;gap:6px;margin:12px 0;flex-wrap:wrap}
+button{font:inherit;cursor:pointer;color:var(--text);background:var(--panel2);border:1px solid var(--line);border-radius:8px;padding:6px 12px}
+button:hover{border-color:var(--accent)}
+button.on{background:var(--accent);color:#fff;border-color:var(--accent)}
+main{padding:32px clamp(16px,4vw,56px);max-width:1100px}
+section{margin-bottom:56px;scroll-margin-top:16px}
+h2{font-size:1.6rem;margin:0 0 8px}
+h3{margin:24px 0 8px}
+.lead{color:var(--muted);max-width:70ch}
+.tag{display:inline-block;font-size:.72rem;font-weight:700;padding:1px 8px;border-radius:99px;border:1px solid currentColor;margin-right:6px;vertical-align:middle}
+.fact{color:var(--green)}.inf{color:var(--amber)}.unk{color:var(--red)}
+.card{background:var(--panel);border:1px solid var(--line);border-radius:14px;padding:16px 18px;margin:12px 0}
+.grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(240px,1fr));gap:12px}
+.deep{display:none}
+body.deepmode .deep{display:block}
+table{border-collapse:collapse;width:100%;font-size:.9rem}
+th,td{border-bottom:1px solid var(--line);padding:8px;text-align:left;vertical-align:top}
+th{color:var(--muted);font-weight:600}
+.scroll{overflow-x:auto}
+svg{max-width:100%;height:auto}
+.node rect{fill:var(--panel2);stroke:var(--line);stroke-width:1.5;rx:10;transition:.2s}
+.node text{fill:var(--text);font:600 13px system-ui}
+.node .s{fill:var(--muted);font:11px system-ui;font-weight:400}
+.node{cursor:pointer}
+.node:hover rect,.node.sel rect{stroke:var(--accent);stroke-width:2.5}
+.node.dim{opacity:.25}
+.edge{stroke:var(--muted);stroke-width:1.6;fill:none}
+.edge.dim{opacity:.12}
+.edge.ws{stroke:var(--violet);stroke-dasharray:6 4}
+.edge.hl{stroke:var(--accent);stroke-width:3}
+.lbl{fill:var(--muted);font:11px system-ui}
+.zone{fill:none;stroke:var(--line);stroke-dasharray:3 4;rx:14}
+.zl{fill:var(--muted);font:700 11px system-ui;letter-spacing:.08em}
+#info{min-height:90px}
+.tree ul{list-style:none;margin:0;padding-left:18px;border-left:1px dashed var(--line)}
+.tree>ul{border:0;padding:0}
+.tree li{margin:2px 0}
+.tree .d>span::before{content:"▸ ";color:var(--muted)}
+.tree .d.open>span::before{content:"▾ "}
+.tree .d>ul{display:none}.tree .d.open>ul{display:block}
+.tree span{cursor:pointer;font-family:var(--mono);font-size:.88rem}
+.tree .f span:hover,.tree .d>span:hover{color:var(--accent)}
+.kind{font-size:.7rem;padding:0 6px;border-radius:99px;margin-left:6px;background:var(--panel2);color:var(--muted)}
+.steps{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:16px}
+@media(max-width:900px){.layout{grid-template-columns:1fr}nav{position:static;height:auto}.steps{grid-template-columns:1fr}}
+.lane{display:flex;flex-direction:column;gap:6px}
+.lane .box{padding:10px 12px;border:1px solid var(--line);border-radius:10px;background:var(--panel2);transition:.25s;font-size:.9rem}
+.lane .box.act{border-color:var(--accent);background:color-mix(in srgb,var(--accent) 18%,var(--panel2));transform:translateX(6px)}
+.lane .box.done{opacity:.55}
+.lane .arrow{text-align:center;color:var(--muted);line-height:1}
+.dec summary{cursor:pointer;font-weight:600}
+.dec dl{display:grid;grid-template-columns:110px 1fr;gap:4px 12px;margin:10px 0 0}
+.dec dt{color:var(--muted)}.dec dd{margin:0}
+.hot{display:flex;align-items:center;gap:10px;margin:6px 0}
+.hot .bar{height:12px;border-radius:6px}
+.road{counter-reset:s}
+.road .st{border-left:3px solid var(--accent);padding:4px 0 4px 14px;margin:14px 0}
+.road .st:nth-child(2){border-color:var(--amber)}.road .st:nth-child(3){border-color:var(--violet)}
+.hide{display:none!important}
+</style>
+</head>
+<body>
+<div class="layout">
+<nav>
+  <h1>tablet-wall-ai</h1>
+  <div class="sub">Codebase explorer · pass 1</div>
+  <input id="q" placeholder="Search sections…" aria-label="Search sections">
+  <div class="ctl">
+    <button id="depth" title="Show or hide deep-dive details">Deep dive: off</button>
+    <button id="theme">Theme</button>
+  </div>
+  <div id="toc"></div>
+</nav>
+<main>
+
+<section id="what" data-title="What this project is">
+  <h2>1. What this project is</h2>
+  <p class="lead">Tablets become one big display. Each tablet shows its own slice of a shared wall. An operator controls it from a browser.</p>
+  <div class="grid">
+    <div class="card"><b>Tablet (client)</b><br>Opens <code>/client/</code>. Registers itself. Holds a WebSocket. Paints its slice on a canvas.</div>
+    <div class="card"><b>Operator (controller)</b><br>Opens <code>/controller/</code>. Sees the roster. Places tablets. Chooses colour, calibration, or an image.</div>
+    <div class="card"><b>Server</b><br>One Python (FastAPI) process. Holds state in memory. Saves the wall to SQLite.</div>
+  </div>
+  <div class="card"><b>Simple mental model.</b> One process holds the state. Everyone keeps a WebSocket open to it. Operators change state with HTTP. The server saves to SQLite <i>first</i>, then pushes the new state to everyone.</div>
+  <p><span class="tag fact">FACT</span> Status per <code>README.md</code>: Phase 2 software complete. Real-tablet validation pending. No authentication in the app. No AI features exist, despite the name.</p>
+  <p><span class="tag fact">FACT</span> Verified 2026-10-07 at commit <code>0899e04</code>: <code>uv run pytest</code> → 500 passed.</p>
+</section>
+
+<section id="arch" data-title="Architecture diagram components">
+  <h2>2. High-level architecture</h2>
+  <p class="lead">Click a component to see what it does and what it connects to. Other parts dim.</p>
+  <div class="card scroll">
+  <svg id="arch-svg" viewBox="0 0 980 520" role="img" aria-label="Architecture diagram">
+    <defs>
+      <marker id="ah" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0 0L10 5L0 10z" fill="currentColor" style="color:var(--muted)"/></marker>
+    </defs>
+    <rect class="zone" x="10" y="10" width="270" height="500"/><text class="zl" x="26" y="32">BROWSERS</text>
+    <rect class="zone" x="330" y="10" width="480" height="500"/><text class="zl" x="346" y="32">ONE PYTHON PROCESS (uvicorn, 1 worker)</text>
+    <rect class="zone" x="850" y="10" width="120" height="500"/><text class="zl" x="862" y="32">DISK</text>
+
+    <!-- edges first -->
+    <g id="edges">
+      <path class="edge ws" data-e="client-main" d="M240 120 C300 120 330 150 400 170" marker-end="url(#ah)"/>
+      <path class="edge ws" data-e="ctrl-main" d="M240 330 C300 330 330 220 400 205" marker-end="url(#ah)"/>
+      <path class="edge" data-e="main-state" d="M480 215 L480 270" marker-end="url(#ah)"/>
+      <path class="edge" data-e="main-hub" d="M560 195 L640 270" marker-end="url(#ah)"/>
+      <path class="edge" data-e="hub-state" d="M640 300 L540 300" marker-end="url(#ah)"/>
+      <path class="edge" data-e="main-persist" d="M420 215 C380 300 380 340 400 390" marker-end="url(#ah)"/>
+      <path class="edge" data-e="main-assets" d="M600 190 C720 190 720 380 700 400" marker-end="url(#ah)"/>
+      <path class="edge" data-e="persist-db" d="M520 430 L860 430" marker-end="url(#ah)"/>
+      <path class="edge" data-e="assets-fs" d="M740 450 C790 470 820 470 860 470" marker-end="url(#ah)"/>
+      <path class="edge" data-e="main-proto" d="M440 160 L440 110" marker-end="url(#ah)"/>
+    </g>
+    <text class="lbl" x="262" y="104" transform="rotate(-18 262 104)">HTTP POST + WS</text>
+    <text class="lbl" x="262" y="300" transform="rotate(-24 262 300)">HTTP + WS</text>
+    <text class="lbl" x="860" y="418">sqlite3</text>
+
+    <g class="node" data-n="client" transform="translate(30,70)"><rect width="210" height="100"/><text x="14" y="26">Tablet · client.js</text><text class="s" x="14" y="46">frontend/client/</text><text class="s" x="14" y="64">canvas renderer</text><text class="s" x="14" y="82">holds last wall frame</text></g>
+    <g class="node" data-n="ctrl" transform="translate(30,280)"><rect width="210" height="100"/><text x="14" y="26">Operator · controller.js</text><text class="s" x="14" y="46">frontend/controller/</text><text class="s" x="14" y="64">roster, wall map, assets</text><text class="s" x="14" y="82">no polling</text></g>
+    <g class="node" data-n="proxy" transform="translate(30,420)"><rect width="210" height="70" style="stroke-dasharray:5 4"/><text x="14" y="28">Caddy proxy (optional)</text><text class="s" x="14" y="48">deploy/hotspot.Caddyfile</text></g>
+
+    <g class="node" data-n="proto" transform="translate(360,70)"><rect width="190" height="42"/><text x="14" y="26">protocol.py</text></g>
+    <g class="node" data-n="main" transform="translate(360,160)"><rect width="250" height="55"/><text x="14" y="24">main.py</text><text class="s" x="14" y="42">routes · WS · models · origin guard</text></g>
+    <g class="node" data-n="state" transform="translate(360,270)"><rect width="180" height="60"/><text x="14" y="24">state.py</text><text class="s" x="14" y="44">devices · sockets · wall</text></g>
+    <g class="node" data-n="hub" transform="translate(640,270)"><rect width="150" height="60"/><text x="14" y="24">hub.py</text><text class="s" x="14" y="44">broadcast · sweeper</text></g>
+    <g class="node" data-n="persist" transform="translate(360,390)"><rect width="170" height="60"/><text x="14" y="24">persist.py</text><text class="s" x="14" y="44">SQLite CRUD</text></g>
+    <g class="node" data-n="assets" transform="translate(560,400)"><rect width="190" height="60"/><text x="14" y="24">assets.py</text><text class="s" x="14" y="44">scan · validate · hash</text></g>
+
+    <g class="node" data-n="db" transform="translate(860,400)"><rect width="100" height="60"/><text x="14" y="28">SQLite</text><text class="s" x="14" y="46">wall.db</text></g>
+    <g class="node" data-n="fs" transform="translate(860,450)"><rect width="100" height="46" style="display:none"/></g>
+    <text class="lbl" x="866" y="478">assets/ dir (JPEG/PNG)</text>
+  </svg>
+  </div>
+  <div class="card" id="info"><i>Select a component.</i></div>
+  <p>
+    <span class="tag fact">FACT</span> Dashed purple lines are WebSocket traffic. Solid lines are in-process calls or file I/O.<br>
+    <span class="tag fact">FACT</span> Persisted: wall layout, scene, revision, generation, named layouts and scenes. Memory only: roster, sockets, presence, colours.
+  </p>
+  <div class="deep">
+    <p><span class="tag fact">FACT</span> Import direction: <code>protocol</code> ← <code>state</code> ← <code>hub</code>. <code>persist</code> and <code>assets</code> are leaves. Only <code>main.py</code> imports <code>hub</code>, <code>persist</code>, <code>assets</code>. No import cycle found.</p>
+    <p><span class="tag fact">FACT</span> <code>main.py</code> re-exports the state objects so tests mutate the same objects the app uses. Never rebind them. Mutate in place.</p>
+  </div>
+</section>
+
+<section id="repo" data-title="Repository structure file tree">
+  <h2>3. Repository structure</h2>
+  <p class="lead">Click a folder to expand. Click any entry to see its role.</p>
+  <div class="grid" style="grid-template-columns:minmax(0,1fr) minmax(0,1fr)">
+    <div class="card tree" id="tree"></div>
+    <div class="card" id="fileinfo"><i>Select a file or folder.</i></div>
+  </div>
+</section>
+
+<section id="flow" data-title="Main flow operator shows an image on the wall">
+  <h2>4. Main flow: operator shows an image</h2>
+  <p class="lead">Trigger: the operator picks an asset and presses “Show on wall”. Press Next to step through.</p>
+  <div class="ctl"><button id="prev">◀ Back</button><button id="next" class="on">Next ▶</button><button id="play">Auto-play</button><button id="reset">Reset</button></div>
+  <div class="steps">
+    <div class="lane" id="lane"></div>
+    <div>
+      <div class="card" id="stepinfo"></div>
+      <div class="card"><b>Why do the seams line up?</b><br>Every tablet computes the <i>same</i> image rectangle in wall coordinates: <code>s = max(W/iw, H/ih)</code>, centred. Then it maps its own visible rect (placement minus bezel) onto its screen. Neighbours agree on where the picture is.</div>
+    </div>
+  </div>
+  <h3>Sequence view</h3>
+  <div class="card scroll"><svg viewBox="0 0 900 330" id="seq" role="img" aria-label="Sequence diagram"></svg></div>
+</section>
+
+<section id="decisions" data-title="Key design decisions">
+  <h2>5. Key design decisions</h2>
+  <p class="lead">Each decision lists evidence, the tradeoff, and what happens if you change it. Open one.</p>
+  <div id="decs"></div>
+  <p><span class="tag inf">INFERENCE</span> The authors document <i>what</i> they did. The <i>why</i> is often implied by comments. Items marked inference are not stated outright.</p>
+</section>
+
+<section id="lifecycle" data-title="State lifecycle device online offline">
+  <h2>6. State: device lifecycle</h2>
+  <p class="lead">From <code>PROTOCOL.md</code> and <code>hub.py</code>. “Online” means: open socket and a heartbeat within 15 s.</p>
+  <div class="card scroll">
+  <svg viewBox="0 0 900 190" role="img" aria-label="Device lifecycle">
+    <defs><marker id="ah2" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto"><path d="M0 0L10 5L0 10z" fill="#93a0b8"/></marker></defs>
+    <g class="node"><rect x="20" y="60" width="130" height="50"/><text x="40" y="90">unknown</text></g>
+    <g class="node"><rect x="260" y="60" width="170" height="50"/><text x="276" y="90">registered · offline</text></g>
+    <g class="node"><rect x="540" y="60" width="130" height="50"/><text x="572" y="90">online</text></g>
+    <path class="edge" d="M150 85H258" marker-end="url(#ah2)"/><text class="lbl" x="152" y="76">POST /devices/register</text>
+    <path class="edge" d="M430 80H538" marker-end="url(#ah2)"/><text class="lbl" x="448" y="72">WS open</text>
+    <path class="edge" d="M540 100H432" marker-end="url(#ah2)"/><text class="lbl" x="440" y="124">close / 15 s silence (4408)</text>
+    <path class="edge" d="M605 60 C605 20 640 20 640 58" marker-end="url(#ah2)"/><text class="lbl" x="560" y="16">heartbeat every 5 s</text>
+    <path class="edge" d="M345 110 C345 170 85 170 85 112" marker-end="url(#ah2)"/><text class="lbl" x="150" y="168">DELETE /devices/id → removed</text>
+  </svg></div>
+  <p><span class="tag fact">FACT</span> A device must register before its socket is accepted (<code>4404</code> otherwise). A newer socket for the same id replaces the old one (<code>4409</code>).</p>
+  <h3>Wall state: revision and generation</h3>
+  <div class="card">
+    <p><b>revision</b> goes up by 1 for each accepted layout or scene change. Tablets ignore a frame whose revision is not newer — but only if the <b>generation</b> is the same.</p>
+    <p><b>generation</b> is a new random token on every server start. After a restore or rollback, revision may go backwards. A new generation tells tablets: “accept this and reset what you hold.”</p>
+    <p class="mono">client.js applyWallFrame → if (heldRevision !== null &amp;&amp; generation === heldGeneration &amp;&amp; revision &lt;= heldRevision) drop;</p>
+  </div>
+</section>
+
+<section id="commit" data-title="Commit boundary persist before apply">
+  <h2>7. The commit boundary</h2>
+  <p class="lead">The most important rule in the server. Every route that changes the wall goes through <code>main._commit_wall</code>.</p>
+  <div class="grid">
+    <div class="card"><b>1. Copy</b><br><code>proposed = deepcopy(wall)</code></div>
+    <div class="card"><b>2. Mutate copy</b><br><code>change(proposed); revision += 1</code></div>
+    <div class="card"><b>3. Save</b><br><code>save_state(proposed)</code> — if this raises, stop. Memory untouched.</div>
+    <div class="card"><b>4. Apply live</b><br><code>change(wall); revision += 1</code></div>
+    <div class="card"><b>5. Broadcast</b><br>Route calls <code>await _broadcast_wall()</code> afterwards.</div>
+  </div>
+  <p><span class="tag fact">FACT</span> No <code>await</code> runs inside steps 1–4, so no other coroutine sees a half-changed wall. Tested in <code>tests/test_commit_boundary.py</code>.</p>
+  <p><span class="tag inf">INFERENCE</span> The sqlite write is synchronous on the event loop. Fine for tiny writes. A slow disk would delay heartbeats.</p>
+</section>
+
+<section id="hot" data-title="Complexity hotspots">
+  <h2>8. Complexity hotspots (first ranking)</h2>
+  <div id="hots"></div>
+</section>
+
+<section id="road" data-title="Recommended learning order roadmap">
+  <h2>9. Recommended learning order</h2>
+  <div class="road">
+    <div class="st"><b>Stage 1 — Understand first</b>
+      <ol><li><code>README.md</code> — How it works, Known limitations</li>
+      <li><code>PROTOCOL.md</code> — lifecycle, revision/generation, wall state</li>
+      <li><code>tabletwall/protocol.py</code>, then <code>state.py</code></li>
+      <li><code>main.py</code>: <code>_restore_wall_state</code>, <code>lifespan</code>, <code>_commit_wall</code>, <code>device_register</code>, <code>put_scene</code>, <code>ws_device</code></li></ol></div>
+    <div class="st"><b>Stage 2 — Understand next</b>
+      <ol><li><code>hub.py</code>, <code>persist.py</code></li>
+      <li><code>client.js</code>: <code>register</code>, <code>openSocket</code>, <code>applyWallFrame</code>, <code>render</code></li>
+      <li><code>tests/conftest.py</code>, <code>test_commit_boundary.py</code>, <code>test_websocket.py</code></li></ol></div>
+    <div class="st"><b>Stage 3 — Advanced</b>
+      <ol><li><code>assets.py</code> and the client image-load logic</li>
+      <li><code>controller.js</code></li>
+      <li>Origin guard in <code>main.py</code>, <code>deploy/</code>, <code>simulator/</code></li></ol></div>
+  </div>
+  <p>Why this order: the contract and the state come first. Every other file produces or consumes them.</p>
+</section>
+
+<section id="next" data-title="Still to explore next passes">
+  <h2>10. Not yet covered</h2>
+  <p>Controller internals · client calibration and image state machine · <code>backup.py</code> · simulator scenarios · security walkthrough · modification guides · quizzes. These come in later passes. The Markdown guide <code>CODEBASE_GUIDE.md</code> lists the same items.</p>
+</section>
+
+</main>
+</div>
+
+<script>
+/* ---------- data ---------- */
+const NODES={
+ client:{t:"Tablet · client.js",d:"Runs on each tablet. Creates a UUID (localStorage), POSTs /devices/register before every connect, opens /ws/device?protocol=2&caps=calibration,image, heartbeats, keeps the last accepted wall frame, paints on a canvas.",f:"frontend/client/client.js",c:["main","proxy"]},
+ ctrl:{t:"Operator · controller.js",d:"Operator dashboard. Opens /ws/controller. Receives snapshot, device_* and wall_updated frames. Sends all commands as HTTP PUT/POST/DELETE. Polls nothing; only a 1 Hz UI tick.",f:"frontend/controller/controller.js (4088 lines)",c:["main","proxy"]},
+ proxy:{t:"Caddy proxy (optional)",d:"Reference two-origin setup. Tablet origin exposes only the client page, register POST, device socket and asset bytes. Operator origin is loopback-only behind Basic auth. The app itself has no auth.",f:"deploy/hotspot.Caddyfile",c:["client","ctrl","main"]},
+ proto:{t:"protocol.py",d:"Pure constants and parsers: timing, close codes, SERVER_CAPS, id/colour/name/asset-id validators. Imports nothing local.",f:"tabletwall/protocol.py",c:["main","state","hub","assets"]},
+ main:{t:"main.py",d:"FastAPI app. Pydantic models, all HTTP routes, /ws/device and /ws/controller, lifespan (restore wall, scan assets, start sweeper), _commit_wall, Origin guard middleware.",f:"main.py (1448 lines)",c:["state","hub","persist","assets","proto","client","ctrl"]},
+ state:{t:"state.py",d:"Module-level mutable state: devices, device_sockets, controller_sockets, controller_protocols, wall. Builders for wire shapes: _device_record, _wall_state, _wall_frame (per-device, caps-filtered).",f:"tabletwall/state.py",c:["main","hub","proto"]},
+ hub:{t:"hub.py",d:"Delivery. _broadcast, _broadcast_wall, _send_wall_to_device guard every send and drop dead sockets. _sweep_loop closes devices silent for 15 s.",f:"tabletwall/hub.py",c:["main","state"]},
+ persist:{t:"persist.py",d:"sqlite3 only. Opens a connection per call, applies CREATE TABLE IF NOT EXISTS, commits on success. Tables: wall_state (one row), saved_layouts, saved_scenes.",f:"tabletwall/persist.py",c:["main","db"]},
+ assets:{t:"assets.py",d:"Scans the asset dir on every read. Accepts only top-level regular non-symlink JPEG/PNG, still, upright, ≤10 MiB, ≤12 MP, fully decodable. ID = sha256 of bytes. Serving re-hashes.",f:"tabletwall/assets.py",c:["main","fs","proto"]},
+ db:{t:"SQLite file",d:"TABLET_WALL_DB, default ./tablet-wall.db. Contains the active wall and named snapshots. Back it up together with referenced asset bytes.",f:"tablet-wall.db (gitignored)",c:["persist"]},
+ fs:{t:"Asset directory",d:"TABLET_WALL_ASSET_DIR, default ./assets. Curated JPEG/PNG copied in by hand. No upload endpoint.",f:"assets/",c:["assets"]}
+};
+const EDGES={ "client-main":["client","main"],"ctrl-main":["ctrl","main"],"main-state":["main","state"],"main-hub":["main","hub"],"hub-state":["hub","state"],"main-persist":["main","persist"],"main-assets":["main","assets"],"persist-db":["persist","db"],"assets-fs":["assets","fs"],"main-proto":["main","proto"]};
+const TREE=[
+ ["main.py","f","Entry point + API layer. FastAPI app, models, routes, WS endpoints, origin guard. Start here after protocol/state.","entry"],
+ ["tabletwall/","d","Server internals. Dependency order: protocol ← state ← hub; persist and assets are leaves.","core",[
+  ["protocol.py","f","Constants, close codes, pure validators. No local imports.","util"],
+  ["state.py","f","In-memory state and wire-shape builders.","domain"],
+  ["hub.py","f","Broadcast and heartbeat sweeper. Imported only by main.","infra"],
+  ["persist.py","f","SQLite wall_state, saved_layouts, saved_scenes.","data"],
+  ["assets.py","f","Curated image inventory, validation, hash-verified serving.","domain"]]],
+ ["frontend/","d","Static files served by FastAPI StaticFiles. No build step.","ui",[
+  ["client/","d","Tablet page.","ui",[["client.js","f","IIFE. Register, socket, backoff, wall-frame acceptance, canvas drawing, image load state machine.","ui"],["index.html","f","Canvas + status badge.","ui"],["client.css","f","Fullscreen surface styles.","ui"]]],
+  ["controller/","d","Operator page.","ui",[["controller.js","f","4088 lines: roster tiles, wall map, placement editing, asset panel, snapshots.","ui"],["index.html","f","Controller markup.","ui"],["controller.css","f","Styles (2069 lines).","ui"]]]]],
+ ["PROTOCOL.md","f","Realtime contract. Source of truth for frames, close codes, concurrency rules, wall state.","docs"],
+ ["tests/","d","500 pytest tests (in-process TestClient) + one Node test for client image logic.","tests",[
+  ["conftest.py","f","Resets module state and points DB/assets at temp paths per test.","tests"],
+  ["test_commit_boundary.py","f","Breaks save_state on purpose; asserts memory, DB, broadcast all unchanged.","tests"],
+  ["test_websocket.py","f","Socket lifecycle, replacement, heartbeat, close codes.","tests"],
+  ["test_security.py","f","Origin guard and ingress behaviour.","tests"],
+  ["client_image.test.js","f","Node test of client image races and wall transform.","tests"]]],
+ ["simulator/","d","Test-only: 18 virtual tablets against the real app. No browser, no pixels.","tests"],
+ ["deploy/","d","Caddy two-origin config, systemd template, backup.py (verify/restore), smoke scripts, ops and kiosk docs. Reference only; not validated on real hosts.","deploy"],
+ ["Makefile","f","sync, dev, run, test, sim, clean. Runs from repo root (static mounts are relative).","config"],
+ ["pyproject.toml","f","Deps: fastapi[standard], pillow. Dev: httpx2, pytest, pytest-timeout. Python ≥ 3.13.","config"],
+ ["README.md","f","Overview, API table, known limitations, roadmap.","docs"]
+];
+const FLOW=[
+ ["controller","Operator presses “Show on wall”","controller.js applyImageScene() → requestJson('PUT','/scene',{content:{type:'image',asset:'sha256:…'}})","Body: {content:{type,asset}}"],
+ ["guard","Origin guard (if configured)","main.operator_origin_guard: if TABLET_WALL_OPERATOR_ORIGIN is set, Origin must match exactly or → 403 before any route code runs.","No change"],
+ ["validate","Body validated","main.SceneContent / SceneUpdate (Pydantic). Unknown keys → 422. Image needs sha256 id. fit defaults to 'cover'.","Typed model"],
+ ["asset","Asset resolved (worker thread)","main.put_scene → asyncio.to_thread(assets.find, id). Rescans directory, hashes, decodes. Unknown → 422.","id → Asset(width,height)"],
+ ["commit","Commit boundary","main._commit_wall: deepcopy → change → revision+1 → persist.save_state → change live wall → revision+1.","SQLite row updated; revision +1"],
+ ["broadcast","Broadcast to everyone","hub._broadcast_wall: wall_updated to v2 controllers; per-device wall frame via state._wall_frame (downgrades to color if no 'image' cap).","Frame: size, own placement, scene, revision, generation"],
+ ["accept","Tablet accepts the frame","client.js applyWallFrame: validate whole frame first; drop if revision ≤ held within same generation.","wallState, heldRevision, heldGeneration"],
+ ["fetch","Tablet fetches the bytes","client.js image load → GET /assets/sha256:… (15 s deadline, token discards stale attempts). Server: assets.fetch re-hashes before serving.","bytes → decoded bitmap"],
+ ["draw","Tablet draws its slice","client.js drawWallImage: cover rect in wall coords, clip to own visible rect (placement − bezel).","Pixels"]
+];
+const SEQ_ACTORS=["controller.js","main.py","assets.py","persist.py","hub.py","client.js"];
+const SEQ_MSG=[[0,1,"PUT /scene"],[1,2,"find(asset) [thread]"],[1,3,"save_state (commit)"],[1,4,"_broadcast_wall"],[4,0,"wall_updated"],[4,5,"wall frame"],[5,1,"GET /assets/id"],[1,0,"200 wall state"]];
+const DECS=[
+ ["D1 Single process, state in module-level dicts","state.py; README says one worker per wall/database","No locks needed on one event loop. Simple.","Cannot scale out; two workers would diverge.","Needs shared store + pub/sub; rewrite state and hub.","fact"],
+ ["D2 Persist → apply → broadcast","main._commit_wall; tests/test_commit_boundary.py","Memory, disk, and client knowledge never disagree.","Extra deepcopy; blocking sqlite write on the loop.","Reordering can announce state that vanishes after restart.","fact"],
+ ["D3 revision + generation","state._new_generation; main._restore_wall_state; client.applyWallFrame","Replays are safe, and restored/rolled-back servers still get accepted.","Clients track two tokens.","Drop generation → a restored server at lower revision is ignored forever.","fact"],
+ ["D4 Layout and scene are separate","wall['layout'] vs wall['scene']; separate saved_* tables","Recalling content never wipes placement work.","Two recall paths.","Fusing makes 'recall scene' ambiguous.","fact"],
+ ["D5 Roster not persisted, placements are","README Known limitations; vacant reservations in put_placement and wall_auto","Tablets re-register by themselves; reserved slots survive restarts.","Placements may refer to unknown devices.","Persisting roster needs presence reconciliation.","fact"],
+ ["D6 Content-addressed assets, no upload, no paths","assets.py docstring; protocol._ASSET_ID_PATTERN","No path traversal; rename-safe; cache-safe; scan/serve race closed by re-hash.","New bytes = new identity; every read rescans the directory (CPU/IO).","Path-based ids would need traversal defences.","fact"],
+ ["D7 Client re-registers before every connect","client.register / attemptCycle","Server restart recovers with no operator action.","One extra POST per reconnect.","—","fact"],
+ ["D8 Versioned protocol with caps","protocol.SUPPORTED_PROTOCOLS, SERVER_CAPS; state._wall_frame","Cached old tablets keep working; server never sends what a client cannot render.","Two code paths (v1, v2).","Dropping v1 breaks stale cached clients.","fact"],
+ ["D9 Two-origin proxy; app Origin check is a CSRF fence only","main.py origin guard comments; deploy/hotspot.Caddyfile","Operator routes hidden from the tablet LAN.","All authentication depends on the proxy; none in the app.","Exposing the app directly exposes every operator route.","fact"],
+ ["D10 Plain JS, no build step","frontend/ are static files","Works on old tablets with no internet.","Very large single files.","A bundler changes deployment.","inf"]
+];
+const HOTS=[
+ ["Risky","main._commit_wall and its callers",100,"var(--red)","Ordering guarantees; many tests rely on them."],
+ ["Risky","client.js image load / token logic",95,"var(--red)","Async races, stale-attempt rules, deadline."],
+ ["Difficult","controller.js (4088 lines)",80,"var(--amber)","One big file; many render functions; wall-map editing."],
+ ["Difficult","assets._inspect / _read_capped",75,"var(--amber)","Untrusted file handling; symlink and size races."],
+ ["Difficult","main._validated_origin",65,"var(--amber)","Strict parsing; fail-closed semantics."],
+ ["Moderate","hub._sweep_once, ws_device",50,"var(--violet)","Socket slot ownership and replacement."],
+ ["Moderate","persist._save_one",40,"var(--violet)","Atomic insert-or-conflict; small but subtle."],
+ ["Easy","protocol.py, state.py",18,"var(--green)","Pure helpers and plain dicts."]
+];
+
+/* ---------- helpers ---------- */
+const $=(s,r=document)=>r.querySelector(s), $$=(s,r=document)=>[...r.querySelectorAll(s)];
+const esc=s=>s.replace(/[&<>]/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;"}[c]));
+
+/* ---------- toc + search + scrollspy ---------- */
+const secs=$$("main section");
+$("#toc").innerHTML=secs.map(s=>`<a href="#${s.id}" data-id="${s.id}">${esc(s.querySelector("h2").textContent)}</a>`).join("");
+$("#q").addEventListener("input",e=>{
+  const q=e.target.value.toLowerCase().trim();
+  secs.forEach(s=>{
+    const hit=!q||(s.dataset.title+" "+s.textContent).toLowerCase().includes(q);
+    s.classList.toggle("hide",!hit);
+    $(`#toc a[data-id=${s.id}]`).classList.toggle("hide",!hit);
+  });
+});
+const io=new IntersectionObserver(es=>es.forEach(e=>{
+  if(e.isIntersecting){$$("#toc a").forEach(a=>a.classList.toggle("on",a.dataset.id===e.target.id));}
+}),{rootMargin:"-20% 0px -70% 0px"});
+secs.forEach(s=>io.observe(s));
+
+/* ---------- theme + depth ---------- */
+const root=document.documentElement;
+try{const t=localStorage.getItem("tw-theme");if(t)root.dataset.theme=t;}catch(e){}
+if(!root.dataset.theme&&matchMedia("(prefers-color-scheme: light)").matches)root.dataset.theme="light";
+$("#theme").onclick=()=>{root.dataset.theme=root.dataset.theme==="light"?"dark":"light";try{localStorage.setItem("tw-theme",root.dataset.theme)}catch(e){}};
+$("#depth").onclick=e=>{const on=document.body.classList.toggle("deepmode");e.target.textContent="Deep dive: "+(on?"on":"off");e.target.classList.toggle("on",on)};
+
+/* ---------- architecture diagram ---------- */
+function selectNode(id){
+  const n=NODES[id];if(!n)return;
+  const keep=new Set([id,...n.c]);
+  $$("#arch-svg .node").forEach(g=>{g.classList.toggle("sel",g.dataset.n===id);g.classList.toggle("dim",!keep.has(g.dataset.n))});
+  $$("#arch-svg .edge").forEach(p=>{const [a,b]=EDGES[p.dataset.e];const on=a===id||b===id;p.classList.toggle("dim",!on);p.classList.toggle("hl",on)});
+  $("#info").innerHTML=`<b>${esc(n.t)}</b> <span class="kind">${esc(n.f)}</span><p style="margin:.4em 0 0">${esc(n.d)}</p>`;
+}
+$$("#arch-svg .node").forEach(g=>g.addEventListener("click",ev=>{ev.stopPropagation();selectNode(g.dataset.n)}));
+$("#arch-svg").addEventListener("click",()=>{$$("#arch-svg .node,#arch-svg .edge").forEach(x=>x.classList.remove("dim","sel","hl"));$("#info").innerHTML="<i>Select a component.</i>"});
+// the fs label has no node of its own in the SVG; make the dir text clickable via DB-adjacent node
+(function(){const g=$('#arch-svg .node[data-n=fs]');g.querySelector("rect").style.display="";g.querySelector("rect").setAttribute("height","40");g.setAttribute("transform","translate(860,445)");g.insertAdjacentHTML("beforeend",'<text x="10" y="25">assets/</text>');$$("#arch-svg text.lbl").filter(t=>t.textContent.startsWith("assets/")).forEach(t=>t.remove());})();
+
+/* ---------- file tree ---------- */
+function mk(items){
+  return "<ul>"+items.map(it=>{
+    const [name,type,desc,kind,kids]=it;
+    const k=`<span class="kind">${kind}</span>`;
+    if(type==="d")return `<li class="d" data-d="${esc(desc)}" data-n="${esc(name)}" data-k="${kind}"><span>${esc(name)}</span>${k}${kids?mk(kids):""}</li>`;
+    return `<li class="f" data-d="${esc(desc)}" data-n="${esc(name)}" data-k="${kind}"><span>${esc(name)}</span>${k}</li>`;
+  }).join("")+"</ul>";
+}
+$("#tree").innerHTML=mk(TREE);
+$("#tree").addEventListener("click",e=>{
+  const li=e.target.closest("li");if(!li)return;e.stopPropagation();
+  if(li.classList.contains("d")&&e.target.closest("span")&&e.target.closest("li")===li)li.classList.toggle("open");
+  $("#fileinfo").innerHTML=`<b class="mono">${esc(li.dataset.n)}</b> <span class="kind">${li.dataset.k}</span><p>${li.dataset.d}</p>`;
+});
+$$("#tree > ul > li.d").forEach(l=>l.classList.add("open"));
+
+/* ---------- step-through flow ---------- */
+let step=-1,timer=null;
+$("#lane").innerHTML=FLOW.map((f,i)=>`<div class="box" data-i="${i}"><b>${i+1}.</b> ${esc(f[1])}</div>${i<FLOW.length-1?'<div class="arrow">↓</div>':''}`).join("");
+function showStep(){
+  $$("#lane .box").forEach(b=>{const i=+b.dataset.i;b.classList.toggle("act",i===step);b.classList.toggle("done",i<step)});
+  const f=FLOW[step];
+  $("#stepinfo").innerHTML=step<0?"<i>Press Next to start the request.</i>":
+   `<b>Step ${step+1}: ${esc(f[1])}</b><p>${esc(f[2])}</p><p><span class="tag fact">DATA</span>${esc(f[3])}</p>`;
+  drawSeq();
+}
+$("#next").onclick=()=>{if(step<FLOW.length-1){step++;showStep()}};
+$("#prev").onclick=()=>{if(step>-1){step--;showStep()}};
+$("#reset").onclick=()=>{step=-1;clearInterval(timer);timer=null;$("#play").textContent="Auto-play";showStep()};
+$("#play").onclick=e=>{
+  if(timer){clearInterval(timer);timer=null;e.target.textContent="Auto-play";return}
+  if(step>=FLOW.length-1)step=-1;
+  e.target.textContent="Pause";
+  timer=setInterval(()=>{if(step<FLOW.length-1){step++;showStep()}else{clearInterval(timer);timer=null;e.target.textContent="Auto-play"}},1500);
+};
+/* sequence diagram; messages light up with steps (mapping message index -> step range) */
+const MSG_STEP=[0,3,4,5,5,5,7,8];
+function drawSeq(){
+  const W=900,n=SEQ_ACTORS.length,gap=W/n,x=i=>gap*i+gap/2;
+  let s='<defs><marker id="ah3" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto"><path d="M0 0L10 5L0 10z" fill="currentColor"/></marker></defs>';
+  SEQ_ACTORS.forEach((a,i)=>{s+=`<g class="node"><rect x="${x(i)-62}" y="8" width="124" height="30"/><text x="${x(i)}" y="28" text-anchor="middle" style="font-size:12px">${a}</text></g><line x1="${x(i)}" y1="38" x2="${x(i)}" y2="320" stroke="var(--line)" stroke-dasharray="4 4"/>`});
+  SEQ_MSG.forEach((m,i)=>{
+    const y=64+i*32,on=step>=MSG_STEP[i]&&step>=0,cur=step===MSG_STEP[i];
+    const col=cur?"var(--accent)":on?"var(--text)":"var(--line)";
+    s+=`<line x1="${x(m[0])}" y1="${y}" x2="${x(m[1])+(m[1]>m[0]?-4:4)}" y2="${y}" stroke="${col}" stroke-width="${cur?3:1.6}" style="color:${col}" marker-end="url(#ah3)"/>`;
+    s+=`<text x="${(x(m[0])+x(m[1]))/2}" y="${y-6}" text-anchor="middle" fill="${on?'var(--text)':'var(--muted)'}" style="font-size:11px">${esc(m[2])}</text>`;
+  });
+  $("#seq").innerHTML=s;
+}
+showStep();
+
+/* ---------- decisions ---------- */
+$("#decs").innerHTML=DECS.map(d=>`<details class="card dec"><summary>${esc(d[0])} <span class="tag ${d[5]}">${d[5]==="fact"?"FACT":"INFERENCE"}</span></summary>
+<dl><dt>Evidence</dt><dd>${esc(d[1])}</dd><dt>Solves</dt><dd>${esc(d[2])}</dd><dt>Tradeoff</dt><dd>${esc(d[3])}</dd><dt>If changed</dt><dd>${esc(d[4])}</dd></dl></details>`).join("");
+
+/* ---------- hotspots ---------- */
+$("#hots").innerHTML=HOTS.map(h=>`<div class="hot"><span style="width:80px;color:${h[3]};font-weight:700">${h[0]}</span><div style="flex:1;max-width:260px;background:var(--panel2);border-radius:6px"><div class="bar" style="width:${h[2]}%;background:${h[3]}"></div></div><span><b class="mono">${esc(h[1])}</b> — ${esc(h[4])}</span></div>`).join("");
+</script>
+</body>
+</html>

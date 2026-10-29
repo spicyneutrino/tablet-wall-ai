@@ -1,0 +1,895 @@
+I want you to **explore this codebase and teach it to me as if I am joining the project for the first time**.
+
+Do not only summarize files. Build a coherent understanding of the system.
+
+My goal is to understand:
+
+- what the project does,
+- how the architecture fits together,
+- how data and control flow through the system,
+- why the code is structured this way,
+- what important design decisions were made,
+- what tradeoffs exist,
+- where the risky or complex areas are,
+- and how I would safely modify or extend it.
+
+Assume I am a Computer Science student with solid programming fundamentals, but I have not worked deeply in this codebase before.
+
+## 1. Explore before explaining
+
+First inspect the repository thoroughly.
+
+Look at relevant:
+
+- directory structure,
+- entry points,
+- configuration files,
+- dependency files,
+- README/docs,
+- schemas and models,
+- API routes,
+- services,
+- controllers,
+- utilities,
+- frontend components,
+- background jobs,
+- database code,
+- tests,
+- deployment files,
+- CI/CD,
+- container configuration,
+- environment configuration.
+
+Do not assume that filenames accurately describe their role.
+
+Trace actual imports, calls, dependencies, and runtime paths before making architectural claims.
+
+Clearly distinguish:
+
+- facts directly supported by the code,
+- reasonable architectural inferences,
+- things you cannot determine confidently.
+
+Do not invent design intent when it is not documented or strongly implied by the implementation.
+
+Do not modify any repository files unless I explicitly ask you to. Treat this as **read-only exploration and teaching mode**.
+
+## 2. Writing style
+
+Use a writing style inspired by approximately **75% ASD-STE100**.
+
+The goal is clarity, precision, and readability without making the explanation feel like a maintenance manual.
+
+Prefer:
+
+- short and direct sentences,
+- clear subject-verb relationships,
+- precise technical terminology,
+- one main idea per sentence where practical,
+- definitions before heavy use of terminology,
+- concrete wording instead of vague references,
+- explicit references to files, functions, and components.
+
+Avoid:
+
+- unnecessarily long paragraphs,
+- overly academic wording,
+- vague phrases such as "this" or "that" when the referent is unclear,
+- excessive jargon,
+- unnecessary metaphor,
+- filler,
+- repeated explanations,
+- overly compressed explanations that assume too much background knowledge.
+
+Do not oversimplify technical details to the point of being incorrect.
+
+## 3. Produce TWO learning artifacts
+
+As you explore the repository, maintain two synchronized outputs.
+
+### Artifact A: Beautiful interactive HTML explainer
+
+Create a polished, self-contained HTML learning artifact for the codebase.
+
+The HTML should be the **primary visual and interactive explanation**.
+
+It should contain the same important information as the Markdown reference, but present it in a way that is much easier to visually explore.
+
+Use HTML, CSS, and JavaScript as needed.
+
+Prefer plain HTML/CSS/JavaScript unless a framework provides a clear benefit.
+
+The HTML should include:
+
+- architecture overview,
+- visually polished architecture diagrams,
+- repository structure,
+- subsystem explanations,
+- data-flow diagrams,
+- request-flow diagrams,
+- sequence diagrams,
+- dependency relationships,
+- state lifecycle diagrams,
+- configuration flow,
+- important design decisions,
+- major execution paths,
+- complexity hotspots,
+- modification guides,
+- learning roadmap.
+
+Make it visually clean and easy to navigate.
+
+Useful UI elements may include:
+
+- sidebar navigation,
+- collapsible sections,
+- tabs,
+- cards,
+- hover explanations,
+- clickable components,
+- highlighted code references,
+- breadcrumbs,
+- searchable sections,
+- expandable file trees,
+- dependency maps,
+- flow animations,
+- step-through execution traces.
+
+For diagrams, do not settle for ugly text-only representations if HTML can show the concept better.
+
+Use appropriate visual representations such as:
+
+- Mermaid,
+- SVG,
+- CSS diagrams,
+- Canvas,
+- lightweight JavaScript visualizations.
+
+Prefer whichever representation makes the concept easiest to understand.
+
+For example, an architecture diagram might visually show:
+
+```text
+User
+  |
+  v
+Frontend
+  |
+  v
+API Server
+  |
+  +------> Database
+  |
+  +------> External API
+  |
+  +------> Background Worker
+```
+
+But in the HTML artifact, render this as a clean visual diagram instead of leaving it as plain ASCII when practical.
+
+The HTML should be educational, not merely decorative.
+
+### Artifact B: Persistent Markdown codebase guide
+
+Also create and maintain a Markdown document containing the same core understanding.
+
+This document should act as the **durable reference for future AI sessions and future development work**.
+
+It should contain:
+
+- project purpose,
+- architecture,
+- subsystem descriptions,
+- repository structure,
+- important files,
+- important functions/classes,
+- APIs,
+- data models,
+- runtime flows,
+- dependency relationships,
+- state management,
+- configuration,
+- deployment,
+- testing,
+- important design decisions,
+- tradeoffs,
+- risks,
+- complexity hotspots,
+- modification guides,
+- recommended reading order.
+
+The Markdown should be detailed enough that I can later provide it to another coding agent and say:
+
+> Read this first to understand the architecture and current codebase.
+
+Avoid visual styling that only works in one Markdown renderer.
+
+Use:
+
+- headings,
+- tables,
+- Mermaid when appropriate,
+- code blocks,
+- short diagrams,
+- explicit file paths,
+- explicit function/class names.
+
+## 4. Keep HTML and Markdown synchronized
+
+The HTML and Markdown should describe the **same architecture and codebase understanding**.
+
+The HTML is optimized for:
+
+- learning,
+- visual understanding,
+- interactive exploration.
+
+The Markdown is optimized for:
+
+- long-term reference,
+- future AI context,
+- searching,
+- version control,
+- future development sessions.
+
+When your understanding of the codebase changes, update both artifacts.
+
+Do not allow the HTML and Markdown versions to contradict each other.
+
+## 5. Start with the big picture
+
+Before going file by file, explain:
+
+- What problem does this project solve?
+- Who or what uses it?
+- What are the major subsystems?
+- What happens from startup to normal operation?
+- What are the main external dependencies?
+- Where does persistent state live?
+- What parts communicate over the network?
+- What parts run in the browser, server, worker, database, or external services?
+
+Give me a simple mental model first.
+
+## 6. Show the architecture visually
+
+Create a high-level architecture diagram.
+
+Show:
+
+- major components,
+- boundaries,
+- communication paths,
+- storage,
+- external services,
+- important protocols,
+- synchronous vs asynchronous communication where relevant.
+
+If the project has multiple processes, services, or deployment units, show those separately.
+
+The HTML version should use a polished visual diagram.
+
+The Markdown version should contain a portable equivalent, preferably Mermaid when suitable.
+
+## 7. Explain the repository structure
+
+Give me a directory tree containing the important parts only.
+
+For each important directory or file, explain:
+
+- its responsibility,
+- what depends on it,
+- what it depends on,
+- whether it is core or supporting code,
+- whether I should understand it now or later.
+
+Do not waste time describing every generated file or obvious boilerplate.
+
+Classify files roughly as:
+
+- entry point,
+- domain/business logic,
+- API/interface layer,
+- data layer,
+- infrastructure,
+- configuration,
+- utilities,
+- tests,
+- frontend/UI,
+- build/deployment.
+
+In the HTML version, make the repository tree expandable or otherwise easy to browse when practical.
+
+## 8. Trace the main execution paths
+
+Identify the most important runtime flows.
+
+Examples:
+
+- application startup,
+- user login,
+- API request,
+- database query,
+- file upload,
+- WebSocket message,
+- background job,
+- event handling,
+- frontend interaction,
+- external API call.
+
+For each flow:
+
+1. identify the trigger,
+2. trace each step,
+3. show the important function or method calls,
+4. show the files involved,
+5. explain the data transformations,
+6. explain side effects,
+7. show the final result.
+
+Explain both:
+
+- **control flow:** what calls what,
+- **data flow:** what data moves and how it changes.
+
+The HTML version should visualize important flows using sequence diagrams or step-through diagrams.
+
+## 9. Teach the architecture, not just the code
+
+Identify the architectural style or patterns used, if any.
+
+Examples:
+
+- layered architecture,
+- MVC,
+- service/repository pattern,
+- event-driven architecture,
+- microservices,
+- modular monolith,
+- client/server,
+- pub/sub,
+- CQRS,
+- dependency injection,
+- plugin architecture,
+- message queues,
+- state machines.
+
+For each pattern you identify:
+
+- show where it appears in the code,
+- explain why it may have been used,
+- explain its benefits,
+- explain its drawbacks,
+- explain whether the implementation follows the pattern consistently.
+
+Do not label something with an architecture buzzword unless the code supports that interpretation.
+
+## 10. Explain important design decisions
+
+Identify decisions that materially shape the system.
+
+Examples:
+
+- why state is stored in a certain place,
+- why a specific abstraction exists,
+- why logic is split across layers,
+- why WebSockets are used instead of polling,
+- why a queue exists,
+- why a certain database model exists,
+- why some operation is asynchronous,
+- why a cache is used,
+- why certain dependencies were chosen.
+
+For each important decision, explain:
+
+1. What decision was made.
+2. Evidence from the code.
+3. What problem it solves.
+4. The tradeoff.
+5. Reasonable alternatives.
+6. What would happen if we changed it.
+
+If the original intent cannot be determined, state that clearly and explain only the observable consequences.
+
+## 11. Explain the data model
+
+If the project stores structured data, show:
+
+- important entities,
+- important fields,
+- relationships,
+- IDs and foreign keys,
+- lifecycle of important objects,
+- where validation happens,
+- where serialization/deserialization happens.
+
+Create a visual entity relationship or object relationship diagram where appropriate.
+
+If there is no database, explain the equivalent in-memory or externally stored state model.
+
+## 12. Explain APIs and interfaces
+
+For each important interface, explain:
+
+- who calls it,
+- input,
+- output,
+- validation,
+- side effects,
+- failure modes,
+- authentication/authorization if relevant.
+
+This includes:
+
+- HTTP APIs,
+- WebSockets,
+- CLI commands,
+- internal service interfaces,
+- message queues,
+- event handlers,
+- database interfaces,
+- frontend/backend contracts.
+
+Use sequence diagrams when they improve understanding.
+
+## 13. Explain state and lifecycle
+
+Tell me what state exists and where it lives.
+
+Examples:
+
+- frontend state,
+- request-local state,
+- session state,
+- server memory,
+- database state,
+- cache state,
+- filesystem state,
+- queue state.
+
+For important objects, explain their lifecycle.
+
+Example:
+
+```text
+Created
+  ->
+Validated
+  ->
+Stored
+  ->
+Updated
+  ->
+Deleted / Archived
+```
+
+Visualize important state transitions in the HTML artifact.
+
+## 14. Explain concurrency and asynchronous behavior
+
+If the project uses:
+
+- async/await,
+- threads,
+- processes,
+- workers,
+- queues,
+- WebSockets,
+- callbacks,
+- events,
+- scheduled tasks,
+
+explain how they interact.
+
+Show where problems could occur involving:
+
+- race conditions,
+- ordering,
+- retries,
+- duplicate execution,
+- synchronization,
+- shared mutable state,
+- timeout behavior.
+
+Do not claim concurrency safety unless the code supports that conclusion.
+
+## 15. Explain error handling and failure modes
+
+Identify how the project handles:
+
+- invalid input,
+- network failures,
+- database failures,
+- timeouts,
+- retries,
+- partial failures,
+- unexpected exceptions,
+- missing configuration,
+- external service outages.
+
+Show where errors are:
+
+- created,
+- caught,
+- transformed,
+- logged,
+- returned to users.
+
+Also point out cases where error handling appears incomplete or fragile.
+
+## 16. Explain security boundaries
+
+Identify relevant security-sensitive areas:
+
+- authentication,
+- authorization,
+- secret handling,
+- user input,
+- database queries,
+- file access,
+- external requests,
+- CORS,
+- WebSockets,
+- deserialization,
+- shell commands,
+- dependency trust boundaries.
+
+Explain trust boundaries visually where useful.
+
+Do not perform a full security audit unless I ask for one, but point out architectural areas where security matters.
+
+## 17. Explain configuration and deployment
+
+Show how configuration reaches the application.
+
+Trace things such as:
+
+```text
+Environment variables
+        |
+        v
+Config loader
+        |
+        v
+Application settings
+        |
+        v
+Services
+```
+
+Explain:
+
+- environment variables,
+- config files,
+- secrets,
+- development vs production differences,
+- containers,
+- Docker/Podman,
+- deployment assumptions,
+- ports,
+- volumes,
+- build process,
+- startup command.
+
+If the repository supports containers, prefer explaining the containerized workflow.
+
+## 18. Explain testing
+
+Show:
+
+- what kinds of tests exist,
+- what important behavior is tested,
+- what is mocked,
+- what is not tested,
+- where integration boundaries are,
+- how I would run the tests.
+
+Explain what confidence the current test suite provides.
+
+Do not infer strong coverage solely from the number of test files.
+
+## 19. Identify complexity hotspots
+
+Tell me which parts of the codebase deserve the most attention.
+
+Rank them roughly as:
+
+- easy,
+- moderate,
+- difficult,
+- risky to modify.
+
+Explain why.
+
+Consider:
+
+- high coupling,
+- shared state,
+- concurrency,
+- implicit behavior,
+- large functions,
+- dependency chains,
+- unclear ownership,
+- external services,
+- weak testing,
+- complex business rules.
+
+Visualize these hotspots in the HTML when practical.
+
+## 20. Teach me how to modify the system
+
+Give me several realistic change scenarios.
+
+Examples:
+
+- add a new API endpoint,
+- add a database field,
+- add a frontend feature,
+- add a new service,
+- change an existing workflow,
+- add authentication,
+- add a background task.
+
+For each change, tell me:
+
+- which files I would likely touch,
+- what order I should work in,
+- what interfaces could break,
+- what tests I should add or run,
+- what architectural assumptions I should preserve.
+
+This should teach me how the architecture behaves in practice.
+
+## 21. Show dependency relationships
+
+Create a simplified module dependency graph.
+
+Show:
+
+- major modules,
+- dependency directions,
+- shared abstractions,
+- cross-layer dependencies,
+- external dependencies.
+
+Point out:
+
+- circular dependencies,
+- unexpected dependency directions,
+- unusually tight coupling,
+- architectural boundary violations.
+
+The HTML version should make this graph visually easy to inspect where practical.
+
+## 22. Create a codebase learning map
+
+Organize the project into a recommended reading order.
+
+For example:
+
+### Stage 1: Understand first
+- entry point
+- core domain models
+- primary service
+- main API flow
+
+### Stage 2: Understand next
+- persistence
+- secondary services
+- frontend state
+
+### Stage 3: Advanced
+- background workers
+- caching
+- deployment
+- edge cases
+
+Explain why the order makes sense.
+
+Include this roadmap in both HTML and Markdown.
+
+## 23. Use visual teaching aggressively when useful
+
+Do not rely on prose when a visual representation communicates the concept better.
+
+Use:
+
+- architecture diagrams,
+- sequence diagrams,
+- dependency graphs,
+- state machines,
+- timelines,
+- data-flow diagrams,
+- request traces,
+- interactive execution flows,
+- expandable component maps.
+
+For complicated runtime behavior, consider an animated or step-through visualization.
+
+For example, let me click:
+
+`Start request`
+
+and then visually show:
+
+```text
+Browser
+   ↓
+Route
+   ↓
+Validation
+   ↓
+Service
+   ↓
+Repository
+   ↓
+Database
+   ↓
+Response
+```
+
+Highlight the currently active component and show the relevant file/function.
+
+## 24. Make the HTML genuinely useful
+
+The HTML should not simply be the Markdown document rendered with prettier CSS.
+
+Use the web medium where it provides value.
+
+Examples:
+
+- clicking a service highlights its dependencies,
+- clicking a file shows its responsibility,
+- selecting a runtime flow highlights participating components,
+- hovering over an edge explains the communication mechanism,
+- toggling "data flow" vs "control flow" changes the diagram,
+- expanding a subsystem reveals deeper architectural details,
+- selecting "beginner" vs "deep dive" changes explanation depth.
+
+Keep the interface understandable and lightweight.
+
+Do not add interaction that does not improve learning.
+
+## 25. Teach incrementally
+
+Do not dump the entire repository explanation in one giant response.
+
+Start with:
+
+1. project purpose,
+2. architecture overview,
+3. important repository structure,
+4. one main end-to-end execution flow,
+5. recommended learning order.
+
+Then continue subsystem by subsystem.
+
+When teaching a subsystem:
+
+1. Start with intuition.
+2. Show where it fits in the architecture.
+3. Inspect the relevant code.
+4. Trace runtime behavior.
+5. Explain important design decisions.
+6. Show a diagram.
+7. Identify important files and functions.
+8. Point out risks and tradeoffs.
+9. Update the HTML artifact.
+10. Update the Markdown reference.
+11. Test my understanding with a few questions.
+
+Do not provide quiz answers until I attempt them.
+
+## 26. Maintain an evolving mental model
+
+As you explore more of the repository, update earlier conclusions when necessary.
+
+If later code contradicts an earlier interpretation, explicitly explain:
+
+- what you previously believed,
+- what new evidence changed that understanding,
+- what the correct model now appears to be.
+
+Update both the HTML and Markdown artifacts accordingly.
+
+Accuracy is more important than preserving the first explanation.
+
+## 27. Make the Markdown reusable as AI context
+
+Write the Markdown so another AI coding agent can understand the codebase efficiently.
+
+Prefer specific statements such as:
+
+> `backend/services/session_manager.py` owns the lifecycle of active sessions and is called by the WebSocket connection layer.
+
+over vague statements such as:
+
+> The session manager handles sessions.
+
+Include important concrete references to:
+
+- file paths,
+- classes,
+- functions,
+- routes,
+- database tables,
+- configuration names,
+- service boundaries.
+
+Do not make the document unnecessarily verbose, but preserve the architectural information needed to work on the repository safely later.
+
+## 28. Expected deliverables
+
+Maintain these files, unless an equivalent existing documentation location is clearly better:
+
+```text
+docs/
+├── codebase-explorer.html
+└── CODEBASE_GUIDE.md
+```
+
+`codebase-explorer.html`
+
+Purpose:
+- beautiful visual learning,
+- interactive exploration,
+- diagrams,
+- architecture understanding.
+
+`CODEBASE_GUIDE.md`
+
+Purpose:
+- durable architectural reference,
+- future AI context,
+- development reference,
+- searchable documentation.
+
+If a more appropriate docs structure already exists, use it instead rather than creating unnecessary duplicate documentation.
+
+Do not modify application source code while creating these artifacts unless I explicitly ask.
+
+## Final goal
+
+Treat this as:
+
+**codebase onboarding + architecture analysis + visual explanation + tutoring + durable documentation**
+
+I want to finish with the ability to explain:
+
+- what the system does,
+- how its pieces fit together,
+- how a request or event flows through it,
+- where state lives,
+- why important design choices exist,
+- where the difficult parts are,
+- how dependencies are organized,
+- and how to safely make changes.
+
+The HTML should help me **see and explore the system**.
+
+The Markdown should help me **remember it and provide context to future AI agents**.
+
+## First task
+
+Begin by exploring the repository.
+
+Then create the initial versions of:
+
+- `codebase-explorer.html`
+- `CODEBASE_GUIDE.md`
+
+For the first pass, cover only:
+
+1. **What this project is**
+2. **High-level architecture**
+3. **Beautiful visual architecture diagram**
+4. **Important repository structure**
+5. **One main end-to-end execution flow**
+6. **Key architectural/design decisions discovered so far**
+7. **Recommended order for learning the codebase**
+
+Make the HTML visually polished and easy to understand.
+
+Make the Markdown detailed enough to serve as persistent context later.
+
+Then continue deeper subsystem by subsystem, updating both artifacts as your understanding improves.

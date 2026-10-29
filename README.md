@@ -29,6 +29,11 @@ This project began as a copy of `tablet-wall`. New development happens here.
 > the [review-fix round](docs/planning/tablet-wall-roadmap-2026-10-23/EXECUTION_LOG.md#review-fix-round-2026-10-25)
 > and the [durable browser runners](simulator/README.md#durable-browser-acceptance-runners).
 
+> New to the codebase? Read the [field guide](docs/field-guide/index.html)
+> (open it in a browser) or its [Markdown source](docs/field-guide/GUIDE.md).
+> It explains the architecture, the playback model, the geometry, the media
+> pipeline, the security boundary, and the current roadmap.
+
 ## Requirements
 
 - Python 3.13+
@@ -118,6 +123,17 @@ recall asks for confirmation; saving to a name that already exists requires a
 separate explicit replacement confirmation. Saved snapshots live in the same
 SQLite database as the active wall, so include it in backups.
 
+### Operator diagnostics
+
+The physical controller keeps Show, Tablet, Content and System tabs available
+on desktop and phone screens. Under System, Field check can refresh storage,
+backup and client health or verify stored object bytes. Download report saves
+the last successful response as timestamped JSON, including integrity results
+when verification was requested. Failed refreshes disable download until a
+successful retry. Diagnostics require the same operator admission as the media
+library. Reports contain operational metadata; review them before sharing.
+Desktop browser evidence does not replace physical tablet validation.
+
 ### Curating still images
 
 There are two sources. **Curated files**: create an `assets/` directory at the
@@ -186,13 +202,13 @@ Registration body:
 }
 ```
 
-`device_id` must be a version 4 UUID. Width and height are unvalidated ints, so
-negative or absurd dimensions are currently accepted.
+`device_id` must be a version 4 UUID. Width and height must be positive
+integers no greater than 16384.
 
 ## Testing
 
 ```bash
-make test        # or: uv run pytest
+make test        # Python and all client JavaScript tests
 ```
 
 The Python suite drives the app in-process via Starlette's `TestClient` (backed

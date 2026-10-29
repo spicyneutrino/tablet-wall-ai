@@ -31,7 +31,6 @@ from fastapi import (
     HTTPException,
     Query,
     Request,
-    Response,
     WebSocket,
     WebSocketDisconnect,
 )
@@ -43,7 +42,7 @@ from starlette.datastructures import Headers
 # ``tabletwall.hub`` is imported both as a module and as its individual names:
 # the tests patch the sweeper's timing constants on the reader module, i.e.
 # ``monkeypatch.setattr(main.hub, "HEARTBEAT_TIMEOUT_S", ...)``.
-from tabletwall import hub
+from tabletwall import hub as hub
 from tabletwall.hub import (
     _broadcast,
     _broadcast_offline,
@@ -76,16 +75,14 @@ from tabletwall.protocol import (
 )
 # Curated still-image assets (PROTOCOL.md "Still images"): the directory scan,
 # content IDs, and byte-verified serving behind ``GET /assets``.
-from tabletwall import assets, clock, displays, geometry, media, media_serve, media_video, playback
+from tabletwall import assets, clock, displays, geometry, media, media_video, playback
 from tabletwall import persist
 from tabletwall import writer as writers
 from tabletwall.media_limits import (
-    FREE_RESERVE_BYTES,
     MAX_SOURCE_BYTES,
     MAX_VIDEO_BYTES,
     MAX_WAITING_UPLOADS,
     PIPELINE_VERSION,
-    QUOTA_BYTES,
     VIDEO_RECEIVE_TIMEOUT_S,
 )
 # Persistence of the wall state (PROTOCOL.md "Persistence"): the roster,
@@ -122,6 +119,10 @@ from tabletwall.state import (
     devices,
     wall,
 )
+
+from tabletwall.routes.assets import router as assets_router
+from tabletwall.routes.devices import router as devices_router
+from tabletwall.routes.diagnostics import router as diagnostics_router
 
 _sweeper_task: asyncio.Task[Any] | None = None
 
@@ -496,6 +497,13 @@ def _valid_saved_content(saved: Any) -> bool:
 app = FastAPI(lifespan=lifespan)
 
 
+app.include_router(assets_router)
+
+
+app.include_router(devices_router)
+app.include_router(diagnostics_router)
+
+
 class RevalidatedStaticFiles(StaticFiles):
     """Static files that browsers must revalidate on every load.
 
@@ -686,7 +694,7 @@ def _origin_denial(headers: Headers) -> JSONResponse | None:
     state, origin = _origin_env_state(OPERATOR_ORIGIN_ENV)
     if state == _ORIGIN_UNSET:
         return None
-    if state == _ORIGIN_INVALID:
+    if state == _ORIGIN_INVALID or origin is None:
         # Fail closed, loudly: the operator asked for the guard and the value
         # they gave it cannot match anything a browser sends.
         return JSONResponse(
@@ -765,7 +773,7 @@ async def operator_config():
     state, origin = _origin_env_state(TABLET_ORIGIN_ENV)
     if state == _ORIGIN_UNSET:
         return {"tablet_origin": None}
-    if state == _ORIGIN_INVALID:
+    if state == _ORIGIN_INVALID or origin is None:
         return JSONResponse(
             status_code=500,
             content={
@@ -807,17 +815,10 @@ async def _deny_websocket(websocket: WebSocket, response: JSONResponse) -> None:
 # ---------------------------------------------------------------------------
 
 
-@app.get("/device/{device_id}")
-async def get_device(device_id: str):
-    key = _parse_device_id(device_id)
-    if key is None or key not in devices:
-        raise HTTPException(status_code=404, detail="Unknown device")
-    return _device_record(key)
 
 
-@app.get("/devices/register")
-async def registration_info():
-    return {"message": "Use POST to register a device"}
+
+
 
 
 @app.post("/devices/register")
@@ -1068,9 +1069,7 @@ async def rebind_device(device_id: str, command: RebindCommand):
     }
 
 
-@app.get("/devices")
-async def get_devices():
-    return {device_id: _device_record(device_id) for device_id in list(devices)}
+
 
 
 # ---------------------------------------------------------------------------
@@ -1117,6 +1116,7 @@ async def put_scene(update: SceneUpdate):
         # managed ID falls back to the curated scan. Intrinsic dimensions come
         # from the published record or the file this scan just validated —
         # never from the caller.
+        assert content.asset is not None
         managed = await asyncio.to_thread(media.find_object, content.asset)
         if managed is not None:
             asset_id, width, height = managed["id"], managed["width"], managed["height"]
@@ -1492,11 +1492,7 @@ async def delete_saved_scene(name: str):
     return {"deleted": True, "name": canonical}
 
 
-@app.get("/")
-async def root():
-    return {
-        "message": "Hello Tablet Wall"
-    }
+
 
 
 # ---------------------------------------------------------------------------
@@ -1504,67 +1500,7 @@ async def root():
 # ---------------------------------------------------------------------------
 
 
-@app.get("/assets")
-def get_assets():
-    """The curated inventory: ``{"assets": [<entry>, …]}`` with each entry
-    carrying ID, display name, MIME type, intrinsic dimensions, byte size,
-    and the same-origin URL the asset is served from.
 
-    Wrapped in an object rather than a bare array so the payload can grow
-    metadata later without breaking readers. ``Cache-Control: no-store`` is
-    part of the contract: the inventory is a snapshot of a directory that
-    changes by files being copied in, so a browser must re-read it on every
-    refresh instead of answering from a cached copy.
-
-    Sync rather than async on purpose: this re-scans, re-hashes, and now
-    fully decodes every file in the directory, and Starlette runs a plain
-    ``def`` route in a worker thread, so the event loop — which is also
-    pushing heartbeats — never waits on the filesystem. The re-scan itself is
-    the contract: inventory refreshes on request.
-    """
-    return JSONResponse(
-        content={"assets": assets.list_assets()},
-        headers={"Cache-Control": "no-store"},
-    )
-
-
-@app.api_route("/assets/{asset_id}", methods=["GET", "HEAD"])
-def get_asset(asset_id: str, request: Request):
-    """Serve one asset's bytes, and only when they still hash to that ID.
-
-    Managed uploads are checked first through the indexed media store, so a
-    ready upload avoids re-scanning the curated directory entirely. Curated
-    bytes remain the fallback. Unknown, malformed, removed, and replaced IDs
-    are all ``404``: because the ID *is* the hash of the validated bytes,
-    re-hashing what was just read proves this response is exactly those bytes.
-    The bytes are content-addressed, hence cached as immutable; ``nosniff``
-    keeps a browser from second-guessing the declared image type.
-
-    A published video is the one object that is not buffered: it is streamed
-    with byte ranges and a strong ETag (``tabletwall.media_serve``), after its
-    hash has been checked once for the file's identity.
-    """
-    if _is_asset_id(asset_id):
-        file = media.open_video(asset_id)
-        if file is not None:
-            return media_serve.video_response(request, file)
-    managed = media.fetch_object(asset_id)
-    if managed is not None:
-        data, mime = managed
-    else:
-        served = assets.fetch(asset_id)
-        if served is None:
-            raise HTTPException(status_code=404, detail="Unknown asset")
-        asset, data = served
-        mime = asset.mime
-    return Response(
-        content=data,
-        media_type=mime,
-        headers={
-            "X-Content-Type-Options": "nosniff",
-            "Cache-Control": "public, max-age=31536000, immutable",
-        },
-    )
 
 
 # ---------------------------------------------------------------------------
@@ -1749,112 +1685,6 @@ def verify_media(request: Request):
 # diagnostics (R5)
 # ---------------------------------------------------------------------------
 
-BACKUP_DIR_ENV = "TABLET_WALL_BACKUP_DIR"
-
-
-def _last_backup_at() -> str | None:
-    """Newest ``created_utc`` among manifests under ``TABLET_WALL_BACKUP_DIR``.
-
-    Read-only and best effort: the directory may itself be a snapshot or hold
-    snapshots one level down. Unset, unreadable and oversized all answer
-    ``None``; this server never writes backups.
-    """
-    root = os.environ.get(BACKUP_DIR_ENV)
-    if not root:
-        return None
-    paths = [os.path.join(root, "manifest.json")]
-    try:
-        with os.scandir(root) as entries:
-            paths += [
-                os.path.join(entry.path, "manifest.json")
-                for entry in entries
-                if entry.is_dir(follow_symlinks=False)
-            ]
-    except OSError:
-        pass
-    newest: str | None = None
-    for path in paths:
-        try:
-            if os.lstat(path).st_size > 16 * 1024 * 1024:
-                continue
-            with open(path, encoding="utf-8") as handle:
-                created = json.load(handle).get("created_utc")
-        except (OSError, ValueError, AttributeError):
-            continue
-        if isinstance(created, str) and len(created) <= 40 and (newest is None or created > newest):
-            newest = created
-    return newest
-
-
-def _media_diagnostics() -> dict[str, Any]:
-    """Quota and store counts; ``orphans`` are object files no row lists."""
-    media.ensure_dirs()
-    with persist._connection() as connection:
-        listed = {str(row[0]) for row in connection.execute("SELECT path FROM media_objects")}
-        assets_ready = connection.execute(
-            "SELECT COUNT(*) FROM media_assets WHERE state = 'ready'"
-        ).fetchone()[0]
-    root = media.media_dir()
-    orphans = 0
-    for directory, _dirs, names in os.walk(media.objects_dir()):
-        for name in names:
-            relative = os.path.relpath(os.path.join(directory, name), root)
-            if relative.replace(os.sep, "/") not in listed:
-                orphans += 1
-    return {
-        "quota_bytes": QUOTA_BYTES,
-        "used_bytes": media._tree_bytes(root),
-        "free_bytes": shutil.disk_usage(root).free,
-        "reserve_bytes": FREE_RESERVE_BYTES,
-        "objects": len(listed),
-        "assets": assets_ready,
-        "orphans": orphans,
-    }
-
-
-@app.get("/diagnostics")
-def get_diagnostics(request: Request, verify: bool = Query(default=False)):
-    """Operator-only storage and health readout.
-
-    Admitted exactly like the managed library (``media.admit_library``), so
-    it is unreachable on the tablet listener and fails closed while uploads
-    are disabled. Cheap by default; ``?verify=1`` additionally re-hashes every
-    ready object (``media.verify_integrity``) and reports objects whose bytes
-    are missing or no longer match their ID under ``media.integrity``.
-    """
-    try:
-        media.admit_library(request)
-    except media.StoreError as error:
-        return _store_error(error)
-    store = _media_diagnostics()
-    if verify:
-        problems = media.verify_integrity()
-        store["integrity"] = {"ok": not problems, "problems": problems}
-    try:
-        db_bytes = os.path.getsize(persist.db_path())
-    except OSError:
-        db_bytes = None
-    roster = list(devices)
-    wake_lock = {state: 0 for state in sorted(WAKE_LOCK_STATES)}
-    for device_id in roster:
-        state = devices[device_id].get("wake_lock")
-        if state in wake_lock:
-            wake_lock[state] += 1
-    return JSONResponse(
-        content={
-            "media": store,
-            "db": {"schema": persist.schema_version(), "bytes": db_bytes},
-            "backup": {"last_manifest_at": _last_backup_at()},
-            "clients": {
-                "online": sum(1 for device_id in roster if _is_online(device_id)),
-                "total": len(roster),
-                "wake_lock": wake_lock,
-            },
-        },
-        headers={"Cache-Control": "no-store"},
-    )
-
-
 # ---------------------------------------------------------------------------
 # version 3 configuration (R2)
 # ---------------------------------------------------------------------------
@@ -2000,9 +1830,9 @@ async def put_physical_layout_v3(command: PhysicalLayoutCommand, request: Reques
                 raise HTTPException(status_code=422, detail=f"slot {field} is required")
         profile_revision = slot.get("profile_revision")
         calibration_revision = slot.get("calibration_revision")
-        if displays.profile(device_id, profile_revision) is None:
+        if not isinstance(profile_revision, int) or displays.profile(device_id, profile_revision) is None:
             raise HTTPException(status_code=422, detail="slot profile does not exist")
-        calibration = displays.calibration(device_id, calibration_revision)
+        calibration = displays.calibration(device_id, calibration_revision) if isinstance(calibration_revision, int) else None
         if calibration is None or calibration["profile_revision"] != profile_revision:
             raise HTTPException(
                 status_code=422,
@@ -2225,6 +2055,7 @@ def _playback_status() -> dict[str, Any]:
                     lease.ready
                     and lease.clock_ok
                     and lease.lease_expires_ms > now
+                    and session.pending is not None
                     and lease.lease_expires_ms >= max(now, session.pending.effective_ms)
                 ),
                 "video": lease.video,
@@ -2545,7 +2376,7 @@ def _playback_connections(cohort: list[str]) -> dict[str, str]:
 async def start_playback_v3(command: PlaybackStartCommand | None = None):
     global _playback_session
     supplied = command is not None and "policy" in command.model_fields_set
-    explicit = command.policy if supplied else None
+    explicit = command.policy if command is not None and supplied else None
     if supplied and explicit not in playback.POLICIES:
         raise HTTPException(status_code=422, detail='policy must be "online" or "strict"')
     session = _playback_session
@@ -2799,6 +2630,7 @@ async def _device_loop(websocket: WebSocket, device_id: str) -> None:
             record = devices.get(device_id)
             if (
                 record is not None
+                and device_sockets.get(device_id) is websocket
                 and isinstance(sample_id, str)
                 and isinstance(c3, (int, float))
                 and not isinstance(c3, bool)
@@ -2836,10 +2668,10 @@ async def _device_loop(websocket: WebSocket, device_id: str) -> None:
                     best is not None
                     and best["uncertainty_ms"] <= clock.MAX_UNCERTAINTY_MS
                 )
-                pending = session.pending
+                preparation = session.pending
                 expected = (
-                    pending.leases[device_id].mapping_revision
-                    if pending is not None and device_id in pending.leases else None
+                    preparation.leases[device_id].mapping_revision
+                    if preparation is not None and device_id in preparation.leases else None
                 )
                 try:
                     accepted = playback.accept_ready(
@@ -2975,7 +2807,7 @@ async def ws_device(
     record["protocol"] = negotiated
     record["caps"] = _parse_caps(caps)
     record["connection_id"] = uuid.uuid4().hex
-    if None not in (w, h, dpr, orientation, mode):
+    if w is not None and h is not None and dpr is not None and orientation is not None and mode is not None:
         try:
             record["viewport"] = {
                 "width": float(w), "height": float(h), "dpr": float(dpr),

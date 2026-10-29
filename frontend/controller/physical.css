@@ -2288,10 +2288,9 @@
     }
 }
 
-/* Phone: stage first, then only the compact Show card. */
+/* Phone: stage first, followed by the task tabs and compact transport. */
 @media (max-width: 719px) {
-    .physical .topbar-note,
-    .physical .skip-controls {
+    .physical .topbar-note {
         display: none;
     }
 
@@ -2305,7 +2304,7 @@
     }
 
     .physical .rail-tabs {
-        display: none;
+        display: grid;
     }
 
     .physical .rail {

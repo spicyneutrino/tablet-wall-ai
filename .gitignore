@@ -53,3 +53,8 @@ media/
 # Temporary files
 tmp/
 temp/
+
+# Local audit and browser artifacts retained from prior runs
+.audit/
+.playwright-mcp/
+docs/planning/tablet-wall-roadmap-2026-10-23/recovered/

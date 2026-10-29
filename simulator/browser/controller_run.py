@@ -9,8 +9,8 @@ physical controller UI rather than only reading ``data-state``:
 
 * The console opens on Show with four tabs and exactly one visible panel. Arrow
   keys move the roving tabindex without dirtying a draft or writing a layout,
-  a reload restores the last manual tab, and 390x844 hides the tab strip while
-  keeping Show selected. The topbar transport mirrors the rail and starts
+  a reload restores the last manual tab, and 390x844 keeps all task tabs reachable while
+  keeping Show selected initially. The topbar transport mirrors the rail and starts
   playback; the legacy index.html link lives only in System.
 * Pause must render ``Paused`` with the live item name, the paused countdown must
   not age, the status poll must stay healthy, Resume must advance the clients
@@ -953,9 +953,9 @@ async def main(artifacts_arg: Path) -> int:
             and all(mobile_panels[tab["controls"]]["visible"]
                     == (tab["selected"] == "true")
                     for tab in mobile_state["tabs"]))
-        check("S5", "390x844 hides the tab strip and keeps Show as the only visible panel",
-              mobile_state["railTabsDisplay"] == "none"
-              and not mobile_state["railTabsVisible"]
+        check("S5", "390x844 exposes the tab strip and keeps Show as the initial panel",
+              mobile_state["railTabsDisplay"] != "none"
+              and mobile_state["railTabsVisible"]
               and mobile_tabs_consistent
               and [tab["tabindex"] for tab in mobile_state["tabs"]
                    if tab["selected"] == "true"] == ["0"]
