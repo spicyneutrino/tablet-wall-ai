@@ -46,6 +46,7 @@ def isolated_registry(tmp_path, monkeypatch) -> Iterator[None]:
     # security-specific cases opt in to these origin settings explicitly.
     monkeypatch.delenv("TABLET_WALL_OPERATOR_ORIGIN", raising=False)
     monkeypatch.delenv("TABLET_WALL_TABLET_ORIGIN", raising=False)
+    monkeypatch.delenv("TABLET_WALL_AUTH_TOKEN", raising=False)
     _clear_state()
     yield
     _clear_state()

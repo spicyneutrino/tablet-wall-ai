@@ -43,6 +43,7 @@ from starlette.datastructures import Headers
 # the tests patch the sweeper's timing constants on the reader module, i.e.
 # ``monkeypatch.setattr(main.hub, "HEARTBEAT_TIMEOUT_S", ...)``.
 from tabletwall import hub as hub
+from tabletwall.auth import AuthMiddleware
 from tabletwall.hub import (
     _broadcast,
     _broadcast_offline,
@@ -546,11 +547,10 @@ app.mount(
 # from the operator page we serve", nothing more.
 #
 # What this is NOT, and must never be described as: authentication or
-# authorization. There is no identity, credential, token, or session scheme
-# here at all — an ``Origin`` header is trivially forged by anything that is
-# not a browser, so this only constrains browsers. Authenticating the operator
-# is the reverse proxy's job in front of this app; treat this guard as a
-# second, independent line of defence, never as the only one.
+# authorization. An ``Origin`` header is trivially forged by anything that is
+# not a browser, so this only constrains browsers. Optional shared-secret
+# authentication lives in ``tabletwall.auth`` and remains independent of this
+# guard. A reverse proxy can also authenticate the operator.
 #
 # With the variable unset (the default, and how ``make dev`` runs) the guard
 # is inert: no header is required and nothing about direct local development
@@ -748,6 +748,9 @@ async def operator_origin_guard(request: Request, call_next):
     return await call_next(request)
 
 
+app.add_middleware(AuthMiddleware)
+
+
 @app.get("/operator-config")
 async def operator_config():
     """``{"tablet_origin": <origin or null>}`` — where the tablet page lives.
@@ -766,9 +769,9 @@ async def operator_config():
     malformed origin straight through to whoever is reading.
 
     This is a plain read: the Origin guard above fences writes, not reads, so
-    *who* may see the answer is decided at the proxy — the operator listener
-    authenticates it, the tablet listener denies it (deploy/smoke.sh pins
-    both). There is no authentication here to lean on.
+    *who* may see the answer is decided by optional application authentication
+    and the proxy. The operator listener authenticates it, and the tablet
+    listener denies it (deploy/smoke.sh pins both).
     """
     state, origin = _origin_env_state(TABLET_ORIGIN_ENV)
     if state == _ORIGIN_UNSET:
