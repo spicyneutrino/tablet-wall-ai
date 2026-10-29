@@ -1,0 +1,105 @@
+{
+  "round": 5,
+  "status": "passed",
+  "viewports": [
+    {
+      "viewport": "phone",
+      "path": "/controller/",
+      "width": 390,
+      "scroll": 390,
+      "buttons": 12,
+      "headings": [
+        "Tablet wall"
+      ]
+    },
+    {
+      "viewport": "phone",
+      "path": "/controller/physical.html",
+      "width": 390,
+      "scroll": 390,
+      "buttons": 16,
+      "headings": [
+        "Wall console"
+      ]
+    },
+    {
+      "viewport": "tablet",
+      "path": "/controller/",
+      "width": 820,
+      "scroll": 820,
+      "buttons": 12,
+      "headings": [
+        "Tablet wall"
+      ]
+    },
+    {
+      "viewport": "tablet",
+      "path": "/controller/physical.html",
+      "width": 820,
+      "scroll": 820,
+      "buttons": 16,
+      "headings": [
+        "Wall console"
+      ]
+    },
+    {
+      "viewport": "desktop",
+      "path": "/controller/",
+      "width": 1440,
+      "scroll": 1440,
+      "buttons": 10,
+      "headings": [
+        "Tablet wall"
+      ]
+    },
+    {
+      "viewport": "desktop",
+      "path": "/controller/physical.html",
+      "width": 1440,
+      "scroll": 1440,
+      "buttons": 16,
+      "headings": [
+        "Wall console"
+      ]
+    }
+  ],
+  "errors": [
+    {
+      "kind": "network",
+      "url": "http://127.0.0.1:59183/api/v3/playback",
+      "failure": "net::ERR_INTERNET_DISCONNECTED",
+      "probe": true
+    },
+    {
+      "kind": "console",
+      "message": "Failed to load resource: net::ERR_INTERNET_DISCONNECTED",
+      "probe": true
+    },
+    {
+      "kind": "network",
+      "url": "http://127.0.0.1:59183/api/v3/playback",
+      "failure": "net::ERR_INTERNET_DISCONNECTED",
+      "probe": true
+    },
+    {
+      "kind": "console",
+      "message": "Failed to load resource: net::ERR_INTERNET_DISCONNECTED",
+      "probe": true
+    }
+  ],
+  "checks": [
+    "phone browser login and HttpOnly cookie",
+    "phone recovered after offline and reload",
+    "tablet browser login and HttpOnly cookie",
+    "tablet recovered after offline and reload",
+    "desktop browser login and HttpOnly cookie",
+    "desktop recovered after offline and reload",
+    "anonymous API and static requests remain blocked",
+    "all viewport document widths fit"
+  ],
+  "unexpected_errors": [],
+  "cleanup": {
+    "server_stopped": true,
+    "scratch_removed": true
+  }
+}

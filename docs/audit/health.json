@@ -1,0 +1,9 @@
+{
+  "checks": [
+    "390px health overview, stale failure feedback, enabled retry, restored fresh state",
+    "820px health overview, stale failure feedback, enabled retry, restored fresh state",
+    "1440px health overview, stale failure feedback, enabled retry, restored fresh state"
+  ],
+  "errors": [],
+  "status": "passed"
+}

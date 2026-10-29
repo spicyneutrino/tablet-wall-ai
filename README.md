@@ -98,8 +98,7 @@ pyproject.toml              deps, dev deps, pytest config
    to `crypto.getRandomValues` when `crypto.randomUUID` is unavailable — which
    is the normal case over a plain-HTTP LAN origin.
 2. The client `POST`s that UUID and its screen size to `/devices/register`. It
-   re-registers before *every* connection attempt, because the roster is held in
-   memory and does not survive a server restart.
+   re-registers before every connection attempt to refresh its dimensions and establish live presence.
 3. It then opens `/ws/device`, sends a heartbeat every 5 s, and applies whatever
    colour the controller assigns.
 4. `frontend/controller/controller.js` opens `/ws/controller`, receives the
@@ -109,9 +108,7 @@ pyproject.toml              deps, dev deps, pytest config
 5. Colours travel *out* over HTTP (`POST /devices/{device_id}/color`) and are
    pushed *to* the tablet over its socket.
 
-The roster and per-device assigned colours live in memory and are lost on
-restart; the active layout and scene persist in SQLite. Tablets notice a
-restart, re-register, and reconnect on their own.
+Device identity, dimensions, type, display number, last seen, and assigned colours survive restart in SQLite. Restored devices start offline. Sockets, capabilities, clocks, and playback leases are never restored. Tablets re-register and reconnect on their own.
 
 The full realtime contract — message shapes, close codes, timing constants — is
 in [PROTOCOL.md](PROTOCOL.md).
@@ -155,16 +152,9 @@ and the referenced curated image bytes: the database contains references,
 not image bytes. Unreferenced files are not in this snapshot; preserve them
 separately if needed. The snapshot/restore drill is in
 [deploy/OPERATIONS.md](deploy/OPERATIONS.md#backups).
-Keep this directory modest: inventory, scene selection and asset serving
-re-scan and decode its candidates, so a large collection or repeated LAN
-requests can consume substantial CPU and I/O.
+Keep this directory modest. Every lookup reads and hashes current files; full image decoding is cached by content hash. See the [measured cache behavior](docs/ROBUSTNESS.md#repeatable-inventory-measurement).
 
-**Do not put sensitive images here yet.** Any client that can reach the server
-on the LAN can fetch curated image bytes, and controller authentication is not
-implemented yet. An authenticated reverse proxy over TLS or a VPN is planned
-for the operator surface in Phase 3; it has not been deployed by this repo.
-That operator gate will **not** make device-facing asset reads private: sensitive
-assets require a separate tablet/asset access boundary too.
+When authentication is disabled, every client that reaches the backend can read curated and managed assets. Built-in token authentication protects asset reads as well as operator routes. A proxy protecting only the operator listener does not protect tablet-facing asset URLs. Keep the backend on loopback and use TLS for token or cookie transport on shared networks.
 
 ## HTTP API
 
@@ -238,17 +228,9 @@ A gate changes only with the operator's signed physical evidence.
 
 - **Run one server worker per wall/database.** Active wall state and sockets are
   process-local; two workers would diverge and could overwrite each other's
-  revision or recall. The supplied `make run` command uses one process. Do not
+  revision or recall. A database-scoped runtime lock now refuses a second process. The supplied `make run` command uses one process. Do not
   deploy multiple replicas against the same SQLite file.
-- **The roster is not persisted.** The active layout, scene, revision and named
-  snapshots survive a restart in SQLite; the generation is deliberately
-  regenerated so tablets accept restored state even if its revision went
-  backwards. But devices, presence, and heartbeat timestamps live in memory:
-  after a restart the roster is empty until tablets re-register, which they do
-  on their own. A placement whose device has not come back yet is shown as a
-  **vacant reservation** and can be released by hand; it is deliberately *not*
-  discarded, because a tablet that returns should reclaim the slot it had.
-  Authentication and unattended operations are not in yet.
+- **Presence is live.** Safe device metadata and colours persist, but a restart marks every device offline until it reconnects. Layouts and scenes retain their revision; the server mints a new generation. Missing placements remain available as saved spots. See [restart and ownership behavior](docs/ROBUSTNESS.md).
 - **Bezel units depend on the mode.** In a logical wall, bezels are abstract
   wall units, not millimetres: panel size, browser chrome, and zoom all make
   millimetres unreliable from a browser. In a physical wall, the controller
@@ -273,11 +255,7 @@ A gate changes only with the operator's signed physical evidence.
   client still renders, covering and cropping rather than distorting — so a
   mismatch degrades the seam instead of breaking it. Pixel-perfect seams are
   not achievable from a browser without kiosk-mode control.
-- **No built-in authentication.** Anyone who reaches the backend directly can
-  register a device, read the roster, or repaint the wall. The optional
-  operator-Origin check is a browser CSRF/WS guard, **not authentication**;
-  the [two-origin hotspot reference](deploy/README.md) uses proxy Basic auth
-  and a loopback-only backend. This ingress has not been physically validated.
+- **Authentication is opt-in.** Set `TABLET_WALL_AUTH_TOKEN` to a random secret of at least 32 bytes to protect all HTTP and WebSocket routes. Browsers sign in at `/auth/login`; API clients use a Bearer token. Unset or empty preserves open local operation. See [authentication setup](docs/AUTH.md). The operator-Origin guard and proxy isolation remain separate checks. Use TLS on shared networks.
 - **A device must register before it can open a socket.** A socket for an
   unregistered id is closed with `4404` rather than registering on the fly, so
   registration stays the single source of device metadata.
@@ -384,3 +362,15 @@ the manual ingress checks in [deploy/README.md](deploy/README.md).*
 **There is no AI capability, and none is planned.** The project name is
 `tablet-wall-ai` for historical reasons; nothing in it uses a model, and no
 schema or roadmap space is reserved on the assumption that something will.
+
+## Developer checks
+
+Run `uv sync --all-groups` before the checks. `make test` runs Python tests and all JavaScript suites. `make lint` runs Ruff syntax, undefined-name, unused-import, and common-defect checks on production Python. `make typecheck` checks annotated production code with strict optional handling; unannotated function bodies are not yet enforced.
+
+`make coverage` measures Python lines and branches, including worker subprocesses, writes `coverage.xml`, and enforces an 80% combined floor. Browser tests run separately with `uv run --group browser python -m simulator.browser.controller_run --artifacts /tmp/new-controller-run` and `uv run --group browser python -m simulator.browser.field_run --artifacts /tmp/new-field-run`. Use a fresh artifact directory each time.
+
+For repeatable viewport and reconnect checks, run `uv run --group browser python -m simulator.browser.audit_round --round 6 --artifacts /tmp/new-viewport-audit`. The browser runners always use temporary database, media, and asset paths. For any manual app launch, set those paths to a disposable scratch copy before startup; startup creates directories, writes SQLite, and cleans staging.
+
+Before installing a filled service template, run `uv run python deploy/validate_service.py /path/to/tablet-wall.service --scope user` or `--scope system`. The shipped template intentionally fails until its placeholders are filled. See [operations](deploy/OPERATIONS.md).
+
+The earlier generated guides and planning documents in `docs/docs_model*/` and `docs/planning/` are historical design evidence. Use this README, PROTOCOL.md, and the current deployment guides for runtime behavior.

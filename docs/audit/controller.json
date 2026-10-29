@@ -1,0 +1,2944 @@
+{
+  "runner": "controller_run",
+  "runner_version": 1,
+  "mode": "software browser evidence, not optical or physical",
+  "head": "96bdafd15df30da6276a53c51c7dc0029733dbe5",
+  "branch": "improve/audit-six-rounds",
+  "dirty": true,
+  "started_at": "2026-10-28T10:16:25-0500",
+  "artifacts": "/tmp/tw-final-controller",
+  "temporary_root": "/tmp/tw-controller-cvmj9mjf",
+  "scenarios_expected": {
+    "S1": "disposable server, 20 s video plus still, two calibrated clients",
+    "S2": "the controller renders the live playing video",
+    "S3": "Pause renders the frozen live name and a stable dwell with healthy polls",
+    "S4": "Resume returns to playing and the clients advance",
+    "S5": "390x844 pause summary is readable with a compact card and fitted stage",
+    "S6": "a saved draft during playback keeps the frozen live identity",
+    "S7": "a saved draft while paused keeps the live name and the frozen dwell",
+    "S8": "a saved draft during recovery keeps the frozen live identity",
+    "S9": "Stop restores the persisted scene",
+    "S10": "a new Start uses the newly saved still",
+    "S11": "no unexpected page errors, console errors or failed requests",
+    "S12": "local Apply/Cancel mirror the draft without writing a layout",
+    "S13": "one session exclusion shows the cohort and hides the excluded tablet",
+    "S14": "the tabbed console switches, persists and keeps its drafts"
+  },
+  "checks": [
+    {
+      "scenario": "S1",
+      "name": "controller: 2 independent clients calibrated, placed and shown the idle still",
+      "passed": true,
+      "layout": 200,
+      "scene": 200
+    },
+    {
+      "scenario": "S1",
+      "name": "two independent clients calibrated, placed and shown the idle still",
+      "passed": true,
+      "clients": [
+        "controller-a",
+        "controller-b"
+      ]
+    },
+    {
+      "scenario": "S1",
+      "name": "the fixture video is a 20 s H.264 yuv420p clip",
+      "passed": true,
+      "duration_ms": 20000,
+      "kind": "video"
+    },
+    {
+      "scenario": "S1",
+      "name": "the initial saved playlist is the 20 s video and a red still",
+      "passed": true,
+      "playlist": {
+        "items": [
+          {
+            "asset": "sha256:3be851faa25c4481648e15cb0afdd38e40f864616854da37f4a7a3448e5498d7",
+            "dwell_ms": 20000
+          },
+          {
+            "asset": "sha256:345e7a7a433acd76d4fe3aeac33a5b3ec04aaf4efa96ef48bc01ac1b6ca8eb97",
+            "dwell_ms": 1000
+          }
+        ],
+        "loop": true,
+        "revision": 1
+      }
+    },
+    {
+      "scenario": "S1",
+      "name": "the tabbed console opens on Show with four tabs, one panel and the stage",
+      "passed": true,
+      "tabs": [
+        "tab-show",
+        "tab-tablet",
+        "tab-content",
+        "tab-system"
+      ],
+      "panels": [
+        "panel-show"
+      ],
+      "stage": true,
+      "stored": null
+    },
+    {
+      "scenario": "S14",
+      "name": "the topbar has no legacy link and the System panel holds the legacy view",
+      "passed": true,
+      "topbar_links": 0,
+      "legacy": "Logical wall (legacy)"
+    },
+    {
+      "scenario": "S14",
+      "name": "ArrowRight moves Show to Tablet with a roving tabindex",
+      "passed": true,
+      "selected": "tab-tablet",
+      "visible": [
+        "panel-tablet"
+      ],
+      "focused": "tab-tablet"
+    },
+    {
+      "scenario": "S14",
+      "name": "ArrowRight moves Tablet to Content with a roving tabindex",
+      "passed": true,
+      "selected": "tab-content",
+      "visible": [
+        "panel-content"
+      ],
+      "focused": "tab-content"
+    },
+    {
+      "scenario": "S14",
+      "name": "ArrowLeft moves Content back to Tablet with a roving tabindex",
+      "passed": true,
+      "selected": "tab-tablet",
+      "visible": [
+        "panel-tablet"
+      ],
+      "focused": "tab-tablet"
+    },
+    {
+      "scenario": "S14",
+      "name": "Home selects Show with a roving tabindex",
+      "passed": true,
+      "selected": "tab-show",
+      "visible": [
+        "panel-show"
+      ],
+      "focused": "tab-show"
+    },
+    {
+      "scenario": "S14",
+      "name": "End selects System with a roving tabindex",
+      "passed": true,
+      "selected": "tab-system",
+      "visible": [
+        "panel-system"
+      ],
+      "focused": "tab-system"
+    },
+    {
+      "scenario": "S14",
+      "name": "ArrowRight wraps System back to Show with a roving tabindex",
+      "passed": true,
+      "selected": "tab-show",
+      "visible": [
+        "panel-show"
+      ],
+      "focused": "tab-show"
+    },
+    {
+      "scenario": "S14",
+      "name": "switching tabs neither dirties a draft nor writes the layout",
+      "passed": true,
+      "draft_before": {
+        "flag": "Matches the committed layout",
+        "dirty": "false",
+        "tabletDot": false,
+        "contentDot": false,
+        "playlistHint": "Saved on the server."
+      },
+      "draft_after": {
+        "flag": "Matches the committed layout",
+        "dirty": "false",
+        "tabletDot": false,
+        "contentDot": false,
+        "playlistHint": "Saved on the server."
+      },
+      "layout_before": 2,
+      "layout_after": 2
+    },
+    {
+      "scenario": "S14",
+      "name": "the topbar transport stays visible outside the Show panel",
+      "passed": true,
+      "visible": true,
+      "selected": "tab-content",
+      "stored": "content"
+    },
+    {
+      "scenario": "S14",
+      "name": "a reload restores the last manually chosen tab",
+      "passed": true,
+      "selected": "tab-content",
+      "visible": [
+        "panel-content"
+      ],
+      "stored": "content"
+    },
+    {
+      "scenario": "S1",
+      "name": "Start from the controller begins a playing session on both clients",
+      "passed": true
+    },
+    {
+      "scenario": "S1",
+      "name": "the topbar transport mirrors the rail state and its Start began playback",
+      "passed": true,
+      "rail": "playing",
+      "topbar": "playing",
+      "buttons": [
+        {
+          "name": "start",
+          "railHidden": true,
+          "topHidden": true,
+          "railDisabled": false,
+          "topDisabled": false,
+          "railText": "Start",
+          "topText": "Start"
+        },
+        {
+          "name": "pause",
+          "railHidden": false,
+          "topHidden": false,
+          "railDisabled": false,
+          "topDisabled": false,
+          "railText": "Pause",
+          "topText": "Pause"
+        },
+        {
+          "name": "stop",
+          "railHidden": false,
+          "topHidden": false,
+          "railDisabled": false,
+          "topDisabled": false,
+          "railText": "Stop",
+          "topText": "Stop"
+        }
+      ]
+    },
+    {
+      "scenario": "S2",
+      "name": "the server reports the frozen video identity for the live session",
+      "passed": true,
+      "live": {
+        "occurrence": {
+          "playlist_revision": 1,
+          "item_index": 0,
+          "loop": 0
+        },
+        "asset": "sha256:3be851faa25c4481648e15cb0afdd38e40f864616854da37f4a7a3448e5498d7",
+        "kind": "video",
+        "duration_ms": 20000,
+        "dwell_ms": 20000
+      },
+      "playlist_revision": 1
+    },
+    {
+      "scenario": "S2",
+      "name": "the controller summary names the playing video without its remaining time",
+      "passed": true,
+      "summary": "Playing: item 1 \u00b7 loop 1 \u00b7 f3-session.mp4. Next: item 2 \u00b7 loop 1 \u00b7 controller-red.png."
+    },
+    {
+      "scenario": "S2",
+      "name": "the countdown carries the playing remaining time and is hidden from assistive tech",
+      "passed": true,
+      "countdown": "20 s left.",
+      "aria_hidden": "true"
+    },
+    {
+      "scenario": "S2",
+      "name": "the playback summary is not a live region",
+      "passed": true,
+      "role": null,
+      "aria_live": null
+    },
+    {
+      "scenario": "S2",
+      "name": "the controller facts show the frozen 20 s video kind and duration",
+      "passed": true,
+      "facts": "State\nplaying\nSession\na337a4c5\u2026\nVersion\n2\nPolicy\nstrict\nDisplayed\nitem 1 \u00b7 loop 1 \u00b7 f3-session.mp4\nActive anchor\n51487351 ms (server)\nCurrent media\nvideo \u00b7 20 s clip\nRemaining dwell\n20 s left"
+    },
+    {
+      "scenario": "S2",
+      "name": "the playing summary stays stable for three seconds while the countdown advances",
+      "passed": true,
+      "summary_before": "Playing: item 1 \u00b7 loop 1 \u00b7 f3-session.mp4. Next: item 2 \u00b7 loop 1 \u00b7 controller-red.png.",
+      "summary_after": "Playing: item 1 \u00b7 loop 1 \u00b7 f3-session.mp4. Next: item 2 \u00b7 loop 1 \u00b7 controller-red.png.",
+      "countdown_before": "20 s left.",
+      "countdown_after": "17 s left."
+    },
+    {
+      "scenario": "S2",
+      "name": "active readiness rows are ordered by display number and say preparing next",
+      "passed": true,
+      "names": [
+        "#1 \u00b7 controller controller-a",
+        "#2 \u00b7 controller controller-b"
+      ],
+      "chips": [
+        "required",
+        "preparing next",
+        "online",
+        "required",
+        "preparing next",
+        "online"
+      ],
+      "waiting": 2
+    },
+    {
+      "scenario": "S2",
+      "name": "zero exclusions keep the cohort summary one line and hide the exclusion controls",
+      "passed": true,
+      "text": "2 required \u00b7 0 excluded \u00b7 2 in this show.",
+      "white_space": "nowrap",
+      "height": 18.1875,
+      "font": 13,
+      "exclusions_hidden": true
+    },
+    {
+      "scenario": "S3",
+      "name": "the pause summary says Paused with the live video name",
+      "passed": true,
+      "summary": "Paused on item 1 \u00b7 loop 1 \u00b7 f3-session.mp4. Resume restarts the item at a new anchor."
+    },
+    {
+      "scenario": "S3",
+      "name": "the paused countdown carries the remaining time and the summary does not",
+      "passed": true,
+      "summary": "Paused on item 1 \u00b7 loop 1 \u00b7 f3-session.mp4. Resume restarts the item at a new anchor.",
+      "countdown": "16 s left at the pause."
+    },
+    {
+      "scenario": "S3",
+      "name": "the paused transition announces once on the page status",
+      "passed": true,
+      "changes": [
+        "Playback paused."
+      ]
+    },
+    {
+      "scenario": "S3",
+      "name": "the paused facts keep the frozen 20 s video kind and duration",
+      "passed": true,
+      "facts": "State\npaused\nSession\na337a4c5\u2026\nVersion\n3\nPolicy\nstrict\nDisplayed\nitem 1 \u00b7 loop 1 \u00b7 f3-session.mp4\nActive anchor\n51487351 ms (server)\nCurrent media\nvideo \u00b7 20 s clip\nRemaining dwell\n16 s left"
+    },
+    {
+      "scenario": "S3",
+      "name": "the pause control offers Resume and Stop stays available",
+      "passed": true
+    },
+    {
+      "scenario": "S3",
+      "name": "the poll is healthy at the pause",
+      "passed": true,
+      "poll": "Live status, read at 10:16:36 AM. Polled once a second while this page is visible."
+    },
+    {
+      "scenario": "S5",
+      "name": "the 390x844 controller has no horizontal page overflow",
+      "passed": true,
+      "width": 390,
+      "viewport": 390
+    },
+    {
+      "scenario": "S5",
+      "name": "390x844 exposes the tab strip and keeps Show as the initial panel",
+      "passed": true,
+      "display": "grid",
+      "tabs_visible": true,
+      "selected": "tab-show",
+      "panels": [
+        "panel-show"
+      ]
+    },
+    {
+      "scenario": "S5",
+      "name": "the mobile paused summary fits, stays readable and names the video",
+      "passed": true,
+      "summary": "Paused on item 1 \u00b7 loop 1 \u00b7 f3-session.mp4. Resume restarts the item at a new anchor.",
+      "font": 13,
+      "right": 363,
+      "overflow": 0
+    },
+    {
+      "scenario": "S5",
+      "name": "the mobile paused countdown carries the remaining time",
+      "passed": true,
+      "countdown": "16 s left at the pause."
+    },
+    {
+      "scenario": "S5",
+      "name": "the mobile collapsed playback card is compact with More and a hidden extra block",
+      "passed": true,
+      "height": 182.59375,
+      "more": true,
+      "expanded": "false",
+      "extra": false
+    },
+    {
+      "scenario": "S5",
+      "name": "the mobile stage is a fitted, focusable region",
+      "passed": true,
+      "tabindex": "0",
+      "role": "region",
+      "scroll_width": 330,
+      "client_width": 330,
+      "svg_width": 330
+    },
+    {
+      "scenario": "S5",
+      "name": "the mobile pause control offers Resume",
+      "passed": true,
+      "button": "Resume"
+    },
+    {
+      "scenario": "S5",
+      "name": "the mobile controller page raised no errors",
+      "passed": true,
+      "events": []
+    },
+    {
+      "scenario": "S3",
+      "name": "the pause summary is identical after 2.4 s",
+      "passed": true,
+      "before": "Paused on item 1 \u00b7 loop 1 \u00b7 f3-session.mp4. Resume restarts the item at a new anchor.",
+      "after": "Paused on item 1 \u00b7 loop 1 \u00b7 f3-session.mp4. Resume restarts the item at a new anchor."
+    },
+    {
+      "scenario": "S3",
+      "name": "the paused countdown is identical after 2.4 s",
+      "passed": true,
+      "before": "16 s left at the pause.",
+      "after": "16 s left at the pause."
+    },
+    {
+      "scenario": "S3",
+      "name": "the paused countdown does not age",
+      "passed": true,
+      "before": "16 s left at the pause.",
+      "after": "16 s left at the pause."
+    },
+    {
+      "scenario": "S3",
+      "name": "the paused transition did not announce again during the wait",
+      "passed": true,
+      "changes": [
+        "Playback paused."
+      ]
+    },
+    {
+      "scenario": "S3",
+      "name": "the paused facts dwell is identical after 2.4 s",
+      "passed": true,
+      "before": [
+        "16 s left"
+      ],
+      "after": [
+        "16 s left"
+      ]
+    },
+    {
+      "scenario": "S3",
+      "name": "the poll stays healthy while paused",
+      "passed": true,
+      "poll": "Live status, read at 10:16:40 AM. Polled once a second while this page is visible."
+    },
+    {
+      "scenario": "S4",
+      "name": "Resume returns to playing and both clients advance",
+      "passed": true,
+      "summary": "Playing: item 1 \u00b7 loop 1 \u00b7 f3-session.mp4. Next: item 2 \u00b7 loop 1 \u00b7 controller-red.png."
+    },
+    {
+      "scenario": "S3",
+      "name": "Pause and Resume raised no page errors, console errors or failed requests",
+      "passed": true,
+      "events": []
+    },
+    {
+      "scenario": "S6",
+      "name": "the draft can be edited and reordered down to the new green still",
+      "passed": true,
+      "rows": [
+        "controller-green.png"
+      ]
+    },
+    {
+      "scenario": "S6",
+      "name": "the saved playlist advanced to revision 2 with only the new still",
+      "passed": true,
+      "saved": {
+        "items": [
+          {
+            "asset": "sha256:24dbe9339c8cae74699ff59aaa43ae9e3b50079dcbe63ceead14b461351b3eb9",
+            "dwell_ms": 5000
+          }
+        ],
+        "loop": true,
+        "revision": 2
+      }
+    },
+    {
+      "scenario": "S6",
+      "name": "the Content tab marks an unsaved playlist and clears after save",
+      "passed": true,
+      "dirty": true,
+      "clean": true
+    },
+    {
+      "scenario": "S6",
+      "name": "the playlist rows and library picker fit the 392 px rail",
+      "passed": true,
+      "itemWidth": 358,
+      "bodyWidth": 276,
+      "pickerWidth": 358,
+      "controlsHeight": 44
+    },
+    {
+      "scenario": "S6",
+      "name": "the reloaded summary still names the frozen video, not the new still",
+      "passed": true,
+      "summary": "Playing: item 1 \u00b7 loop 1 \u00b7 f3-session.mp4. Next: item 2 \u00b7 loop 1 \u00b7 controller-red.png."
+    },
+    {
+      "scenario": "S6",
+      "name": "the reloaded countdown keeps the frozen video's remaining dwell",
+      "passed": true,
+      "countdown": "19 s left."
+    },
+    {
+      "scenario": "S6",
+      "name": "the reloaded facts keep the frozen 20 s video and its remaining dwell",
+      "passed": true,
+      "facts": "State\nplaying\nSession\na337a4c5\u2026\nVersion\n5\nPolicy\nstrict\nDisplayed\nitem 1 \u00b7 loop 1 \u00b7 f3-session.mp4\nActive anchor\n51496997 ms (server)\nCurrent media\nvideo \u00b7 20 s clip\nRemaining dwell\n19 s left"
+    },
+    {
+      "scenario": "S6",
+      "name": "the editable rows show the newly saved still",
+      "passed": true,
+      "rows": [
+        "controller-green.png"
+      ]
+    },
+    {
+      "scenario": "S6",
+      "name": "no editable row carries the Now marker when the revisions differ",
+      "passed": true,
+      "markers": 0,
+      "session_revision": 1,
+      "saved_revision": 2
+    },
+    {
+      "scenario": "S7",
+      "name": "the second pause again names the frozen video with a paused countdown",
+      "passed": true,
+      "summary": "Paused on item 1 \u00b7 loop 1 \u00b7 f3-session.mp4. Resume restarts the item at a new anchor.",
+      "countdown": "18 s left at the pause."
+    },
+    {
+      "scenario": "S7",
+      "name": "the draft reorder is visible before the save",
+      "passed": true,
+      "rows": [
+        "controller-yellow.png",
+        "controller-green.png"
+      ]
+    },
+    {
+      "scenario": "S7",
+      "name": "the paused summary is unchanged by saving another playlist",
+      "passed": true,
+      "before": "Paused on item 1 \u00b7 loop 1 \u00b7 f3-session.mp4. Resume restarts the item at a new anchor.",
+      "after": "Paused on item 1 \u00b7 loop 1 \u00b7 f3-session.mp4. Resume restarts the item at a new anchor."
+    },
+    {
+      "scenario": "S7",
+      "name": "the paused countdown is unchanged by saving another playlist",
+      "passed": true,
+      "before": "18 s left at the pause.",
+      "after": "18 s left at the pause."
+    },
+    {
+      "scenario": "S7",
+      "name": "the paused facts keep the frozen video and the same dwell",
+      "passed": true,
+      "facts": "State\npaused\nSession\na337a4c5\u2026\nVersion\n6\nPolicy\nstrict\nDisplayed\nitem 1 \u00b7 loop 1 \u00b7 f3-session.mp4\nActive anchor\n51496997 ms (server)\nCurrent media\nvideo \u00b7 20 s clip\nRemaining dwell\n18 s left"
+    },
+    {
+      "scenario": "S7",
+      "name": "the editable rows show the reordered saved stills",
+      "passed": true,
+      "rows": [
+        "controller-yellow.png",
+        "controller-green.png"
+      ]
+    },
+    {
+      "scenario": "S7",
+      "name": "the paused editable rows carry no Now marker",
+      "passed": true,
+      "markers": 0
+    },
+    {
+      "scenario": "S8",
+      "name": "one client's visible video is frozen with a hanging play promise",
+      "passed": true,
+      "froze": {
+        "src": "http://127.0.0.1:34577/assets/sha256:3be851faa25c4481648e15cb0afdd38e40f864616854da37f4a7a3448e5498d7",
+        "time": 0.353798
+      }
+    },
+    {
+      "scenario": "S8",
+      "name": "when the controller caught the live recovery it named the frozen video",
+      "passed": true,
+      "summary": "Recovering item 1 \u00b7 loop 1 \u00b7 f3-session.mp4 at 3.0 s after a stalled video on #1 \u00b7 controller controller-a. Waiting for the group buffer and a common anchor."
+    },
+    {
+      "scenario": "S8",
+      "name": "the playlist save and reorder happened while the server was recovering",
+      "passed": true,
+      "state": "recovering",
+      "saved": {
+        "items": [
+          {
+            "asset": "sha256:345e7a7a433acd76d4fe3aeac33a5b3ec04aaf4efa96ef48bc01ac1b6ca8eb97",
+            "dwell_ms": 5000
+          },
+          {
+            "asset": "sha256:5b69b282d40645be446b0069999da3576250b5f0ae3d1a95104469423fb15269",
+            "dwell_ms": 5000
+          },
+          {
+            "asset": "sha256:24dbe9339c8cae74699ff59aaa43ae9e3b50079dcbe63ceead14b461351b3eb9",
+            "dwell_ms": 5000
+          }
+        ],
+        "loop": true,
+        "revision": 4
+      }
+    },
+    {
+      "scenario": "S8",
+      "name": "the reloaded live summary still names the frozen video",
+      "passed": true,
+      "summary": "Recovering item 1 \u00b7 loop 1 \u00b7 f3-session.mp4 at 3.0 s after a stalled video on #1 \u00b7 controller controller-a. Waiting for the group buffer and a common anchor.",
+      "live": {
+        "occurrence": {
+          "playlist_revision": 1,
+          "item_index": 0,
+          "loop": 0
+        },
+        "asset": "sha256:3be851faa25c4481648e15cb0afdd38e40f864616854da37f4a7a3448e5498d7",
+        "kind": "video",
+        "duration_ms": 20000,
+        "dwell_ms": 20000
+      }
+    },
+    {
+      "scenario": "S8",
+      "name": "the reloaded facts keep the frozen video kind and duration",
+      "passed": true,
+      "facts": "State\nrecovering\nSession\na337a4c5\u2026\nVersion\n9\nPolicy\nstrict\nDisplayed\nitem 1 \u00b7 loop 1 \u00b7 f3-session.mp4\nActive anchor\n51502014 ms (server)\nCurrent media\nvideo \u00b7 20 s clip\nRecovery\nstalled at 3.0 s \u00b7 attempt 1 \u00b7 degraded 0.3 s"
+    },
+    {
+      "scenario": "S8",
+      "name": "the editable rows show the reordered draft saved during recovery",
+      "passed": true,
+      "rows": [
+        "controller-red.png",
+        "controller-yellow.png",
+        "controller-green.png"
+      ]
+    },
+    {
+      "scenario": "S8",
+      "name": "the session revision stayed frozen while the saved revision advanced",
+      "passed": true,
+      "session_revision": 1,
+      "saved_revision": 4,
+      "markers": 0
+    },
+    {
+      "scenario": "S8",
+      "name": "the recovery completed once, and the frozen identity survived the save",
+      "passed": true,
+      "recovery": {
+        "id": "49230cfce4d643fab0c77ac7bacddd93",
+        "occurrence": {
+          "playlist_revision": 1,
+          "item_index": 0,
+          "loop": 0
+        },
+        "position_ms": 2961,
+        "reason": "stalled",
+        "device_id": "4fb7c67f-d350-4d6e-bc76-ec9028455858",
+        "attempts": 1,
+        "started_ms": 51505975.579282,
+        "deadline_ms": 51536975.579282,
+        "degraded_ms": 4136,
+        "state": "playing",
+        "missing": []
+      },
+      "live": {
+        "occurrence": {
+          "playlist_revision": 1,
+          "item_index": 0,
+          "loop": 0
+        },
+        "asset": "sha256:3be851faa25c4481648e15cb0afdd38e40f864616854da37f4a7a3448e5498d7",
+        "kind": "video",
+        "duration_ms": 20000,
+        "dwell_ms": 20000
+      }
+    },
+    {
+      "scenario": "S9",
+      "name": "Stop restores the stopped summary",
+      "passed": true
+    },
+    {
+      "scenario": "S9",
+      "name": "Stop restores the persisted scene on both clients",
+      "passed": true
+    },
+    {
+      "scenario": "S9",
+      "name": "Start is offered again after Stop",
+      "passed": true
+    },
+    {
+      "scenario": "S10",
+      "name": "the final draft is the new green still only",
+      "passed": true,
+      "rows": [
+        "controller-green.png"
+      ]
+    },
+    {
+      "scenario": "S10",
+      "name": "the new Start uses the newly saved still revision",
+      "passed": true,
+      "live": {
+        "occurrence": {
+          "playlist_revision": 5,
+          "item_index": 0,
+          "loop": 0
+        },
+        "asset": "sha256:24dbe9339c8cae74699ff59aaa43ae9e3b50079dcbe63ceead14b461351b3eb9",
+        "kind": "still",
+        "duration_ms": null,
+        "dwell_ms": 5000
+      },
+      "playlist_revision": 5
+    },
+    {
+      "scenario": "S10",
+      "name": "the controller names the newly started still",
+      "passed": true,
+      "summary": "Playing: item 1 \u00b7 loop 1 \u00b7 controller-green.png. Next: item 1 \u00b7 loop 2 \u00b7 controller-green.png."
+    },
+    {
+      "scenario": "S10",
+      "name": "the matching revision marks the live row Now",
+      "passed": true,
+      "markers": 1
+    },
+    {
+      "scenario": "S12",
+      "name": "selecting a stage slot opens the Tablet panel",
+      "passed": true,
+      "selected": "tab-tablet",
+      "visible": [
+        "panel-tablet"
+      ]
+    },
+    {
+      "scenario": "S12",
+      "name": "selecting a tablet shows the local Apply and Cancel controls",
+      "passed": true,
+      "selected": "#1 \u00b7 controller controller-a"
+    },
+    {
+      "scenario": "S12",
+      "name": "the local controls mirror the disabled global draft controls",
+      "passed": true,
+      "local": true,
+      "global_disabled": true
+    },
+    {
+      "scenario": "S12",
+      "name": "a nudge enables both Apply controls and both Cancel controls",
+      "passed": true,
+      "local": false,
+      "global_disabled": false,
+      "nudge_x": "1"
+    },
+    {
+      "scenario": "S12",
+      "name": "local Cancel clears the draft and disables both Apply controls",
+      "passed": true,
+      "nudge_x": "0",
+      "draft": "Matches the committed layout"
+    },
+    {
+      "scenario": "S12",
+      "name": "local Cancel and the nudge did not write the layout",
+      "passed": true,
+      "before": 2,
+      "after": 2
+    },
+    {
+      "scenario": "S12",
+      "name": "the Tablet tab marks the layout draft and clears after local Cancel",
+      "passed": true,
+      "dirty": true,
+      "clean": true
+    },
+    {
+      "scenario": "S13",
+      "name": "the exclusion controls sit in the visible Show panel",
+      "passed": true,
+      "selected": "tab-show",
+      "visible": [
+        "panel-show"
+      ]
+    },
+    {
+      "scenario": "S13",
+      "name": "one chosen exclusion is visible before Start",
+      "passed": true,
+      "summary": "2 required, 1 excluded, 1 in this show. Excluded: #2 \u00b7 controller controller-b."
+    },
+    {
+      "scenario": "S13",
+      "name": "an active session with one exclusion shows the frozen exclusion block",
+      "passed": true,
+      "title": "This show's cohort",
+      "summary": "2 required, 1 excluded, 1 in this show. Excluded: #2 \u00b7 controller controller-b. Frozen for this session."
+    },
+    {
+      "scenario": "S13",
+      "name": "the excluded session keeps a one-line cohort summary",
+      "passed": true,
+      "cohort": "2 required \u00b7 1 excluded \u00b7 1 in this show."
+    },
+    {
+      "scenario": "S13",
+      "name": "the server froze one excluded member for the show",
+      "passed": true,
+      "state": "playing",
+      "excluded": [
+        "6bc7cd38-7a56-4c20-992f-9ad9527f9658"
+      ]
+    },
+    {
+      "scenario": "S11",
+      "name": "no unexpected page errors on any controller or client page",
+      "passed": true,
+      "events": []
+    },
+    {
+      "scenario": "S11",
+      "name": "no unexpected console errors on any controller or client page",
+      "passed": true,
+      "events": []
+    },
+    {
+      "scenario": "S11",
+      "name": "no unexpected failed requests or HTTP responses at or above 400",
+      "passed": true,
+      "events": []
+    },
+    {
+      "scenario": "S11",
+      "name": "the injected client fault was classified as an expected warning",
+      "passed": true,
+      "warnings": [
+        {
+          "page": "controller-a",
+          "kind": "console.warning",
+          "phase": "S8",
+          "at_ms": 1793200607930,
+          "message": "[tablet-wall] video recovery 1 (stopped)"
+        },
+        {
+          "page": "controller-a",
+          "kind": "console.warning",
+          "phase": "S8",
+          "at_ms": 1793200608929,
+          "message": "[tablet-wall] video recovery 2 (stopped)"
+        },
+        {
+          "page": "controller-a",
+          "kind": "console.warning",
+          "phase": "S8",
+          "at_ms": 1793200609929,
+          "message": "[tablet-wall] video recovery 3 (stopped)"
+        },
+        {
+          "page": "controller-a",
+          "kind": "console.warning",
+          "phase": "S8",
+          "at_ms": 1793200610929,
+          "message": "[tablet-wall] video blocked after 3 recoveries (stopped)"
+        },
+        {
+          "page": "controller-a",
+          "kind": "console.warning",
+          "phase": "S8",
+          "at_ms": 1793200610929,
+          "message": "[tablet-wall] video fault stalled at 2961 ms"
+        }
+      ]
+    },
+    {
+      "scenario": "S11",
+      "name": "the server, browser and temporary root are gone",
+      "passed": true,
+      "cleanup": {
+        "errors": [],
+        "browser_closed": true,
+        "server_reaped": true,
+        "server_pid": 664941,
+        "temporary_root_removed": true,
+        "remaining_descendants": {}
+      }
+    }
+  ],
+  "page_events": [
+    {
+      "page": "controller-a",
+      "kind": "console.warning",
+      "phase": "S8",
+      "at_ms": 1793200607930,
+      "message": "[tablet-wall] video recovery 1 (stopped)"
+    },
+    {
+      "page": "controller-a",
+      "kind": "console.warning",
+      "phase": "S8",
+      "at_ms": 1793200608929,
+      "message": "[tablet-wall] video recovery 2 (stopped)"
+    },
+    {
+      "page": "controller-a",
+      "kind": "console.warning",
+      "phase": "S8",
+      "at_ms": 1793200609929,
+      "message": "[tablet-wall] video recovery 3 (stopped)"
+    },
+    {
+      "page": "controller-a",
+      "kind": "console.warning",
+      "phase": "S8",
+      "at_ms": 1793200610929,
+      "message": "[tablet-wall] video blocked after 3 recoveries (stopped)"
+    },
+    {
+      "page": "controller-a",
+      "kind": "console.warning",
+      "phase": "S8",
+      "at_ms": 1793200610929,
+      "message": "[tablet-wall] video fault stalled at 2961 ms"
+    },
+    {
+      "page": "controller-b",
+      "kind": "console.warning",
+      "phase": "S8",
+      "at_ms": 1793200613958,
+      "message": "[tablet-wall] video preparation recovery 1 (play probe timed out)"
+    }
+  ],
+  "origin": "http://127.0.0.1:34577",
+  "server_pid": 664941,
+  "fixture": {
+    "argv": [
+      "/usr/bin/ffmpeg",
+      "-hide_banner",
+      "-loglevel",
+      "error",
+      "-y",
+      "-f",
+      "lavfi",
+      "-i",
+      "testsrc2=size=640x360:rate=30:duration=20",
+      "-c:v",
+      "libx264",
+      "-profile:v",
+      "baseline",
+      "-level",
+      "3.0",
+      "-pix_fmt",
+      "yuv420p",
+      "-movflags",
+      "+faststart",
+      "-an",
+      "/tmp/tw-controller-cvmj9mjf/f3-session.mp4"
+    ],
+    "bytes": 2085698
+  },
+  "video": {
+    "id": "sha256:3be851faa25c4481648e15cb0afdd38e40f864616854da37f4a7a3448e5498d7",
+    "asset_id": "d97eb35c-b1c5-481d-92d2-5be8b32f1944",
+    "name": "f3-session.mp4",
+    "mime": "video/mp4",
+    "intrinsicWidth": 640,
+    "intrinsicHeight": 360,
+    "bytes": 2085624,
+    "url": "/assets/sha256:3be851faa25c4481648e15cb0afdd38e40f864616854da37f4a7a3448e5498d7",
+    "state": "ready",
+    "created_at": "2026-10-28T15:16:29.229570+00:00",
+    "thumbnail": {
+      "id": "sha256:bc3bca3f3057e6c88d5d284db2a36634b8ee3a7700e340c427b87a61bb98ae17",
+      "url": "/assets/sha256:bc3bca3f3057e6c88d5d284db2a36634b8ee3a7700e340c427b87a61bb98ae17",
+      "width": 256,
+      "height": 144
+    },
+    "kind": "video",
+    "durationMs": 20000,
+    "codec": "avc1.42C01E",
+    "profile": "Constrained Baseline",
+    "level": "3.0",
+    "pixelFormat": "yuv420p",
+    "frameRate": 30.0,
+    "bitrate": 834249,
+    "faststart": true,
+    "audio": false,
+    "poster": {
+      "id": "sha256:bc3bca3f3057e6c88d5d284db2a36634b8ee3a7700e340c427b87a61bb98ae17",
+      "url": "/assets/sha256:bc3bca3f3057e6c88d5d284db2a36634b8ee3a7700e340c427b87a61bb98ae17",
+      "width": 256,
+      "height": 144
+    }
+  },
+  "original_playlist": {
+    "items": [
+      {
+        "asset": "sha256:3be851faa25c4481648e15cb0afdd38e40f864616854da37f4a7a3448e5498d7",
+        "dwell_ms": 20000
+      },
+      {
+        "asset": "sha256:345e7a7a433acd76d4fe3aeac33a5b3ec04aaf4efa96ef48bc01ac1b6ca8eb97",
+        "dwell_ms": 1000
+      }
+    ],
+    "loop": true,
+    "revision": 1
+  },
+  "tab_transitions": [
+    {
+      "key": "ArrowRight",
+      "expected": "tablet",
+      "selected": "tab-tablet",
+      "visible": [
+        "panel-tablet"
+      ],
+      "focused": "tab-tablet",
+      "tabindex": {
+        "tab-show": "-1",
+        "tab-tablet": "0",
+        "tab-content": "-1",
+        "tab-system": "-1"
+      }
+    },
+    {
+      "key": "ArrowRight",
+      "expected": "content",
+      "selected": "tab-content",
+      "visible": [
+        "panel-content"
+      ],
+      "focused": "tab-content",
+      "tabindex": {
+        "tab-show": "-1",
+        "tab-tablet": "-1",
+        "tab-content": "0",
+        "tab-system": "-1"
+      }
+    },
+    {
+      "key": "ArrowLeft",
+      "expected": "tablet",
+      "selected": "tab-tablet",
+      "visible": [
+        "panel-tablet"
+      ],
+      "focused": "tab-tablet",
+      "tabindex": {
+        "tab-show": "-1",
+        "tab-tablet": "0",
+        "tab-content": "-1",
+        "tab-system": "-1"
+      }
+    },
+    {
+      "key": "Home",
+      "expected": "show",
+      "selected": "tab-show",
+      "visible": [
+        "panel-show"
+      ],
+      "focused": "tab-show",
+      "tabindex": {
+        "tab-show": "0",
+        "tab-tablet": "-1",
+        "tab-content": "-1",
+        "tab-system": "-1"
+      }
+    },
+    {
+      "key": "End",
+      "expected": "system",
+      "selected": "tab-system",
+      "visible": [
+        "panel-system"
+      ],
+      "focused": "tab-system",
+      "tabindex": {
+        "tab-show": "-1",
+        "tab-tablet": "-1",
+        "tab-content": "-1",
+        "tab-system": "0"
+      }
+    },
+    {
+      "key": "ArrowRight",
+      "expected": "show",
+      "selected": "tab-show",
+      "visible": [
+        "panel-show"
+      ],
+      "focused": "tab-show",
+      "tabindex": {
+        "tab-show": "0",
+        "tab-tablet": "-1",
+        "tab-content": "-1",
+        "tab-system": "-1"
+      }
+    }
+  ],
+  "tab_shell": {
+    "initial": {
+      "tabs": [
+        {
+          "id": "tab-show",
+          "selected": "true",
+          "tabindex": "0",
+          "controls": "panel-show"
+        },
+        {
+          "id": "tab-tablet",
+          "selected": "false",
+          "tabindex": "-1",
+          "controls": "panel-tablet"
+        },
+        {
+          "id": "tab-content",
+          "selected": "false",
+          "tabindex": "-1",
+          "controls": "panel-content"
+        },
+        {
+          "id": "tab-system",
+          "selected": "false",
+          "tabindex": "-1",
+          "controls": "panel-system"
+        }
+      ],
+      "panels": [
+        {
+          "id": "panel-show",
+          "hidden": false,
+          "visible": true,
+          "labelledby": "tab-show"
+        },
+        {
+          "id": "panel-tablet",
+          "hidden": true,
+          "visible": false,
+          "labelledby": "tab-tablet"
+        },
+        {
+          "id": "panel-content",
+          "hidden": true,
+          "visible": false,
+          "labelledby": "tab-content"
+        },
+        {
+          "id": "panel-system",
+          "hidden": true,
+          "visible": false,
+          "labelledby": "tab-system"
+        }
+      ],
+      "selected": "tab-show",
+      "visiblePanels": [
+        "panel-show"
+      ],
+      "focused": "",
+      "stored": null,
+      "stageVisible": true,
+      "topbarIndexLinks": 0,
+      "topbarTransportVisible": true,
+      "legacyLink": "Logical wall (legacy)"
+    },
+    "restored": {
+      "tabs": [
+        {
+          "id": "tab-show",
+          "selected": "false",
+          "tabindex": "-1",
+          "controls": "panel-show"
+        },
+        {
+          "id": "tab-tablet",
+          "selected": "false",
+          "tabindex": "-1",
+          "controls": "panel-tablet"
+        },
+        {
+          "id": "tab-content",
+          "selected": "true",
+          "tabindex": "0",
+          "controls": "panel-content"
+        },
+        {
+          "id": "tab-system",
+          "selected": "false",
+          "tabindex": "-1",
+          "controls": "panel-system"
+        }
+      ],
+      "panels": [
+        {
+          "id": "panel-show",
+          "hidden": true,
+          "visible": false,
+          "labelledby": "tab-show"
+        },
+        {
+          "id": "panel-tablet",
+          "hidden": true,
+          "visible": false,
+          "labelledby": "tab-tablet"
+        },
+        {
+          "id": "panel-content",
+          "hidden": false,
+          "visible": true,
+          "labelledby": "tab-content"
+        },
+        {
+          "id": "panel-system",
+          "hidden": true,
+          "visible": false,
+          "labelledby": "tab-system"
+        }
+      ],
+      "selected": "tab-content",
+      "visiblePanels": [
+        "panel-content"
+      ],
+      "focused": "",
+      "stored": "content",
+      "stageVisible": true,
+      "topbarIndexLinks": 0,
+      "topbarTransportVisible": true,
+      "legacyLink": "Logical wall (legacy)"
+    }
+  },
+  "session": {
+    "now_ms": 51487648.204207,
+    "session_id": "a337a4c5c03a4cb486c4c45cefbdcc2e",
+    "version": 2,
+    "generation": "dbe8f9c5",
+    "clock_epoch": "c8a08e5d",
+    "state": "playing",
+    "current": {
+      "playlist_revision": 1,
+      "item_index": 0,
+      "loop": 0
+    },
+    "displayed": {
+      "playlist_revision": 1,
+      "item_index": 0,
+      "loop": 0
+    },
+    "current_effective_ms": 51487350.643879,
+    "pending": {
+      "preparation_id": "a40be2220d6344d2b9a1f1ab3afbc213",
+      "version": 2,
+      "occurrence": {
+        "playlist_revision": 1,
+        "item_index": 1,
+        "loop": 0
+      },
+      "asset": "sha256:345e7a7a433acd76d4fe3aeac33a5b3ec04aaf4efa96ef48bc01ac1b6ca8eb97",
+      "prepare_deadline_ms": 51537350.643879,
+      "effective_server_ms": 51507350.643879
+    },
+    "playlist_revision": 1,
+    "live": {
+      "current": {
+        "occurrence": {
+          "playlist_revision": 1,
+          "item_index": 0,
+          "loop": 0
+        },
+        "asset": "sha256:3be851faa25c4481648e15cb0afdd38e40f864616854da37f4a7a3448e5498d7",
+        "kind": "video",
+        "duration_ms": 20000,
+        "dwell_ms": 20000
+      },
+      "displayed": {
+        "occurrence": {
+          "playlist_revision": 1,
+          "item_index": 0,
+          "loop": 0
+        },
+        "asset": "sha256:3be851faa25c4481648e15cb0afdd38e40f864616854da37f4a7a3448e5498d7",
+        "kind": "video",
+        "duration_ms": 20000,
+        "dwell_ms": 20000
+      },
+      "pending": {
+        "occurrence": {
+          "playlist_revision": 1,
+          "item_index": 1,
+          "loop": 0
+        },
+        "asset": "sha256:345e7a7a433acd76d4fe3aeac33a5b3ec04aaf4efa96ef48bc01ac1b6ca8eb97",
+        "kind": "still",
+        "duration_ms": null,
+        "dwell_ms": 1000
+      }
+    },
+    "cohort": [
+      "4fb7c67f-d350-4d6e-bc76-ec9028455858",
+      "6bc7cd38-7a56-4c20-992f-9ad9527f9658"
+    ],
+    "required": [
+      "4fb7c67f-d350-4d6e-bc76-ec9028455858",
+      "6bc7cd38-7a56-4c20-992f-9ad9527f9658"
+    ],
+    "excluded": [],
+    "missed": [],
+    "held": false,
+    "hold_deadline_ms": null,
+    "policy": "strict",
+    "blocked_reason": null,
+    "final": false,
+    "paused_at_ms": null,
+    "recovery": null,
+    "video": {
+      "4fb7c67f-d350-4d6e-bc76-ec9028455858": {
+        "drift_ms": 43.4,
+        "rate": 1,
+        "source": "rvfc",
+        "media_ms": 66.7,
+        "age_ms": 290
+      },
+      "6bc7cd38-7a56-4c20-992f-9ad9527f9658": {
+        "drift_ms": 43.5,
+        "rate": 1,
+        "source": "rvfc",
+        "media_ms": 66.7,
+        "age_ms": 273
+      }
+    },
+    "members": {
+      "4fb7c67f-d350-4d6e-bc76-ec9028455858": {
+        "ready": false,
+        "video": null
+      },
+      "6bc7cd38-7a56-4c20-992f-9ad9527f9658": {
+        "ready": false,
+        "video": null
+      }
+    }
+  },
+  "topbar_transport": {
+    "railState": "playing",
+    "railData": "playing",
+    "topbarState": "playing",
+    "topbarData": "playing",
+    "pairs": [
+      {
+        "name": "start",
+        "railHidden": true,
+        "topHidden": true,
+        "railDisabled": false,
+        "topDisabled": false,
+        "railText": "Start",
+        "topText": "Start"
+      },
+      {
+        "name": "pause",
+        "railHidden": false,
+        "topHidden": false,
+        "railDisabled": false,
+        "topDisabled": false,
+        "railText": "Pause",
+        "topText": "Pause"
+      },
+      {
+        "name": "stop",
+        "railHidden": false,
+        "topHidden": false,
+        "railDisabled": false,
+        "topDisabled": false,
+        "railText": "Stop",
+        "topText": "Stop"
+      }
+    ]
+  },
+  "status_playing": {
+    "now_ms": 51487703.405661,
+    "session_id": "a337a4c5c03a4cb486c4c45cefbdcc2e",
+    "version": 2,
+    "generation": "dbe8f9c5",
+    "clock_epoch": "c8a08e5d",
+    "state": "playing",
+    "current": {
+      "playlist_revision": 1,
+      "item_index": 0,
+      "loop": 0
+    },
+    "displayed": {
+      "playlist_revision": 1,
+      "item_index": 0,
+      "loop": 0
+    },
+    "current_effective_ms": 51487350.643879,
+    "pending": {
+      "preparation_id": "a40be2220d6344d2b9a1f1ab3afbc213",
+      "version": 2,
+      "occurrence": {
+        "playlist_revision": 1,
+        "item_index": 1,
+        "loop": 0
+      },
+      "asset": "sha256:345e7a7a433acd76d4fe3aeac33a5b3ec04aaf4efa96ef48bc01ac1b6ca8eb97",
+      "prepare_deadline_ms": 51537350.643879,
+      "effective_server_ms": 51507350.643879
+    },
+    "playlist_revision": 1,
+    "live": {
+      "current": {
+        "occurrence": {
+          "playlist_revision": 1,
+          "item_index": 0,
+          "loop": 0
+        },
+        "asset": "sha256:3be851faa25c4481648e15cb0afdd38e40f864616854da37f4a7a3448e5498d7",
+        "kind": "video",
+        "duration_ms": 20000,
+        "dwell_ms": 20000
+      },
+      "displayed": {
+        "occurrence": {
+          "playlist_revision": 1,
+          "item_index": 0,
+          "loop": 0
+        },
+        "asset": "sha256:3be851faa25c4481648e15cb0afdd38e40f864616854da37f4a7a3448e5498d7",
+        "kind": "video",
+        "duration_ms": 20000,
+        "dwell_ms": 20000
+      },
+      "pending": {
+        "occurrence": {
+          "playlist_revision": 1,
+          "item_index": 1,
+          "loop": 0
+        },
+        "asset": "sha256:345e7a7a433acd76d4fe3aeac33a5b3ec04aaf4efa96ef48bc01ac1b6ca8eb97",
+        "kind": "still",
+        "duration_ms": null,
+        "dwell_ms": 1000
+      }
+    },
+    "cohort": [
+      "4fb7c67f-d350-4d6e-bc76-ec9028455858",
+      "6bc7cd38-7a56-4c20-992f-9ad9527f9658"
+    ],
+    "required": [
+      "4fb7c67f-d350-4d6e-bc76-ec9028455858",
+      "6bc7cd38-7a56-4c20-992f-9ad9527f9658"
+    ],
+    "excluded": [],
+    "missed": [],
+    "held": false,
+    "hold_deadline_ms": null,
+    "policy": "strict",
+    "blocked_reason": null,
+    "final": false,
+    "paused_at_ms": null,
+    "recovery": null,
+    "video": {
+      "4fb7c67f-d350-4d6e-bc76-ec9028455858": {
+        "drift_ms": 43.4,
+        "rate": 1,
+        "source": "rvfc",
+        "media_ms": 66.7,
+        "age_ms": 345
+      },
+      "6bc7cd38-7a56-4c20-992f-9ad9527f9658": {
+        "drift_ms": 43.5,
+        "rate": 1,
+        "source": "rvfc",
+        "media_ms": 66.7,
+        "age_ms": 329
+      }
+    },
+    "members": {
+      "4fb7c67f-d350-4d6e-bc76-ec9028455858": {
+        "ready": false,
+        "video": null
+      },
+      "6bc7cd38-7a56-4c20-992f-9ad9527f9658": {
+        "ready": false,
+        "video": null
+      }
+    }
+  },
+  "controller_playing": {
+    "summary": "Playing: item 1 \u00b7 loop 1 \u00b7 f3-session.mp4. Next: item 2 \u00b7 loop 1 \u00b7 controller-red.png.",
+    "countdown": "20 s left.",
+    "facts": "State\nplaying\nSession\na337a4c5\u2026\nVersion\n2\nPolicy\nstrict\nDisplayed\nitem 1 \u00b7 loop 1 \u00b7 f3-session.mp4\nActive anchor\n51487351 ms (server)\nCurrent media\nvideo \u00b7 20 s clip\nRemaining dwell\n20 s left",
+    "live_region": {
+      "role": null,
+      "ariaLive": null,
+      "countdownAriaHidden": "true"
+    }
+  },
+  "playing_stability": {
+    "summary_before": "Playing: item 1 \u00b7 loop 1 \u00b7 f3-session.mp4. Next: item 2 \u00b7 loop 1 \u00b7 controller-red.png.",
+    "summary_after": "Playing: item 1 \u00b7 loop 1 \u00b7 f3-session.mp4. Next: item 2 \u00b7 loop 1 \u00b7 controller-red.png.",
+    "countdown_before": "20 s left.",
+    "countdown_after": "17 s left.",
+    "state": "playing"
+  },
+  "readiness": {
+    "names": [
+      "#1 \u00b7 controller controller-a",
+      "#2 \u00b7 controller controller-b"
+    ],
+    "chips": [
+      "required",
+      "preparing next",
+      "online",
+      "required",
+      "preparing next",
+      "online"
+    ],
+    "waiting": 2
+  },
+  "cohort_line": {
+    "hidden": false,
+    "text": "2 required \u00b7 0 excluded \u00b7 2 in this show.",
+    "whiteSpace": "nowrap",
+    "height": 18.1875,
+    "fontSize": 13,
+    "exclusionsHidden": true
+  },
+  "pause": {
+    "status": {
+      "now_ms": 51492127.096746,
+      "session_id": "a337a4c5c03a4cb486c4c45cefbdcc2e",
+      "version": 3,
+      "generation": "dbe8f9c5",
+      "clock_epoch": "c8a08e5d",
+      "state": "paused",
+      "current": {
+        "playlist_revision": 1,
+        "item_index": 0,
+        "loop": 0
+      },
+      "displayed": {
+        "playlist_revision": 1,
+        "item_index": 0,
+        "loop": 0
+      },
+      "current_effective_ms": 51487350.643879,
+      "pending": null,
+      "playlist_revision": 1,
+      "live": {
+        "current": {
+          "occurrence": {
+            "playlist_revision": 1,
+            "item_index": 0,
+            "loop": 0
+          },
+          "asset": "sha256:3be851faa25c4481648e15cb0afdd38e40f864616854da37f4a7a3448e5498d7",
+          "kind": "video",
+          "duration_ms": 20000,
+          "dwell_ms": 20000
+        },
+        "displayed": {
+          "occurrence": {
+            "playlist_revision": 1,
+            "item_index": 0,
+            "loop": 0
+          },
+          "asset": "sha256:3be851faa25c4481648e15cb0afdd38e40f864616854da37f4a7a3448e5498d7",
+          "kind": "video",
+          "duration_ms": 20000,
+          "dwell_ms": 20000
+        },
+        "pending": null
+      },
+      "cohort": [
+        "4fb7c67f-d350-4d6e-bc76-ec9028455858",
+        "6bc7cd38-7a56-4c20-992f-9ad9527f9658"
+      ],
+      "required": [
+        "4fb7c67f-d350-4d6e-bc76-ec9028455858",
+        "6bc7cd38-7a56-4c20-992f-9ad9527f9658"
+      ],
+      "excluded": [],
+      "missed": [],
+      "held": false,
+      "hold_deadline_ms": null,
+      "policy": "strict",
+      "blocked_reason": null,
+      "final": false,
+      "paused_at_ms": 51491660.054835,
+      "recovery": null,
+      "video": {
+        "4fb7c67f-d350-4d6e-bc76-ec9028455858": {
+          "drift_ms": 43.6,
+          "rate": 1,
+          "source": "rvfc",
+          "media_ms": 3100,
+          "age_ms": 1736
+        },
+        "6bc7cd38-7a56-4c20-992f-9ad9527f9658": {
+          "drift_ms": 43.7,
+          "rate": 1,
+          "source": "rvfc",
+          "media_ms": 3133.3,
+          "age_ms": 1686
+        }
+      },
+      "members": {}
+    },
+    "summary": "Paused on item 1 \u00b7 loop 1 \u00b7 f3-session.mp4. Resume restarts the item at a new anchor.",
+    "countdown": "16 s left at the pause.",
+    "facts": "State\npaused\nSession\na337a4c5\u2026\nVersion\n3\nPolicy\nstrict\nDisplayed\nitem 1 \u00b7 loop 1 \u00b7 f3-session.mp4\nActive anchor\n51487351 ms (server)\nCurrent media\nvideo \u00b7 20 s clip\nRemaining dwell\n16 s left",
+    "poll": "Live status, read at 10:16:36 AM. Polled once a second while this page is visible.",
+    "page_status_changes": [
+      "Playback paused."
+    ],
+    "summary_after_2s": "Paused on item 1 \u00b7 loop 1 \u00b7 f3-session.mp4. Resume restarts the item at a new anchor.",
+    "countdown_after_2s": "16 s left at the pause.",
+    "facts_after_2s": "State\npaused\nSession\na337a4c5\u2026\nVersion\n3\nPolicy\nstrict\nDisplayed\nitem 1 \u00b7 loop 1 \u00b7 f3-session.mp4\nActive anchor\n51487351 ms (server)\nCurrent media\nvideo \u00b7 20 s clip\nRemaining dwell\n16 s left",
+    "poll_after_2s": "Live status, read at 10:16:40 AM. Polled once a second while this page is visible.",
+    "page_status_changes_after_2s": [
+      "Playback paused."
+    ]
+  },
+  "mobile": {
+    "innerWidth": 390,
+    "documentScrollWidth": 390,
+    "documentClientWidth": 390,
+    "summary": "Paused on item 1 \u00b7 loop 1 \u00b7 f3-session.mp4. Resume restarts the item at a new anchor.",
+    "summaryLeft": 27,
+    "summaryRight": 363,
+    "summaryWidth": 336,
+    "summaryOverflow": 0,
+    "fontSize": 13,
+    "countdown": "16 s left at the pause.",
+    "pauseText": "Resume",
+    "pauseVisible": true,
+    "cardHeight": 182.59375,
+    "moreVisible": true,
+    "moreExpanded": "false",
+    "extraVisible": false,
+    "stageTabIndex": "0",
+    "stageRole": "region",
+    "stageScrollWidth": 330,
+    "stageClientWidth": 330,
+    "svgWidth": 330,
+    "railTabsDisplay": "grid",
+    "railTabsVisible": true,
+    "tabs": [
+      {
+        "id": "tab-show",
+        "selected": "true",
+        "tabindex": "0",
+        "controls": "panel-show"
+      },
+      {
+        "id": "tab-tablet",
+        "selected": "false",
+        "tabindex": "-1",
+        "controls": "panel-tablet"
+      },
+      {
+        "id": "tab-content",
+        "selected": "false",
+        "tabindex": "-1",
+        "controls": "panel-content"
+      },
+      {
+        "id": "tab-system",
+        "selected": "false",
+        "tabindex": "-1",
+        "controls": "panel-system"
+      }
+    ],
+    "panels": [
+      {
+        "id": "panel-show",
+        "hidden": false,
+        "visible": true
+      },
+      {
+        "id": "panel-tablet",
+        "hidden": true,
+        "visible": false
+      },
+      {
+        "id": "panel-content",
+        "hidden": true,
+        "visible": false
+      },
+      {
+        "id": "panel-system",
+        "hidden": true,
+        "visible": false
+      }
+    ],
+    "selectedTab": "tab-show",
+    "visiblePanels": [
+      "panel-show"
+    ]
+  },
+  "resume": {
+    "status": {
+      "now_ms": 51497280.962228,
+      "session_id": "a337a4c5c03a4cb486c4c45cefbdcc2e",
+      "version": 5,
+      "generation": "dbe8f9c5",
+      "clock_epoch": "c8a08e5d",
+      "state": "playing",
+      "current": {
+        "playlist_revision": 1,
+        "item_index": 0,
+        "loop": 0
+      },
+      "displayed": {
+        "playlist_revision": 1,
+        "item_index": 0,
+        "loop": 0
+      },
+      "current_effective_ms": 51496996.682901,
+      "pending": {
+        "preparation_id": "8129f9b7456a43d9adf769ad3f215716",
+        "version": 5,
+        "occurrence": {
+          "playlist_revision": 1,
+          "item_index": 1,
+          "loop": 0
+        },
+        "asset": "sha256:345e7a7a433acd76d4fe3aeac33a5b3ec04aaf4efa96ef48bc01ac1b6ca8eb97",
+        "prepare_deadline_ms": 51546996.682901,
+        "effective_server_ms": 51516996.682901
+      },
+      "playlist_revision": 1,
+      "live": {
+        "current": {
+          "occurrence": {
+            "playlist_revision": 1,
+            "item_index": 0,
+            "loop": 0
+          },
+          "asset": "sha256:3be851faa25c4481648e15cb0afdd38e40f864616854da37f4a7a3448e5498d7",
+          "kind": "video",
+          "duration_ms": 20000,
+          "dwell_ms": 20000
+        },
+        "displayed": {
+          "occurrence": {
+            "playlist_revision": 1,
+            "item_index": 0,
+            "loop": 0
+          },
+          "asset": "sha256:3be851faa25c4481648e15cb0afdd38e40f864616854da37f4a7a3448e5498d7",
+          "kind": "video",
+          "duration_ms": 20000,
+          "dwell_ms": 20000
+        },
+        "pending": {
+          "occurrence": {
+            "playlist_revision": 1,
+            "item_index": 1,
+            "loop": 0
+          },
+          "asset": "sha256:345e7a7a433acd76d4fe3aeac33a5b3ec04aaf4efa96ef48bc01ac1b6ca8eb97",
+          "kind": "still",
+          "duration_ms": null,
+          "dwell_ms": 1000
+        }
+      },
+      "cohort": [
+        "4fb7c67f-d350-4d6e-bc76-ec9028455858",
+        "6bc7cd38-7a56-4c20-992f-9ad9527f9658"
+      ],
+      "required": [
+        "4fb7c67f-d350-4d6e-bc76-ec9028455858",
+        "6bc7cd38-7a56-4c20-992f-9ad9527f9658"
+      ],
+      "excluded": [],
+      "missed": [],
+      "held": false,
+      "hold_deadline_ms": null,
+      "policy": "strict",
+      "blocked_reason": null,
+      "final": false,
+      "paused_at_ms": null,
+      "recovery": null,
+      "video": {
+        "4fb7c67f-d350-4d6e-bc76-ec9028455858": {
+          "drift_ms": 39.8,
+          "rate": 1,
+          "source": "rvfc",
+          "media_ms": 66.7,
+          "age_ms": 272
+        },
+        "6bc7cd38-7a56-4c20-992f-9ad9527f9658": {
+          "drift_ms": 39.9,
+          "rate": 1,
+          "source": "rvfc",
+          "media_ms": 66.7,
+          "age_ms": 272
+        }
+      },
+      "members": {
+        "4fb7c67f-d350-4d6e-bc76-ec9028455858": {
+          "ready": false,
+          "video": null
+        },
+        "6bc7cd38-7a56-4c20-992f-9ad9527f9658": {
+          "ready": false,
+          "video": null
+        }
+      }
+    },
+    "clients": [
+      [
+        {
+          "visible": true,
+          "paused": false,
+          "ended": false,
+          "readyState": 4,
+          "currentTime": 0.324778,
+          "duration": 20,
+          "videoWidth": 640,
+          "videoHeight": 360
+        }
+      ],
+      [
+        {
+          "visible": true,
+          "paused": false,
+          "ended": false,
+          "readyState": 4,
+          "currentTime": 0.327809,
+          "duration": 20,
+          "videoWidth": 640,
+          "videoHeight": 360
+        }
+      ]
+    ]
+  },
+  "content_layout": {
+    "itemWidth": 358,
+    "bodyWidth": 276,
+    "pickerWidth": 358,
+    "controlsHeight": 44
+  },
+  "playing_draft": {
+    "summary": "Playing: item 1 \u00b7 loop 1 \u00b7 f3-session.mp4. Next: item 2 \u00b7 loop 1 \u00b7 controller-red.png.",
+    "countdown": "19 s left.",
+    "facts": "State\nplaying\nSession\na337a4c5\u2026\nVersion\n5\nPolicy\nstrict\nDisplayed\nitem 1 \u00b7 loop 1 \u00b7 f3-session.mp4\nActive anchor\n51496997 ms (server)\nCurrent media\nvideo \u00b7 20 s clip\nRemaining dwell\n19 s left",
+    "rows": [
+      "controller-green.png"
+    ],
+    "markers": 0,
+    "status": {
+      "now_ms": 51498643.503391,
+      "session_id": "a337a4c5c03a4cb486c4c45cefbdcc2e",
+      "version": 5,
+      "generation": "dbe8f9c5",
+      "clock_epoch": "c8a08e5d",
+      "state": "playing",
+      "current": {
+        "playlist_revision": 1,
+        "item_index": 0,
+        "loop": 0
+      },
+      "displayed": {
+        "playlist_revision": 1,
+        "item_index": 0,
+        "loop": 0
+      },
+      "current_effective_ms": 51496996.682901,
+      "pending": {
+        "preparation_id": "8129f9b7456a43d9adf769ad3f215716",
+        "version": 5,
+        "occurrence": {
+          "playlist_revision": 1,
+          "item_index": 1,
+          "loop": 0
+        },
+        "asset": "sha256:345e7a7a433acd76d4fe3aeac33a5b3ec04aaf4efa96ef48bc01ac1b6ca8eb97",
+        "prepare_deadline_ms": 51546996.682901,
+        "effective_server_ms": 51516996.682901
+      },
+      "playlist_revision": 1,
+      "live": {
+        "current": {
+          "occurrence": {
+            "playlist_revision": 1,
+            "item_index": 0,
+            "loop": 0
+          },
+          "asset": "sha256:3be851faa25c4481648e15cb0afdd38e40f864616854da37f4a7a3448e5498d7",
+          "kind": "video",
+          "duration_ms": 20000,
+          "dwell_ms": 20000
+        },
+        "displayed": {
+          "occurrence": {
+            "playlist_revision": 1,
+            "item_index": 0,
+            "loop": 0
+          },
+          "asset": "sha256:3be851faa25c4481648e15cb0afdd38e40f864616854da37f4a7a3448e5498d7",
+          "kind": "video",
+          "duration_ms": 20000,
+          "dwell_ms": 20000
+        },
+        "pending": {
+          "occurrence": {
+            "playlist_revision": 1,
+            "item_index": 1,
+            "loop": 0
+          },
+          "asset": "sha256:345e7a7a433acd76d4fe3aeac33a5b3ec04aaf4efa96ef48bc01ac1b6ca8eb97",
+          "kind": "still",
+          "duration_ms": null,
+          "dwell_ms": 1000
+        }
+      },
+      "cohort": [
+        "4fb7c67f-d350-4d6e-bc76-ec9028455858",
+        "6bc7cd38-7a56-4c20-992f-9ad9527f9658"
+      ],
+      "required": [
+        "4fb7c67f-d350-4d6e-bc76-ec9028455858",
+        "6bc7cd38-7a56-4c20-992f-9ad9527f9658"
+      ],
+      "excluded": [],
+      "missed": [],
+      "held": false,
+      "hold_deadline_ms": null,
+      "policy": "strict",
+      "blocked_reason": null,
+      "final": false,
+      "paused_at_ms": null,
+      "recovery": null,
+      "video": {
+        "4fb7c67f-d350-4d6e-bc76-ec9028455858": {
+          "drift_ms": 39.9,
+          "rate": 1,
+          "source": "rvfc",
+          "media_ms": 1066.7,
+          "age_ms": 619
+        },
+        "6bc7cd38-7a56-4c20-992f-9ad9527f9658": {
+          "drift_ms": 40,
+          "rate": 1,
+          "source": "rvfc",
+          "media_ms": 1066.7,
+          "age_ms": 619
+        }
+      },
+      "members": {
+        "4fb7c67f-d350-4d6e-bc76-ec9028455858": {
+          "ready": false,
+          "video": null
+        },
+        "6bc7cd38-7a56-4c20-992f-9ad9527f9658": {
+          "ready": false,
+          "video": null
+        }
+      }
+    },
+    "saved": {
+      "items": [
+        {
+          "asset": "sha256:24dbe9339c8cae74699ff59aaa43ae9e3b50079dcbe63ceead14b461351b3eb9",
+          "dwell_ms": 5000
+        }
+      ],
+      "loop": true,
+      "revision": 2
+    }
+  },
+  "paused_draft": {
+    "summary_before": "Paused on item 1 \u00b7 loop 1 \u00b7 f3-session.mp4. Resume restarts the item at a new anchor.",
+    "summary_after": "Paused on item 1 \u00b7 loop 1 \u00b7 f3-session.mp4. Resume restarts the item at a new anchor.",
+    "countdown_before": "18 s left at the pause.",
+    "countdown_after": "18 s left at the pause.",
+    "facts_before": "State\npaused\nSession\na337a4c5\u2026\nVersion\n6\nPolicy\nstrict\nDisplayed\nitem 1 \u00b7 loop 1 \u00b7 f3-session.mp4\nActive anchor\n51496997 ms (server)\nCurrent media\nvideo \u00b7 20 s clip\nRemaining dwell\n18 s left",
+    "facts_after": "State\npaused\nSession\na337a4c5\u2026\nVersion\n6\nPolicy\nstrict\nDisplayed\nitem 1 \u00b7 loop 1 \u00b7 f3-session.mp4\nActive anchor\n51496997 ms (server)\nCurrent media\nvideo \u00b7 20 s clip\nRemaining dwell\n18 s left",
+    "rows": [
+      "controller-yellow.png",
+      "controller-green.png"
+    ],
+    "markers": 0,
+    "saved": {
+      "items": [
+        {
+          "asset": "sha256:5b69b282d40645be446b0069999da3576250b5f0ae3d1a95104469423fb15269",
+          "dwell_ms": 5000
+        },
+        {
+          "asset": "sha256:24dbe9339c8cae74699ff59aaa43ae9e3b50079dcbe63ceead14b461351b3eb9",
+          "dwell_ms": 5000
+        }
+      ],
+      "loop": true,
+      "revision": 3
+    },
+    "status": {
+      "now_ms": 51500839.499144,
+      "session_id": "a337a4c5c03a4cb486c4c45cefbdcc2e",
+      "version": 6,
+      "generation": "dbe8f9c5",
+      "clock_epoch": "c8a08e5d",
+      "state": "paused",
+      "current": {
+        "playlist_revision": 1,
+        "item_index": 0,
+        "loop": 0
+      },
+      "displayed": {
+        "playlist_revision": 1,
+        "item_index": 0,
+        "loop": 0
+      },
+      "current_effective_ms": 51496996.682901,
+      "pending": null,
+      "playlist_revision": 1,
+      "live": {
+        "current": {
+          "occurrence": {
+            "playlist_revision": 1,
+            "item_index": 0,
+            "loop": 0
+          },
+          "asset": "sha256:3be851faa25c4481648e15cb0afdd38e40f864616854da37f4a7a3448e5498d7",
+          "kind": "video",
+          "duration_ms": 20000,
+          "dwell_ms": 20000
+        },
+        "displayed": {
+          "occurrence": {
+            "playlist_revision": 1,
+            "item_index": 0,
+            "loop": 0
+          },
+          "asset": "sha256:3be851faa25c4481648e15cb0afdd38e40f864616854da37f4a7a3448e5498d7",
+          "kind": "video",
+          "duration_ms": 20000,
+          "dwell_ms": 20000
+        },
+        "pending": null
+      },
+      "cohort": [
+        "4fb7c67f-d350-4d6e-bc76-ec9028455858",
+        "6bc7cd38-7a56-4c20-992f-9ad9527f9658"
+      ],
+      "required": [
+        "4fb7c67f-d350-4d6e-bc76-ec9028455858",
+        "6bc7cd38-7a56-4c20-992f-9ad9527f9658"
+      ],
+      "excluded": [],
+      "missed": [],
+      "held": false,
+      "hold_deadline_ms": null,
+      "policy": "strict",
+      "blocked_reason": null,
+      "final": false,
+      "paused_at_ms": 51498860.751563,
+      "recovery": null,
+      "video": {
+        "4fb7c67f-d350-4d6e-bc76-ec9028455858": {
+          "drift_ms": 39.9,
+          "rate": 1,
+          "source": "rvfc",
+          "media_ms": 1066.7,
+          "age_ms": 2815
+        },
+        "6bc7cd38-7a56-4c20-992f-9ad9527f9658": {
+          "drift_ms": 40,
+          "rate": 1,
+          "source": "rvfc",
+          "media_ms": 1066.7,
+          "age_ms": 2815
+        }
+      },
+      "members": {}
+    }
+  },
+  "recovery_started": {
+    "now_ms": 51506019.274917,
+    "session_id": "a337a4c5c03a4cb486c4c45cefbdcc2e",
+    "version": 9,
+    "generation": "dbe8f9c5",
+    "clock_epoch": "c8a08e5d",
+    "state": "recovering",
+    "current": {
+      "playlist_revision": 1,
+      "item_index": 0,
+      "loop": 0
+    },
+    "displayed": {
+      "playlist_revision": 1,
+      "item_index": 0,
+      "loop": 0
+    },
+    "current_effective_ms": 51502013.866556,
+    "pending": {
+      "preparation_id": "def5232409044348b9975be2570bb5d7",
+      "version": 9,
+      "occurrence": {
+        "playlist_revision": 1,
+        "item_index": 0,
+        "loop": 0
+      },
+      "asset": "sha256:3be851faa25c4481648e15cb0afdd38e40f864616854da37f4a7a3448e5498d7",
+      "prepare_deadline_ms": 51536975.579282,
+      "effective_server_ms": 51506975.579282,
+      "media": {
+        "kind": "video",
+        "duration_ms": 20000,
+        "buffer_goal_ms": 5000,
+        "start_lead_ms": 1000,
+        "prepare_timeout_ms": 30000
+      },
+      "recovery_id": "49230cfce4d643fab0c77ac7bacddd93",
+      "start_media_ms": 2961
+    },
+    "playlist_revision": 1,
+    "live": {
+      "current": {
+        "occurrence": {
+          "playlist_revision": 1,
+          "item_index": 0,
+          "loop": 0
+        },
+        "asset": "sha256:3be851faa25c4481648e15cb0afdd38e40f864616854da37f4a7a3448e5498d7",
+        "kind": "video",
+        "duration_ms": 20000,
+        "dwell_ms": 20000
+      },
+      "displayed": {
+        "occurrence": {
+          "playlist_revision": 1,
+          "item_index": 0,
+          "loop": 0
+        },
+        "asset": "sha256:3be851faa25c4481648e15cb0afdd38e40f864616854da37f4a7a3448e5498d7",
+        "kind": "video",
+        "duration_ms": 20000,
+        "dwell_ms": 20000
+      },
+      "pending": {
+        "occurrence": {
+          "playlist_revision": 1,
+          "item_index": 0,
+          "loop": 0
+        },
+        "asset": "sha256:3be851faa25c4481648e15cb0afdd38e40f864616854da37f4a7a3448e5498d7",
+        "kind": "video",
+        "duration_ms": 20000,
+        "dwell_ms": 20000
+      }
+    },
+    "cohort": [
+      "4fb7c67f-d350-4d6e-bc76-ec9028455858",
+      "6bc7cd38-7a56-4c20-992f-9ad9527f9658"
+    ],
+    "required": [
+      "4fb7c67f-d350-4d6e-bc76-ec9028455858",
+      "6bc7cd38-7a56-4c20-992f-9ad9527f9658"
+    ],
+    "excluded": [],
+    "missed": [],
+    "held": false,
+    "hold_deadline_ms": null,
+    "policy": "strict",
+    "blocked_reason": null,
+    "final": false,
+    "paused_at_ms": null,
+    "recovery": {
+      "id": "49230cfce4d643fab0c77ac7bacddd93",
+      "occurrence": {
+        "playlist_revision": 1,
+        "item_index": 0,
+        "loop": 0
+      },
+      "position_ms": 2961,
+      "reason": "stalled",
+      "device_id": "4fb7c67f-d350-4d6e-bc76-ec9028455858",
+      "attempts": 1,
+      "started_ms": 51505975.579282,
+      "deadline_ms": 51536975.579282,
+      "degraded_ms": 44,
+      "state": "preparing",
+      "missing": []
+    },
+    "video": {
+      "4fb7c67f-d350-4d6e-bc76-ec9028455858": {
+        "drift_ms": -999.9,
+        "rate": 1.02,
+        "source": "time",
+        "media_ms": 2961.2,
+        "age_ms": 44
+      },
+      "6bc7cd38-7a56-4c20-992f-9ad9527f9658": {
+        "drift_ms": 40.8,
+        "rate": 1,
+        "source": "rvfc",
+        "media_ms": 3066.7,
+        "age_ms": 979
+      }
+    },
+    "members": {
+      "4fb7c67f-d350-4d6e-bc76-ec9028455858": {
+        "ready": false,
+        "video": null
+      },
+      "6bc7cd38-7a56-4c20-992f-9ad9527f9658": {
+        "ready": false,
+        "video": null
+      }
+    }
+  },
+  "recovery_visible": "Recovering item 1 \u00b7 loop 1 \u00b7 f3-session.mp4 at 3.0 s after a stalled video on #1 \u00b7 controller controller-a. Waiting for the group buffer and a common anchor.",
+  "recovery_draft": {
+    "state_at_save": "recovering",
+    "state_after_save": "recovering",
+    "edited_rows": [
+      "controller-red.png",
+      "controller-yellow.png",
+      "controller-green.png"
+    ],
+    "saved": {
+      "items": [
+        {
+          "asset": "sha256:345e7a7a433acd76d4fe3aeac33a5b3ec04aaf4efa96ef48bc01ac1b6ca8eb97",
+          "dwell_ms": 5000
+        },
+        {
+          "asset": "sha256:5b69b282d40645be446b0069999da3576250b5f0ae3d1a95104469423fb15269",
+          "dwell_ms": 5000
+        },
+        {
+          "asset": "sha256:24dbe9339c8cae74699ff59aaa43ae9e3b50079dcbe63ceead14b461351b3eb9",
+          "dwell_ms": 5000
+        }
+      ],
+      "loop": true,
+      "revision": 4
+    },
+    "recovery": {
+      "id": "49230cfce4d643fab0c77ac7bacddd93",
+      "occurrence": {
+        "playlist_revision": 1,
+        "item_index": 0,
+        "loop": 0
+      },
+      "position_ms": 2961,
+      "reason": "stalled",
+      "device_id": "4fb7c67f-d350-4d6e-bc76-ec9028455858",
+      "attempts": 1,
+      "started_ms": 51505975.579282,
+      "deadline_ms": 51536975.579282,
+      "degraded_ms": 247,
+      "state": "preparing",
+      "missing": []
+    },
+    "summary": "Recovering item 1 \u00b7 loop 1 \u00b7 f3-session.mp4 at 3.0 s after a stalled video on #1 \u00b7 controller controller-a. Waiting for the group buffer and a common anchor.",
+    "facts": "State\nrecovering\nSession\na337a4c5\u2026\nVersion\n9\nPolicy\nstrict\nDisplayed\nitem 1 \u00b7 loop 1 \u00b7 f3-session.mp4\nActive anchor\n51502014 ms (server)\nCurrent media\nvideo \u00b7 20 s clip\nRecovery\nstalled at 3.0 s \u00b7 attempt 1 \u00b7 degraded 0.3 s",
+    "rows": [
+      "controller-red.png",
+      "controller-yellow.png",
+      "controller-green.png"
+    ],
+    "markers": 0,
+    "status_after_reload": {
+      "now_ms": 51506992.179844,
+      "session_id": "a337a4c5c03a4cb486c4c45cefbdcc2e",
+      "version": 9,
+      "generation": "dbe8f9c5",
+      "clock_epoch": "c8a08e5d",
+      "state": "recovering",
+      "current": {
+        "playlist_revision": 1,
+        "item_index": 0,
+        "loop": 0
+      },
+      "displayed": {
+        "playlist_revision": 1,
+        "item_index": 0,
+        "loop": 0
+      },
+      "current_effective_ms": 51502013.866556,
+      "pending": {
+        "preparation_id": "def5232409044348b9975be2570bb5d7",
+        "version": 9,
+        "occurrence": {
+          "playlist_revision": 1,
+          "item_index": 0,
+          "loop": 0
+        },
+        "asset": "sha256:3be851faa25c4481648e15cb0afdd38e40f864616854da37f4a7a3448e5498d7",
+        "prepare_deadline_ms": 51536975.579282,
+        "effective_server_ms": 51506975.579282,
+        "media": {
+          "kind": "video",
+          "duration_ms": 20000,
+          "buffer_goal_ms": 5000,
+          "start_lead_ms": 1000,
+          "prepare_timeout_ms": 30000
+        },
+        "recovery_id": "49230cfce4d643fab0c77ac7bacddd93",
+        "start_media_ms": 2961
+      },
+      "playlist_revision": 1,
+      "live": {
+        "current": {
+          "occurrence": {
+            "playlist_revision": 1,
+            "item_index": 0,
+            "loop": 0
+          },
+          "asset": "sha256:3be851faa25c4481648e15cb0afdd38e40f864616854da37f4a7a3448e5498d7",
+          "kind": "video",
+          "duration_ms": 20000,
+          "dwell_ms": 20000
+        },
+        "displayed": {
+          "occurrence": {
+            "playlist_revision": 1,
+            "item_index": 0,
+            "loop": 0
+          },
+          "asset": "sha256:3be851faa25c4481648e15cb0afdd38e40f864616854da37f4a7a3448e5498d7",
+          "kind": "video",
+          "duration_ms": 20000,
+          "dwell_ms": 20000
+        },
+        "pending": {
+          "occurrence": {
+            "playlist_revision": 1,
+            "item_index": 0,
+            "loop": 0
+          },
+          "asset": "sha256:3be851faa25c4481648e15cb0afdd38e40f864616854da37f4a7a3448e5498d7",
+          "kind": "video",
+          "duration_ms": 20000,
+          "dwell_ms": 20000
+        }
+      },
+      "cohort": [
+        "4fb7c67f-d350-4d6e-bc76-ec9028455858",
+        "6bc7cd38-7a56-4c20-992f-9ad9527f9658"
+      ],
+      "required": [
+        "4fb7c67f-d350-4d6e-bc76-ec9028455858",
+        "6bc7cd38-7a56-4c20-992f-9ad9527f9658"
+      ],
+      "excluded": [],
+      "missed": [],
+      "held": false,
+      "hold_deadline_ms": null,
+      "policy": "strict",
+      "blocked_reason": null,
+      "final": false,
+      "paused_at_ms": null,
+      "recovery": {
+        "id": "49230cfce4d643fab0c77ac7bacddd93",
+        "occurrence": {
+          "playlist_revision": 1,
+          "item_index": 0,
+          "loop": 0
+        },
+        "position_ms": 2961,
+        "reason": "stalled",
+        "device_id": "4fb7c67f-d350-4d6e-bc76-ec9028455858",
+        "attempts": 1,
+        "started_ms": 51505975.579282,
+        "deadline_ms": 51536975.579282,
+        "degraded_ms": 1017,
+        "state": "preparing",
+        "missing": []
+      },
+      "video": {
+        "4fb7c67f-d350-4d6e-bc76-ec9028455858": {
+          "drift_ms": -999.9,
+          "rate": 1.02,
+          "source": "time",
+          "media_ms": 2961.2,
+          "age_ms": 1017
+        },
+        "6bc7cd38-7a56-4c20-992f-9ad9527f9658": {
+          "drift_ms": 40.8,
+          "rate": 1,
+          "source": "rvfc",
+          "media_ms": 3066.7,
+          "age_ms": 1951
+        }
+      },
+      "members": {
+        "4fb7c67f-d350-4d6e-bc76-ec9028455858": {
+          "ready": true,
+          "video": {
+            "metadata": true,
+            "seeked": true,
+            "buffered_ahead_ms": 17039,
+            "play_ok": "yes",
+            "rvfc": true
+          }
+        },
+        "6bc7cd38-7a56-4c20-992f-9ad9527f9658": {
+          "ready": false,
+          "video": null
+        }
+      }
+    }
+  },
+  "recovery_completed": {
+    "now_ms": 51510119.025136,
+    "session_id": "a337a4c5c03a4cb486c4c45cefbdcc2e",
+    "version": 10,
+    "generation": "dbe8f9c5",
+    "clock_epoch": "c8a08e5d",
+    "state": "playing",
+    "current": {
+      "playlist_revision": 1,
+      "item_index": 0,
+      "loop": 0
+    },
+    "displayed": {
+      "playlist_revision": 1,
+      "item_index": 0,
+      "loop": 0
+    },
+    "current_effective_ms": 51510111.165625,
+    "pending": {
+      "preparation_id": "66e869235ebf43538adcd14b3b1a06d5",
+      "version": 10,
+      "occurrence": {
+        "playlist_revision": 1,
+        "item_index": 1,
+        "loop": 0
+      },
+      "asset": "sha256:345e7a7a433acd76d4fe3aeac33a5b3ec04aaf4efa96ef48bc01ac1b6ca8eb97",
+      "prepare_deadline_ms": 51557150.165625,
+      "effective_server_ms": 51527150.165625
+    },
+    "playlist_revision": 1,
+    "live": {
+      "current": {
+        "occurrence": {
+          "playlist_revision": 1,
+          "item_index": 0,
+          "loop": 0
+        },
+        "asset": "sha256:3be851faa25c4481648e15cb0afdd38e40f864616854da37f4a7a3448e5498d7",
+        "kind": "video",
+        "duration_ms": 20000,
+        "dwell_ms": 20000
+      },
+      "displayed": {
+        "occurrence": {
+          "playlist_revision": 1,
+          "item_index": 0,
+          "loop": 0
+        },
+        "asset": "sha256:3be851faa25c4481648e15cb0afdd38e40f864616854da37f4a7a3448e5498d7",
+        "kind": "video",
+        "duration_ms": 20000,
+        "dwell_ms": 20000
+      },
+      "pending": {
+        "occurrence": {
+          "playlist_revision": 1,
+          "item_index": 1,
+          "loop": 0
+        },
+        "asset": "sha256:345e7a7a433acd76d4fe3aeac33a5b3ec04aaf4efa96ef48bc01ac1b6ca8eb97",
+        "kind": "still",
+        "duration_ms": null,
+        "dwell_ms": 1000
+      }
+    },
+    "cohort": [
+      "4fb7c67f-d350-4d6e-bc76-ec9028455858",
+      "6bc7cd38-7a56-4c20-992f-9ad9527f9658"
+    ],
+    "required": [
+      "4fb7c67f-d350-4d6e-bc76-ec9028455858",
+      "6bc7cd38-7a56-4c20-992f-9ad9527f9658"
+    ],
+    "excluded": [],
+    "missed": [],
+    "held": false,
+    "hold_deadline_ms": null,
+    "policy": "strict",
+    "blocked_reason": null,
+    "final": false,
+    "paused_at_ms": null,
+    "recovery": {
+      "id": "49230cfce4d643fab0c77ac7bacddd93",
+      "occurrence": {
+        "playlist_revision": 1,
+        "item_index": 0,
+        "loop": 0
+      },
+      "position_ms": 2961,
+      "reason": "stalled",
+      "device_id": "4fb7c67f-d350-4d6e-bc76-ec9028455858",
+      "attempts": 1,
+      "started_ms": 51505975.579282,
+      "deadline_ms": 51536975.579282,
+      "degraded_ms": 4136,
+      "state": "playing",
+      "missing": []
+    },
+    "video": {},
+    "members": {
+      "4fb7c67f-d350-4d6e-bc76-ec9028455858": {
+        "ready": false,
+        "video": null
+      },
+      "6bc7cd38-7a56-4c20-992f-9ad9527f9658": {
+        "ready": false,
+        "video": null
+      }
+    }
+  },
+  "new_start": {
+    "status": {
+      "now_ms": 51511753.099277,
+      "session_id": "9b85a93c6fac40a086596e10ee76a475",
+      "version": 2,
+      "generation": "dbe8f9c5",
+      "clock_epoch": "c8a08e5d",
+      "state": "playing",
+      "current": {
+        "playlist_revision": 5,
+        "item_index": 0,
+        "loop": 0
+      },
+      "displayed": {
+        "playlist_revision": 5,
+        "item_index": 0,
+        "loop": 0
+      },
+      "current_effective_ms": 51511746.799683,
+      "pending": {
+        "preparation_id": "5a2e354dc24148eeb7fd2a2772e480bb",
+        "version": 2,
+        "occurrence": {
+          "playlist_revision": 5,
+          "item_index": 0,
+          "loop": 1
+        },
+        "asset": "sha256:24dbe9339c8cae74699ff59aaa43ae9e3b50079dcbe63ceead14b461351b3eb9",
+        "prepare_deadline_ms": 51546746.799683,
+        "effective_server_ms": 51516746.799683
+      },
+      "playlist_revision": 5,
+      "live": {
+        "current": {
+          "occurrence": {
+            "playlist_revision": 5,
+            "item_index": 0,
+            "loop": 0
+          },
+          "asset": "sha256:24dbe9339c8cae74699ff59aaa43ae9e3b50079dcbe63ceead14b461351b3eb9",
+          "kind": "still",
+          "duration_ms": null,
+          "dwell_ms": 5000
+        },
+        "displayed": {
+          "occurrence": {
+            "playlist_revision": 5,
+            "item_index": 0,
+            "loop": 0
+          },
+          "asset": "sha256:24dbe9339c8cae74699ff59aaa43ae9e3b50079dcbe63ceead14b461351b3eb9",
+          "kind": "still",
+          "duration_ms": null,
+          "dwell_ms": 5000
+        },
+        "pending": {
+          "occurrence": {
+            "playlist_revision": 5,
+            "item_index": 0,
+            "loop": 1
+          },
+          "asset": "sha256:24dbe9339c8cae74699ff59aaa43ae9e3b50079dcbe63ceead14b461351b3eb9",
+          "kind": "still",
+          "duration_ms": null,
+          "dwell_ms": 5000
+        }
+      },
+      "cohort": [
+        "4fb7c67f-d350-4d6e-bc76-ec9028455858",
+        "6bc7cd38-7a56-4c20-992f-9ad9527f9658"
+      ],
+      "required": [
+        "4fb7c67f-d350-4d6e-bc76-ec9028455858",
+        "6bc7cd38-7a56-4c20-992f-9ad9527f9658"
+      ],
+      "excluded": [],
+      "missed": [],
+      "held": false,
+      "hold_deadline_ms": null,
+      "policy": "online",
+      "blocked_reason": null,
+      "final": false,
+      "paused_at_ms": null,
+      "recovery": null,
+      "video": {},
+      "members": {
+        "4fb7c67f-d350-4d6e-bc76-ec9028455858": {
+          "ready": false,
+          "video": null
+        },
+        "6bc7cd38-7a56-4c20-992f-9ad9527f9658": {
+          "ready": false,
+          "video": null
+        }
+      }
+    },
+    "summary": "Playing: item 1 \u00b7 loop 1 \u00b7 controller-green.png. Next: item 1 \u00b7 loop 2 \u00b7 controller-green.png.",
+    "rows": [
+      "controller-green.png"
+    ],
+    "markers": 1,
+    "saved": {
+      "items": [
+        {
+          "asset": "sha256:24dbe9339c8cae74699ff59aaa43ae9e3b50079dcbe63ceead14b461351b3eb9",
+          "dwell_ms": 5000
+        }
+      ],
+      "loop": true,
+      "revision": 5
+    }
+  },
+  "local_apply": {
+    "before": {
+      "localVisible": true,
+      "localCancelVisible": true,
+      "localDisabled": true,
+      "localCancelDisabled": true,
+      "globalDisabled": true,
+      "globalCancelDisabled": true,
+      "selected": "#1 \u00b7 controller controller-a"
+    },
+    "nudged": {
+      "localDisabled": false,
+      "globalDisabled": false,
+      "localCancelDisabled": false,
+      "globalCancelDisabled": false,
+      "nudgeX": "1",
+      "draftFlag": "Unapplied changes"
+    },
+    "cancelled": {
+      "localDisabled": true,
+      "globalDisabled": true,
+      "nudgeX": "0",
+      "draftFlag": "Matches the committed layout"
+    },
+    "layout_revision_before": 2,
+    "layout_revision_after": 2
+  },
+  "excluded_session": {
+    "status": {
+      "now_ms": 51513320.459604,
+      "session_id": "7df735207c934a0596e417fe1b5ed797",
+      "version": 2,
+      "generation": "dbe8f9c5",
+      "clock_epoch": "c8a08e5d",
+      "state": "playing",
+      "current": {
+        "playlist_revision": 5,
+        "item_index": 0,
+        "loop": 0
+      },
+      "displayed": null,
+      "current_effective_ms": 51514124.394554,
+      "pending": {
+        "preparation_id": "0d2d0fc511914b13960aed9468842a30",
+        "version": 2,
+        "occurrence": {
+          "playlist_revision": 5,
+          "item_index": 0,
+          "loop": 1
+        },
+        "asset": "sha256:24dbe9339c8cae74699ff59aaa43ae9e3b50079dcbe63ceead14b461351b3eb9",
+        "prepare_deadline_ms": 51549124.394554,
+        "effective_server_ms": 51519124.394554
+      },
+      "playlist_revision": 5,
+      "live": {
+        "current": {
+          "occurrence": {
+            "playlist_revision": 5,
+            "item_index": 0,
+            "loop": 0
+          },
+          "asset": "sha256:24dbe9339c8cae74699ff59aaa43ae9e3b50079dcbe63ceead14b461351b3eb9",
+          "kind": "still",
+          "duration_ms": null,
+          "dwell_ms": 5000
+        },
+        "displayed": null,
+        "pending": {
+          "occurrence": {
+            "playlist_revision": 5,
+            "item_index": 0,
+            "loop": 1
+          },
+          "asset": "sha256:24dbe9339c8cae74699ff59aaa43ae9e3b50079dcbe63ceead14b461351b3eb9",
+          "kind": "still",
+          "duration_ms": null,
+          "dwell_ms": 5000
+        }
+      },
+      "cohort": [
+        "4fb7c67f-d350-4d6e-bc76-ec9028455858"
+      ],
+      "required": [
+        "4fb7c67f-d350-4d6e-bc76-ec9028455858",
+        "6bc7cd38-7a56-4c20-992f-9ad9527f9658"
+      ],
+      "excluded": [
+        "6bc7cd38-7a56-4c20-992f-9ad9527f9658"
+      ],
+      "missed": [],
+      "held": false,
+      "hold_deadline_ms": null,
+      "policy": "online",
+      "blocked_reason": null,
+      "final": false,
+      "paused_at_ms": null,
+      "recovery": null,
+      "video": {},
+      "members": {
+        "4fb7c67f-d350-4d6e-bc76-ec9028455858": {
+          "ready": false,
+          "video": null
+        }
+      }
+    },
+    "summary": "Playing: item 1 \u00b7 loop 1 \u00b7 controller-green.png. Next: item 1 \u00b7 loop 2 \u00b7 controller-green.png.",
+    "cohort": {
+      "exclusionsHidden": false,
+      "exclusionsVisible": true,
+      "title": "This show's cohort",
+      "summary": "2 required, 1 excluded, 1 in this show. Excluded: #2 \u00b7 controller controller-b. Frozen for this session.",
+      "listHidden": true,
+      "cohortHidden": false,
+      "cohortText": "2 required \u00b7 1 excluded \u00b7 1 in this show."
+    },
+    "exclusion_summary_before": "2 required, 1 excluded, 1 in this show. Excluded: #2 \u00b7 controller controller-b."
+  },
+  "expected_events": [],
+  "console_warnings": [
+    {
+      "page": "controller-a",
+      "kind": "console.warning",
+      "phase": "S8",
+      "at_ms": 1793200607930,
+      "message": "[tablet-wall] video recovery 1 (stopped)"
+    },
+    {
+      "page": "controller-a",
+      "kind": "console.warning",
+      "phase": "S8",
+      "at_ms": 1793200608929,
+      "message": "[tablet-wall] video recovery 2 (stopped)"
+    },
+    {
+      "page": "controller-a",
+      "kind": "console.warning",
+      "phase": "S8",
+      "at_ms": 1793200609929,
+      "message": "[tablet-wall] video recovery 3 (stopped)"
+    },
+    {
+      "page": "controller-a",
+      "kind": "console.warning",
+      "phase": "S8",
+      "at_ms": 1793200610929,
+      "message": "[tablet-wall] video blocked after 3 recoveries (stopped)"
+    },
+    {
+      "page": "controller-a",
+      "kind": "console.warning",
+      "phase": "S8",
+      "at_ms": 1793200610929,
+      "message": "[tablet-wall] video fault stalled at 2961 ms"
+    },
+    {
+      "page": "controller-b",
+      "kind": "console.warning",
+      "phase": "S8",
+      "at_ms": 1793200613958,
+      "message": "[tablet-wall] video preparation recovery 1 (play probe timed out)"
+    }
+  ],
+  "unexpected_events": [],
+  "status": "passed",
+  "checks_passed": 95,
+  "checks_total": 95,
+  "scenario_results": [
+    {
+      "id": "S1",
+      "name": "disposable server, 20 s video plus still, two calibrated clients",
+      "status": "passed",
+      "checks": 7,
+      "failed": 0
+    },
+    {
+      "id": "S2",
+      "name": "the controller renders the live playing video",
+      "status": "passed",
+      "checks": 8,
+      "failed": 0
+    },
+    {
+      "id": "S3",
+      "name": "Pause renders the frozen live name and a stable dwell with healthy polls",
+      "status": "passed",
+      "checks": 13,
+      "failed": 0
+    },
+    {
+      "id": "S4",
+      "name": "Resume returns to playing and the clients advance",
+      "status": "passed",
+      "checks": 1,
+      "failed": 0
+    },
+    {
+      "id": "S5",
+      "name": "390x844 pause summary is readable with a compact card and fitted stage",
+      "status": "passed",
+      "checks": 8,
+      "failed": 0
+    },
+    {
+      "id": "S6",
+      "name": "a saved draft during playback keeps the frozen live identity",
+      "status": "passed",
+      "checks": 9,
+      "failed": 0
+    },
+    {
+      "id": "S7",
+      "name": "a saved draft while paused keeps the live name and the frozen dwell",
+      "status": "passed",
+      "checks": 7,
+      "failed": 0
+    },
+    {
+      "id": "S8",
+      "name": "a saved draft during recovery keeps the frozen live identity",
+      "status": "passed",
+      "checks": 8,
+      "failed": 0
+    },
+    {
+      "id": "S9",
+      "name": "Stop restores the persisted scene",
+      "status": "passed",
+      "checks": 3,
+      "failed": 0
+    },
+    {
+      "id": "S10",
+      "name": "a new Start uses the newly saved still",
+      "status": "passed",
+      "checks": 4,
+      "failed": 0
+    },
+    {
+      "id": "S11",
+      "name": "no unexpected page errors, console errors or failed requests",
+      "status": "passed",
+      "checks": 5,
+      "failed": 0
+    },
+    {
+      "id": "S12",
+      "name": "local Apply/Cancel mirror the draft without writing a layout",
+      "status": "passed",
+      "checks": 7,
+      "failed": 0
+    },
+    {
+      "id": "S13",
+      "name": "one session exclusion shows the cohort and hides the excluded tablet",
+      "status": "passed",
+      "checks": 5,
+      "failed": 0
+    },
+    {
+      "id": "S14",
+      "name": "the tabbed console switches, persists and keeps its drafts",
+      "status": "passed",
+      "checks": 10,
+      "failed": 0
+    }
+  ],
+  "scenarios_passed": 14,
+  "scenarios_total": 14,
+  "browser_version": "143.0.7499.4",
+  "cleanup": {
+    "errors": [],
+    "browser_closed": true,
+    "server_reaped": true,
+    "server_pid": 664941,
+    "temporary_root_removed": true,
+    "remaining_descendants": {}
+  }
+}

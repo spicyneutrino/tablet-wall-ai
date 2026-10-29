@@ -37,9 +37,8 @@ After=network-online.target
 Wants=network-online.target
 
 [Service]
-# The app must run from the repository root: main.py mounts its static
-# directories by relative path, so importing it from anywhere else fails
-# (README, "Project layout" and "Known limitations").
+# Keep configuration defaults rooted in the checkout. Static frontend files
+# resolve relative to main.py and do not depend on WorkingDirectory.
 WorkingDirectory=/REPLACE/with/checkout/of/tablet-wall-ai
 
 # Absolute data paths, both inside a directory you back up — not inside the
@@ -66,7 +65,8 @@ Environment=TABLET_WALL_TABLET_ORIGIN=https://REPLACE-tablet-host.example:8443
 
 # Secrets never belong in a committed unit file. Keep Caddy's credentials in
 # Caddy's own private configuration, not this backend service. If additional
-# backend settings need an environment file, create it outside the checkout
+# backend settings such as TABLET_WALL_AUTH_TOKEN need an environment file,
+# create it outside the checkout
 # with mode 600 and uncomment this line after filling in its real path:
 # Proxy uploads also need TABLET_WALL_OPERATOR_CREDENTIAL in that private file,
 # matching Caddy's WALL_OPERATOR_CREDENTIAL. Never store its value in this unit.
@@ -84,10 +84,9 @@ ExecStart=/REPLACE/with/checkout/of/tablet-wall-ai/.venv/bin/fastapi run main.py
 Restart=on-failure
 RestartSec=5
 
-# The roster is in memory, not on disk: after a restart this service comes up
-# with an empty roster until tablets re-register (they do so on their own),
-# and placements whose tablet has not returned show as vacant reservations.
-# Restarting is therefore a visible event for the wall, not a silent one.
+# Safe device metadata and colours survive restart. Restored devices start
+# offline until tablets re-register and reconnect. Runtime presence and
+# sockets never persist; a restart is visible to connected clients.
 
 # Optional hardening (PrivateTmp, NoNewPrivileges, ProtectSystem, ...) is
 # worth adding only after you verify it against this WorkingDirectory and the
