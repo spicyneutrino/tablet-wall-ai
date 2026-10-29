@@ -2321,3 +2321,53 @@
         background: var(--panel);
     }
 }
+
+/* The overview uses the committed wall; draft placements remain in the inspector. */
+.physical .wall-health {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    flex-wrap: wrap;
+    gap: 4px 16px;
+    width: 100%;
+    min-height: 44px;
+    margin: 10px 0;
+    padding: 8px 12px;
+    border: 1px solid var(--line);
+    border-radius: var(--radius);
+    background: var(--panel);
+    color: var(--ink-2);
+    text-align: left;
+    font: inherit;
+    font-size: var(--fs-util);
+}
+
+.physical .wall-health[data-kind="warn"] {
+    border-color: var(--warn);
+    background: var(--warn-soft);
+}
+
+.physical .health-action {
+    color: var(--ink);
+    font-weight: 650;
+    white-space: nowrap;
+    text-decoration: underline;
+    text-underline-offset: 3px;
+}
+
+.physical .roster-status-row {
+    display: flex;
+    align-items: center;
+    flex-wrap: wrap;
+    gap: 8px;
+    margin-bottom: 10px;
+}
+
+.physical .roster-status-row .hint {
+    flex: 1 1 160px;
+    margin: 0;
+}
+
+.physical #roster-status[data-kind="warn"] {
+    color: var(--warn);
+}
