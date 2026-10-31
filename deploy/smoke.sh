@@ -49,6 +49,8 @@ expect_ws() {
 
 # Allowed tablet routes (invalid registration payload proves it reached the
 # app without actually creating/overwriting a tablet identity).
+expect 308 "$TABLET_ORIGIN/client"
+expect 200 -L "$TABLET_ORIGIN/client"
 expect 200 "$TABLET_ORIGIN/client/"
 expect 422 -X POST -H 'Content-Type: application/json' --data '{}' \
     "$TABLET_ORIGIN/devices/register"
@@ -84,6 +86,7 @@ expect 403 -X POST "$TABLET_ORIGIN/scenes/Probe/recall"
 expect 403 -X DELETE "$TABLET_ORIGIN/scenes/Probe"
 expect 403 -X GET "$TABLET_ORIGIN/devices/register"
 expect 403 -X POST "$TABLET_ORIGIN/client/"
+expect 403 -X POST "$TABLET_ORIGIN/client"
 expect_ws 403 "$TABLET_ORIGIN/ws/controller?protocol=2"
 
 # The operator listener must authenticate reads, writes AND websocket upgrade.

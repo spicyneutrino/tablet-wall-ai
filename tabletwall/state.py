@@ -299,6 +299,7 @@ def _wall_state() -> dict[str, Any]:
     return {
         "width": layout["width"],
         "height": layout["height"],
+        **({"sizing": deepcopy(layout["sizing"])} if "sizing" in layout else {}),
         "revision": wall["revision"],
         "generation": wall["generation"],
         "placements": {
@@ -440,6 +441,9 @@ def _render_frame(
         "revision": calibration["revision"],
         "viewport_width": calibration["viewport_width"],
         "viewport_height": calibration["viewport_height"],
+        "dpr": calibration["dpr"],
+        "orientation": calibration["orientation"],
+        "mode": calibration["mode"],
         "quarter_turn": calibration["quarter_turn"],
         "panel_offset_mm": calibration["panel_offset_mm"],
         "mm_per_css": calibration["mm_per_css"],

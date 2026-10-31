@@ -26,6 +26,8 @@ from contextvars import ContextVar
 from datetime import datetime, timezone
 from typing import Any
 
+from tabletwall import sizing as wall_sizing
+
 DEFAULT_DB_FILENAME = "tablet-wall.db"
 
 # The database schema version, kept separately from the web protocol major and
@@ -483,6 +485,7 @@ def _runtime_layout(document: Any) -> Any:
                 "width": bounds.get("width"), "height": bounds.get("height"),
             },
             "slots": slots,
+            **({"sizing": document["sizing"]} if "sizing" in document else {}),
         }
     if document.get("schema") == 2 and document.get("kind") == "logical":
         data = document.get("data")
@@ -527,6 +530,8 @@ def _validate_wall_state(wall: Any, where: str) -> dict[str, Any]:
             or not isinstance(layout.get("slots"), dict)
         ):
             raise SchemaError(f"{where} has an invalid physical layout document")
+        if "sizing" in layout and wall_sizing.validate_sizing(layout["sizing"]) is None:
+            raise SchemaError(f"{where} has an invalid sizing configuration")
         for device_id, slot in layout["slots"].items():
             if not isinstance(device_id, str) or not isinstance(slot, dict):
                 raise SchemaError(f"{where} has an invalid physical slot")
@@ -553,6 +558,8 @@ def _validate_wall_state(wall: Any, where: str) -> dict[str, Any]:
         or not isinstance(layout.get("placements"), dict)
     ):
         raise SchemaError(f"{where} has an invalid layout document")
+    elif "sizing" in layout and wall_sizing.validate_sizing(layout["sizing"], logical=True) is None:
+        raise SchemaError(f"{where} has an invalid sizing configuration")
     if (
         not isinstance(scene.get("content"), dict)
         or not isinstance(scene.get("layout"), str)
@@ -624,6 +631,7 @@ def save_state(wall: Mapping[str, Any]) -> None:
                         "kind": "physical",
                         "bounds": wall["layout"]["bounds"],
                         "slots": wall["layout"]["slots"],
+                        **({"sizing": wall["layout"]["sizing"]} if "sizing" in wall["layout"] else {}),
                     }
                     if wall["layout"].get("kind") == "physical"
                     else wall["layout"],

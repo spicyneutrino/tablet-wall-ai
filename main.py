@@ -22,9 +22,9 @@ import uuid
 from collections.abc import Callable
 from contextlib import asynccontextmanager
 from copy import deepcopy
-from math import sqrt
+from math import isfinite, sqrt
 from pathlib import Path
-from typing import Any
+from typing import Literal, Any
 from urllib.parse import urlsplit
 
 from fastapi import (
@@ -78,7 +78,8 @@ from tabletwall.protocol import (
 # Curated still-image assets (PROTOCOL.md "Still images"): the directory scan,
 # content IDs, and byte-verified serving behind ``GET /assets``.
 from tabletwall import assets, clock, displays, geometry, media, media_video, playback
-from tabletwall import persist, workers
+from tabletwall import persist, workers, tablet_models
+from tabletwall import sizing as wall_sizing
 from tabletwall import writer as writers
 from tabletwall.media_limits import (
     MAX_SOURCE_BYTES,
@@ -242,6 +243,10 @@ class DeviceRegistration(BaseModel):
     # Diagnostic only (R5): a value outside WAKE_LOCK_STATES is dropped rather
     # than rejected, so a bad report can never keep a tablet off the wall.
     wake_lock: Any = None
+    screen_width: int | None = Field(default=None, gt=0, le=MAX_DEVICE_DIMENSION)
+    screen_height: int | None = Field(default=None, gt=0, le=MAX_DEVICE_DIMENSION)
+    screen_dpr: float | None = Field(default=None, gt=0, le=10, allow_inf_nan=False)
+    platform_family: Literal["ios", "android", "other"] | None = None
 
     @field_validator("device_type")
     @classmethod
@@ -274,6 +279,7 @@ class WallUpdate(BaseModel):
 
     width: int | None = None
     height: int | None = None
+    sizing: dict[str, Any] | None = None
 
     model_config = ConfigDict(extra="forbid")
 
@@ -284,6 +290,16 @@ class WallUpdate(BaseModel):
         # which FastAPI turns into a 422.
         if value is not None and value <= 0:
             raise ValueError("width and height must be positive integers")
+        return value
+
+    @field_validator("sizing")
+    @classmethod
+    def valid_sizing(cls, value: dict[str, Any] | None) -> dict[str, Any] | None:
+        if value is not None:
+            normalized = wall_sizing.validate_sizing(value, logical=True)
+            if normalized is None:
+                raise ValueError("sizing requires mode fixed/tablets and a non-negative whole-unit padding")
+            return normalized
         return value
 
 
@@ -400,20 +416,41 @@ class WallAutoCommand(BaseModel):
         return value
 
 
+class WallPackCommand(BaseModel):
+    columns: int | None = Field(default=None, ge=1)
+    gap: int = 0
+
+    model_config = ConfigDict(extra="forbid")
+
+    @field_validator("columns", "gap", mode="before")
+    @classmethod
+    def whole_number(cls, value: Any) -> Any:
+        if isinstance(value, bool) or not isinstance(value, (int, float)) or not isfinite(value) or not float(value).is_integer():
+            raise ValueError("columns and gap must be whole numbers")
+        return int(value)
+
+    @field_validator("gap")
+    @classmethod
+    def nonnegative_gap(cls, value: int) -> int:
+        if value < 0:
+            raise ValueError("gap must be non-negative")
+        return value
+
+
 # ---------------------------------------------------------------------------
 # commit boundary (PROTOCOL.md "Persistence")
 # ---------------------------------------------------------------------------
 
 
-def _commit_wall(change: Callable[[dict[str, Any]], None]) -> None:
+def _commit_wall(
+    change: Callable[[dict[str, Any]], None], *, backup_layout_name: str | None = None
+) -> None:
     """Persist a wall change, and only then let it into memory.
 
     ``change`` applies one logical mutation to a wall-state dict. It runs
-    first on a **detached copy** of the live state, whose revision is bumped
-    and whose row is written; only once that write has committed does the same
-    ``change`` run on the live ``wall`` — mutated in place, because ``wall``
-    is re-exported through ``main`` and tests hold its identity — with the
-    same revision bump.
+    first on a detached copy, including derived tablet-fit bounds. Its row
+    is written before that complete proposal replaces the live contents.
+    The ``wall`` dict retains its identity for modules that hold it.
 
     The ordering is the whole point: if ``save_state`` raises, nothing has
     touched memory yet, so the live state, the database, and what subscribers
@@ -424,12 +461,29 @@ def _commit_wall(change: Callable[[dict[str, Any]], None]) -> None:
     """
     proposed = deepcopy(wall)
     change(proposed)
+    try:
+        _fit_wall_layout(proposed["layout"])
+    except ValueError as error:
+        raise HTTPException(status_code=422, detail=str(error)) from error
     proposed["revision"] += 1
-    save_state(proposed)
+    if backup_layout_name is None:
+        save_state(proposed)
+    else:
+        with persist.transaction():
+            if not save_layout(backup_layout_name, wall["layout"]):
+                raise HTTPException(status_code=409, detail="could not save the previous layout")
+            save_state(proposed)
 
     # Reached only when the write committed.
-    change(wall)
-    wall["revision"] += 1
+    wall.clear()
+    wall.update(proposed)
+
+
+def _fit_wall_layout(layout: dict[str, Any]) -> None:
+    if layout.get("kind") == "physical":
+        wall_sizing.fit_physical(layout, displays.profile)
+    else:
+        wall_sizing.fit_logical(layout)
 
 
 def _snapshot_name(raw: str) -> str:
@@ -456,7 +510,9 @@ def _valid_saved_layout(saved: Any) -> bool:
     Accept the same placement shape we persist, including vacant reservations;
     the roster is deliberately irrelevant here.
     """
-    if not isinstance(saved, dict) or set(saved) != {"width", "height", "placements"}:
+    if not isinstance(saved, dict) or set(saved) - {"width", "height", "placements", "sizing"} or not {"width", "height", "placements"}.issubset(saved):
+        return False
+    if "sizing" in saved and wall_sizing.validate_sizing(saved["sizing"], logical=True) is None:
         return False
     if any(type(saved[k]) is not int or saved[k] <= 0 for k in ("width", "height")):
         return False
@@ -844,6 +900,7 @@ async def _deny_websocket(websocket: WebSocket, response: JSONResponse) -> None:
 async def device_register(device: DeviceRegistration):
     device_id = str(device.device_id)
     existing = devices.get(device_id)
+    model_changed = False
 
     with device_changes():
         evicted = None
@@ -894,10 +951,29 @@ async def device_register(device: DeviceRegistration):
         wake_lock = _wake_lock_value(device.wake_lock)
         if wake_lock is not None:
             record["wake_lock"] = wake_lock
+        for key in ("screen_width", "screen_height", "screen_dpr", "platform_family"):
+            value = getattr(device, key)
+            if value is not None:
+                record[key] = value
+            elif existing is not None and key in existing:
+                record[key] = existing[key]
         devices[device_id] = record
+        current_assignment = tablet_models.assignments().get(device_id)
+        if current_assignment is None and displays.latest_profile(device_id) is not None:
+            current_assignment = tablet_models.assign(device_id, "manual")
+        has_signature = all(record.get(key) is not None for key in
+                            ("screen_width", "screen_height", "screen_dpr", "platform_family"))
+        if has_signature and (current_assignment is None or current_assignment.get("mode") == "auto"):
+            matches = tablet_models.match(record)
+            target = matches[0] if len(matches) == 1 else None
+            if current_assignment is None or current_assignment.get("model_id") != target:
+                tablet_models.assign(device_id, "auto", target)
+                model_changed = True
         # Stamp the monotonic contact reading too; presence expiry uses it.
         _touch_device(device_id)
         released = _ensure_device_number(device_id, device.number)
+    if model_changed and device_id in wall["layout"].get("slots", {}):
+        await _abort_playback("mapping changed")
     if evicted is not None:
         await _broadcast({"type": "device_removed", "device_id": evicted})
     for old_id in released:
@@ -1038,13 +1114,26 @@ async def rebind_device(device_id: str, command: RebindCommand):
     renumbered = number is not None and record.get("number") != number
     try:
         with device_changes():
-            copied = displays.copy_records(old_id, new_id)
+            target_assignment = tablet_models.assignments().get(new_id, {})
+            offsets = None
+            if target_assignment.get("model_id"):
+                profile = displays.latest_profile(new_id)
+                calibration = displays.latest_calibration(new_id)
+                offsets = (profile["revision"] if profile else 0,
+                           calibration["revision"] if calibration else 0)
+            copied = displays.copy_records(old_id, new_id, revision_offsets=offsets)
+            profile_offset, calibration_offset = offsets or (0, 0)
+            if copied["profiles"]:
+                tablet_models.copy_assignment(old_id, new_id, profile_offset, calibration_offset)
             if moved:
                 def apply(target: dict[str, Any]) -> None:
                     bucket = target["layout"]["slots" if physical else "placements"]
                     entry = bucket.pop(old_id)
                     if not physical:
                         entry["device_id"] = new_id
+                    else:
+                        entry["profile_revision"] += profile_offset
+                        entry["calibration_revision"] += calibration_offset
                     bucket[new_id] = entry
 
                 _commit_wall(apply)
@@ -1109,10 +1198,34 @@ async def put_wall(update: WallUpdate):
     # restart (PROTOCOL.md "Persistence").
     def apply(target: dict[str, Any]) -> None:
         layout = target["layout"]
+        current_sizing = wall_sizing.sizing_config(layout)
+        next_sizing = update.sizing or current_sizing
+        if next_sizing["mode"] == "tablets" and (update.width is not None or update.height is not None):
+            raise HTTPException(status_code=409, detail="manual dimensions require fixed sizing mode")
         if update.width is not None:
             layout["width"] = update.width
         if update.height is not None:
             layout["height"] = update.height
+        if update.sizing is not None:
+            layout["sizing"] = deepcopy(update.sizing)
+
+    _commit_wall(apply)
+    await _broadcast_wall()
+    return _wall_state()
+
+
+@app.post("/wall/pack")
+async def pack_wall(command: WallPackCommand):
+    _require_logical_wall()
+    layout = wall["layout"]
+    if wall_sizing.sizing_config(layout)["mode"] != "tablets":
+        raise HTTPException(status_code=409, detail="packing requires tablet sizing mode")
+    if not layout["placements"]:
+        raise HTTPException(status_code=422, detail="there are no placed tablets to pack")
+    columns = command.columns or len(layout["placements"])
+
+    def apply(target: dict[str, Any]) -> None:
+        wall_sizing.pack_logical(target["layout"], columns, command.gap)
 
     _commit_wall(apply)
     await _broadcast_wall()
@@ -1257,6 +1370,8 @@ async def wall_auto(command: WallAutoCommand | None = None):
     release or move the conflicting reservations explicitly and retry.
     """
     _require_logical_wall()
+    if wall_sizing.sizing_config(wall["layout"])["mode"] == "tablets":
+        raise HTTPException(status_code=409, detail="Equal-cell tiling requires fixed sizing; use /wall/pack to preserve tablet sizes")
     online = [device_id for device_id in list(devices) if _is_online(device_id)]
     count = len(online)
 
@@ -1406,6 +1521,10 @@ async def recall_saved_layout(name: str):
         layout["width"] = saved["width"]
         layout["height"] = saved["height"]
         layout["placements"] = deepcopy(saved["placements"])
+        if "sizing" in saved:
+            layout["sizing"] = deepcopy(saved["sizing"])
+        else:
+            layout.pop("sizing", None)
 
     _commit_wall(apply)
     await _broadcast_wall()
@@ -1726,11 +1845,23 @@ class CalibrationCommand(BaseModel):
     anchor_edge: str
     uncertainty_mm: float = 0
     method: str = Field(min_length=1, max_length=80)
+    viewport_guard: bool = False
 
 
 class PhysicalLayoutCommand(BaseModel):
-    bounds: dict[str, float]
+    bounds: dict[str, Any]
     slots: dict[str, dict[str, Any]]
+    sizing: dict[str, Any] | None = None
+
+    @field_validator("sizing")
+    @classmethod
+    def valid_sizing(cls, value: dict[str, Any] | None) -> dict[str, Any] | None:
+        if value is not None:
+            normalized = wall_sizing.validate_sizing(value)
+            if normalized is None:
+                raise ValueError("sizing requires mode fixed/tablets and finite non-negative padding")
+            return normalized
+        return value
 
 
 def _config_payload() -> dict[str, Any]:
@@ -1744,14 +1875,31 @@ def _config_payload() -> dict[str, Any]:
             "kind": "logical", "width": layout["width"], "height": layout["height"],
             "placements": layout["placements"],
         }
-    return {
+    if "sizing" in layout:
+        layout_state["sizing"] = deepcopy(layout["sizing"])
+    payload = {
         "schema": 2,
         "revision": wall["revision"],
         "generation": wall["generation"],
         "layout": layout_state,
         "displays": displays.list_profiles(),
         "calibrations": displays.list_calibrations(),
+        "tablet_models": tablet_models.BUILTINS,
+        "tablet_assignments": tablet_models.assignments(),
     }
+    if layout.get("kind") == "physical":
+        profiles = []
+        calibrations = []
+        for device_id, slot in layout["slots"].items():
+            profile = displays.profile(device_id, slot["profile_revision"])
+            calibration = displays.calibration(device_id, slot["calibration_revision"])
+            if profile is not None:
+                profiles.append(profile)
+            if calibration is not None:
+                calibrations.append(calibration)
+        payload["referenced_displays"] = profiles
+        payload["referenced_calibrations"] = calibrations
+    return payload
 
 
 def _config_etag(payload: dict[str, Any] | None = None) -> str:
@@ -1779,19 +1927,43 @@ async def get_config_v3():
     )
 
 
+class TabletAssignmentCommand(BaseModel):
+    mode: Literal["auto", "explicit", "manual"]
+    model_id: str | None = None
+
+
+@app.put("/api/v3/tablet-assignments/{device_id}")
+async def put_tablet_assignment(device_id: UUID4, command: TabletAssignmentCommand, request: Request):
+    _require_config_etag(request)
+    key = str(device_id)
+    model_id = command.model_id
+    if command.mode == "auto":
+        matches = tablet_models.match(devices.get(key, {}))
+        model_id = matches[0] if len(matches) == 1 else None
+    try:
+        with persist.transaction():
+            assignment = tablet_models.assign(key, command.mode, model_id)
+    except (ValueError, displays.DisplayError) as error:
+        raise HTTPException(status_code=422, detail=str(error)) from error
+    await _abort_playback("mapping changed")
+    return {"assignment": assignment, "etag": _config_etag()}
+
+
 @app.put("/api/v3/displays/{device_id}")
 async def put_display_v3(device_id: str, command: ProfileCommand, request: Request):
     _require_config_etag(request)
     try:
-        profile = displays.save_profile(
-            device_id,
-            active_width_mm=command.active_width_mm,
-            active_height_mm=command.active_height_mm,
-            bezels=command.bezels,
-            panel_pixels=command.panel_pixels,
-            label=command.label,
-            provenance=command.provenance,
-        )
+        with persist.transaction():
+            profile = displays.save_profile(
+                device_id,
+                active_width_mm=command.active_width_mm,
+                active_height_mm=command.active_height_mm,
+                bezels=command.bezels,
+                panel_pixels=command.panel_pixels,
+                label=command.label,
+                provenance=command.provenance,
+            )
+            tablet_models.assign(device_id, "manual")
     except displays.DisplayError as error:
         raise HTTPException(status_code=422, detail=str(error)) from error
     await _abort_playback("mapping changed")
@@ -1803,22 +1975,33 @@ async def put_calibration_v3(
     device_id: str, command: CalibrationCommand, request: Request
 ):
     _require_config_etag(request)
+    if command.viewport_guard:
+        record = devices.get(device_id)
+        if record is None or not _is_online(device_id) or not _viewport_matches(
+            command.model_dump(), record.get("viewport") or {}
+        ):
+            raise HTTPException(
+                status_code=409,
+                detail="Tablet is offline or its viewport changed. Capture its viewport again and repeat the ruler measurement.",
+            )
     try:
-        saved = displays.save_calibration(
-            device_id,
-            profile_revision=command.profile_revision,
-            viewport_width=command.viewport_width,
-            viewport_height=command.viewport_height,
-            dpr=command.dpr,
-            orientation=command.orientation,
-            mode=command.mode,
-            quarter_turn=command.quarter_turn,
-            panel_offset_mm=(command.panel_offset_mm[0], command.panel_offset_mm[1]),
-            mm_per_css=(command.mm_per_css[0], command.mm_per_css[1]),
-            anchor_edge=command.anchor_edge,
-            uncertainty_mm=command.uncertainty_mm,
-            method=command.method,
-        )
+        with persist.transaction():
+            saved = displays.save_calibration(
+                device_id,
+                profile_revision=command.profile_revision,
+                viewport_width=command.viewport_width,
+                viewport_height=command.viewport_height,
+                dpr=command.dpr,
+                orientation=command.orientation,
+                mode=command.mode,
+                quarter_turn=command.quarter_turn,
+                panel_offset_mm=(command.panel_offset_mm[0], command.panel_offset_mm[1]),
+                mm_per_css=(command.mm_per_css[0], command.mm_per_css[1]),
+                anchor_edge=command.anchor_edge,
+                uncertainty_mm=command.uncertainty_mm,
+                method=command.method,
+            )
+            tablet_models.assign(device_id, "manual")
     except displays.DisplayError as error:
         raise HTTPException(status_code=422, detail=str(error)) from error
     await _abort_playback("mapping changed")
@@ -1831,7 +2014,7 @@ async def put_physical_layout_v3(command: PhysicalLayoutCommand, request: Reques
     _require_config_etag(request)
     bounds = command.bounds
     for field in ("x", "y", "width", "height"):
-        if not isinstance(bounds.get(field), (int, float)):
+        if isinstance(bounds.get(field), bool) or not isinstance(bounds.get(field), (int, float)) or not isfinite(bounds[field]):
             raise HTTPException(status_code=422, detail=f"bounds.{field} is required")
     if bounds["width"] <= 0 or bounds["height"] <= 0:
         raise HTTPException(status_code=422, detail="bounds must be positive")
@@ -1840,7 +2023,7 @@ async def put_physical_layout_v3(command: PhysicalLayoutCommand, request: Reques
             raise HTTPException(status_code=422, detail="slot device_id must be a UUID4")
         for field in ("center_x_mm", "center_y_mm", "mount_angle",
                       "nudge_x_mm", "nudge_y_mm"):
-            if not isinstance(slot.get(field), (int, float)):
+            if isinstance(slot.get(field), bool) or not isinstance(slot.get(field), (int, float)) or not isfinite(slot[field]):
                 raise HTTPException(status_code=422, detail=f"slot {field} is required")
         profile_revision = slot.get("profile_revision")
         calibration_revision = slot.get("calibration_revision")
@@ -1864,8 +2047,15 @@ async def put_physical_layout_v3(command: PhysicalLayoutCommand, request: Reques
             },
             "slots": deepcopy(command.slots),
         }
+        if command.sizing is not None:
+            target["layout"]["sizing"] = deepcopy(command.sizing)
+        elif wall["layout"].get("kind") == "physical" and "sizing" in wall["layout"]:
+            target["layout"]["sizing"] = deepcopy(wall["layout"]["sizing"])
 
-    _commit_wall(apply)
+    previous_layout_saved = None
+    if wall["layout"].get("kind") != "physical":
+        previous_layout_saved = "Before physical " + uuid.uuid4().hex[:12]
+    _commit_wall(apply, backup_layout_name=previous_layout_saved)
     await _abort_playback("layout changed")
     # A cached logical controller cannot represent a physical wall: close it
     # with the upgrade code instead of letting it issue fenced writes.
@@ -1875,6 +2065,27 @@ async def put_physical_layout_v3(command: PhysicalLayoutCommand, request: Reques
             controller_protocols.pop(socket, None)
             with contextlib.suppress(Exception):
                 await socket.close(code=WS_CLOSE_UNSUPPORTED_PROTOCOL)
+    await _broadcast_wall()
+    payload = _config_payload()
+    return {**payload, "etag": _config_etag(payload), "previous_layout_saved": previous_layout_saved}
+
+
+@app.get("/api/v3/logical-layouts")
+async def list_logical_layouts_v3():
+    return {"layouts": [{"name": name, "layout": layout} for name, layout in load_layouts()
+                        if _valid_saved_layout(layout)]}
+
+
+@app.post("/api/v3/logical-layouts/{name}/recall")
+async def recall_logical_layout_v3(name: str, request: Request):
+    _require_config_etag(request)
+    saved = load_layout(_snapshot_name(name))
+    if not _valid_saved_layout(saved):
+        raise HTTPException(status_code=404, detail="Unknown logical layout")
+    def apply(target: dict[str, Any]) -> None:
+        target["layout"] = deepcopy(saved)
+    _commit_wall(apply)
+    await _abort_playback("layout changed")
     await _broadcast_wall()
     payload = _config_payload()
     return {**payload, "etag": _config_etag(payload)}
@@ -1912,6 +2123,8 @@ async def recall_physical_layout_v3(name: str, request: Request):
         raise HTTPException(status_code=404, detail="Unknown layout")
     if not isinstance(saved, dict) or saved.get("kind") != "physical":
         raise HTTPException(status_code=422, detail="not a physical layout")
+    if "sizing" in saved and wall_sizing.validate_sizing(saved["sizing"]) is None:
+        raise HTTPException(status_code=422, detail="invalid physical layout sizing")
 
     def apply(target: dict[str, Any]) -> None:
         target["layout"] = deepcopy(saved)
@@ -1981,6 +2194,7 @@ def _physical_plan_for(
         return None, None
     profile = displays.profile(device_id, int(slot["profile_revision"]))
     calibration = displays.calibration(device_id, int(slot["calibration_revision"]))
+    calibration = tablet_models.effective(device_id, calibration, record.get("viewport") or {})
     if (
         profile is None
         or calibration is None
@@ -2005,6 +2219,9 @@ def _physical_plan_for(
             "status": "valid", "revision": calibration["revision"],
             "viewport_width": calibration["viewport_width"],
             "viewport_height": calibration["viewport_height"],
+            "dpr": calibration["dpr"],
+            "orientation": calibration["orientation"],
+            "mode": calibration["mode"],
             "quarter_turn": calibration["quarter_turn"],
             "panel_offset_mm": calibration["panel_offset_mm"],
             "mm_per_css": calibration["mm_per_css"],
@@ -2761,6 +2978,7 @@ async def _device_loop(websocket: WebSocket, device_id: str) -> None:
                 and device_sockets.get(device_id) is websocket
                 and device_id in devices
             ):
+                previous_viewport = devices[device_id].get("viewport")
                 try:
                     devices[device_id]["viewport"] = {
                         "width": float(viewport["width"]),
@@ -2773,7 +2991,12 @@ async def _device_loop(websocket: WebSocket, device_id: str) -> None:
                     continue
                 record = devices[device_id]
                 if record.get("protocol") == 3:
+                    changed = previous_viewport != record.get("viewport")
+                    if changed:
+                        _revoke_playback_lease(device_id, record.get("connection_id"))
                     await _send_wall_to_device(device_id, websocket, record)
+                    if changed and _playback_session is not None:
+                        await _playback_after_reconnect(_playback_session, device_id)
 
 
 @app.websocket("/ws/device")

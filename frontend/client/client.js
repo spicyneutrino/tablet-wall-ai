@@ -43,7 +43,11 @@
 
     var STORAGE_KEY = "tablet-wall-device-id";
     var REGISTER_URL = "/devices/register";
-    var DEVICE_TYPE = "ipad"; // device geometry is a later phase
+    var deviceNavigator = typeof navigator === "undefined" ? {} : navigator;
+    var platformFamily = /Android/i.test(deviceNavigator.userAgent || "") ? "android" :
+        (/iPad|iPhone|iPod/i.test(deviceNavigator.userAgent || "") ||
+         (deviceNavigator.platform === "MacIntel" && deviceNavigator.maxTouchPoints > 1) ? "ios" : "other");
+    var DEVICE_TYPE = platformFamily;
 
     /* Protocol version 2 (wall/placement contract). `caps` advertises what
      * this client can render, so the server may send calibration and image
@@ -476,6 +480,10 @@
                     width: window.innerWidth,
                     height: window.innerHeight,
                     device_type: DEVICE_TYPE,
+                    screen_width: window.screen && window.screen.width || undefined,
+                    screen_height: window.screen && window.screen.height || undefined,
+                    screen_dpr: window.devicePixelRatio || 1,
+                    platform_family: platformFamily,
                     number: deviceNumberValid(deviceNumber) ? deviceNumber : undefined,
                     wake_lock: wakeLock.state(),
                 }),
@@ -578,7 +586,7 @@
     /* Screen-space badge used on calibration and the diagnostic panels. The
      * number is the thing a person matches against the controller; the short
      * id is the fallback when a server did not send one. */
-    function drawDeviceBadge(ctx, vp, dpr) {
+    function drawDeviceBadge(ctx, vp, dpr, dprY) {
         if (!deviceNumberValid(deviceNumber)) return;
         var pad = Math.max(10, Math.min(vp.w, vp.h) * 0.03);
         var big = Math.max(22, Math.min(vp.w, vp.h) * 0.11);
@@ -586,7 +594,7 @@
         var title = "#" + deviceNumber;
         var sub = "TABLET " + deviceNumber + " \u00b7 " + shortDeviceId();
         ctx.save();
-        ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+        ctx.setTransform(dpr, 0, 0, dprY, 0, 0);
         ctx.textAlign = "left";
         ctx.textBaseline = "top";
         ctx.font = "700 " + big + "px " + FONT_STACK;
@@ -676,7 +684,7 @@
     }
 
     /* Sizes the backing store to CSS pixels x device pixel ratio so lines
-     * stay crisp, and returns { ctx, dpr, w, h } or null. */
+     * stay crisp, and returns the actual backing ratios and context, or null. */
     function prepareCanvas(cssW, cssH) {
         var el = ensureCanvas();
         if (!el) return null;
@@ -697,7 +705,7 @@
             warn("2d context unavailable");
             return null;
         }
-        return { ctx: ctx, dpr: dpr, w: cssW, h: cssH };
+        return { ctx: ctx, dpr: bw / cssW, dprY: bh / cssH, w: cssW, h: cssH };
     }
 
     /* Single entry point for every state change that affects the screen. */
@@ -756,7 +764,7 @@
         var view = prepareCanvas(vp.w, vp.h);
         if (!view) return;
         var ctx = view.ctx;
-        ctx.setTransform(view.dpr, 0, 0, view.dpr, 0, 0);
+        ctx.setTransform(view.dpr, 0, 0, view.dprY, 0, 0);
 
         ctx.fillStyle = PATTERN.background;
         ctx.fillRect(0, 0, vp.w, vp.h);
@@ -790,7 +798,7 @@
             midX,
             midY + idSize * 0.35 + noteSize
         );
-        drawDeviceBadge(ctx, vp, view.dpr);
+        drawDeviceBadge(ctx, vp, view.dpr, view.dprY);
     }
 
     function drawCalibration() {
@@ -811,19 +819,20 @@
          */
         var scale = Math.max(vp.w / visible.w, vp.h / visible.h);
         if (!Number.isFinite(scale) || scale <= 0) return;
-        var k = scale * view.dpr; /* wall unit -> device pixel */
+        var k = scale * view.dpr; /* wall unit -> backing pixel */
+        var ky = scale * view.dprY;
         var ox = (visible.w - vp.w / scale) / 2;
         var oy = (visible.h - vp.h / scale) / 2;
         view.ctx.setTransform(
             k,
             0,
             0,
-            k,
+            ky,
             -(visible.x + ox) * k,
-            -(visible.y + oy) * k
+            -(visible.y + oy) * ky
         );
         drawPattern(view.ctx, scale, view.dpr, visible);
-        drawDeviceBadge(view.ctx, vp, view.dpr);
+        drawDeviceBadge(view.ctx, vp, view.dpr, view.dprY);
     }
 
     /*
@@ -988,7 +997,7 @@
         var view = prepareCanvas(vp.w, vp.h);
         if (!view) return;
         var ctx = view.ctx;
-        ctx.setTransform(view.dpr, 0, 0, view.dpr, 0, 0);
+        ctx.setTransform(view.dpr, 0, 0, view.dprY, 0, 0);
 
         ctx.fillStyle = PATTERN.background;
         ctx.fillRect(0, 0, vp.w, vp.h);
@@ -1018,7 +1027,7 @@
             midX,
             midY + idSize * 0.35 + noteSize
         );
-        drawDeviceBadge(ctx, vp, view.dpr);
+        drawDeviceBadge(ctx, vp, view.dpr, view.dprY);
     }
 
     /* ------------------------------------------------------------------ */
@@ -1672,7 +1681,11 @@
         }
         var ctx = view.ctx;
         var dpr = view.dpr;
-        ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+        var dprY = view.dprY;
+        ctx.save();
+        ctx.setTransform(dpr, 0, 0, dprY, 0, 0);
+        ctx.fillStyle = PATTERN.background;
+        ctx.fillRect(0, 0, vp.w, vp.h);
         ctx.beginPath();
         ctx.rect(
             result.clip.x,
@@ -1681,19 +1694,17 @@
             result.clip.height
         );
         ctx.clip();
-        ctx.fillStyle = PATTERN.background;
-        ctx.fillRect(0, 0, vp.w, vp.h);
         var m = result.matrix;
         ctx.setTransform(
             m[0] * dpr,
-            m[1] * dpr,
+            m[1] * dprY,
             m[2] * dpr,
-            m[3] * dpr,
+            m[3] * dprY,
             m[4] * dpr,
-            m[5] * dpr
+            m[5] * dprY
         );
         ctx.drawImage(entry.source, 0, 0, iw, ih);
-        ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+        ctx.restore();
         return "painted";
     }
 
@@ -1703,7 +1714,7 @@
         var view = prepareCanvas(vp.w, vp.h);
         if (!view) return;
         var ctx = view.ctx;
-        ctx.setTransform(view.dpr, 0, 0, view.dpr, 0, 0);
+        ctx.setTransform(view.dpr, 0, 0, view.dprY, 0, 0);
         ctx.fillStyle = PATTERN.background;
         ctx.fillRect(0, 0, vp.w, vp.h);
         var unit = Math.min(vp.w, vp.h);
@@ -1720,7 +1731,7 @@
             ? wallState.physical.calibration.reason || ""
             : "";
         ctx.fillText(reason, vp.w / 2, vp.h / 2 + size * 0.55);
-        drawDeviceBadge(ctx, vp, view.dpr);
+        drawDeviceBadge(ctx, vp, view.dpr, view.dprY);
     }
 
     function drawWallImage(vp, entry) {
@@ -1740,14 +1751,15 @@
 
         var scale = Math.max(vp.w / visible.w, vp.h / visible.h);
         if (!Number.isFinite(scale) || scale <= 0) return "surface";
-        var k = scale * view.dpr; /* wall unit -> device pixel */
+        var k = scale * view.dpr; /* wall unit -> backing pixel */
+        var ky = scale * view.dprY;
         var ctx = view.ctx;
         /* Centred cover of the visible rect onto the viewport, exactly as
          * the calibration mapping: rect centre to viewport centre, overflow
          * cropped equally on all sides. */
         var ox = (visible.w - vp.w / scale) / 2;
         var oy = (visible.h - vp.h / scale) / 2;
-        ctx.setTransform(k, 0, 0, k, -(visible.x + ox) * k, -(visible.y + oy) * k);
+        ctx.setTransform(k, 0, 0, ky, -(visible.x + ox) * k, -(visible.y + oy) * ky);
 
         var W = wallState.width;
         var H = wallState.height;
@@ -1779,7 +1791,7 @@
         var view = prepareCanvas(vp.w, vp.h);
         if (!view) return;
         var ctx = view.ctx;
-        ctx.setTransform(view.dpr, 0, 0, view.dpr, 0, 0);
+        ctx.setTransform(view.dpr, 0, 0, view.dprY, 0, 0);
 
         var unit = Math.min(vp.w, vp.h);
         var bandH = Math.max(44, unit * 0.18);
@@ -1836,7 +1848,7 @@
         var view = prepareCanvas(vp.w, vp.h);
         if (!view) return;
         var ctx = view.ctx;
-        ctx.setTransform(view.dpr, 0, 0, view.dpr, 0, 0);
+        ctx.setTransform(view.dpr, 0, 0, view.dprY, 0, 0);
 
         ctx.fillStyle = PATTERN.background;
         ctx.fillRect(0, 0, vp.w, vp.h);
@@ -2030,8 +2042,9 @@
         ) {
             return false;
         }
+        var matchesViewport = physicalViewportMatches(frame.calibration);
         var plan =
-            frame.plan && frame.calibration && frame.calibration.status === "valid"
+            !visualZoomed() && matchesViewport && frame.plan && frame.calibration && frame.calibration.status === "valid"
                 ? frame.plan
                 : null;
         if (heldGeneration !== null && generation !== heldGeneration) {
@@ -2053,7 +2066,11 @@
             visible: plan ? { x: 0, y: 0, w: width, h: height } : null,
             physical: {
                 plan: plan,
-                calibration: frame.calibration || {},
+                calibration: visualZoomed()
+                    ? { reason: "Zoom changed. Return to the calibrated zoom." }
+                    : frame.plan && !matchesViewport
+                    ? { reason: "Viewport changed. Waiting for calibration." }
+                    : frame.calibration || {},
                 slot: frame.slot || null,
             },
         };
@@ -2085,12 +2102,25 @@
     var reportedSignature = JSON.stringify(viewportReport());
 
     function onViewportChange() {
-        render();
-
         var size = window.innerWidth + "x" + window.innerHeight;
         var signature = JSON.stringify(viewportReport());
-        if (signature === reportedSignature) return;
+        if (signature === reportedSignature) {
+            render();
+            return;
+        }
         reportedSignature = signature;
+        if ((wallState && wallState.physical) || (persistedWall && persistedWall.physical)) {
+            if (wallState && wallState.physical) {
+                wallState.physical.plan = null;
+                wallState.physical.calibration = { reason: "Viewport changed. Waiting for calibration." };
+            }
+            if (persistedWall && persistedWall.physical) {
+                persistedWall.physical.plan = null;
+                persistedWall.physical.calibration = { reason: "Viewport changed. Waiting for calibration." };
+            }
+            stopPlayback();
+        }
+        render();
         // The socket path is what produces a new physical plan; a change that
         // keeps the same CSS size (a 180-degree flip) only shows up here.
         sendViewport();
@@ -2110,6 +2140,9 @@
 
     window.addEventListener("resize", onViewportChange);
     window.addEventListener("orientationchange", onViewportChange);
+    if (window.visualViewport && window.visualViewport.addEventListener) {
+        window.visualViewport.addEventListener("resize", onViewportChange);
+    }
 
     /*
      * Tap-to-retry, which the failure panel promises. It listens on the
@@ -2233,13 +2266,13 @@
     function orientationAngle() {
         if (typeof screen !== "undefined" && screen && screen.orientation &&
             Number.isFinite(screen.orientation.angle)) {
-            return screen.orientation.angle;
+            return ((screen.orientation.angle % 360) + 360) % 360;
         }
-        return typeof window.orientation === "number" ? window.orientation : 0;
+        return typeof window.orientation === "number" ? ((window.orientation % 360) + 360) % 360 : 0;
     }
 
     function launchMode() {
-        if (document.fullscreenElement) return "fullscreen";
+        if (fullscreenElement()) return "fullscreen";
         if (
             typeof window.matchMedia === "function" &&
             window.matchMedia("(display-mode: standalone)").matches
@@ -2249,10 +2282,25 @@
         return "tab";
     }
 
+    function visualZoomed() {
+        return !!(window.visualViewport && Math.abs(window.visualViewport.scale - 1) > 0.001);
+    }
+
+    function physicalViewportMatches(calibration) {
+        if (!calibration) return false;
+        var live = viewportReport();
+        return Math.abs(calibration.viewport_width - live.width) <= 1 &&
+            Math.abs(calibration.viewport_height - live.height) <= 1 &&
+            (calibration.dpr === undefined || Math.abs(calibration.dpr - live.dpr) <= 0.02) &&
+            (calibration.orientation === undefined || calibration.orientation === live.orientation) &&
+            (calibration.mode === undefined || calibration.mode === live.mode);
+    }
+
     function viewportReport() {
+        var visual = visualZoomed() ? window.visualViewport : null;
         return {
-            width: window.innerWidth,
-            height: window.innerHeight,
+            width: visual ? visual.width : window.innerWidth,
+            height: visual ? visual.height : window.innerHeight,
             dpr: window.devicePixelRatio || 1,
             orientation: orientationAngle(),
             mode: launchMode(),
@@ -2520,6 +2568,8 @@
     }
 
     function handlePrepare(frame) {
+        if (visualZoomed()) return;
+        if (frame.calibration && !physicalViewportMatches(frame.calibration)) return;
         if (isVideoPrepare(frame)) {
             prepareVideo(frame);
             return;

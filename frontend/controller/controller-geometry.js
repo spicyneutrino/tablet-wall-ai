@@ -9,6 +9,14 @@ window.ControllerGeometry = (function () {
         return Number.isFinite(n) ? n : fallback;
     }
 
+    function normalizeSizing(raw) {
+        const sizing = raw && typeof raw === "object" ? raw : {};
+        return {
+            mode: sizing.mode === "tablets" ? "tablets" : "fixed",
+            padding: Math.max(0, Math.round(numOr(sizing.padding, 0)))
+        };
+    }
+
     /** The footprint shrunk by the bezel — the rect a tablet actually shows. */
     function visibleRect(placement) {
         return {
@@ -168,5 +176,5 @@ window.ControllerGeometry = (function () {
             "). Choose solid colour or the calibration grid to replace it.";
     }
 
-    return { numOr, visibleRect, aspectOf, aspectDelta, isAspectMismatch, fmtAspect, fmtDelta, viewportAspect, deviceCaps, placementShapeMismatch, normalizePlacement, isSettableContent, sceneContentType, sceneContent, contentSummaryLabel, contentLabel, contentHint };
+    return { numOr, normalizeSizing, visibleRect, aspectOf, aspectDelta, isAspectMismatch, fmtAspect, fmtDelta, viewportAspect, deviceCaps, placementShapeMismatch, normalizePlacement, isSettableContent, sceneContentType, sceneContent, contentSummaryLabel, contentLabel, contentHint };
 })();

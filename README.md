@@ -8,21 +8,17 @@ they show.
 
 This project began as a copy of `tablet-wall`. New development happens here.
 
-> **Status: R1-R5 software scope implemented and the 2026-10-25 playback and
-> controller review repairs merged; all physical and optical validation
-> pending.** Tablets self-register, hold a live WebSocket, heartbeat,
-> reconnect, and stop fighting over one identity. The operator can upload
-> JPEG/PNG stills and H.264 MP4 clips (when an admission mode is configured),
-> show stills on the logical wall, measure and calibrate physical panels, place
-> bodies with an accessible editor, and run hard-cut still/video playlists with
-> a sampled server clock, leased readiness, buffer evidence, pause/resume and
-> drift samples. A session can exclude named tablets at Start (session-only;
-> excluded screens keep the persisted scene and are not counted as
-> synchronized), and a tablet that reconnects during a playing video rejoins
-> through one bounded group recovery with a fresh common anchor. Schema 3 and
-> protocol 3 are live; v1/v2 remain compatible.
-> Physical seams, real tablet decode/suspend, optical timing, mixed-model
-> calibration and soak are not claimed — see
+> **Status: working image-wall prototype.** Tablets connect through their
+> browsers, show portions of one shared image, and can be arranged through the
+> controller. The operator reports physical trials in 2×2 and 1×4 arrangements.
+> Measured profiles, ruler calibration, rotation mapping, and saved layouts
+> are implemented. Precise mixed-model alignment and sustained physical
+> operation still need recorded validation.
+>
+> Experimental still/video playlist code and automated playback tests also
+> exist. They do not establish working video playback on the intended tablets.
+> The currently demonstrated hardware scope is image display. Physical seams,
+> tablet video decode/suspend, optical timing, and soak are not claimed. See
 > [Known limitations](#known-limitations).
 >
 > The current evidence record, acceptance gaps and review-fix commits are in
@@ -39,36 +35,54 @@ This project began as a copy of `tablet-wall`. New development happens here.
 - Python 3.13+
 - [uv](https://docs.astral.sh/uv/)
 
-## Quickstart
+## Run on this laptop
 
 ```bash
 uv sync          # create .venv and install dependencies
 make dev         # start the server with auto-reload on http://127.0.0.1:8000
 ```
 
-Then open:
+These addresses work only on the computer running the server:
 
 | Page       | URL                            |
 | ---------- | ------------------------------ |
-| Client     | http://127.0.0.1:8000/client/     |
+| Local client test | http://127.0.0.1:8000/client/ |
 | Controller | http://127.0.0.1:8000/controller/ |
 | API docs   | http://127.0.0.1:8000/docs        |
 
-`make dev` and `make run` bind to loopback by default; a tablet cannot reach
-them via the host's LAN address. For a laptop-hotspot trial with tablets, use
-the [two-origin Caddy reference](deploy/README.md) instead: it exposes only
-the tablet paths on the hotspot address and keeps the backend on loopback.
-Find the host's interface addresses with:
+## Connect tablets to the laptop hotspot
+
+On Linux with NetworkManager, firewalld, and Caddy installed, enable the
+laptop's Wi-Fi hotspot, connect the tablets to it, then run:
 
 ```bash
-hostname -I | awk '{print $1}'
+make hotspot
 ```
 
-Read [Known limitations](#known-limitations) before trying this. A deliberately
-ungated test on an isolated trusted LAN is possible with
-`make run HOST=0.0.0.0`, but that exposes **all** operator routes and is not
-Phase 3 security. The client uses `crypto.getRandomValues` when `randomUUID`
-is unavailable on a plain-HTTP LAN origin.
+Stop any earlier `make dev` or `make run` process first. The launcher refuses
+occupied ports rather than replacing another server.
+
+After its startup checks pass, open the printed **Tablets** URL on each
+tablet. For a hotspot at `10.42.0.1`, it is
+`http://10.42.0.1:8080/client/`. Use the URL printed for your current hotspot;
+its address can change. Both `/client` and `/client/` work. A tablet must never
+use `127.0.0.1` or `localhost` to reach the laptop.
+
+The controller stays at `http://127.0.0.1:8000/controller/` on the laptop. It
+shows the configured tablet URL with a Copy button. With laptop-only startup,
+it labels the local test address **This computer only** and disables Copy.
+
+The launcher saves settings in `~/.config/tablet-wall-ai/hotspot.json` and
+wall data in `~/.local/share/tablet-wall-ai/`, respecting the corresponding
+XDG directories. Next time, run `make hotspot` again. This does not load or
+overwrite a database in the checkout. See [hotspot options and existing
+data](deploy/README.md#start-the-http-hotspot-trial) to choose another directory.
+
+This is an HTTP trial for a trusted hotspot. Keep tablet screens awake
+manually; automatic wake-lock requires HTTPS. Only tablet routes are exposed
+on the hotspot. Press Ctrl+C to stop both servers and remove the firewall
+opening if the launcher added it. For TLS and certificate trust, use the
+[HTTPS reference](deploy/README.md#use-the-https-reference).
 
 ## Project layout
 
@@ -156,6 +170,32 @@ Keep this directory modest. Every lookup reads and hashes current files; full im
 
 When authentication is disabled, every client that reaches the backend can read curated and managed assets. Built-in token authentication protects asset reads as well as operator routes. A proxy protecting only the operator listener does not protect tablet-facing asset URLs. Keep the backend on loopback and use TLS for token or cookie transport on shared networks.
 
+## Change the wall size
+
+In [Wall control](http://127.0.0.1:8000/controller/), open **Layout**.
+Choose **Fixed wall**, edit **Width** and **Height**, then click **Save size**.
+Tablets keep their current coordinates.
+
+To make the wall follow your arrangement, choose **Fit to tablets**, set the
+outer margin, and click **Save sizing**. The wall grows or shrinks around all
+placed footprints, including offline tablets. A margin of zero gives the
+smallest enclosing rectangle. To bring tablets together, set **Pack columns**
+and **Gap**, then click **Pack placed tablets**. Zero gap makes adjacent
+footprints touch. Packing preserves their sizes and changes the arrangement
+immediately. Save a named layout first if you want to return to it later.
+
+For measured tablet sizes and mount angles, open **Physical setup → System →
+Wall bounds**. Choose **Fixed wall size** or **Fit wall to tablets**. Fitting
+includes measured tablet bodies, borders, rotation, and nudges. **Pack tablets**
+changes the draft; **Undo** and **Cancel changes** remain available. Click
+**Apply layout** to show it on the tablets. Missing referenced measurements
+block fitting rather than guessing a size.
+
+Basic wall units do not measure the physical size of a tablet. Use measured
+millimetres in Physical setup for a real side-by-side installation. See
+[wall sizing behavior](docs/WALL-SIZING.md) for empty walls, orientation,
+packing, and saved-layout behavior.
+
 ## HTTP API
 
 | Method   | Path                          | Purpose                               |
@@ -238,10 +278,12 @@ A gate changes only with the operator's signed physical evidence.
   panels from those operator measurements; they are not browser-inferred
   physical proof. A well-aligned wall still needs a calibration pass, not a
   spec sheet.
+  See [mixed-tablet physical calibration](docs/PHYSICAL-CALIBRATION.md) for the
+  tablet ruler, measured viewport setup, and whole-wall grid check.
 - **Media support is bounded.** Curated JPEG/PNG stills are supported; a
   configured admission mode also accepts JPEG/PNG uploads and H.264 MP4
   clips. Stills render as one centered `cover` image across the whole logical
-  wall. Video runs in hard-cut still/video playlists with a sampled server
+  wall. Experimental video code uses hard-cut still/video playlists with a sampled server
   clock, leased readiness, buffer evidence, pause/resume and drift samples.
   Browser evidence is desktop Chromium software evidence on one host: it does
   not prove optical onset, physical decode/suspend, iOS Safari, mixed-model
@@ -276,9 +318,10 @@ A gate changes only with the operator's signed physical evidence.
   device id silently replaces the first, so two browser tabs on one origin share
   a single identity. Controller sockets have no heartbeat, so one that vanishes
   without a clean close is only reaped when a later broadcast to it fails.
-- **`device_type` is hardcoded to `"ipad"`.** The client reports the actual
-  viewport for aspect-mismatch warnings, but device-type identification is not
-  implemented.
+- **Model detection is approximate.** The client reports its platform and
+  screen signature. Built-in iPad Air 2 and Pixel C matches reuse measured
+  profiles; a signature is not proof of the exact hardware. Unknown models
+  need manual measurements.
 - **Screen sleep is still an OS decision.** In a secure context (HTTPS) the
   page asks for a Screen Wake Lock while it is visible, retakes it when the
   page returns, and reports `held`/`released`/`unsupported`/`insecure`/`denied`

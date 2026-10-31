@@ -1,6 +1,7 @@
 """Independent fixtures for the v3 physical transform."""
 
 import json
+import math
 from pathlib import Path
 
 import pytest
@@ -115,3 +116,37 @@ def test_identical_css_sizes_with_different_physical_sizes_differ():
         bounds=(0, 0, 200, 200), source_size=(200, 200),
     )
     assert small["panel_from_source"] != large["panel_from_source"]
+
+
+@pytest.mark.parametrize("width,height,dpr,scales,quarter", [
+    (768, 1024, 2, (.19245, .19248), 0),
+    (900, 1280, 2, (.16556, .16555), 1),
+    (1024, 768, 1, (.19248, .19245), 2),
+    (1280, 900, 1.5, (.16555, .16556), 3),
+    (600, 800, 1, (.2, .2), 0),
+    (800, 600, 2.25, (.25, .24), 1),
+    (601, 799, 1.333, (.18, .19), 2),
+    (799, 601, 2.625, (.19, .18), 3),
+])
+def test_common_image_keeps_50_mm_scale_on_mixed_synthetic_tablets(width, height, dpr, scales, quarter):
+    active = (width * scales[0], height * scales[1])
+    if quarter % 2:
+        active = active[::-1]
+    plan = geometry.normalized_source_to_panel(
+        active_size=active, bezels={"left": 5, "top": 7, "right": 9, "bottom": 11},
+        center_mm=(300, 200), nudge_mm=(2, -1), mount_angle=90,
+        bounds=(0, 0, 1000, 500), source_size=(2000, 1000),
+    )
+    backing = (round(width * dpr), round(height * dpr))
+    transform = geometry.canvas_transform_components(
+        backing=backing, rect=(width, height),
+        calibration={"viewport_width": width, "viewport_height": height,
+                     "quarter_turn": quarter, "panel_offset_mm": [1, 2], "mm_per_css": scales},
+        panel_from_source=tuple(plan["panel_from_source"]), source_size=(2000, 1000),
+    )["matrix"]
+    origin = geometry.apply(tuple(transform), (500, 250))
+    for target in ((600, 250), (500, 350)):
+        point = geometry.apply(tuple(transform), target)
+        dx_mm = (point[0] - origin[0]) / (backing[0] / width) * scales[0]
+        dy_mm = (point[1] - origin[1]) / (backing[1] / height) * scales[1]
+        assert math.hypot(dx_mm, dy_mm) == pytest.approx(50)

@@ -1,6 +1,65 @@
-# Phase 3a hotspot reference (not a production deployment)
+# Run tablets on a laptop hotspot
 
-The intended first trial puts approximately 15–20 tablets on the laptop's
+## Start the HTTP hotspot trial
+
+Enable a NetworkManager Wi-Fi hotspot and connect the tablets to it. Install
+Caddy and firewalld, then run `make hotspot` from the repository root. Stop
+any earlier app instance on port 8000 first.
+
+The launcher detects the active access-point interface, reads its current
+IPv4 address, starts one backend on loopback, and starts a tablet-only Caddy
+listener on the hotspot address. It opens the tablet TCP port in that
+interface's firewalld zone. Desktop authorization may be required. It does
+not change permanent firewall settings or enable a system service.
+
+Wait for **Ready**. Startup checks load the client and its scripts, verify
+`/client` redirects to `/client/`, exercise registration payload validation
+without creating a test device, verify a device WebSocket upgrade, and
+check that operator routes are denied on the tablet listener. Open the
+printed tablet URL on each tablet. Open the printed controller URL only on
+the laptop. Confirm that each real tablet appears online in the controller;
+startup checks cannot drive its browser.
+
+First-launch options are saved for later launches:
+
+```sh
+make hotspot ARGS='--interface ap0 --data-dir /absolute/path/to/wall-data'
+```
+
+The data directory contains `wall.db`, `assets/`, `media/`, `backend.log`, and
+`caddy.log`. Existing files are preserved. To use an existing wall, restore
+a [verified backup](OPERATIONS.md#backups) into a new data directory with
+those names before starting. The launcher does not copy a checkout database
+or migrate another running wall automatically.
+
+The default data directory is `$XDG_DATA_HOME/tablet-wall-ai`, or
+`~/.local/share/tablet-wall-ai`. The settings file is
+`$XDG_CONFIG_HOME/tablet-wall-ai/hotspot.json`, or
+`~/.config/tablet-wall-ai/hotspot.json`. It stores the interface, data
+directory, and ports. The IP address is discovered again on every launch.
+Use `--backend-port` and `--tablet-port` for different ports, or `--config`
+for a separate settings file. The defaults are 8000 and 8080.
+Launchers share a per-user tablet-port lock across settings files, so a
+second configuration cannot rely on a firewall opening owned by another
+running launcher. Lock and firewall recovery records use
+`$XDG_RUNTIME_DIR/tablet-wall-ai`, or `~/.cache/tablet-wall-ai` when unset.
+
+Press Ctrl+C to stop both processes. The launcher removes only the runtime
+firewall opening it added. An existing opening is left alone. Run
+`make hotspot` again after a reboot or hotspot restart; it reapplies the
+runtime firewall opening and checks the current address. Missing hotspots,
+occupied ports, denied firewall authorization, and failed checks produce an
+error instead of a ready message. Logs stay in the data directory.
+
+This HTTP mode serves curated assets on a trusted local hotspot. It requires
+application authentication to be unset and managed uploads to be disabled.
+Automatic screen wake-lock needs HTTPS, so keep screens awake manually.
+The backend and controller remain on loopback. Do not bind the backend to
+`0.0.0.0` to work around a connection problem.
+
+## Use the HTTPS reference
+
+The HTTPS reference puts approximately 15–20 tablets on the laptop's
 hotspot. `hotspot.Caddyfile` uses **two HTTPS origins without DNS**:
 
 | Origin | Access | Proxy policy |

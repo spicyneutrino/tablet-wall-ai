@@ -7,7 +7,7 @@
     <meta name="description" content="Control panel for a wall of tablets: choose what the wall shows and where each tablet sits.">
     <title>Wall control · tablet-wall-ai</title>
     <link rel="icon" href="favicon.svg" type="image/svg+xml">
-    <link rel="stylesheet" href="controller.css?v=15">
+    <link rel="stylesheet" href="controller.css?v=16">
 </head>
 <body>
 <a class="skip" href="#workspace">Skip to wall</a>
@@ -30,7 +30,7 @@
         </div>
 
         <div class="tablet-address">
-            <span class="meta">Tablet address</span>
+            <span class="meta" id="client-url-label">Tablet address</span>
             <code id="client-url" role="status" aria-atomic="true">/client/</code>
             <button type="button" id="btn-copy-url" aria-label="Copy the tablet URL" aria-describedby="client-url" disabled>Copy</button>
         </div>
@@ -86,9 +86,13 @@
         <div class="wall-heading">
             <div class="heading-with-meta">
                 <h2>Wall</h2>
-                <span class="meta" id="wall-dimensions">Waiting for the server</span>
+                <span class="meta" id="wall-dimensions" role="status" aria-live="polite" aria-atomic="true">Waiting for the server</span>
             </div>
-            <button type="button" id="btn-tile">Tile tablets</button>
+            <div class="wall-heading-actions">
+                <button type="button" class="quiet small" id="btn-wall-size-settings">Wall size settings</button>
+                <button type="button" id="btn-fit-wall-tablets" disabled>Fit wall to tablets</button>
+                <button type="button" id="btn-tile">Tile tablets</button>
+            </div>
         </div>
 
         <div class="actual-content">
@@ -414,15 +418,31 @@
             <section class="context-pane" id="pane-layout" aria-label="Wall layout" hidden>
                 <h2 class="selection-title">Layout</h2>
                 <p class="meta">Positions and wall size. Content stays separate.</p>
+                <p class="meta">These wall units do not calibrate physical screen size. For continuous graphics across different tablets, use <a href="physical.html">Physical setup</a> and measure each screen.</p>
 
                 <form id="wall-form" class="inspector-section" novalidate>
                     <div class="section-label"><h3>Wall size</h3><span class="meta">Wall units</span></div>
+                    <label class="field"><span>Wall sizing</span>
+                        <select id="wall-sizing-mode" disabled>
+                            <option value="fixed">Fixed wall</option>
+                            <option value="tablets">Fit to tablets</option>
+                        </select>
+                    </label>
                     <div class="fields">
                         <label class="field"><span>Width</span><input id="wall-width" type="number" min="1" step="1" inputmode="numeric" autocomplete="off" disabled></label>
                         <label class="field"><span>Height</span><input id="wall-height" type="number" min="1" step="1" inputmode="numeric" autocomplete="off" disabled></label>
                     </div>
+                    <label class="field" hidden><span>Margin around tablets, units</span><input id="wall-padding" type="number" min="0" step="1" inputmode="numeric" value="0" disabled></label>
+                    <p class="meta" id="wall-sizing-help">Size changes keep each footprint at its current coordinates.</p>
                     <button type="submit" class="wide" id="btn-wall-save" disabled>Save size</button>
-                    <p class="meta">Size changes keep each footprint at its current coordinates.</p>
+                    <div id="pack-controls" hidden>
+                        <div class="fields pack-fields">
+                            <label class="field"><span>Pack columns</span><input id="pack-columns" type="number" min="1" step="1" value="1" disabled></label>
+                            <label class="field"><span>Gap, units</span><input id="pack-gap" type="number" min="0" step="1" value="0" disabled></label>
+                        </div>
+                        <button type="button" class="wide" id="btn-pack" disabled>Pack placed tablets</button>
+                        <p class="meta" id="pack-status" role="status" aria-live="polite"></p>
+                    </div>
                 </form>
 
                 <section class="inspector-section" id="tile-section" aria-labelledby="tile-section-title">
@@ -617,10 +637,11 @@
 
 <noscript><p class="noscript">This page needs JavaScript. It talks to the server over a live connection.</p></noscript>
 
-<script src="controller-geometry.js?v=1"></script>
+<script src="controller-geometry.js?v=2"></script>
 <script src="controller-snapshots.js?v=1"></script>
-<script src="controller-stage.js?v=1"></script>
+<script src="controller-url.js?v=1"></script>
+<script src="controller-stage.js?v=2"></script>
 <script src="controller-inventory.js?v=1"></script>
-<script src="controller.js?v=20"></script>
+<script src="controller.js?v=24"></script>
 </body>
 </html>

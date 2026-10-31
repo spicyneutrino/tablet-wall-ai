@@ -11,7 +11,7 @@ from typing import Any
 import anyio
 from fastapi import WebSocket
 
-from tabletwall import displays
+from tabletwall import displays, tablet_models
 from tabletwall import writer as writers
 from tabletwall.protocol import (
     HEARTBEAT_TIMEOUT_S,
@@ -103,6 +103,7 @@ async def _send_wall_to_device(
     try:
         if record.get("protocol") == 3:
             profile, calibration = _measurement_for(device_id)
+            calibration = tablet_models.effective(device_id, calibration, record.get("viewport") or {})
             await _send(
                 websocket,
                 _render_frame(device_id, record, profile, calibration),

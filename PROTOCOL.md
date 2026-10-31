@@ -355,6 +355,14 @@ about which arrangement it meant.
 | `width`      | int > 0                  | Wall width in units.                     |
 | `height`     | int > 0                  | Wall height in units.                    |
 | `placements` | `{device_id: placement}` | Sparse — a device may have no placement. |
+| `sizing` | optional `{mode, padding}` | `mode` is `fixed` or `tablets`; omitted means legacy fixed sizing. Padding is a nonnegative whole number of wall units. |
+
+In `tablets` mode, every layout commit fits the wall around all stored
+placement footprints, including offline and vacant reservations. Placements
+are translated together so their minimum X and Y equal `padding`; sizes,
+bezels, and relative distances are preserved. Width and height enclose those
+footprints plus padding on both sides. An empty layout retains its last
+dimensions. Connections and disconnections do not resize the wall.
 
 ### Scene
 
@@ -373,7 +381,7 @@ together is a different, separately named action (a preset), not an overload of
 ### Named snapshots (Phase 2c)
 
 Layouts and scenes have **separate name spaces**. A saved layout contains
-`{ "width", "height", "placements" }` (including reservations whose tablets
+`{ "width", "height", "placements" }`, plus `sizing` when configured (including reservations whose tablets
 are absent from the roster), never content. A saved scene contains `content`
 only, never placements or a stored URL; its image asset ID, fit and derived
 dimensions remain durable even when the curated file is removed. Snapshot
@@ -475,8 +483,24 @@ The whole state in one read, which is what the controller needs:
 
 ### `PUT /wall`
 
-Layout only. Body may set `width` and/or `height`. `200` returns the new wall
-state. `422` if a dimension is not a positive int.
+Layout only. Body may set `width`, `height`, or
+`sizing: {"mode":"fixed"|"tablets", "padding":0}`. Padding defaults to zero.
+`200` returns the new wall state. `422` if dimensions or sizing are invalid.
+Explicit dimensions return `409` while tablet sizing remains selected; send
+`sizing.mode: "fixed"` in the same request to resume manual dimensions.
+Omitting `sizing` preserves the current mode.
+The equal-cell `POST /wall/auto` action also requires fixed sizing (`409`
+otherwise); tablet-fit packing preserves the existing footprint sizes.
+
+### `POST /wall/pack`
+
+Body is `{"columns": N, "gap": 0}`. Columns defaults to the number of placed
+tablets. Columns must be a positive integer and gap a nonnegative integer.
+The route requires tablet sizing mode (`409` otherwise) and at least one
+placement (`422` otherwise). It packs all stored footprints in visual order,
+top to bottom then left to right, into rows. Footprint sizes and bezels are
+preserved. Packing and refitting are one persisted revision and broadcast;
+the response is the complete wall state. Unplaced tablets are not added.
 
 ### `PUT /scene`
 
@@ -761,7 +785,20 @@ viewport-only update.
 `schema 2` adds `display_profiles` and `calibrations`, both immutable by
 `(device_id, revision)`. Existing logical documents are adapted at read time
 and are never rewritten by the migration; new physical layouts are stored as
-`{"schema":2,"kind":"physical","bounds":…,"slots":…}`. The database version is
+`{"schema":2,"kind":"physical","bounds":…,"slots":…}`, with optional `sizing`.
+Physical sizing uses `fixed` or `tablets` and finite nonnegative padding in
+millimetres. Tablet mode encloses every slot's rotated body at `center+nudge`,
+including bezels and nonparticipating slots, without translating the slots.
+An empty layout keeps its bounds. Computed bounds must remain finite and
+positive. Sizing is preserved on restart and named-layout recall; a legacy
+snapshot without sizing restores fixed behavior. Physical layout writes that
+omit sizing preserve an existing physical sizing configuration.
+
+Configuration responses include `referenced_displays` and
+`referenced_calibrations` for physical slots. These carry the exact immutable
+revisions used by the layout, even when newer measurements also exist.
+
+The database version is
 `PRAGMA user_version`; a future version, a missing required table or a damaged
 active wall row refuses startup.
 
@@ -773,6 +810,12 @@ active wall row refuses startup.
 | `PUT /api/v3/displays/{device_id}` | append a display profile revision |
 | `PUT /api/v3/calibrations/{device_id}` | append a calibration for an existing profile revision |
 | `PUT /api/v3/layout` | atomically replace the active arrangement with a physical one |
+
+Calibration writes may include `viewport_guard: true`. Guided ruler saves use
+this flag to require an online device with matching live CSS dimensions, DPR,
+orientation and display mode; an offline or changed viewport returns `409`
+without creating a revision. The flag is a command option, not persisted
+calibration data. Manual/imported calibration writes retain the default `false`.
 
 Every write requires `If-Match` with the current config ETag: `428` when it is
 absent, `412` when it is stale, `409` for a semantic conflict. The check runs

@@ -8,7 +8,7 @@
     <title>Wall console · tablet-wall-ai</title>
     <link rel="icon" href="favicon.svg" type="image/svg+xml">
     <link rel="stylesheet" href="physical-legacy.css?v=2">
-    <link rel="stylesheet" href="physical.css?v=11">
+    <link rel="stylesheet" href="physical.css?v=12">
 </head>
 <body class="physical">
 <a class="skip" href="#stage-title">Skip to the wall stage</a>
@@ -274,6 +274,13 @@
                     <span class="chip" id="device-card-cal" data-kind="info">–</span>
                 </div>
 
+                <div class="field">
+                    <label class="label" for="tablet-model">Tablet model</label>
+                    <select class="inp" id="tablet-model"></select>
+                    <p class="hint" id="tablet-model-status" role="status"></p>
+                    <button class="btn" type="button" id="apply-tablet-model">Apply model choice</button>
+                    <p class="hint">Turning the tablet updates its browser mapping. Use the wall rotation controls to match how it is mounted. Fullscreen assumes no browser inset; other modes are approximate.</p>
+                </div>
                 <form class="measure-form" id="profile-form" novalidate>
                     <h3>Profile</h3>
                     <p class="current" id="profile-current"></p>
@@ -338,6 +345,26 @@
                 <form class="measure-form" id="calibration-form" novalidate>
                     <h3>Calibration</h3>
                     <p class="current" id="calibration-current"></p>
+                    <fieldset>
+                        <legend>Measure with the tablet ruler</legend>
+                        <p id="cal-live-viewport" role="status" aria-live="polite">Waiting for tablet viewport.</p>
+                        <button class="btn" id="cal-use-viewport" type="button">Use tablet viewport</button>
+                        <p id="cal-ruler-address-note">Loading tablet address…</p>
+                        <p><a id="cal-ruler-link" hidden></a></p>
+                        <button class="btn" id="cal-copy-ruler" type="button" hidden>Copy ruler address</button>
+                        <p>On the selected tablet, measure each ruler line with a physical ruler. Enter the line’s labelled CSS span if it differs from 200.</p>
+                        <div class="form-grid">
+                            <div class="field"><label class="label" for="cal-ruler-mm-x">Horizontal measured length (mm)</label><input class="inp" id="cal-ruler-mm-x" type="number" min="0" step="any" inputmode="decimal"></div>
+                            <div class="field"><label class="label" for="cal-ruler-mm-y">Vertical measured length (mm)</label><input class="inp" id="cal-ruler-mm-y" type="number" min="0" step="any" inputmode="decimal"></div>
+                            <div class="field"><label class="label" for="cal-ruler-span-x">Horizontal line span (CSS px)</label><input class="inp" id="cal-ruler-span-x" type="number" min="0" step="any" value="200" inputmode="decimal"></div>
+                            <div class="field"><label class="label" for="cal-ruler-span-y">Vertical line span (CSS px)</label><input class="inp" id="cal-ruler-span-y" type="number" min="0" step="any" value="200" inputmode="decimal"></div>
+                        </div>
+                        <button class="btn" id="cal-use-ruler" type="button">Prepare measured calibration</button>
+                        <p>Scales follow the browser’s horizontal and vertical axes before quarter turn. DPR does not change these measurements. Estimated panel profiles are not ruler verified; browser toolbars can inset the picture area.</p>
+                    </fieldset>
+                    <h4>Advanced calibration fields</h4>
+                    <p>Set quarter turn and uncertainty explicitly. Measure the browser picture area’s inset from the panel origin for panel offsets; use 0 only when the viewport starts at the panel origin. Review these fields, then Save calibration.</p>
+
 
                     <div class="form-grid">
                         <div class="field">
@@ -363,6 +390,7 @@
                         <div class="field">
                             <label class="label" for="cal-orientation">Orientation</label>
                             <select class="inp" id="cal-orientation">
+                                <option value="">Choose orientation</option>
                                 <option value="0">0°</option>
                                 <option value="90">90°</option>
                                 <option value="180">180°</option>
@@ -372,6 +400,7 @@
                         <div class="field">
                             <label class="label" for="cal-mode">Mode</label>
                             <select class="inp" id="cal-mode">
+                                <option value="">Choose mode</option>
                                 <option value="tab">Tab</option>
                                 <option value="fullscreen">Fullscreen</option>
                                 <option value="standalone">Standalone</option>
@@ -490,6 +519,32 @@
         <section class="card bounds-card" aria-labelledby="bounds-title">
             <h2 id="bounds-title">Wall bounds</h2>
             <p class="hint">The rectangle every slot is placed inside. Values are millimetres, measured from the top-left corner of the wall as the audience sees it.</p>
+            <div class="field">
+                <label class="label" for="bounds-mode">Wall sizing</label>
+                <select class="inp" id="bounds-mode">
+                    <option value="fixed">Fixed wall size</option>
+                    <option value="tablets">Fit wall to tablets</option>
+                </select>
+            </div>
+            <div class="field bounds-padding-field">
+                <label class="label" for="bounds-padding">Outer padding (mm)</label>
+                <input class="inp" id="bounds-padding" type="number" min="0" step="any" value="0" inputmode="decimal">
+            </div>
+            <p class="hint">Fixed uses the dimensions below. Fit encloses the placed tablet bodies, including their borders and rotation. Diagonal tablets can leave empty corners.</p>
+            <p class="form-msg" id="sizing-msg" role="status" aria-live="polite" hidden></p>
+            <button type="button" class="btn" id="arrange-tablets">Arrange connected tablets</button>
+            <p class="hint">Creates an editable draft from connected tablets with assigned models. The current wall stays active until Apply.</p>
+            <div class="pack-row">
+                <div class="field">
+                    <label class="label" for="pack-columns">Columns</label>
+                    <input class="inp" id="pack-columns" type="number" min="1" step="1" value="3" inputmode="numeric">
+                </div>
+                <div class="field">
+                    <label class="label" for="pack-gap">Gap (mm)</label>
+                    <input class="inp" id="pack-gap" type="number" min="0" step="any" value="0" inputmode="decimal">
+                </div>
+                <button type="button" class="btn" id="btn-pack-tablets">Pack tablets</button>
+            </div>
             <div class="bounds-grid">
                 <div class="field">
                     <label class="label" for="bounds-x">X (mm)</label>
@@ -611,7 +666,9 @@
 </noscript>
 
 <script src="physical-playback.js?v=1"></script>
-<script src="physical-stage.js?v=2"></script>
-<script src="physical.js?v=12"></script>
+<script src="physical-sizing.js?v=1"></script>
+<script src="physical-stage.js?v=3"></script>
+<script src="physical-calibration.js?v=1"></script>
+<script src="physical.js?v=16"></script>
 </body>
 </html>

@@ -7,6 +7,11 @@ window.ControllerStage = {
             DEVICE_TYPE_NAMES, PRESETS, SNAPSHOTS, aspectDelta, aspectOf, beginSnapshotRecall, clearPlacement, compareIds, cssEscape, deviceCaps, devices, editor, el, fmtAspect, fmtDelta, fmtNumber, focusTile, forgetDevice, isAspectMismatch, logStatus, normalizeColor, paintTileScreen, pct, placementProblem, placementShapeMismatch, renderWall, renderWallMap, requestJson, savePlacement, savedPlacement, seenLabel, setDeviceColor, shortId, stage, tiles, updateStageReadout, viewportAspect, visibleRect, wallReady, runtime
         } = dependencies;
         const SNAP_THRESHOLD_PX = 9;
+        let renderedSizingMode = null;
+
+        function isTabletsMode() {
+            return !!runtime.wall && runtime.wall.sizing && runtime.wall.sizing.mode === "tablets";
+        }
 
         function isMobile() {
             return typeof window.matchMedia === "function" &&
@@ -161,12 +166,14 @@ window.ControllerStage = {
         function defaultPlacementFor(device) {
             const wallW = runtime.wall && runtime.wall.width > 0 ? runtime.wall.width : 1000;
             const wallH = runtime.wall && runtime.wall.height > 0 ? runtime.wall.height : 500;
+            const fit = isTabletsMode();
             const aspect = viewportAspect(device) || 1;
             let w = Math.max(80, Math.round(wallW / 3));
-            w = Math.min(w, wallW);
+            if (!fit) w = Math.min(w, wallW);
             const visibleW = Math.max(20, w);
             let h = Math.round(visibleW / aspect);
-            h = Math.min(Math.max(20, h), wallH);
+            h = Math.max(20, h);
+            if (!fit) h = Math.min(h, wallH);
             return {
                 x: 0,
                 y: 0,
@@ -415,10 +422,13 @@ window.ControllerStage = {
         function firstFreePlacement(device) {
             if (!wallReady()) return null;
             const p = defaultPlacementFor(device);
-            if (p.w > runtime.wall.width || p.h > runtime.wall.height) return null;
+            const fit = isTabletsMode();
+            if (!fit && (p.w > runtime.wall.width || p.h > runtime.wall.height)) return null;
+            const maxX = fit ? runtime.wall.width + p.w : runtime.wall.width;
+            const maxY = fit ? runtime.wall.height + p.h : runtime.wall.height;
             const step = Math.max(10, Math.round(Math.min(p.w, p.h) / 24));
-            for (let y = 0; y <= runtime.wall.height - p.h + 0.001; y += step) {
-                for (let x = 0; x <= runtime.wall.width - p.w + 0.001; x += step) {
+            for (let y = 0; y <= maxY - p.h + 0.001; y += step) {
+                for (let x = 0; x <= maxX - p.w + 0.001; x += step) {
                     const candidate = {
                         x: Math.round(x * 100) / 100,
                         y: Math.round(y * 100) / 100,
@@ -529,8 +539,8 @@ window.ControllerStage = {
             const step = Number(stage.inspStep && stage.inspStep.value) || 20;
             placement.x = placement.x + dx * step;
             placement.y = placement.y + dy * step;
-            placement.x = Math.max(0, Math.min(runtime.wall.width - placement.w, placement.x));
-            placement.y = Math.max(0, Math.min(runtime.wall.height - placement.h, placement.y));
+            placement.x = isTabletsMode() ? Math.max(0, placement.x) : Math.max(0, Math.min(runtime.wall.width - placement.w, placement.x));
+            placement.y = isTabletsMode() ? Math.max(0, placement.y) : Math.max(0, Math.min(runtime.wall.height - placement.h, placement.y));
             editor.pendingNudge = { id: editor.selectedId, placement: clonePlacement(placement) };
             setInspectorFields(placement, false);
             stage.inspShape.textContent = "Moving " + shortId(editor.selectedId) + " to " + fmtNumber(placement.x) + ", " + fmtNumber(placement.y) + ".";
@@ -562,9 +572,24 @@ window.ControllerStage = {
 
         function renderStageHistory() {
             if (!stage.btnUndoStage) return;
-            stage.btnUndoStage.disabled = editor.stageUndo.length === 0;
-            stage.btnRedoStage.disabled = editor.stageRedo.length === 0;
-            if (stage.statusUndo) stage.statusUndo.hidden = editor.stageUndo.length === 0;
+            const fit = isTabletsMode();
+            const mode = fit ? "tablets" : "fixed";
+            if (renderedSizingMode !== null && renderedSizingMode !== mode) {
+                editor.stageUndo = [];
+                editor.stageRedo = [];
+                if (editor.tilePreviewPlan) cancelTilePreview();
+            }
+            renderedSizingMode = mode;
+            stage.btnUndoStage.disabled = fit || editor.stageUndo.length === 0;
+            stage.btnRedoStage.disabled = fit || editor.stageRedo.length === 0;
+            stage.btnUndoStage.title = fit ? "Undo is unavailable while the wall fits tablets because placements can rebase the wall." : "Undo placement change";
+            stage.btnRedoStage.title = fit ? "Redo is unavailable while the wall fits tablets because placements can rebase the wall." : "Redo placement change";
+            if (stage.statusUndo) stage.statusUndo.hidden = fit || editor.stageUndo.length === 0;
+            if (stage.tileSection) stage.tileSection.hidden = fit;
+            if (stage.btnTile) {
+                stage.btnTile.disabled = fit;
+                stage.btnTile.title = fit ? "Use Pack placed tablets while wall sizing is Fit to tablets." : "Tile tablets";
+            }
         }
 
         function pushStageHistory(before, after, label) {
@@ -603,7 +628,7 @@ window.ControllerStage = {
         }
 
         async function undoStage() {
-            if (!editor.stageUndo.length || editor.tileApplying) return;
+            if (isTabletsMode() || !editor.stageUndo.length || editor.tileApplying) return;
             const entry = editor.stageUndo.pop();
             const ok = await applyPlacementMap(entry.before);
             if (ok) {
@@ -617,7 +642,7 @@ window.ControllerStage = {
         }
 
         async function redoStage() {
-            if (!editor.stageRedo.length || editor.tileApplying) return;
+            if (isTabletsMode() || !editor.stageRedo.length || editor.tileApplying) return;
             const entry = editor.stageRedo.pop();
             const ok = await applyPlacementMap(entry.after);
             if (ok) {
@@ -825,6 +850,7 @@ window.ControllerStage = {
         }
 
         function startTilePreview() {
+            if (isTabletsMode()) return;
             if (!wallReady()) {
                 stage.tileResult.textContent = "The wall size is not known yet.";
                 return;
@@ -959,7 +985,7 @@ window.ControllerStage = {
         }
 
         async function applyTilePreview() {
-            if (!editor.tilePreviewPlan || editor.tilePreviewPlan.errors.length || editor.tileApplying) return;
+            if (isTabletsMode() || !editor.tilePreviewPlan || editor.tilePreviewPlan.errors.length || editor.tileApplying) return;
             const plan = editor.tilePreviewPlan;
             const before = clonePlacements();
             editor.tileApplying = true;
@@ -1019,9 +1045,10 @@ window.ControllerStage = {
 
         function snapPlacement(placement, mode, id, disableSnap) {
             if (!runtime.wall) return placement;
+            const fit = isTabletsMode();
             if (disableSnap) {
-                placement.x = Math.max(0, Math.min(runtime.wall.width - placement.w, placement.x));
-                placement.y = Math.max(0, Math.min(runtime.wall.height - placement.h, placement.y));
+                placement.x = fit ? Math.max(0, placement.x) : Math.max(0, Math.min(runtime.wall.width - placement.w, placement.x));
+                placement.y = fit ? Math.max(0, placement.y) : Math.max(0, Math.min(runtime.wall.height - placement.h, placement.y));
                 return roundPlacement(placement);
             }
             if (!stage.snapToggle || !stage.snapToggle.checked) return placement;
@@ -1038,8 +1065,8 @@ window.ControllerStage = {
                     placement.h = Math.round(placement.h / step) * step;
                 }
             }
-            const xCandidates = [0, runtime.wall.width - placement.w];
-            const yCandidates = [0, runtime.wall.height - placement.h];
+            const xCandidates = fit ? [0] : [0, runtime.wall.width - placement.w];
+            const yCandidates = fit ? [0] : [0, runtime.wall.height - placement.h];
             for (const otherId of Object.keys(runtime.wall.placements)) {
                 if (otherId === id) continue;
                 const other = runtime.wall.placements[otherId];
@@ -1052,11 +1079,11 @@ window.ControllerStage = {
                 placement.x = snapAxis(placement.x, placement.w, xCandidates, thresholdX);
                 placement.y = snapAxis(placement.y, placement.h, yCandidates, thresholdY);
             }
-            placement.x = Math.max(0, Math.min(runtime.wall.width - placement.w, placement.x));
-            placement.y = Math.max(0, Math.min(runtime.wall.height - placement.h, placement.y));
+            placement.x = fit ? Math.max(0, placement.x) : Math.max(0, Math.min(runtime.wall.width - placement.w, placement.x));
+            placement.y = fit ? Math.max(0, placement.y) : Math.max(0, Math.min(runtime.wall.height - placement.h, placement.y));
             if (mode === "resize") {
-                placement.w = Math.max(10, Math.min(runtime.wall.width - placement.x, placement.w));
-                placement.h = Math.max(10, Math.min(runtime.wall.height - placement.y, placement.h));
+                placement.w = fit ? Math.max(10, placement.w) : Math.max(10, Math.min(runtime.wall.width - placement.x, placement.w));
+                placement.h = fit ? Math.max(10, placement.h) : Math.max(10, Math.min(runtime.wall.height - placement.y, placement.h));
             }
             return roundPlacement(placement);
         }
@@ -1200,8 +1227,8 @@ window.ControllerStage = {
             const p = defaultPlacementFor(devices.get(deviceId));
             p.x = (clientX - rect.left) / rect.width * runtime.wall.width - p.w / 2;
             p.y = (clientY - rect.top) / rect.height * runtime.wall.height - p.h / 2;
-            p.x = Math.max(0, Math.min(runtime.wall.width - p.w, p.x));
-            p.y = Math.max(0, Math.min(runtime.wall.height - p.h, p.y));
+            p.x = isTabletsMode() ? Math.max(0, p.x) : Math.max(0, Math.min(runtime.wall.width - p.w, p.x));
+            p.y = isTabletsMode() ? Math.max(0, p.y) : Math.max(0, Math.min(runtime.wall.height - p.h, p.y));
             p.x = Math.round(p.x);
             p.y = Math.round(p.y);
             selectDevice(deviceId, { keepTask: true });

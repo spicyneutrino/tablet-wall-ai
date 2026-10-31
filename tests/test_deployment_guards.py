@@ -54,6 +54,8 @@ def test_tablet_ingress_strips_the_operator_credential():
     """
     caddyfile = (ROOT / "deploy/hotspot.Caddyfile").read_text()
     tablet, operator = caddyfile.split("https://localhost:8444", 1)
+    assert "import tablet-routes.caddy" in tablet
+    tablet = (ROOT / "deploy/tablet-routes.caddy").read_text()
     tablet = re.sub(r"#.*", "", tablet)
     assert tablet.count("header_up -X-Tablet-Wall-Operator") == 4
     assert not re.search(r"header_up\s+X-Tablet-Wall-Operator", tablet)

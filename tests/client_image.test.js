@@ -442,6 +442,7 @@ function createHarness(opts = {}) {
         innerHeight: opts.height || VP.height,
         devicePixelRatio: opts.dpr !== undefined ? opts.dpr : VP.dpr,
         TabletWallView: view,
+        visualViewport: opts.visualViewport,
         location: {
             protocol: "http:",
             host: "wall.test",
@@ -5357,7 +5358,7 @@ test("client shell: cache versions, HUD markup and the 56 px CSS pill", () => {
     const css = fs.readFileSync(CLIENT_CSS, "utf8");
 
     assert.match(html, /client\.css\?v=4/, "the stylesheet version was bumped");
-    assert.match(html, /client\.js\?v=10/, "the script version was bumped");
+    assert.match(html, /client\.js\?v=12/, "the script version was bumped");
     assert.match(html, /id="hud"/, "the HUD has static markup");
     assert.match(html, /id="video-unavailable"/, "the failure notice has static markup");
 
@@ -5375,6 +5376,82 @@ test("client shell: cache versions, HUD markup and the 56 px CSS pill", () => {
         !CLIENT_SOURCE.includes("enableDisplayEl.style"),
         "the Enable display pill keeps no inline styles"
     );
+});
+
+test("physical stills restore clipping and use rounded backing ratios", async () => {
+    const h = await startVideoHarness({ width: 801, height: 601, dpr: 1.25 });
+    h.setFetch(route({ [ASSET_A]: okResponse(assetBlob("A", 1280, 720)) }));
+    const frame = {
+        type: "render", mode: "physical", revision: 11, generation: "scale",
+        render_seq: 1, wall: { width: 800, height: 600 },
+        scene: { content: imageContent({ intrinsicWidth: 1280, intrinsicHeight: 720 }) },
+        calibration: VIDEO_CALIBRATION, plan: VIDEO_PLAN, slot: null,
+    };
+    h.emit(frame);
+    await drain();
+    h.reset();
+    h.emit(Object.assign({}, frame, { render_seq: 2 }));
+    await drain();
+    const clip = h.calls.findIndex((c) => c.name === "clip");
+    const save = h.calls.findIndex((c) => c.name === "save");
+    const restore = h.calls.findIndex((c) => c.name === "restore");
+    const fill = h.calls.findIndex((c) => c.name === "fillRect");
+    const draw = h.calls.findIndex((c) => c.name === "drawImage");
+    assert.ok(save < fill && fill < clip && clip < draw && draw < restore);
+    const transform = h.calls.find((c) => c.name === "setTransform").args;
+    assertCloseAll(transform, [1001 / 801, 0, 0, 751 / 601, 0, 0], "rounded backing ratios");
+});
+
+test("visual viewport zoom fences the physical picture and reports the new viewport", async () => {
+    let resize;
+    const visual = { width: 800, height: 600, scale: 1, addEventListener(type, fn) { resize = fn; } };
+    const h = await startVideoHarness({ width: 800, height: 600, visualViewport: visual });
+    h.setFetch(route({ [ASSET_A]: okResponse(assetBlob("A", 1280, 720)) }));
+    const frame = {
+        type: "render", mode: "physical", revision: 11, generation: "zoom",
+        render_seq: 1, wall: { width: 800, height: 600 },
+        scene: { content: imageContent({ intrinsicWidth: 1280, intrinsicHeight: 720 }) },
+        calibration: VIDEO_CALIBRATION, plan: VIDEO_PLAN, slot: null,
+    };
+    h.emit(frame);
+    await drain();
+    h.reset();
+    visual.width = 400; visual.height = 300; visual.scale = 2;
+    resize();
+    assert.ok(h.texts().includes("NEEDS CALIBRATION"));
+    assert.strictEqual(h.named("drawImage").length, 0);
+    const report = h.sent("viewport").pop().viewport;
+    assert.strictEqual(report.width, 400);
+    assert.strictEqual(report.height, 300);
+    h.reset();
+    h.emit(Object.assign({}, frame, { render_seq: 2 }));
+    assert.strictEqual(h.named("drawImage").length, 0);
+});
+
+test("queued physical frames cannot revive a picture after its viewport changes", async () => {
+    const h = await startVideoHarness({ width: 800, height: 600 });
+    h.setFetch(route({ [ASSET_A]: okResponse(assetBlob("A", 1280, 720)) }));
+    const frame = {
+        type: "render", mode: "physical", revision: 11, generation: "resize",
+        render_seq: 1, wall: { width: 800, height: 600 },
+        scene: { content: imageContent({ intrinsicWidth: 1280, intrinsicHeight: 720 }) },
+        calibration: VIDEO_CALIBRATION, plan: VIDEO_PLAN, slot: null,
+    };
+    h.emit(frame);
+    await drain();
+    h.window.innerWidth = 600;
+    h.window.innerHeight = 800;
+    for (const fn of h.listeners.window.resize || []) fn({});
+    h.reset();
+    h.emit(Object.assign({}, frame, { render_seq: 2 }));
+    await drain();
+    assert.strictEqual(h.named("drawImage").length, 0);
+    assert.ok(h.texts().includes("NEEDS CALIBRATION"));
+    h.emit(Object.assign({}, frame, { render_seq: 3, calibration: Object.assign({}, VIDEO_CALIBRATION, {
+        viewport_width: 600, viewport_height: 800,
+    }) }));
+    await drain();
+    assert.ok(h.named("drawImage").length > 0);
 });
 
 /* ------------------------------------------------------------------ */
