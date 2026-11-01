@@ -1237,7 +1237,7 @@ not a merge to main or completed acceptance. This board reflects `2ee4659`.
 | TWR-13 | [#17](https://github.com/spicyneutrino/tablet-wall-ai/issues/17) | Readiness, health, backup, runbook | Open — integrated, acceptance pending | Partial (health/QR/CSP/log bounds and restore drill pass; readiness card pending) | Reboot/restore in TWR-17 |
 | TWR-14 | [#18](https://github.com/spicyneutrino/tablet-wall-ai/issues/18) | Unified console and browser acceptance | Open — integrated, acceptance pending | Partial (unified console integrated; complete rendered acceptance pending) | Phone/keyboard real device optional |
 | TWR-15 | [#16](https://github.com/spicyneutrino/tablet-wall-ai/issues/16) | Approved joining and revocation | Deferred — current profile A | Not implemented; required before untrusted-network use | Only if triggered |
-| TWR-16 | [#20](https://github.com/spicyneutrino/tablet-wall-ai/issues/20) | Measured efficiency baseline | Open — measurement in progress | Not accepted | No |
+| TWR-16 | [#20](https://github.com/spicyneutrino/tablet-wall-ai/issues/20) | Measured efficiency baseline | Open — baseline recorded, final review pending | [Measured baseline and per-cost decisions](EFFICIENCY.md); no optimisation | No |
 | TWR-17 | [#19](https://github.com/spicyneutrino/tablet-wall-ai/issues/19) | Real-tablet acceptance | Open | — | **Required** |
 
 **No package is accepted as complete.** The backend, tablet client, unified
