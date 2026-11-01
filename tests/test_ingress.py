@@ -449,4 +449,3 @@ def test_uploads_disabled_diagnostics_needs_operator_proof(tmp_path):
         assert verified.json()["media"]["integrity"] == {"ok": True, "problems": []}
         local = httpx.get(f"http://127.0.0.1:{app_port}/diagnostics")
         assert local.status_code == 200, local.text
-
