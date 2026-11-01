@@ -148,6 +148,22 @@ def test_physical_image_is_not_sent_without_advertised_support(caps):
         assert frame["calibration"]["reason"] == "tablet does not advertise image support"
 
 
+def test_unplaced_physical_device_reports_the_missing_slot_before_capability():
+    with TestClient(main.app) as client:
+        setup_scene(client)
+        response = client.put("/api/v3/layout", json={
+            "bounds": {"x": 0, "y": 0, "width": 100, "height": 100}, "slots": {},
+        }, headers={"If-Match": client.get("/api/v3/config").json()["etag"]})
+        assert response.status_code == 200
+        with client.websocket_connect(device_url(caps="physical")) as socket:
+            socket.receive_json()
+            socket.receive_json()
+            frame = socket.receive_json()
+        assert frame["calibration"]["reason"] == "no physical slot"
+        assert frame["scene"]["content"] == {"type": "color"}
+        assert frame["plan"] is None
+
+
 @pytest.mark.parametrize("caps, allowed", [([], False), (["physical"], False), (["image", "physical"], True)])
 def test_prepared_image_requires_advertised_image_support(monkeypatch, caps, allowed):
     main.devices[DEVICE] = {"caps": caps}
