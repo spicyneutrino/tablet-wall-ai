@@ -199,6 +199,7 @@ def test_scene_a_to_b_and_restart_expose_the_real_scene(image_environment, asset
         assert after["scene"]["content"] == {
             "type": "image", "asset": second["id"], "fit": "cover",
             "intrinsicWidth": 45, "intrinsicHeight": 90, "url": second["url"],
+            "background": "#0b1120", "available": True,
         }
         assert client.get("/api/v3/config").json() == after
         stored = persist.load_state()
@@ -224,7 +225,11 @@ def test_managed_selection_preserves_immutable_object_metadata(operator, monkeyp
     assert content["url"] == managed["url"]
     assert Image.open(BytesIO(operator.get(content["url"]).content)).size == (2048, 1024)
     assert media.find_object(managed["id"]) == original
-    assert operator.get("/wall").json()["scene"] == response.json()["scene"]
+    legacy = operator.get("/wall").json()["scene"]
+    projected = deepcopy(response.json()["scene"])
+    assert projected["content"].pop("background") == "#0b1120"
+    assert projected["content"].pop("available") is True
+    assert legacy == projected
 
 
 def test_invalid_asset_missing_and_stale_etags_never_mutate(operator, asset_dir):

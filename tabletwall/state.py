@@ -12,6 +12,9 @@ wall are stored in SQLite. Socket registries and live connection facts remain pr
 
 import asyncio
 import logging
+import hashlib
+import json
+import math
 import time
 import uuid
 from collections.abc import Iterator
@@ -22,7 +25,7 @@ from typing import Any
 
 from fastapi import WebSocket
 
-from tabletwall import geometry, persist
+from tabletwall import calibration_health, displays, geometry, persist, render_status, tablet_models
 from tabletwall.protocol import HEARTBEAT_TIMEOUT_S, _asset_url, _now_iso
 
 # Wall defaults (PROTOCOL.md "Wall state"): a 2x1 wall of landscape panels.
@@ -80,10 +83,13 @@ controller_protocols: dict[WebSocket, int] = {}
 # {content, layout}, ``revision``, ``generation``. ``tabletwall.persist`` saves
 # this dict to SQLite; tests reset it through ``_fresh_wall``.
 wall: dict[str, Any] = _fresh_wall()
+identify_commands: dict[str, dict[str, Any]] = {}
 
 
 def restore_devices() -> None:
     """Restore metadata with no live sockets or negotiated connection facts."""
+    render_status.reset()
+    identify_commands.clear()
     restored = persist.load_devices()
     devices.clear()
     devices.update(restored)
@@ -341,7 +347,8 @@ def _wall_frame(device_id: str, record: dict[str, Any]) -> dict[str, Any]:
     if content.get("type") == "calibration" and "calibration" not in caps:
         # Replacing the whole content object drops any asset URL with it.
         scene["content"] = {"type": "color"}
-    elif content.get("type") == "image" and "image" not in caps:
+    elif content.get("type") == "image" and ("image" not in caps or
+            (content.get("fit", "cover") == "contain" and "image_contain" not in caps)):
         scene["content"] = {"type": "color"}
     layout = wall["layout"]
     return {
@@ -368,92 +375,149 @@ def _viewport_matches(calibration: dict[str, Any], viewport: dict[str, Any]) -> 
         return False
 
 
+def validated_viewport(value: Any, *, query: bool = False) -> dict[str, Any] | None:
+    if not isinstance(value, dict):
+        return None
+    try:
+        numeric = ("width", "height", "dpr", "visual_scale")
+        if not query and any(not isinstance(value.get(key, 1), (int, float)) for key in numeric):
+            return None
+        result = {key: float(value.get(key, 1) if key == "visual_scale" else value[key])
+                  for key in numeric}
+        if any(isinstance(value.get(key), bool) for key in numeric):
+            return None
+        if not all(math.isfinite(v) and v > 0 for v in result.values()):
+            return None
+        angle = value["orientation"]
+        if (isinstance(angle, bool) or (not query and type(angle) is not int)
+                or float(angle) not in (0, 90, 180, 270)):
+            return None
+        mode = value["mode"]
+        if mode not in ("tab", "fullscreen", "standalone"):
+            return None
+        return {**result, "orientation": int(angle), "mode": mode}
+    except (KeyError, TypeError, ValueError, OverflowError):
+        return None
+
+
+def measurement_for(device_id: str) -> tuple[dict[str, Any] | None, dict[str, Any] | None]:
+    slot = wall["layout"].get("slots", {}).get(device_id)
+    if slot is None:
+        return None, None
+    return (displays.profile(device_id, slot["profile_revision"]),
+            displays.calibration(device_id, slot["calibration_revision"]))
+
+
+def mapping_decision(
+    device_id: str, record: dict[str, Any], current_wall: dict[str, Any],
+    profile: dict[str, Any] | None, calibration: dict[str, Any] | None,
+    assignment: dict[str, Any] | None,
+) -> dict[str, Any]:
+    """Pure mapping decision shared by readback and static instruction construction."""
+    layout = current_wall["layout"]
+    content = current_wall["scene"]["content"]
+    physical = layout.get("kind") == "physical"
+    entry = layout.get("slots" if physical else "placements", {}).get(device_id)
+    viewport = validated_viewport(record.get("viewport"))
+    caps = record.get("caps") or []
+    health = calibration_health.assess_calibration(
+        profile=profile, calibration=calibration, assignment=assignment,
+        viewport=viewport, device_id=device_id,
+    ) if physical else None
+    state, reason = "ready", None
+    if entry is None or (physical and entry.get("participating", True) is False):
+        state, reason = "unplaced", "no physical slot" if physical else "no logical placement"
+    elif record.get("protocol") not in (2, 3) or (physical and
+            (record.get("protocol") != 3 or "physical" not in caps)):
+        state, reason = "unsupported_client", ("tablet does not advertise image support" if content["type"] == "image" and "image" not in caps else "upgrade tablet client for this layout")
+    elif content["type"] == "calibration" and physical:
+        state, reason = "unsupported_content", "calibration pattern is logical-only"
+    elif content["type"] == "calibration" and "calibration" not in caps:
+        state, reason = "unsupported_client", "tablet does not advertise calibration support"
+    elif content["type"] == "image" and ("image" not in caps or
+            (content.get("fit", "cover") == "contain" and "image_contain" not in caps)):
+        state, reason = "unsupported_client", ("tablet does not advertise image support" if "image" not in caps else "upgrade tablet client for image fit support")
+    elif viewport is not None and abs(viewport["visual_scale"] - 1) > 0.01:
+        state, reason = "zoom_changed", "reset browser zoom to 100%"
+    elif physical and content["type"] != "color":
+        if profile is None or calibration is None:
+            state, reason = "needs_calibration", "no pinned profile or calibration"
+        elif calibration.get("profile_revision") != entry["profile_revision"]:
+            state, reason = "needs_calibration", "calibration does not match pinned profile"
+        elif not _viewport_matches(calibration, viewport or {}):
+            state, reason = "viewport_mismatch", "viewport does not match pinned calibration"
+    digest = hashlib.sha256(json.dumps({
+        "layout": layout, "entry": entry, "profile": profile, "calibration": calibration,
+        "viewport": viewport, "caps": sorted(caps), "content": content,
+        "state": state,
+    }, sort_keys=True, separators=(",", ":")).encode()).hexdigest()[:32]
+    return {"state": state, "reason": reason, "revision": digest,
+            "profile_revision": entry.get("profile_revision") if physical and entry else None,
+            "calibration_revision": entry.get("calibration_revision") if physical and entry else None,
+            "health": health, "viewport": viewport}
+
+
+def current_mapping(device_id: str, record: dict[str, Any]) -> tuple[dict[str, Any], dict[str, Any] | None, dict[str, Any] | None]:
+    profile, pinned = measurement_for(device_id)
+    calibration = tablet_models.effective(device_id, pinned, record.get("viewport") or {})
+    assignment = tablet_models.pinned_assignment(device_id, pinned)
+    return mapping_decision(device_id, record, wall, profile, calibration, assignment), profile, calibration
+
+
+def render_mapping(mapping: dict[str, Any], record: dict[str, Any], *, experimental: bool = False) -> render_status.RenderMapping:
+    viewport = mapping["viewport"]
+    return render_status.RenderMapping(
+        revision=mapping["revision"], state=mapping["state"],
+        viewport=render_status.Viewport(**viewport) if viewport else None,
+        image_supported="image" in (record.get("caps") or []), experimental=experimental,
+    )
+
+
 def _render_frame(
-    device_id: str,
-    record: dict[str, Any],
-    profile: dict[str, Any] | None = None,
+    device_id: str, record: dict[str, Any], profile: dict[str, Any] | None = None,
     calibration: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
-    """The version-3 frame: a logical fallback or a physical render plan.
-
-    The server owns ``G_N_to_P``; the client owns its calibrated
-    ``U_C_to_P``. A device without a matching, current viewport calibration
-    receives no plan and an explicit reason, never a guessed physical claim.
-    """
     layout = wall["layout"]
     scene = _project_scene(wall["scene"])
     record["render_seq"] = int(record.get("render_seq", 0)) + 1
+    mapping = mapping_decision(device_id, record, wall, profile, calibration,
+                               tablet_models.pinned_assignment(device_id, calibration))
     if layout.get("kind") != "physical":
-        logical_frame = _wall_frame(device_id, record)
-        return {"type": "render", "mode": "logical", "render_seq": record["render_seq"], **logical_frame}
-
-    bounds = layout["bounds"]
-    slot = layout["slots"].get(device_id)
-    frame: dict[str, Any] = {
-        "type": "render",
-        "mode": "physical",
-        "render_seq": record["render_seq"],
-        "revision": wall["revision"],
-        "generation": wall["generation"],
-        "wall": {"width": bounds["width"], "height": bounds["height"]},
-        "scene": {"content": scene["content"]},
-        "slot": slot,
-        "calibration": {"status": "needs_calibration", "revision": None},
-        "plan": None,
-    }
-    image_unsupported = scene["content"].get("type") == "image" and "image" not in record.get("caps", ())
-    if image_unsupported:
-        frame["scene"]["content"] = {"type": "color"}
-    if slot is None:
-        frame["calibration"]["reason"] = "no physical slot"
-        return frame
-    if image_unsupported:
-        frame["calibration"]["reason"] = "tablet does not advertise image support"
-        return frame
-    if profile is None or calibration is None:
-        frame["calibration"]["reason"] = "no measured profile or calibration"
-        return frame
-    if calibration.get("profile_revision") != slot.get("profile_revision"):
-        frame["calibration"]["reason"] = "calibration does not match the slot profile"
-        return frame
-    if not _viewport_matches(calibration, record.get("viewport") or {}):
-        frame["calibration"]["reason"] = "viewport does not match the calibration"
-        return frame
-    content = scene["content"]
-    if content.get("type") != "image":
-        frame["calibration"]["reason"] = "physical plans currently require image content"
-        return frame
-    source_width = content.get("intrinsicWidth")
-    source_height = content.get("intrinsicHeight")
-    if not isinstance(source_width, int) or not isinstance(source_height, int):
-        frame["calibration"]["reason"] = "image dimensions are unknown"
-        return frame
-    plan = geometry.normalized_source_to_panel(
-        active_size=(profile["active_width_mm"], profile["active_height_mm"]),
-        bezels=profile["bezels"],
-        center_mm=(slot["center_x_mm"], slot["center_y_mm"]),
-        nudge_mm=(slot["nudge_x_mm"], slot["nudge_y_mm"]),
-        mount_angle=slot["mount_angle"],
-        bounds=(bounds["x"], bounds["y"], bounds["width"], bounds["height"]),
-        source_size=(source_width, source_height),
-        fit=content.get("fit", "cover"),
-    )
-    frame["plan"] = {
-        **plan,
-        "source": {"width": source_width, "height": source_height},
-    }
-    frame["calibration"] = {
-        "status": "valid",
-        "revision": calibration["revision"],
-        "viewport_width": calibration["viewport_width"],
-        "viewport_height": calibration["viewport_height"],
-        "dpr": calibration["dpr"],
-        "orientation": calibration["orientation"],
-        "mode": calibration["mode"],
-        "quarter_turn": calibration["quarter_turn"],
-        "panel_offset_mm": calibration["panel_offset_mm"],
-        "mm_per_css": calibration["mm_per_css"],
-        "panel_width": profile["active_width_mm"],
-        "panel_height": profile["active_height_mm"],
-    }
+        frame = {**_wall_frame(device_id, record), "mode": "logical", "render_seq": record["render_seq"]}
+        if "render_ack" in (record.get("caps") or []):
+            frame["type"] = "render"
+    else:
+        bounds = layout["bounds"]
+        slot = layout["slots"].get(device_id)
+        frame = {
+            "type": "render", "mode": "physical", "render_seq": record["render_seq"],
+            "revision": wall["revision"], "generation": wall["generation"],
+            "wall": {"width": bounds["width"], "height": bounds["height"]},
+            "scene": scene, "slot": slot, "plan": None,
+            "calibration": {"status": "needs_calibration", "revision": None,
+                            "reason": mapping["reason"]},
+        }
+        if mapping["state"] == "ready":
+            frame["calibration"] = {"status": "valid", "revision": calibration["revision"] if calibration else None}
+            if scene["content"]["type"] == "image" and profile and calibration and slot:
+                content = scene["content"]
+                plan = geometry.normalized_source_to_panel(
+                    active_size=(profile["active_width_mm"], profile["active_height_mm"]),
+                    bezels=profile["bezels"], center_mm=(slot["center_x_mm"], slot["center_y_mm"]),
+                    nudge_mm=(slot["nudge_x_mm"], slot["nudge_y_mm"]), mount_angle=slot["mount_angle"],
+                    bounds=(bounds["x"], bounds["y"], bounds["width"], bounds["height"]),
+                    source_size=(content["intrinsicWidth"], content["intrinsicHeight"]), fit=content.get("fit", "cover"),
+                )
+                frame["plan"] = {**plan, "source": {"width": content["intrinsicWidth"], "height": content["intrinsicHeight"]}}
+                frame["calibration"].update({key: calibration[key] for key in (
+                    "viewport_width", "viewport_height", "dpr", "orientation", "mode", "quarter_turn", "panel_offset_mm", "mm_per_css")})
+                frame["calibration"].update(panel_width=profile["active_width_mm"], panel_height=profile["active_height_mm"])
+        if scene["content"]["type"] == "image" and ("image" not in (record.get("caps") or []) or
+                (scene["content"].get("fit", "cover") == "contain" and "image_contain" not in (record.get("caps") or []))):
+            frame["scene"]["content"] = {"type": "color"}
+    frame["mapping"] = mapping
+    if record.get("connection_id"):
+        frame["token"] = {"connection_id": record["connection_id"], "generation": wall["generation"],
+                          "revision": wall["revision"], "render_seq": record["render_seq"],
+                          "mapping_revision": mapping["revision"], "asset": wall["scene"]["content"].get("asset")}
     return frame

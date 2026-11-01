@@ -335,3 +335,21 @@ def _calibration_row(row: Any) -> dict[str, Any] | None:
         "method": str(row[15]),
         "created_at": str(row[16]),
     }
+
+
+def histories() -> tuple[dict[str, dict[int, dict[str, Any]]], dict[str, dict[int, dict[str, Any]]]]:
+    """All revisions for transactional lifecycle plans and durable digests."""
+    profiles: dict[str, dict[int, dict[str, Any]]] = {}
+    calibrations: dict[str, dict[int, dict[str, Any]]] = {}
+    with persist._connection() as connection:
+        profile_keys = connection.execute("SELECT device_id, revision FROM display_profiles ORDER BY device_id, revision").fetchall()
+        calibration_keys = connection.execute("SELECT device_id, revision FROM calibrations ORDER BY device_id, revision").fetchall()
+    for device_id, revision in profile_keys:
+        value = profile(device_id, revision)
+        if value is not None:
+            profiles.setdefault(device_id, {})[revision] = value
+    for device_id, revision in calibration_keys:
+        value = calibration(device_id, revision)
+        if value is not None:
+            calibrations.setdefault(device_id, {})[revision] = value
+    return profiles, calibrations

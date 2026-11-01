@@ -94,16 +94,23 @@ def copy_assignment(source_id: str, target_id: str, profile_offset: int, calibra
     persist.save_meta("tablet_model_assignments", all_assignments)
 
 
-def effective(device_id: str, calibration: dict[str, Any] | None, viewport: dict[str, Any]) -> dict[str, Any] | None:
+def pinned_assignment(device_id: str, calibration: dict[str, Any] | None) -> dict[str, Any]:
     if calibration is None:
-        return None
+        return {}
     history = persist.load_meta("tablet_model_calibrations") or {}
     assignment = history.get(device_id, {}).get(str(calibration.get("revision")))
     if assignment is None:
         assignment = assignments().get(device_id, {})
     if (assignment.get("profile_revision") != calibration.get("profile_revision")
-        or assignment.get("calibration_revision") != calibration.get("revision")):
-        return calibration
+            or assignment.get("calibration_revision") != calibration.get("revision")):
+        return {}
+    return deepcopy(assignment)
+
+
+def effective(device_id: str, calibration: dict[str, Any] | None, viewport: dict[str, Any]) -> dict[str, Any] | None:
+    if calibration is None:
+        return None
+    assignment = pinned_assignment(device_id, calibration)
     model = assignment.get("model")
     if not isinstance(model, dict):
         return calibration

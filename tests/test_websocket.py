@@ -362,40 +362,20 @@ class TestSingleDeviceRecord:
 
 
 class TestDelete:
-    def test_delete_removes_the_device_and_closes_its_socket(
-        self, client, device_payload
-    ):
+    def test_delete_refuses_a_device_with_an_owned_socket(self, client, device_payload):
         client.post("/devices/register", json=device_payload)
-
         with client.websocket_connect("/ws/controller") as controller:
-            controller.receive_json()  # snapshot
-
+            controller.receive_json()
             with client.websocket_connect(device_url()) as device:
-                device.receive_json()  # welcome
-                controller.receive_json()  # device_online
-
+                device.receive_json()
+                controller.receive_json()
                 response = client.delete(f"/devices/{DEVICE_ID}")
-                assert response.status_code == 200
-                assert response.json() == {
-                    "removed": True,
-                    "device_id": DEVICE_ID,
-                }
-
-                with pytest.raises(WebSocketDisconnect) as exc_info:
-                    device.receive_json()
-                assert exc_info.value.code == 1000
-
-                assert controller.receive_json()["type"] == "device_offline"
-
-                # device_offline dims the tile; device_removed drops it. A
-                # controller that did not issue the DELETE needs both.
-                assert controller.receive_json() == {
-                    "type": "device_removed",
-                    "device_id": DEVICE_ID,
-                }
-
-        assert client.get("/devices").json() == {}
-        assert client.get(f"/device/{DEVICE_ID}").status_code == 404
+                assert response.status_code == 409
+                assert response.json()["detail"]["code"] == "old_connected"
+                assert client.get(f"/device/{DEVICE_ID}").json()["online"] is True
+                client.post(f"/devices/{DEVICE_ID}/color", json={"color": "#123456"}).raise_for_status()
+                assert device.receive_json() == {"type": "set_color", "color": "#123456"}
+                assert controller.receive_json()["type"] == "device_updated"
 
     def test_delete_of_an_offline_device_announces_only_removal(
         self, client, device_payload

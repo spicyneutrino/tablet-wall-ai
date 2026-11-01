@@ -48,7 +48,7 @@ SUPPORTED_PROTOCOLS = (1, 2, 3)
 # with the curated-asset endpoints (PROTOCOL.md "Still images"); a client only
 # sees image content after it advertises the matching cap.
 SERVER_CAPS = ["calibration", "image"]
-SERVER_CAPS_V3 = ["calibration", "image", "physical"]
+SERVER_CAPS_V3 = ["calibration", "image", "physical", "render_ack", "identify", "image_contain"]
 
 # Still images (PROTOCOL.md "Still images"): a content ID is ``sha256:`` plus
 # the lowercase SHA-256 of the file bytes, and the URL a descriptor carries is

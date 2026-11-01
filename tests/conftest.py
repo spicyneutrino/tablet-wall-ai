@@ -6,10 +6,12 @@ import pytest
 from fastapi.testclient import TestClient
 
 import main
-from tabletwall import writer
+from tabletwall import writer, render_status
 
 
 def _clear_state() -> None:
+    render_status.reset()
+    main.identify_commands.clear()
     main.devices.clear()
     main.device_sockets.clear()
     main.controller_sockets.clear()

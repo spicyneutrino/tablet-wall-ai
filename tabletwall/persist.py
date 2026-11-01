@@ -17,6 +17,7 @@ working directory, which ``*.db`` already keeps out of git.
 
 import fcntl
 import json
+import hashlib
 import os
 import secrets
 import sqlite3
@@ -807,11 +808,12 @@ def save_meta(key: str, value: Any) -> None:
 
 _DEVICE_ROSTER_KEY = "device_roster.v1"
 _DEVICE_FIELDS = frozenset({
-    "device_id", "width", "height", "type", "color", "number", "last_seen",
+    "device_id", "width", "height", "type", "color", "number", "last_seen", "label",
 })
 
 
 def _validate_devices(document: Any) -> dict[str, dict[str, Any]]:
+    from tabletwall.device_lifecycle import normalize_label
     from tabletwall.protocol import (
         MAX_DEVICE_DIMENSION, MAX_DEVICE_TYPE_LENGTH, MAX_DEVICES,
         _normalise_color, _parse_device_id,
@@ -825,7 +827,7 @@ def _validate_devices(document: Any) -> dict[str, dict[str, Any]]:
             _parse_device_id(key) != key
             or not isinstance(record, dict)
             or set(record) - _DEVICE_FIELDS
-            or not (_DEVICE_FIELDS - {"number"}) <= set(record)
+            or not (_DEVICE_FIELDS - {"number", "label"}) <= set(record)
             or record.get("device_id") != key
         ):
             raise SchemaError("device roster contains an invalid identity or fields")
@@ -851,6 +853,11 @@ def _validate_devices(document: Any) -> dict[str, dict[str, Any]]:
                 raise ValueError("contact time has no timezone")
         except (KeyError, TypeError, ValueError) as error:
             raise SchemaError("device roster contains an invalid color or contact time") from error
+        try:
+            if normalize_label(record.get("label")) != record.get("label"):
+                raise ValueError("noncanonical label")
+        except ValueError as error:
+            raise SchemaError("device roster contains an invalid label") from error
         number = record.get("number")
         if number is not None:
             if type(number) is not int or not 0 < number <= MAX_DEVICES or number in numbers:
@@ -881,3 +888,11 @@ def save_devices(records: Mapping[str, Mapping[str, Any]]) -> None:
         for key, record in records.items()
     }
     save_meta(_DEVICE_ROSTER_KEY, _validate_devices(document))
+
+
+def snapshot_digests(kind: str) -> dict[str, str]:
+    """Hash stored bytes too, so replacement of a damaged row changes the ETag."""
+    table, column = _SNAPSHOT_TABLES[kind]
+    with _connection() as connection:
+        rows = connection.execute(f"SELECT name, {column} FROM {table} ORDER BY name").fetchall()
+    return {name: hashlib.sha256(document.encode()).hexdigest()[:32] for name, document in rows}

@@ -27,11 +27,18 @@ def test_google_native_landscape_keeps_the_measured_portrait_panel(client, orien
     assert effective["mm_per_css"] == [.16195, .16195]
 
 
-def register(client, **changes):
+def register(client, *, confirm=True, **changes):
     data = {"device_id": DEVICE, "width": 768, "height": 1024, "device_type": "ios",
             "screen_width": 768, "screen_height": 1024, "screen_dpr": 2, "platform_family": "ios"}
     data.update(changes)
-    return client.post("/devices/register", json=data)
+    response = client.post("/devices/register", json=data)
+    key = data["device_id"]
+    assignment = tablet_models.assignments().get(key, {})
+    matches = tablet_models.match(data)
+    if confirm and assignment.get("mode") != "manual" and not assignment.get("model_id") and len(matches) == 1:
+        client.put(f"/api/v3/tablet-assignments/{key}", json={"mode": "explicit", "model_id": matches[0]},
+                   headers={"If-Match": client.get("/api/v3/config").json()["etag"]}).raise_for_status()
+    return response
 
 
 def test_recognition_override_and_persistence(client):
@@ -57,7 +64,7 @@ def test_recognition_override_and_persistence(client):
 
 
 def test_unknown_and_ambiguous_stay_unknown(client, monkeypatch):
-    assert register(client, screen_width=700).status_code == 200
+    assert register(client, confirm=False, screen_width=700).status_code == 200
     assert tablet_models.assignments()[DEVICE]["model_id"] is None
     monkeypatch.setitem(tablet_models.BUILTINS, "duplicate", deepcopy(tablet_models.BUILTINS["ipad-air-2"]))
     assert register(client).status_code == 200
@@ -78,7 +85,7 @@ def test_rotation_matches_render_and_playback_and_keeps_revision_pin(client):
             "mount_angle": 0, "participating": True}
     main.wall["layout"] = {"kind": "physical", "bounds": {"x": 0, "y": 0, "width": 180, "height": 240}, "slots": {DEVICE: slot}}
     main.wall["scene"]["content"] = {"type": "image", "intrinsicWidth": 1800, "intrinsicHeight": 2400, "fit": "cover"}
-    record = {"viewport": viewport, "caps": ["image", "physical"]}
+    record = {"protocol": 3, "viewport": viewport, "caps": ["image", "physical"]}
     frame = _render_frame(DEVICE, record, profile, effective)
     plan, playback_cal = main._physical_plan_for(DEVICE, record, 1800, 2400)
     assert frame["calibration"] == playback_cal
@@ -242,7 +249,8 @@ def test_rebind_keeps_model_rotation_and_existing_measurement_history(client, au
     client.put("/api/v3/layout", headers={"If-Match": config["etag"]}, json=body).raise_for_status()
     target = "11111111-1111-4111-8111-111111111111"
     if auto_detect_target:
-        register(client, device_id=target).raise_for_status()
+        register(client, device_id=target, confirm=False).raise_for_status()
+        tablet_models.assign(target, "auto", "ipad-air-2")
     else:
         client.post("/devices/register", json={"device_id": target, "width": 1024,
                                              "height": 768, "device_type": "ios"}).raise_for_status()

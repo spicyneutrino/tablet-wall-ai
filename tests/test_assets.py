@@ -778,7 +778,7 @@ class TestImageScenePersistence:
             after = second.get("/wall").json()
             served = second.get(f"/assets/{asset_id}")
             register(second, device_payload)
-            with second.websocket_connect(device_url(caps="image")) as device:
+            with second.websocket_connect(device_url(caps="image,image_contain")) as device:
                 device.receive_json()  # welcome
                 frame = device.receive_json()  # wall
 
