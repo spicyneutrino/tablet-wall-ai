@@ -40,6 +40,21 @@ def test_mounted_readiness_health_and_qr_use_live_wall(client, monkeypatch):
         assert response.headers["x-frame-options"] == "DENY"
 
 
+def test_new_registration_notifies_durable_config_change_after_commit(client, monkeypatch):
+    notifications = []
+
+    async def changed():
+        notifications.append(main._config_etag())
+
+    monkeypatch.setattr(main.hub, "_broadcast_config_updated", changed)
+    before = config(client)["etag"]
+    register(client)
+    assert notifications == [config(client)["etag"]]
+    assert notifications[0] != before
+    register(client)
+    assert len(notifications) == 1, "re-registering transport observations must not trigger durable refresh"
+
+
 @pytest.mark.parametrize("protocol", [1, 2])
 def test_new_legacy_controller_cannot_observe_a_fake_physical_wall(client, protocol):
     from starlette.websockets import WebSocketDisconnect

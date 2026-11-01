@@ -16,7 +16,7 @@ const context = vm.createContext({ window: { OperatorState: model, location: { h
 vm.runInContext(fs.readFileSync(require.resolve("../frontend/controller/operator-sync.js"), "utf8"), context);
 const sync = context.window.OperatorSync.create({ state,
     api: () => new Promise(resolve => requests.push(resolve)),
-    ingestConfig: (config, options) => { received.push({ config, options }); state.operatorConfig = config; },
+    ingestConfig: (config, options) => { received.push({ config, options }); state.operatorConfig = config; state.etagState = "current"; },
     renderAll: () => {}, showConflict: () => {}, isDirty: () => false });
 const config = revision => ({ revision, etag: String(revision), runtime: { devices: {} } });
 const flush = () => new Promise(resolve => setImmediate(resolve));
@@ -29,10 +29,18 @@ const flush = () => new Promise(resolve => setImmediate(resolve));
     assert.equal(received[0].options.preserveDraft, true);
     const pending = sync.reconcile();
     sockets[0].onmessage({ data: JSON.stringify({ type: "config_updated", etag: "9" }) });
+    assert.equal(state.etagState, "stale", "writes wait for the new authoritative configuration");
     requests.shift()(config(7)); await pending; await flush();
     assert.equal(requests.length, 1, "update during fetch queues a fresh read after discarding the old response");
     requests.shift()(config(9)); await flush();
+    assert.equal(state.etagState, "current");
     assert.deepEqual(received.map(item => item.config.revision), [8, 9]);
+    const interrupted = sync.reconcile();
+    sockets[0].onmessage({ data: JSON.stringify({ type: "device_online", device: { device_id: "joined", online: true } }) });
+    requests.shift()(config(10)); await interrupted; await flush();
+    assert.equal(requests.length, 1, "runtime observations during a read must queue a fresh authoritative read");
+    requests.shift()(config(11)); await flush();
+    assert.deepEqual(received.map(item => item.config.revision), [8, 9, 11]);
     state.roster.other = { render: { state: "displayed", age_ms: 100, observed_mono: 10 } };
     sockets[0].onmessage({ data: JSON.stringify({ type: "device_updated", device: { device_id: "tablet", online: true, render: { state: "loading" } } }) });
     assert.equal(state.roster.tablet.render.state, "loading");

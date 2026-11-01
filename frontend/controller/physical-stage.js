@@ -150,7 +150,6 @@ window.PhysicalStage = {
         function revealInspector() {
             if (state.drag || compactView()) return;
             if (!el.inspectorBody || el.inspectorBody.hidden) return;
-            selectionChanged();
             showTab("tablet", { persist: true });
             const card = el.inspectorBody.closest(".inspector") || el.inspectorBody;
             if (card && typeof card.scrollIntoView === "function") {
@@ -186,6 +185,7 @@ window.PhysicalStage = {
                 syncDeviceRows();
                 syncInspector();
             }
+            selectionChanged();
             showTab("tablet", { persist: true });
             if (options && options.reveal) revealInspector();
         }

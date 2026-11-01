@@ -33,7 +33,7 @@ function harness() {
     const state = {};
     const copied = [];
     let copyResult = true;
-    const context = vm.createContext({ window: {}, document: document, URL: URL, Date: Date, JSON: JSON });
+    const context = vm.createContext({ window: { location: { origin: "http://127.0.0.1:8000" } }, document: document, URL: URL, Date: Date, JSON: JSON });
     vm.runInContext(fs.readFileSync(require.resolve("../frontend/controller/operator-readiness.js"), "utf8"), context);
     const model = context.window.OperatorReadiness;
     const instance = model.create({
@@ -163,7 +163,7 @@ function factsText(nodes) {
     assert.equal(page.nodes["tablet-url"].value, "http://192.168.50.1:8080/client/");
     assert.equal(page.nodes["copy-tablet-url"].disabled, false);
     assert.equal(page.nodes["tablet-qr-figure"].hidden, false);
-    assert.equal(page.nodes["tablet-qr"].attrs.src, "/api/v3/join-qr");
+    assert.ok(page.nodes["tablet-qr"].attrs.src.startsWith("/api/v3/join-qr?tablet_url="));
     assert.equal(page.nodes["readiness-errors"].hidden, true);
     assert.equal(page.nodes["operator-readiness-advice"].children.length, 1);
     assert.ok(page.nodes["readiness-refreshed"].textContent.startsWith("Last successful read at "));
@@ -187,7 +187,23 @@ function factsText(nodes) {
     assert.equal(page.calls.length, 2, "retrying the QR also refreshes readiness");
     page.pending.shift().resolve(JSON.parse(JSON.stringify(full)));
     await new Promise(resolve => setImmediate(resolve));
-    assert.equal(page.nodes["tablet-qr"].attrs.src, "/api/v3/join-qr");
+    assert.ok(page.nodes["tablet-qr"].attrs.src.endsWith("&retry=1"));
+
+    const previousQr = page.nodes["tablet-qr"].attrs.src;
+    const changedAddress = page.instance.load();
+    page.pending.shift().resolve({ ...full, tablet_url: "http://10.42.0.44:8080/client/" });
+    await changedAddress;
+    const changedQr = page.nodes["tablet-qr"].attrs.src;
+    assert.notEqual(changedQr, previousQr, "a changed encoded address refetches the stable QR endpoint");
+    assert.equal(new URL(changedQr, "http://127.0.0.1:8000").searchParams.get("tablet_url"), "http://10.42.0.44:8080/client/");
+    assert.equal(page.nodes["tablet-qr"].hidden, true, "the old bitmap is hidden until the new image loads");
+    page.nodes["tablet-qr"].src = changedQr;
+    page.nodes["tablet-qr"].currentSrc = previousQr;
+    page.nodes["tablet-qr"].listeners.load[0]();
+    assert.equal(page.nodes["tablet-qr"].hidden, true, "an obsolete load cannot reveal the previous QR");
+    page.nodes["tablet-qr"].currentSrc = changedQr;
+    page.nodes["tablet-qr"].listeners.load[0]();
+    assert.equal(page.nodes["tablet-qr"].hidden, false);
 
     /* Explicit retry after a failed read keeps the last good data but says so. */
     const failed = harness();

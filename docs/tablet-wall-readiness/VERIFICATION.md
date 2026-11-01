@@ -48,6 +48,63 @@ test-fixture, and optical-tool files outside the production lint target. The
 repository's required `ruff check main.py tabletwall deploy` passes. Those
 unrelated files were not changed to make this feature's checks green.
 
-Outstanding evidence includes the consolidated desktop/mobile flows, complete
-integration and security checks, and real-tablet calibration, recovery, and soak
-acceptance. Experimental video tests are not evidence of usable tablet video.
+## Final operator integration checkpoint
+
+The following results supersede earlier pending statements about the integrated
+operator journey. Independent re-review of the final corrections is still open.
+
+- Integrated `bb48ce1` as `2bb6499`. The readiness card reads the mounted API,
+  preserves unknown/error states, and separates a recorded manifest from a
+  verified restore. Worker evidence had 77 checks but used a selection refresh
+  workaround and left rebind blocked. Those two flows were not accepted then.
+- `68c955c` preserves model-source history for same-hardware rebind using only
+  unambiguous historical profile/scale snapshots. It refuses missing or
+  conflicting source metadata and respects the model DPR fence. Focused checks
+  passed. Its first full run retained an offline-origin scan failure caused by
+  a dummy QR validation URL; the final correction uses the actual operator origin.
+- Fresh independent review at `68c955c` passed 670 Python cases, all 17 Node
+  suites, production Ruff and mypy for 47 files, and the adapted Host/logging
+  security and recovery probes. It nevertheless **failed** on wrong-device
+  actions in logical/compact views and an obsolete displayed QR after changing
+  the tablet origin. Report `/tmp/tablet-review-68c955c-lm1qjl9p/REVIEW.md`.
+- Root corrected those findings and the registration/reconciliation race.
+  The selection notification runs independently of inspector visibility; label
+  responses cannot replace another selection's edit baseline. New registration
+  publishes a durable-config update after commit. A runtime event interrupting
+  a read queues a new read. Own in-flight writes retain their response handling.
+  The QR image source changes with the encoded tablet URL; old pixels stay
+  hidden until the current image loads. Retry also requests a new image.
+- `.venv/bin/python -m pytest -q
+  --junitxml=/tmp/tablet-wall-final-software.xml` passed **1,782 tests**, three
+  dependency deprecations, 85.43 s. All **17** `tests/*.test.js` suites passed.
+  `.venv/bin/python -m ruff check main.py tabletwall deploy` passed.
+  `.venv/bin/python -m mypy` passed for **47** source files.
+- Actual private Uvicorn and four Chromium tablet contexts at 1024×768 CSS px,
+  DPR 2, passed **106 checks**. Operator views were 1600×1000, 390×844, and 200%
+  CSS zoom. The driver used the real routes, sockets and shipped client rather
+  than backend fixtures. Logical and physical 2×2/1×4, global Fill/Fit including
+  sampled letterbox pixels, current acknowledgements, induced image failure and
+  retry, Identify/expiry, labels, Remove, Forget, re-registration, cross-kind
+  saves/recalls, replacement, and recall of both saved kinds after replacement
+  passed. List, keyboard and stage selection changed only the intended label in
+  both layout kinds and both viewport sizes. No Refresh status workaround or
+  model reconfirmation workaround was used. No unexpected page exceptions or
+  failed network requests remained; the deliberately aborted image is excluded.
+- Journey artifacts and rerunnable driver are at
+  `/var/home/oak/.local/share/tablet-wall-ai/readiness-program/final-qa/20261101T120950Z/`.
+  `results.json` contains checks and empty failure lists; `screenshots/` and
+  `videos/` retain the actual run. Earlier failed runs are retained in sibling
+  timestamped directories. Their failures include a real own-write ETag race,
+  and two driver errors (assuming a model label contained a short ID and using
+  CSP-disallowed string evaluation), both corrected before the passing run.
+- `.venv/bin/python /tmp/tablet-wall-qr-refresh-check.py` started a private
+  backend, decoded the displayed QR with independent `zxing-cpp`, restarted the
+  backend at the same operator origin with a changed tablet origin, clicked
+  Refresh readiness and decoded the new displayed pixels. Both addresses
+  matched their corresponding text. Evidence `/tmp/tablet-wall-qr-refresh-wj8xo99d/`.
+
+All owned servers and browsers were stopped. These are software browser checks,
+not measurements of panels, bezels, physical seams, sleep, battery, or optical
+synchronisation. Hardware, installed TLS/auth composition, host reboot, and
+real-device soak remain unverified. Experimental video tests are not evidence
+of usable tablet video.

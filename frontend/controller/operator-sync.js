@@ -11,7 +11,7 @@ window.OperatorSync = {
             if (stopped) return;
             if (fetching) { queued = true; return; }
             if (state.busy && !force) { queued = true; return; }
-            fetching = true;
+            fetching = true; queued = false;
             const ticket = fence.start();
             try {
                 const config = await api("GET", "/api/v3/config");
@@ -44,9 +44,11 @@ window.OperatorSync = {
                     receive(frame.config); state.rosterCheckedAt = new Date().toISOString(); state.rosterError = null;
                     status("Live operator updates connected. Last snapshot " + new Date().toLocaleTimeString() + ".");
                 } else if (frame.type === "config_updated") {
+                    if (!state.busy) { state.etagState = "stale"; renderAll(); }
                     if (isDirty() && frame.etag && frame.etag !== state.etag) showConflict("The server changed while this draft was being edited. Keep the draft and reload when ready.");
                     reconcile();
                 } else if (["device_online", "device_offline", "device_removed", "device_updated", "device_status"].includes(frame.type)) {
+                    if (fetching) queued = true;
                     const device = frame.device, id = frame.device_id || frame.id || device && (device.id || device.device_id);
                     if (id) {
                         if (frame.type === "device_removed") delete state.roster[id];

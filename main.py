@@ -1019,6 +1019,7 @@ async def device_register(device: DeviceRegistration):
                 record[key] = existing[key]
         devices[device_id] = record
         current_assignment = tablet_models.assignments().get(device_id)
+        assignment_created = current_assignment is None
         if current_assignment is None and displays.latest_profile(device_id) is not None:
             current_assignment = tablet_models.assign(device_id, "manual")
         if current_assignment is None:
@@ -1034,6 +1035,8 @@ async def device_register(device: DeviceRegistration):
     record = _device_record(device_id)
 
     await _broadcast({"type": "device_updated", "device": record})
+    if existing is None or assignment_created:
+        await hub._broadcast_config_updated()
 
     return {
         "registered": True,

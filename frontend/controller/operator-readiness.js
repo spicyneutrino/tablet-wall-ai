@@ -74,7 +74,8 @@
         const rawQr = stringOrNull(body && body.join_qr_url);
         let qrPath = false;
         if (rawQr !== null && rawQr.startsWith("/")) {
-            try { qrPath = new URL(rawQr, "http://operator.invalid").origin === "http://operator.invalid"; }
+            const origin = settings.operatorOrigin || root.location && root.location.origin;
+            try { qrPath = !!origin && new URL(rawQr, origin).origin === origin; }
             catch (_) { qrPath = false; }
         }
         const qr = {
@@ -204,7 +205,7 @@
             <details id="readiness-paths"><summary>Data paths</summary><dl class="operator-facts" id="operator-readiness-paths"></dl></details>
             <details id="readiness-advice"><summary>What this server cannot do</summary><ul id="operator-readiness-advice"></ul></details>
             <p id="readiness-message" role="status" aria-live="polite"></p></section>`;
-        let data = null, fetchedAt = null, failure = null, qrFailed = false, loading = false;
+        let data = null, fetchedAt = null, failure = null, qrFailed = false, loading = false, qrRetry = 0;
 
         function factList(element, pairs, key) {
             if (element.dataset.key === key) return;
@@ -232,7 +233,12 @@
             const figure = $("tablet-qr-figure"), image = $("tablet-qr"), qrError = $("tablet-qr-error");
             figure.hidden = !model.qr.href;
             qrError.hidden = !(qrFailed && model.qr.href);
-            if (model.qr.href && image.getAttribute("src") !== model.qr.href && !qrFailed) image.setAttribute("src", model.qr.href);
+            const qrSrc = model.qr.href && model.qr.href + (model.qr.href.includes("?") ? "&" : "?")
+                + "tablet_url=" + encodeURIComponent(model.url.href) + "&retry=" + qrRetry;
+            if (qrSrc && image.getAttribute("src") !== qrSrc && !qrFailed) {
+                image.hidden = true;
+                image.setAttribute("src", qrSrc);
+            }
             if (!model.qr.href) { qrFailed = false; image.removeAttribute("src"); }
             $("tablet-qr-note").textContent = model.qr.state === "unusable"
                 ? "The server did not provide a usable same-origin QR address. Use the text address."
@@ -299,6 +305,7 @@
         $("btn-readiness-refresh").addEventListener("click", load);
         $("btn-readiness-qr-retry").addEventListener("click", function () {
             qrFailed = false;
+            qrRetry += 1;
             const image = $("tablet-qr");
             image.removeAttribute("src");
             render();
@@ -307,6 +314,10 @@
         $("tablet-qr").addEventListener("error", function () {
             qrFailed = true;
             render();
+        });
+        $("tablet-qr").addEventListener("load", function () {
+            const image = $("tablet-qr");
+            if (image.currentSrc === image.src) image.hidden = false;
         });
         $("copy-tablet-url").addEventListener("click", async function () {
             const model = view(data, { error: failure, fetchedAt: fetchedAt });

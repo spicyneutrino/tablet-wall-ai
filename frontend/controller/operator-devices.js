@@ -104,7 +104,7 @@ window.OperatorDevices = {
         }
         $("tablet-label-form").addEventListener("submit", event => {
             event.preventDefault(); const id = selectedId, label = $("tablet-label").value.trim();
-            run(async () => { const result = await api("PATCH", path(id), { label: label || null }, { etag: true }); labelBaseline = label; ingestConfig(result, { preserveDraft: true }); message("Label saved."); });
+            run(async () => { const result = await api("PATCH", path(id), { label: label || null }, { etag: true }); if (state.selectedId === id) labelBaseline = label; ingestConfig(result, { preserveDraft: true }); message("Label saved for " + labelFor(id) + "."); });
         });
         for (const action of ["identify", "retry-image", "reconnect"]) $("tablet-" + action).addEventListener("click", () => {
             const id = selectedId;
