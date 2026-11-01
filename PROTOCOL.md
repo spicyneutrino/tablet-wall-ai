@@ -805,6 +805,10 @@ active wall row refuses startup.
 
 ### HTTP configuration API
 
+The integrated still-image operator read model, render acknowledgements,
+device lifecycle, grids, ruler review, and readiness routes are specified in
+[docs/OPERATOR-PROTOCOL.md](docs/OPERATOR-PROTOCOL.md).
+
 | Route | Meaning |
 | --- | --- |
 | `GET /api/v3/config` | schema, revision, generation, tagged layout, actual projected scene, displays, calibrations, model assignments and an `ETag` |
