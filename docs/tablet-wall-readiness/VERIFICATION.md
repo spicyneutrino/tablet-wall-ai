@@ -178,3 +178,28 @@ artifacts are in `final-qa/20261101T141043Z-keyboard/`; passing results and
 screenshot are in `final-qa/20261101T141121Z-keyboard/` under the same
 readiness-program directory. No backend or library state from the live wall was
 used. All owned processes were stopped.
+
+### Evidence retention and coverage audit
+
+Copies of the final Python JUnit/log, original QR refresh probe and decoded-image
+bundle, and fresh independent review report now live in durable local storage:
+`/var/home/oak/.local/share/tablet-wall-ai/readiness-program/final-evidence/`.
+`run-provenance.json` records the named application commit and SHA-256 of each
+run's driver. Some runs occurred before committing their already-tested source;
+those entries say so explicitly. The frozen independent review additionally
+verified every tracked blob against its reviewed commit.
+
+The 106-check journey did not click generated patterns. Its pass therefore did
+not establish that acceptance item. The actual extra check found the DTO mismatch
+and the fix is `f2a8c5f`. The passing generated-grid control is under **Wall →
+Colours and continuity checks**; the older raw result label saying “Content” is
+incorrect. The elapsed recovery observation measures repaint after restoring a
+software-offline context and a private backend, not OS freeze detection or Wi-Fi
+radio recovery. The later stronger predicate also requires a matching current
+accepted token.
+
+The read-only coverage audit is preserved at
+`readiness-program/reviews/acceptance-audit-0529eaa.md`. Its bounded missing
+acceptance assertions are being collected by portable feature/accessibility
+runners. Its hardware requirement for programme-level software completion is
+rejected in [TRACKING.md](TRACKING.md); ROADMAP §2.2 remains authoritative.

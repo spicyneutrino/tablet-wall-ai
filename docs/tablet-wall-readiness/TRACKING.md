@@ -36,3 +36,32 @@ database, asset library, hotspot, and firewall are outside this implementation r
 
 See [DECISIONS.tsv](DECISIONS.tsv) for integration decisions, and
 [QA-BASELINE.md](QA-BASELINE.md) for the initial rendered-app evidence.
+
+## Final software acceptance
+
+The integrated application is at `0cc4cec` for the current acceptance pass.
+The full Python checkpoint is 1,782 tests; 18 Node suites pass. Actual isolated
+four-tablet journeys passed 106 checks from desktop and again from phone width.
+A fresh independent review passed `0529eaa`, including the 106-check journey,
+delayed-response and QR races. Later generated-pattern/entry-point corrections
+at `f2a8c5f` and the keyboard focus correction at `0cc4cec` have focused and
+actual-browser evidence; their final acceptance mapping remains open.
+
+The read-only acceptance audit found a real generated-pattern DTO defect at
+`0529eaa`, fixed at `f2a8c5f`, and identified missing explicit acceptance
+assertions. Portable feature and accessibility runners are being added for those
+assertions. This is evidence completion, not a change to the accepted feature
+scope. See the latest sections of [VERIFICATION.md](VERIFICATION.md).
+
+The audit's suggestion that programme-level *software* completion needs TWR-17
+is rejected. The canonical two-finish-line definition in ROADMAP §2.2 keeps
+software acceptance separate from real-tablet milestone acceptance. TWR-17 and
+issue #19 remain open regardless of software checks; no hardware claim follows.
+Pairing remains explicitly deferred for profile A, with its residual trust risk.
+
+Durable local evidence is under
+`/var/home/oak/.local/share/tablet-wall-ai/readiness-program/`. `final-evidence/`
+contains the full-suite JUnit/log, independent review report, QR probe/image,
+and `run-provenance.json` with application commits and driver SHA-256 hashes.
+`reviews/acceptance-audit-0529eaa.md` preserves the unedited audit. PR #21 stays
+draft until final software checks and review are resolved.
