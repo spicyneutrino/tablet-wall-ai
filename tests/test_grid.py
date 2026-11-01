@@ -127,6 +127,23 @@ def command(**overrides):
     return grid.GridCommand.from_payload(command_payload(**overrides))
 
 
+@pytest.mark.parametrize("value", [10**400, 1e308])
+def test_grid_rejects_unrepresentable_gap(value):
+    invalid(lambda: command(gap=value))
+
+
+def test_grid_rejects_unrepresentable_logical_size():
+    invalid(lambda: command(logical_sizes={A: {"w": 10**400, "h": 100}}))
+
+
+@pytest.mark.parametrize("orientation", ["auto", "preserve"])
+def test_offline_telemetry_cannot_supply_a_new_logical_size(orientation):
+    invalid(lambda: grid.build_grid(
+        command(device_ids=[A], rows=1, columns=1, orientation=orientation),
+        logical_inputs([make_device(A, AIR, online=False)]),
+    ))
+
+
 def pins(*device_ids, revision=1):
     return {
         device_id: {

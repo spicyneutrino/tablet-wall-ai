@@ -260,7 +260,7 @@ def _bounded_text(value: object, *, limit: int = MAX_IDENTIFIER_LENGTH) -> str |
     """A non-empty bounded string without control characters, or ``None``."""
     if not isinstance(value, str) or not value or len(value) > limit:
         return None
-    if any(character < " " or character == "\x7f" for character in value):
+    if any(character < " " or character == "\x7f" or "\ud800" <= character <= "\udfff" for character in value):
         return None
     return value
 
@@ -283,7 +283,10 @@ def _positive_finite(value: object) -> float | None:
     """A finite number greater than zero that is not a boolean."""
     if isinstance(value, bool) or not isinstance(value, (int, float)):
         return None
-    number = float(value)
+    try:
+        number = float(value)
+    except OverflowError:
+        return None
     if not math.isfinite(number) or number <= 0:
         return None
     return number
@@ -444,46 +447,25 @@ def _bounded_payload(report: object) -> dict[str, Any] | None:
     the 4096-byte bound is still enforced; nonfinite floats make that
     encoding fail and the report is rejected.
     """
-    if isinstance(report, RenderAck):
-        try:
-            payload = asdict(report)
-            text = json.dumps(
-                payload, separators=(",", ":"), allow_nan=False, ensure_ascii=False
-            )
-        except (TypeError, ValueError):
-            return None
-        if len(text.encode("utf-8")) > MAX_REPORT_BYTES:
-            return None
-        return payload
-    if isinstance(report, (bytes, bytearray)):
-        raw = bytes(report)
-        if len(raw) > MAX_REPORT_BYTES:
-            return None
-        try:
-            text = raw.decode("utf-8")
-        except UnicodeDecodeError:
-            return None
-    elif isinstance(report, str):
-        if len(report) > MAX_REPORT_BYTES:
-            return None
-        if len(report.encode("utf-8")) > MAX_REPORT_BYTES:
-            return None
-        text = report
-    elif isinstance(report, MappingABC):
-        try:
+    try:
+        if isinstance(report, RenderAck):
+            report = asdict(report)
+        if isinstance(report, MappingABC):
             text = json.dumps(
                 dict(report), separators=(",", ":"), allow_nan=False, ensure_ascii=False
             )
-        except (TypeError, ValueError):
+        elif isinstance(report, (bytes, bytearray)):
+            if len(report) > MAX_REPORT_BYTES:
+                return None
+            text = report.decode("utf-8")
+        elif isinstance(report, str):
+            text = report
+        else:
             return None
-        if len(text.encode("utf-8")) > MAX_REPORT_BYTES:
+        if len(text) > MAX_REPORT_BYTES or len(text.encode("utf-8")) > MAX_REPORT_BYTES:
             return None
-        return dict(report)
-    else:
-        return None
-    try:
         parsed = json.loads(text)
-    except (json.JSONDecodeError, ValueError, RecursionError):
+    except (TypeError, ValueError, UnicodeError, RecursionError):
         return None
     if not isinstance(parsed, MappingABC):
         return None
@@ -766,7 +748,7 @@ class RenderRegistry:
                 return result("unsupported", "capability")
             if not accepted.visible:
                 return result("blocked", "surface")
-            if current_mapping.viewport is not None and not _viewports_match(
+            if current_mapping.viewport is None or not _viewports_match(
                 accepted.viewport, current_mapping.viewport
             ):
                 return result("blocked", "viewport")

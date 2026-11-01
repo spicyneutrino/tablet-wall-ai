@@ -164,6 +164,13 @@ def command(inputs: RebindInputs, **changes: Any) -> RebindApply:
     return RebindApply.model_validate(data)
 
 
+def test_rebind_refuses_negative_bezel_in_selected_snapshot(inputs):
+    inputs.saved_layouts["logical"].layout["placements"][OLD]["bezel"]["left"] = -8
+    with pytest.raises(LifecycleError) as caught:
+        plan_rebind(command(inputs), inputs)
+    assert caught.value.code == "damaged_layout"
+
+
 def assert_error(status: int, code: str, function: Any, *args: Any) -> LifecycleError:
     with pytest.raises(LifecycleError) as caught:
         function(*args)

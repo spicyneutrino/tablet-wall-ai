@@ -12,7 +12,7 @@ import math
 import unicodedata
 from copy import deepcopy
 from dataclasses import dataclass, field
-from typing import Annotated, Any, Literal, NoReturn
+from typing import Annotated, Any, Literal
 from uuid import UUID
 
 from pydantic import (
@@ -23,7 +23,7 @@ from pydantic import (
     field_validator,
 )
 
-from tabletwall.sizing import validate_sizing
+from tabletwall import layouts
 
 
 class LifecycleError(ValueError):
@@ -259,7 +259,10 @@ def _positive_revision(value: Any) -> bool:
 
 
 def _finite(value: Any) -> bool:
-    return type(value) in (int, float) and math.isfinite(value)
+    try:
+        return type(value) in (int, float) and math.isfinite(value)
+    except OverflowError:
+        return False
 
 
 def _check_pair(
@@ -300,78 +303,27 @@ def _check_pair(
 
 
 def _validate_layout(layout: dict[str, Any] | None, inputs: LifecycleInputs) -> None:
-    def damaged() -> NoReturn:
+    if not isinstance(layout, dict) or layout.get("kind", "logical") not in ("logical", "physical"):
         raise LifecycleError(422, "damaged_layout", "Layout snapshot is damaged")
-
-    if not isinstance(layout, dict) or layout.get("kind", "logical") not in (
-        "logical",
-        "physical",
-    ):
-        damaged()
     physical = _kind(layout) == "physical"
     if ("placements" if physical else "slots") in layout:
-        damaged()
-    bucket = layout.get("slots" if physical else "placements")
-    if not isinstance(bucket, dict):
-        damaged()
-    if (
-        "sizing" in layout
-        and validate_sizing(layout["sizing"], logical=not physical) is None
-    ):
-        damaged()
+        raise LifecycleError(422, "damaged_layout", "Layout snapshot is damaged")
     if physical:
-        bounds = layout.get("bounds")
-        if (
-            not isinstance(bounds, dict)
-            or any(not _finite(bounds.get(k)) for k in ("x", "y", "width", "height"))
-            or bounds["width"] <= 0
-            or bounds["height"] <= 0
-        ):
-            damaged()
-    elif any(not _positive_revision(layout.get(k)) for k in ("width", "height")):
-        damaged()
-    for device_id, entry in bucket.items():
-        _device_id(device_id)
-        if not isinstance(entry, dict):
-            damaged()
-        if physical:
-            if (
-                any(
-                    not _finite(entry.get(k))
-                    for k in (
-                        "center_x_mm",
-                        "center_y_mm",
-                        "mount_angle",
-                        "nudge_x_mm",
-                        "nudge_y_mm",
-                    )
-                )
-                or type(entry.get("participating", True)) is not bool
-            ):
-                damaged()
-            _check_pair(
-                device_id,
-                entry.get("profile_revision"),
-                entry.get("calibration_revision"),
-                inputs,
-            )
-        else:
-            if (
-                entry.get("device_id") != device_id
-                or any(type(entry.get(k)) is not int for k in ("x", "y", "w", "h"))
-                or entry["w"] <= 0
-                or entry["h"] <= 0
-            ):
-                damaged()
-            bezel = entry.get("bezel")
-            if (
-                not isinstance(bezel, dict)
-                or set(bezel) != {"top", "right", "bottom", "left"}
-                or any(type(v) is not int for v in bezel.values())
-                or entry["w"] - bezel["left"] - bezel["right"] <= 0
-                or entry["h"] - bezel["top"] - bezel["bottom"] <= 0
-            ):
-                damaged()
+        for device_id, entry in _entries(layout).items():
+            if isinstance(entry, dict):
+                _check_pair(device_id, entry.get("profile_revision"),
+                            entry.get("calibration_revision"), inputs)
+    try:
+        geometry_keys = {"kind", "sizing"} | (
+            {"bounds", "slots"} if physical else {"width", "height", "placements"}
+        )
+        layouts.normalize(
+            {key: value for key, value in layout.items() if key in geometry_keys},
+            profile_for=lambda device_id, revision: inputs.profiles.get(device_id, {}).get(revision),
+            calibration_for=lambda device_id, revision: inputs.calibrations.get(device_id, {}).get(revision),
+        )
+    except (ValueError, TypeError, KeyError, OverflowError) as error:
+        raise LifecycleError(422, "damaged_layout", "Layout snapshot is damaged") from error
 
 
 def _summary(

@@ -18,6 +18,12 @@ def bounds():
     return {"x": -125.0, "y": -75.0, "width": 350.0, "height": 300.0}
 
 
+@pytest.mark.parametrize("origin", [1e20, -1e20, 10**400])
+def test_pattern_rejects_origins_without_representable_grid_precision(origin):
+    with pytest.raises(test_pattern.PatternError):
+        test_pattern.generate_grid({**bounds(), "x": origin})
+
+
 def decode(result):
     image = Image.open(BytesIO(result.data))
     image.load()

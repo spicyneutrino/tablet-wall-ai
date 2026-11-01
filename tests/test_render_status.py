@@ -103,6 +103,33 @@ def ack_payload(token: RenderToken | None = None, **overrides) -> dict:
     return values
 
 
+@pytest.mark.parametrize("bad_width", [10**400, float("inf")])
+def test_unrepresentable_viewport_report_is_rejected(bad_width):
+    registry = RenderRegistry()
+    expect(registry)
+    payload = ack_payload()
+    payload["viewport"]["width"] = bad_width
+    assert accept(registry, payload=payload) is False
+
+
+@pytest.mark.parametrize("wire", [False, True])
+def test_surrogate_token_is_rejected_without_an_exception(wire):
+    registry = RenderRegistry()
+    expect(registry)
+    payload = ack_payload()
+    payload["token"]["generation"] = "\ud800"
+    assert accept(registry, payload=json.dumps(payload) if wire else payload) is False
+
+
+def test_projection_requires_a_validated_live_viewport():
+    registry = RenderRegistry()
+    expect(registry)
+    assert accept(registry)
+    status = project(registry, mapping=make_mapping(viewport=None))
+    assert status.current is False
+    assert status.state == "blocked"
+
+
 def expect(registry: RenderRegistry, token: RenderToken | None = None, *, now=100.0):
     registry.expect(DEVICE, make_token() if token is None else token, now_mono=now)
 

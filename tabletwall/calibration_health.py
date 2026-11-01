@@ -65,7 +65,10 @@ def _number(
 ) -> float:
     if isinstance(value, bool) or not isinstance(value, (int, float)):
         raise CalibrationHealthError(f"{field} must be a finite number")
-    number = float(value)
+    try:
+        number = float(value)
+    except OverflowError as error:
+        raise CalibrationHealthError(f"{field} must be finite") from error
     if not math.isfinite(number):
         raise CalibrationHealthError(f"{field} must be finite")
     if positive and number <= 0:
@@ -384,13 +387,12 @@ def assess_calibration(
 
     tokens = _tokens(
         pinned_calibration["method"] if pinned_calibration else None,
-        pinned_profile["provenance"] if pinned_profile else None,
     )
     manual = bool(tokens & MANUAL_TOKENS)
     model_text = "model" in tokens
     if manual:
         kind = "manual"
-    elif model_values is not None or model_text:
+    elif model_text or (pinned_calibration is None and model_values is not None):
         kind = "model"
     else:
         kind = "unknown"
@@ -532,7 +534,7 @@ def assess_calibration(
         viewport_report = _viewport_report(
             pinned_calibration=pinned_calibration,
             live=None,
-            model_values=model_values,
+            model_values=model_values if kind == "model" else None,
         )
         warnings.append(_warning(
             "viewport_unavailable",
@@ -544,7 +546,7 @@ def assess_calibration(
         viewport_report = _viewport_report(
             pinned_calibration=pinned_calibration,
             live=live,
-            model_values=model_values,
+            model_values=model_values if kind == "model" else None,
         )
         for fence in viewport_report["fences"]:
             warnings.append(_warning(
@@ -1263,7 +1265,7 @@ def _predicted_full_panel(
     kind: str,
     scale_usable: bool,
 ) -> dict[str, Any]:
-    if model_values is not None:
+    if kind == "model" and model_values is not None:
         return {
             "valid": True,
             "basis": "model_native_fullspan",
@@ -1587,6 +1589,11 @@ def check_ruler_scale(
         uncertainty_width if axis == "x" else uncertainty_height
     )
     mm_per_css_uncertainty = mm_per_css * relative_error
+    if mm_per_css <= 0 or not all(math.isfinite(value) for value in (
+        mm_per_css, relative_error, extrapolation_factor, implied_width,
+        implied_height, uncertainty_width, uncertainty_height, mm_per_css_uncertainty,
+    )):
+        raise CalibrationHealthError("ruler values produce an unrepresentable scale or uncertainty")
 
     warnings: list[dict[str, Any]] = []
     if short_span:
@@ -1620,6 +1627,8 @@ def check_ruler_scale(
     else:
         delta = implied_measured - supplied
         percent = delta / supplied * 100.0
+        if not math.isfinite(percent):
+            raise CalibrationHealthError("ruler comparison is not representable")
         tolerance = max(uncertainty_measured, COMPARISON_TOLERANCE_FLOOR_MM)
         disagreement = abs(delta) > tolerance
         comparison = {

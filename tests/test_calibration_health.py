@@ -144,6 +144,37 @@ def warning_codes(result):
     return {warning["code"] for warning in result["warnings"]}
 
 
+def test_manual_panel_dimensions_do_not_confirm_a_model_css_scale():
+    result = evaluate(profile=manual_profile())
+    assert result["provenance"]["kind"] == "model"
+    assert result["approximate"] is True
+    assert result["confirmed"] is False
+    assert result["ok"] is False
+
+
+def test_model_hint_does_not_adapt_a_manual_orientation():
+    result = evaluate(
+        profile=manual_profile(),
+        calibration={**manual_calibration(), "mode": "tab"},
+        assignment=None,
+        model=model_snapshot(),
+        viewport=manual_viewport(orientation=180, mode="tab"),
+    )
+    assert "viewport_mismatch" in warning_codes(result)
+    assert result["scale"]["usable"] is False
+    assert result["predicted_full_panel"]["basis"] != "model_native_fullspan"
+
+
+@pytest.mark.parametrize("span_px", [1e-310, 10**400])
+def test_ruler_cannot_project_unrepresentable_scale(span_px):
+    with pytest.raises(calibration_health.CalibrationHealthError):
+        calibration_health.check_ruler_scale(
+            span_px=span_px, span_mm=100, span_error_mm=1,
+            usable_width_px=1000, usable_height_px=1000,
+            supplied_width_mm=1000,
+        )
+
+
 def test_missing_measurement_is_needs_calibration_and_a_model_is_only_a_suggestion():
     result = evaluate(
         profile=None,

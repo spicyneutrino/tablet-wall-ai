@@ -24,6 +24,7 @@ from tabletwall import sizing as wall_sizing
 INVALID = "invalid"
 CONFLICT = "conflict"
 GUARD_CHANGED = "guard_changed"
+MAX_COORDINATE = 2**53 - 1
 
 _STATUS_BY_CODE = {INVALID: 422, CONFLICT: 409, GUARD_CHANGED: 412}
 
@@ -308,6 +309,15 @@ def build_grid(command: GridCommand, inputs: GridInputs) -> GridPreview:
     else:
         layout = _build_physical(command, inputs, active, previous_kind, warnings)
 
+    def check_geometry(value: Any) -> None:
+        if isinstance(value, dict):
+            for child in value.values():
+                check_geometry(child)
+        elif type(value) in (int, float):
+            _number(value, "computed geometry")
+
+    check_geometry(layout)
+
     return {
         "layout": layout,
         "order": list(command.device_ids),
@@ -415,7 +425,7 @@ def _build_logical(
         else:
             device = device_map[device_id]
             viewport = device.viewport
-            if viewport is None:
+            if viewport is None or not device.online or device.connection_id is None:
                 raise _invalid(
                     f"tablet {device_id} needs an explicit logical size or a live viewport"
                 )
@@ -1163,13 +1173,13 @@ def _bool(value: Any, label: str) -> bool:
 
 
 def _positive_int(value: Any, label: str) -> int:
-    if isinstance(value, bool) or not isinstance(value, int) or value <= 0:
+    if isinstance(value, bool) or not isinstance(value, int) or not 0 < value <= MAX_COORDINATE:
         raise _invalid(f"{label} must be a positive integer")
     return value
 
 
 def _nonnegative_int(value: Any, label: str) -> int:
-    if isinstance(value, bool) or not isinstance(value, int) or value < 0:
+    if isinstance(value, bool) or not isinstance(value, int) or not 0 <= value <= MAX_COORDINATE:
         raise _invalid(f"{label} must be a non-negative integer")
     return value
 
@@ -1179,8 +1189,8 @@ def _number(
 ) -> float:
     if isinstance(value, bool) or not isinstance(value, (int, float)):
         raise _invalid(f"{label} must be a finite number")
-    if not math.isfinite(value):
-        raise _invalid(f"{label} must be finite")
+    if abs(value) > MAX_COORDINATE or not math.isfinite(value):
+        raise _invalid(f"{label} exceeds the exactly representable coordinate range")
     if nonnegative and value < 0:
         raise _invalid(f"{label} must be non-negative")
     return float(value)

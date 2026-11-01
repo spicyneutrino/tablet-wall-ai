@@ -17,6 +17,29 @@ VP = {"width": 600, "height": 800, "dpr": 1, "orientation": 0,
 CAPS = "image,physical,render_ack,identify,image_contain,calibration"
 
 
+def test_mounted_readiness_health_and_qr_use_live_wall(client, monkeypatch):
+    from tabletwall import media
+    monkeypatch.setattr(media, "_loopback_peer", lambda _request: True)
+    monkeypatch.delenv(media.OPERATOR_CREDENTIAL_ENV, raising=False)
+    monkeypatch.setenv("TABLET_WALL_TABLET_ORIGIN", "http://10.42.0.1:8080")
+    health = client.get("/healthz")
+    assert health.status_code == 200
+    assert health.json()["revision"] == main.wall["revision"]
+    readiness = client.get("/api/v3/readiness")
+    assert readiness.status_code == 200
+    assert readiness.json()["tablet_url"] == "http://10.42.0.1:8080/client/"
+    qr = client.get("/api/v3/join-qr")
+    assert qr.status_code == 200 and qr.headers["content-type"] == "image/png"
+    for response in (health, readiness, qr, client.get("/controller/physical.html")):
+        assert response.headers["x-content-type-options"] == "nosniff"
+        assert "script-src 'self'" in response.headers["content-security-policy"]
+    monkeypatch.setattr(media, "_loopback_peer", lambda _request: False)
+    for path in ("/healthz", "/api/v3/readiness", "/api/v3/join-qr"):
+        response = client.get(path)
+        assert response.status_code == 403
+        assert response.headers["x-frame-options"] == "DENY"
+
+
 def config(client):
     return client.get("/api/v3/config").json()
 

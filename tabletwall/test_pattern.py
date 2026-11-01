@@ -280,13 +280,20 @@ def _wall_bounds(bounds: Mapping[str, Any]) -> tuple[float, float, float, float]
         )
     if max(width, height) / min(width, height) > MAX_ASPECT:
         raise PatternError("bounds aspect ratio is too extreme for a usable test grid")
+    for origin, extent in ((x, width), (y, height)):
+        end = origin + extent
+        if not math.isfinite(end) or math.ulp(end) > GRID_INTERVAL_MM / 1000:
+            raise PatternError("bounds origin cannot represent the grid coordinates precisely")
     return x, y, width, height
 
 
 def _finite(value: Any, field: str) -> float:
     if isinstance(value, bool) or not isinstance(value, (int, float)):
         raise PatternError(f"{field} must be a finite number")
-    number = float(value)
+    try:
+        number = float(value)
+    except OverflowError as error:
+        raise PatternError(f"{field} must be finite") from error
     if not math.isfinite(number):
         raise PatternError(f"{field} must be finite")
     return number
