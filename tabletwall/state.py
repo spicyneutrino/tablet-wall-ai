@@ -401,6 +401,10 @@ def _render_frame(
         "calibration": {"status": "needs_calibration", "revision": None},
         "plan": None,
     }
+    if scene["content"].get("type") == "image" and "image" not in record.get("caps", ()):
+        frame["scene"]["content"] = {"type": "color"}
+        frame["calibration"]["reason"] = "tablet does not advertise image support"
+        return frame
     if slot is None:
         frame["calibration"]["reason"] = "no physical slot"
         return frame

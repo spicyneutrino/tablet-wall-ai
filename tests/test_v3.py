@@ -129,6 +129,23 @@ def test_v3_render_plan_matches_the_hand_derived_matrix():
             assert abs(actual - wanted) < 1e-9
 
 
+@pytest.mark.parametrize("caps", ["physical", "calibration,physical", ""])
+def test_physical_image_is_not_sent_without_advertised_support(caps):
+    with TestClient(main.app) as client:
+        setup_measurement()
+        setup_scene(client)
+        switch_physical(client)
+        with client.websocket_connect(device_url(
+            w=600, h=800, dpr=1.25, orientation=0, mode="fullscreen", caps=caps
+        )) as socket:
+            socket.receive_json()
+            socket.receive_json()
+            frame = socket.receive_json()
+        assert frame["scene"]["content"] == {"type": "color"}
+        assert frame["plan"] is None
+        assert frame["calibration"]["reason"] == "tablet does not advertise image support"
+
+
 def test_a_stale_viewport_gets_no_physical_claim():
     with TestClient(main.app) as client:
         setup_measurement()
