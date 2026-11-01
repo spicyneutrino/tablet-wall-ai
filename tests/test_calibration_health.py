@@ -152,6 +152,23 @@ def test_manual_panel_dimensions_do_not_confirm_a_model_css_scale():
     assert result["ok"] is False
 
 
+@pytest.mark.parametrize("quarter", [0, 1, 2, 3])
+@pytest.mark.parametrize("offset", [[10, 0], [0, -5], [0.1, 0.2]])
+def test_explicit_offset_cannot_be_reported_as_zero_inset_full_panel(quarter, offset):
+    result = evaluate(
+        profile=manual_profile(),
+        calibration={**manual_calibration(), "quarter_turn": quarter, "panel_offset_mm": offset},
+        assignment=None, model=None, viewport=manual_viewport(),
+    )
+    viewport = result["viewport"]
+    assert viewport["insets"]["left_mm"] == offset[0]
+    assert viewport["insets"]["top_mm"] == offset[1]
+    assert viewport["full_panel"] is False
+    assert result["ok"] is False
+    assert result["predicted_full_panel"]["reason_code"] == "panel_offset"
+    assert "full_panel_offset" in warning_codes(result)
+
+
 def test_model_hint_does_not_adapt_a_manual_orientation():
     result = evaluate(
         profile=manual_profile(),

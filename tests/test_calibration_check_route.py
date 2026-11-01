@@ -29,6 +29,15 @@ def save_profile(width=120, height=200):
         label="supplied", provenance="model")
 
 
+def test_revision_outside_sqlite_range_is_a_controlled_validation_error(operator):
+    with persist._connection() as connection:
+        before = list(connection.iterdump())
+    response = operator.post("/api/v3/calibration-check", json=body(profile_revision=10**100))
+    assert response.status_code == 422
+    with persist._connection() as connection:
+        assert list(connection.iterdump()) == before
+
+
 @pytest.fixture
 def operator(monkeypatch):
     monkeypatch.setattr(media, "_loopback_peer", lambda _request: True)

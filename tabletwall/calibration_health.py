@@ -654,6 +654,12 @@ def assess_calibration(
         kind=kind,
         scale_usable=bool(scale_values and scale_values["usable"]),
     )
+    if predicted["reason_code"] == "panel_offset":
+        warnings.append(_warning(
+            "full_panel_offset", "warning",
+            "The explicit panel offset translates the usable viewport. Fullscreen does not prove that this mapping covers the full lit panel.",
+            "Review the saved offset and transformed viewport edges; keep a partial-viewport mapping only when it describes the actual browser area.",
+        ))
     if comparison["valid"] and comparison["discrepancy"]:
         warnings.append(_warning(
             "scale_discrepancy",
@@ -1195,6 +1201,8 @@ def _viewport_report(
         and live["mode"] == "fullscreen"
         and size_matches
         and orientation_matches
+        and dpr_matches
+        and all(offset == 0 for offset in pinned_calibration["panel_offset_mm"])
         and not zoom_changed
     )
     return {
@@ -1240,7 +1248,7 @@ def _viewport_report(
             "source": (
                 "fullscreen launch mode; zero browser inset assumed"
                 if full_panel
-                else "pinned calibration panel_offset_mm; total tab/standalone inset is not supplied"
+                else "pinned calibration panel_offset_mm; full-panel coverage is not established"
             ),
             "left_mm": (
                 0.0 if full_panel else pinned_calibration["panel_offset_mm"][0]
@@ -1308,6 +1316,11 @@ def _predicted_full_panel(
             reason = (
                 "The live viewport does not match the pinned full-panel mapping, so extrapolating to the full panel is not valid."
             )
+        elif pinned_calibration["mode"] == "fullscreen" and any(
+            offset != 0 for offset in pinned_calibration["panel_offset_mm"]
+        ):
+            reason_code = "panel_offset"
+            reason = "The explicit panel offset prevents treating this translated viewport as the complete lit panel."
         else:
             reason_code = "tab_viewport"
             reason = (

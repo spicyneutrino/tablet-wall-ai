@@ -20,7 +20,7 @@ class RulerCheck(BaseModel):
     model_config = ConfigDict(extra="forbid", strict=True, allow_inf_nan=False)
 
     device_id: str
-    profile_revision: int = Field(ge=1)
+    profile_revision: int = Field(ge=1, le=2**63 - 1)
     quarter_turn: int = Field(ge=0, le=3)
     axis: Literal["x", "y"]
     span_px: float
