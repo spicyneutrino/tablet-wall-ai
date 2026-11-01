@@ -78,7 +78,7 @@ from tabletwall.protocol import (
 # Curated still-image assets (PROTOCOL.md "Still images"): the directory scan,
 # content IDs, and byte-verified serving behind ``GET /assets``.
 from tabletwall import assets, clock, displays, geometry, media, media_video, playback
-from tabletwall import operator_images, persist, workers, tablet_models
+from tabletwall import layouts, operator_images, persist, workers, tablet_models
 from tabletwall import sizing as wall_sizing
 from tabletwall import writer as writers
 from tabletwall.media_limits import (
@@ -467,13 +467,11 @@ def _commit_wall(
     except ValueError as error:
         raise HTTPException(status_code=422, detail=str(error)) from error
     proposed["revision"] += 1
-    if backup_layout_name is None:
-        save_state(proposed)
-    else:
-        with persist.transaction():
+    with persist.transaction():
+        if backup_layout_name is not None:
             if not save_layout(backup_layout_name, wall["layout"]):
                 raise HTTPException(status_code=409, detail="could not save the previous layout")
-            save_state(proposed)
+        save_state(proposed)
 
     # Reached only when the write committed.
     wall.clear()
@@ -485,6 +483,25 @@ def _fit_wall_layout(layout: dict[str, Any]) -> None:
         wall_sizing.fit_physical(layout, displays.profile)
     else:
         wall_sizing.fit_logical(layout)
+
+
+def _replace_layout(layout: dict[str, Any], *, allow_empty: bool = False) -> str | None:
+    try:
+        proposed = layouts.normalize(layout, profile_for=displays.profile,
+                                     calibration_for=displays.calibration)
+    except ValueError as error:
+        raise HTTPException(status_code=422, detail=str(error)) from error
+    if layouts.entries(wall["layout"]) and not layouts.entries(proposed) and not allow_empty:
+        raise HTTPException(status_code=409, detail="Empty layout would remove every tablet; use Clear wall explicitly")
+    backup = None
+    if layouts.kind(wall["layout"]) != layouts.kind(proposed):
+        backup = "Before " + layouts.kind(proposed) + " " + uuid.uuid4().hex[:12]
+
+    def apply(target: dict[str, Any]) -> None:
+        target["layout"] = proposed
+
+    _commit_wall(apply, backup_layout_name=backup)
+    return backup
 
 
 def _snapshot_name(raw: str) -> str:
@@ -1826,6 +1843,8 @@ class PhysicalLayoutCommand(BaseModel):
     slots: dict[str, dict[str, Any]]
     sizing: dict[str, Any] | None = None
 
+    model_config = ConfigDict(extra="forbid")
+
     @field_validator("sizing")
     @classmethod
     def valid_sizing(cls, value: dict[str, Any] | None) -> dict[str, Any] | None:
@@ -1835,6 +1854,21 @@ class PhysicalLayoutCommand(BaseModel):
                 raise ValueError("sizing requires mode fixed/tablets and finite non-negative padding")
             return normalized
         return value
+
+
+class LogicalLayoutCommand(BaseModel):
+    width: int = Field(gt=0, strict=True)
+    height: int = Field(gt=0, strict=True)
+    placements: dict[str, dict[str, Any]]
+    sizing: dict[str, Any] | None = None
+
+    model_config = ConfigDict(extra="forbid")
+
+
+class ClearLayoutCommand(BaseModel):
+    confirm: bool = Field(strict=True)
+
+    model_config = ConfigDict(extra="forbid")
 
 
 def _config_payload() -> dict[str, Any]:
@@ -2031,66 +2065,53 @@ async def put_calibration_v3(
     return {"calibration": saved, "etag": _config_etag()}
 
 
-@app.put("/api/v3/layout")
-async def put_physical_layout_v3(command: PhysicalLayoutCommand, request: Request):
-    """Atomically replace the active arrangement with a physical one."""
-    _require_config_etag(request)
-    bounds = command.bounds
-    for field in ("x", "y", "width", "height"):
-        if isinstance(bounds.get(field), bool) or not isinstance(bounds.get(field), (int, float)) or not isfinite(bounds[field]):
-            raise HTTPException(status_code=422, detail=f"bounds.{field} is required")
-    if bounds["width"] <= 0 or bounds["height"] <= 0:
-        raise HTTPException(status_code=422, detail="bounds must be positive")
-    for device_id, slot in command.slots.items():
-        if _parse_device_id(device_id) is None:
-            raise HTTPException(status_code=422, detail="slot device_id must be a UUID4")
-        for field in ("center_x_mm", "center_y_mm", "mount_angle",
-                      "nudge_x_mm", "nudge_y_mm"):
-            if isinstance(slot.get(field), bool) or not isinstance(slot.get(field), (int, float)) or not isfinite(slot[field]):
-                raise HTTPException(status_code=422, detail=f"slot {field} is required")
-        profile_revision = slot.get("profile_revision")
-        calibration_revision = slot.get("calibration_revision")
-        if not isinstance(profile_revision, int) or displays.profile(device_id, profile_revision) is None:
-            raise HTTPException(status_code=422, detail="slot profile does not exist")
-        calibration = displays.calibration(device_id, calibration_revision) if isinstance(calibration_revision, int) else None
-        if calibration is None or calibration["profile_revision"] != profile_revision:
-            raise HTTPException(
-                status_code=422,
-                detail="slot calibration does not exist for its profile",
-            )
-        if not isinstance(slot.get("participating", True), bool):
-            raise HTTPException(status_code=422, detail="slot participating is a boolean")
-
-    def apply(target: dict[str, Any]) -> None:
-        target["layout"] = {
-            "kind": "physical",
-            "bounds": {
-                "x": float(bounds["x"]), "y": float(bounds["y"]),
-                "width": float(bounds["width"]), "height": float(bounds["height"]),
-            },
-            "slots": deepcopy(command.slots),
-        }
-        if command.sizing is not None:
-            target["layout"]["sizing"] = deepcopy(command.sizing)
-        elif wall["layout"].get("kind") == "physical" and "sizing" in wall["layout"]:
-            target["layout"]["sizing"] = deepcopy(wall["layout"]["sizing"])
-
-    previous_layout_saved = None
-    if wall["layout"].get("kind") != "physical":
-        previous_layout_saved = "Before physical " + uuid.uuid4().hex[:12]
-    _commit_wall(apply, backup_layout_name=previous_layout_saved)
+async def _layout_response(previous_layout_saved: str | None) -> JSONResponse:
     await _abort_playback("layout changed")
-    # A cached logical controller cannot represent a physical wall: close it
-    # with the upgrade code instead of letting it issue fenced writes.
-    for socket in list(controller_sockets):
-        if controller_protocols.get(socket, 1) != 3:
-            controller_sockets.discard(socket)
-            controller_protocols.pop(socket, None)
-            with contextlib.suppress(Exception):
-                await socket.close(code=WS_CLOSE_UNSUPPORTED_PROTOCOL)
+    if wall["layout"].get("kind") == "physical":
+        for socket in list(controller_sockets):
+            if controller_protocols.get(socket, 1) != 3:
+                controller_sockets.discard(socket)
+                controller_protocols.pop(socket, None)
+                with contextlib.suppress(Exception):
+                    await socket.close(code=WS_CLOSE_UNSUPPORTED_PROTOCOL)
     await _broadcast_wall()
     payload = _config_payload()
-    return {**payload, "etag": _config_etag(payload), "previous_layout_saved": previous_layout_saved}
+    etag = _config_etag(payload)
+    return JSONResponse(
+        content={**payload, "etag": etag, "previous_layout_saved": previous_layout_saved},
+        headers={"ETag": etag, "Cache-Control": "no-store"},
+    )
+
+
+@app.put("/api/v3/layout")
+async def put_physical_layout_v3(command: PhysicalLayoutCommand, request: Request):
+    _require_config_etag(request)
+    layout = {"kind": "physical", "bounds": command.bounds, "slots": command.slots}
+    if command.sizing is not None:
+        layout["sizing"] = command.sizing
+    elif wall["layout"].get("kind") == "physical" and "sizing" in wall["layout"]:
+        layout["sizing"] = wall["layout"]["sizing"]
+    previous = _replace_layout(layout)
+    return await _layout_response(previous)
+
+
+@app.put("/api/v3/logical-layout")
+async def put_logical_layout_v3(command: LogicalLayoutCommand, request: Request):
+    _require_config_etag(request)
+    layout = command.model_dump(exclude_none=True)
+    previous = _replace_layout(layout)
+    return await _layout_response(previous)
+
+
+@app.post("/api/v3/layout/clear")
+async def clear_layout_v3(command: ClearLayoutCommand, request: Request):
+    _require_config_etag(request)
+    if not command.confirm:
+        raise HTTPException(status_code=422, detail="Clear wall requires explicit confirmation")
+    layout = deepcopy(wall["layout"])
+    layout["slots" if layouts.kind(layout) == "physical" else "placements"] = {}
+    previous = _replace_layout(layout, allow_empty=True)
+    return await _layout_response(previous)
 
 
 @app.get("/api/v3/logical-layouts")
@@ -2102,16 +2123,16 @@ async def list_logical_layouts_v3():
 @app.post("/api/v3/logical-layouts/{name}/recall")
 async def recall_logical_layout_v3(name: str, request: Request):
     _require_config_etag(request)
-    saved = load_layout(_snapshot_name(name))
-    if not _valid_saved_layout(saved):
+    try:
+        saved = load_layout(_snapshot_name(name))
+    except (ValueError, json.JSONDecodeError):
+        raise HTTPException(status_code=422, detail="Saved layout is invalid") from None
+    if saved is None:
         raise HTTPException(status_code=404, detail="Unknown logical layout")
-    def apply(target: dict[str, Any]) -> None:
-        target["layout"] = deepcopy(saved)
-    _commit_wall(apply)
-    await _abort_playback("layout changed")
-    await _broadcast_wall()
-    payload = _config_payload()
-    return {**payload, "etag": _config_etag(payload)}
+    if not isinstance(saved, dict) or not _valid_saved_layout(saved):
+        raise HTTPException(status_code=422, detail="Saved logical layout is invalid")
+    previous = _replace_layout(saved, allow_empty=True)
+    return await _layout_response(previous)
 
 
 @app.get("/api/v3/layouts")
@@ -2141,28 +2162,16 @@ async def save_physical_layout_v3(
 async def recall_physical_layout_v3(name: str, request: Request):
     _require_config_etag(request)
     canonical = _snapshot_name(name)
-    saved = load_layout(canonical)
+    try:
+        saved = load_layout(canonical)
+    except (ValueError, json.JSONDecodeError):
+        raise HTTPException(status_code=422, detail="Saved layout is invalid") from None
     if saved is None:
         raise HTTPException(status_code=404, detail="Unknown layout")
     if not isinstance(saved, dict) or saved.get("kind") != "physical":
         raise HTTPException(status_code=422, detail="not a physical layout")
-    if "sizing" in saved and wall_sizing.validate_sizing(saved["sizing"]) is None:
-        raise HTTPException(status_code=422, detail="invalid physical layout sizing")
-
-    def apply(target: dict[str, Any]) -> None:
-        target["layout"] = deepcopy(saved)
-
-    _commit_wall(apply)
-    await _abort_playback("layout changed")
-    for socket in list(controller_sockets):
-        if controller_protocols.get(socket, 1) != 3:
-            controller_sockets.discard(socket)
-            controller_protocols.pop(socket, None)
-            with contextlib.suppress(Exception):
-                await socket.close(code=WS_CLOSE_UNSUPPORTED_PROTOCOL)
-    await _broadcast_wall()
-    payload = _config_payload()
-    return {**payload, "etag": _config_etag(payload)}
+    previous = _replace_layout(saved, allow_empty=True)
+    return await _layout_response(previous)
 
 
 @app.delete("/api/v3/layouts/{name}")
