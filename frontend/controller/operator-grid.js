@@ -59,7 +59,10 @@
             [order[index], order[next]] = [order[next], order[index]];
             order.forEach(key => $("grid-order").append(rows.get(key).item));
             invalidate(); updateButtons();
-            const row = rows.get(id); (delta < 0 ? row.earlier : row.later).focus();
+            const row = rows.get(id);
+            const target = delta < 0 ? row.earlier : row.later;
+            const alternate = delta < 0 ? row.later : row.earlier;
+            (target.disabled ? alternate : target).focus();
             announce(labelFor(id) + " moved to position " + (next + 1) + ".");
         }
         function updateButtons() {

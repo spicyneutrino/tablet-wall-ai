@@ -151,3 +151,30 @@ No operator page exceptions remained. Earlier driver errors are retained in
 sibling runs; they included wrong tab/DTO assumptions and an unaccepted native
 confirmation, not additional accepted product results. Owned servers and
 browsers were stopped after every run.
+
+The content/recovery driver was repeated with stronger paint predicates requiring
+`current: true` and the accepted token's generation, revision and asset to match
+the current config, in addition to `state: displayed`. All 17 behaviors plus the
+recorded timing observation passed again. Evidence is in
+`/var/home/oak/.local/share/tablet-wall-ai/readiness-program/final-qa/20261101T140721Z-recovery-current-token/`.
+This supersedes the weaker displayed-state-only recovery predicate above.
+
+Fresh independent review **passed `0529eaa`**. It repeated the full 106-check
+journey and 168 focused Python cases, all 17 then-current Node suites, 24 extra
+actual-browser race assertions, and 15 sync event-order cases. Delayed label
+responses preserved both untouched and edited selection fields; interrupted
+config reads refreshed without a workaround; delayed/failed QR image responses
+kept old pixels hidden and Retry fetched current independently decoded pixels.
+The exact-source report is `/tmp/tablet-review-0529eaa-pxDG5e/REVIEW.md`.
+Later generated-pattern/entry-point changes are under a separate bounded review.
+
+A further keyboard-only four-client check reproduced focus returning to `body`
+when Move earlier/later disabled the control at the ordering boundary. The
+handler now focuses the other enabled direction at that boundary. The same
+actual-browser check passes at both first and last positions. Sampled computed
+text colours for the active task tab, topbar note and grid heading exceed
+4.5:1 contrast. This is a sample, not a WCAG conformance claim. Before-fix
+artifacts are in `final-qa/20261101T141043Z-keyboard/`; passing results and
+screenshot are in `final-qa/20261101T141121Z-keyboard/` under the same
+readiness-program directory. No backend or library state from the live wall was
+used. All owned processes were stopped.
