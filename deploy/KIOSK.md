@@ -29,6 +29,11 @@ features. The client page today has:
 - **no focus nudge** — the only `visibilitychange` use is releasing and
   retaking the wake lock; it does not detect being throttled or frozen and
   does not try to wake anything up;
+- **no remote wake and no forced fullscreen** — nothing here wakes a sleeping
+  or powered-off tablet, and there is no Wake-on-LAN, push, or browser path
+  that does. A tablet screen that slept stays dark until the tablet itself or
+  a person wakes it. The join QR served for the controller is a URL shortcut,
+  not pairing;
 - **no service worker and no offline cache** — a page loaded from cache after
   the server is gone is not a supported mode;
 - **no third-party resources** — no CDN, no web fonts, no analytics; every
