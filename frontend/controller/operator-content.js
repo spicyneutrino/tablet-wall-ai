@@ -138,10 +138,9 @@ window.OperatorContent = {
         for (const pattern of ["grid", "black"]) $("pattern-" + pattern).addEventListener("click", async () => {
             if (isDirty()) { message("Apply or cancel the layout draft first. Patterns use committed bounds."); return; }
             try {
-                const result = await api("POST", "/api/v3/test-pattern", { pattern }, { etag: true });
-                const image = result.image || result.asset;
+                const image = await api("POST", "/api/v3/test-pattern", { pattern }, { etag: true });
                 if (!image || !image.id) throw new Error("Pattern image metadata was not returned.");
-                if (result.etag) state.etag = result.etag;
+                images = images.filter(item => item.id !== image.id).concat(image);
                 await show({ type: "image", asset: image.id, fit: "contain" });
             } catch (error) { message("Pattern unavailable on this server. " + error.message + " Choose a prepared grid or opaque black image from the library."); }
         });

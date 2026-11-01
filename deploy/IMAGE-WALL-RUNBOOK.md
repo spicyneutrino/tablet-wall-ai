@@ -37,12 +37,11 @@ Logs rotate at 1,000,000 bytes with two archives each.
 1. Connect the tablet to the hotspot Wi-Fi name printed by the launcher.
 2. Open the exact printed URL, ending in `/client/`. Typing `http://` and a
    bare address is not the same thing.
-3. The controller at `http://127.0.0.1:<backend-port>/controller/` shows the
-   address as text. The same origin serves the address as a PNG at
-   `/api/v3/join-qr`, which an operator card or the future console can show.
-   Until the console embeds it, open that route on the laptop and hold the
-   screen up to the tablet. The QR is a URL shortcut, not pairing: the tablet
-   still registers and opens its own socket.
+3. Open `http://127.0.0.1:<backend-port>/controller/physical.html` on the
+   laptop. In **System → Join & readiness**, copy the exact tablet address or
+   scan its QR. The QR is a URL shortcut, not pairing; the tablet still
+   registers and opens its own socket. A loopback address only works on the
+   laptop and is labelled accordingly.
 4. Leave the page open. Reloading keeps the tablet identity.
 
 ## 4. Check readiness
@@ -67,27 +66,38 @@ The tablet listener refuses both routes, even with a forged operator header.
 
 ## 5. Choose an image
 
-Controller → **Content** → **Image**. Pick a library image, check the preview,
+Wall console → **Wall → Show a still image**. Pick a library image, check the preview,
 then **Show on wall**. Browsing does not change the wall until you apply.
 
-If the selected image is missing, the page says so and offers **Show colour
-instead** or **Show calibration grid instead**. `/api/v3/readiness` reports
-the same missing bytes as `available: false`.
+Choose **Fill the wall (crops)** or **Fit whole image (adds bars)** before
+showing the image. The stage previews crop, screen coverage and bezel/gap
+occlusion. If bytes are missing, the image remains unavailable; select another
+image or restore the file and use **Refresh images**. Readiness reports the
+same missing bytes as `available: false`.
 
 ## 6. Arrange and verify the grid
 
-Controller → **Wall**. Use **Tile tablets** for equal columns/rows, or place
-tablets by hand. Defaults are 3 columns, 2 rows, gap 20; a 2×2 or 1×4 trial
-is a logical arrangement, not physical-seam acceptance.
+Open **Wall → Layout & size**. Choose the layout kind, **2 × 2** or **1 × 4**,
+and the tablet order and body orientation. The latter preset is one horizontal
+row. Use **Preview arrangement**, review it, then **Apply layout**. Cancel
+leaves the active wall unchanged. Extra gap defaults to zero.
 
-To check seams, choose **Content → Calibration**. Every tablet shows the
-shared grid and its number. Change it back to an image or colour afterwards.
+For measured layouts, confirm each actual tablet model or provide measured
+calibration first. Model profiles stay approximate. **Wall → Colours and
+continuity checks → Wall-sized grid** generates an image for the committed
+physical bounds with 50 mm intervals. Use it to record actual seam/scale
+measurements; the generated coordinates do not prove physical accuracy.
+**Logical calibration pattern** is available only for logical layouts.
+
+Check **N of M showing** and the tablet cards. A network connection alone does
+not count as a current image paint. A failed card offers **Retry image**.
 
 ## 7. Blank the wall
 
-**Content → Colour**, then choose a swatch (black is a blank wall) or a custom
-colour. This changes what every tablet shows without deleting the selected
-image or any saved layout.
+Open **Wall → Colours and continuity checks → Black wall**. This shows an
+ordinary black image without deleting the layout. **Restore previous content**
+returns to the prior scene. **Tablet colours** instead shows each tablet's
+assigned diagnostic colour.
 
 ## 8. Stop
 

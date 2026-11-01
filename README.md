@@ -21,9 +21,10 @@ This project began as a copy of `tablet-wall`. New development happens here.
 > tablet video decode/suspend, optical timing, and soak are not claimed. See
 > [Known limitations](#known-limitations).
 >
-> The current evidence record, acceptance gaps and review-fix commits are in
-> the [review-fix round](docs/planning/tablet-wall-roadmap-2026-10-23/EXECUTION_LOG.md#review-fix-round-2026-10-25)
-> and the [durable browser runners](simulator/README.md#durable-browser-acceptance-runners).
+> The current combined plan and evidence are in the
+> [readiness roadmap](docs/tablet-wall-readiness/ROADMAP.md) and
+> [verification record](docs/tablet-wall-readiness/VERIFICATION.md). The
+> [image-wall runbook](deploy/IMAGE-WALL-RUNBOOK.md) covers startup and recovery.
 
 > New to the codebase? Read the [field guide](docs/field-guide/index.html)
 > (open it in a browser) or its [Markdown source](docs/field-guide/GUIDE.md).
@@ -47,7 +48,8 @@ These addresses work only on the computer running the server:
 | Page       | URL                            |
 | ---------- | ------------------------------ |
 | Local client test | http://127.0.0.1:8000/client/ |
-| Controller | http://127.0.0.1:8000/controller/ |
+| Wall console | http://127.0.0.1:8000/controller/physical.html |
+| Logical compatibility editor | http://127.0.0.1:8000/controller/ |
 | API docs   | http://127.0.0.1:8000/docs        |
 
 ## Connect tablets to the laptop hotspot
@@ -68,9 +70,11 @@ tablet. For a hotspot at `10.42.0.1`, it is
 its address can change. Both `/client` and `/client/` work. A tablet must never
 use `127.0.0.1` or `localhost` to reach the laptop.
 
-The controller stays at `http://127.0.0.1:8000/controller/` on the laptop. It
-shows the configured tablet URL with a Copy button. With laptop-only startup,
-it labels the local test address **This computer only** and disables Copy.
+The Wall console stays at
+`http://127.0.0.1:8000/controller/physical.html` on the laptop. Its **System**
+tab shows the exact tablet address, Copy button, join QR, and readiness facts.
+A loopback address carries a warning that it only opens on this computer.
+The QR is an address shortcut; it does not authenticate or approve a tablet.
 
 The launcher saves settings in `~/.config/tablet-wall-ai/hotspot.json` and
 wall data in `~/.local/share/tablet-wall-ai/`, respecting the corresponding
@@ -113,14 +117,15 @@ pyproject.toml              deps, dev deps, pytest config
    is the normal case over a plain-HTTP LAN origin.
 2. The client `POST`s that UUID and its screen size to `/devices/register`. It
    re-registers before every connection attempt to refresh its dimensions and establish live presence.
-3. It then opens `/ws/device`, sends a heartbeat every 5 s, and applies whatever
-   colour the controller assigns.
-4. `frontend/controller/controller.js` opens `/ws/controller`, receives the
-   roster as a `snapshot`, and is pushed `device_online`, `device_offline`,
-   `device_updated`, and `device_removed` events as things change. It polls
-   nothing.
-5. Colours travel *out* over HTTP (`POST /devices/{device_id}/color`) and are
-   pushed *to* the tablet over its socket.
+3. It opens `/ws/device`, sends a heartbeat every 5 s, and applies the current
+   scene and its assigned slice. Static images use one wall-wide Fill (`cover`)
+   or Fit whole image (`contain`) transform.
+4. The Wall console reads `/api/v3/config` and subscribes to protocol-3
+   `/ws/controller` updates. It also reconciles every 15 s while visible.
+5. Tablets report image attempts and painted frames using connection/revision
+   tokens. The console distinguishes current reports, loading, failed, stale,
+   hidden, offline, and mapping-blocked states. A paint report is software
+   evidence, not proof of optical alignment.
 
 Device identity, dimensions, type, display number, last seen, and assigned colours survive restart in SQLite. Restored devices start offline. Sockets, capabilities, clocks, and playback leases are never restored. Tablets re-register and reconnect on their own.
 
@@ -136,13 +141,13 @@ SQLite database as the active wall, so include it in backups.
 
 ### Operator diagnostics
 
-The physical controller keeps Show, Tablet, Content and System tabs available
+The Wall console keeps Wall, Tablets, Content and System tabs available
 on desktop and phone screens. Under System, Field check can refresh storage,
 backup and client health or verify stored object bytes. Download report saves
 the last successful response as timestamped JSON, including integrity results
 when verification was requested. Failed refreshes disable download until a
-successful retry. Diagnostics require the same operator admission as the media
-library. Reports contain operational metadata; review them before sharing.
+successful retry. Diagnostics use operator-read admission independently of upload
+mode. Reports contain operational metadata; review them before sharing.
 Desktop browser evidence does not replace physical tablet validation.
 
 ### Curating still images
@@ -172,29 +177,26 @@ When authentication is disabled, every client that reaches the backend can read 
 
 ## Change the wall size
 
-In [Wall control](http://127.0.0.1:8000/controller/), open **Layout**.
-Choose **Fixed wall**, edit **Width** and **Height**, then click **Save size**.
-Tablets keep their current coordinates.
+Open the [Wall console](http://127.0.0.1:8000/controller/physical.html), then
+**Wall → Layout & size**. Choose **Logical units** or **Measured millimetres**,
+select **2 × 2** or **1 × 4**, review the participating tablet order and body
+orientation, then **Preview arrangement → Apply layout**. The 1 × 4 preset
+means one horizontal row. Gap defaults to zero; Fit wall to tablet bodies
+makes the bounds follow the packed footprints. Preview and Cancel do not
+change the tablets.
 
-To make the wall follow your arrangement, choose **Fit to tablets**, set the
-outer margin, and click **Save sizing**. The wall grows or shrinks around all
-placed footprints, including offline tablets. A margin of zero gives the
-smallest enclosing rectangle. To bring tablets together, set **Pack columns**
-and **Gap**, then click **Pack placed tablets**. Zero gap makes adjacent
-footprints touch. Packing preserves their sizes and changes the arrangement
-immediately. Save a named layout first if you want to return to it later.
-
-For measured tablet sizes and mount angles, open **Physical setup → System →
-Wall bounds**. Choose **Fixed wall size** or **Fit wall to tablets**. Fitting
-includes measured tablet bodies, borders, rotation, and nudges. **Pack tablets**
-changes the draft; **Undo** and **Cancel changes** remain available. Click
-**Apply layout** to show it on the tablets. Missing referenced measurements
+Measured layouts use pinned screen, bezel and calibration records. Confirm the
+actual model or save measurements before using that mode. Model profiles remain
+approximate; they do not establish seam accuracy. Advanced bounds and
+measurements are under **System**; selected-tablet mount angles and nudges are
+under **Tablets**. Missing referenced measurements
 block fitting rather than guessing a size.
 
-Basic wall units do not measure the physical size of a tablet. Use measured
-millimetres in Physical setup for a real side-by-side installation. See
-[wall sizing behavior](docs/WALL-SIZING.md) for empty walls, orientation,
-packing, and saved-layout behavior.
+The [logical compatibility editor](http://127.0.0.1:8000/controller/) retains
+custom logical Width/Height and packing controls under **Layout**. It is blocked
+while a measured layout is active. Use the Wall console for normal image and
+arrangement changes. See [wall sizing behavior](docs/WALL-SIZING.md) and
+[physical calibration](docs/PHYSICAL-CALIBRATION.md).
 
 ## HTTP API
 
@@ -282,8 +284,9 @@ A gate changes only with the operator's signed physical evidence.
   tablet ruler, measured viewport setup, and whole-wall grid check.
 - **Media support is bounded.** Curated JPEG/PNG stills are supported; a
   configured admission mode also accepts JPEG/PNG uploads and H.264 MP4
-  clips. Stills render as one centered `cover` image across the whole logical
-  wall. Experimental video code uses hard-cut still/video playlists with a sampled server
+  clips. Stills render with one centered wall-wide Fill (`cover`) or
+  Fit whole image (`contain`) transform in either layout kind. Experimental
+  video code uses hard-cut still/video playlists with a sampled server
   clock, leased readiness, buffer evidence, pause/resume and drift samples.
   Browser evidence is desktop Chromium software evidence on one host: it does
   not prove optical onset, physical decode/suspend, iOS Safari, mixed-model
@@ -291,12 +294,11 @@ A gate changes only with the operator's signed physical evidence.
   no arbitrary-media or cross-device optical clock claim. The still/video
   seam and failure/reconnect behaviour have been checked in desktop Chromium;
   physical iPad/Safari and Android/Chrome validation is still pending.
-- **The aspect ratio compares against what the tablet reports.** The client
-  reports its viewport and re-registers when that changes, and the controller
-  warns when a placement's visible rect disagrees. When they do disagree the
-  client still renders, covering and cropping rather than distorting — so a
-  mismatch degrades the seam instead of breaking it. Pixel-perfect seams are
-  not achievable from a browser without kiosk-mode control.
+- **Logical and measured mapping differ.** A logical placement with a different
+  visible aspect is covered and cropped rather than distorted, which can leave
+  a seam mismatch. A measured plan checks pinned calibration against the live
+  viewport, orientation, zoom and launch mode; a mismatch blocks the plan with
+  a recovery reason. Physical alignment still needs a recorded device trial.
 - **Authentication is opt-in.** Set `TABLET_WALL_AUTH_TOKEN` to a random secret of at least 32 bytes to protect all HTTP and WebSocket routes. Browsers sign in at `/auth/login`; API clients use a Bearer token. Unset or empty preserves open local operation. See [authentication setup](docs/AUTH.md). The operator-Origin guard and proxy isolation remain separate checks. Use TLS on shared networks.
 - **A device must register before it can open a socket.** A socket for an
   unregistered id is closed with `4404` rather than registering on the fly, so
@@ -370,10 +372,11 @@ clock, and clock sync without a timed medium is cost with no visible capability.
 
 **Phase 3 — safe, unattended operation**
 
-*Sequencing: the software is currently ahead of the hardware evidence. Do not
-start 3c or 3d until the build through 3b has been confirmed on the actual
-tablets — the real-device gates are in [deploy/KIOSK.md](deploy/KIOSK.md) and
-the manual ingress checks in [deploy/README.md](deploy/README.md).*
+*Software checks are ahead of the hardware evidence. They do not establish
+unattended operation. Real-device gates remain in [deploy/KIOSK.md](deploy/KIOSK.md)
+and the manual ingress checks in [deploy/README.md](deploy/README.md). The
+[current readiness programme](docs/tablet-wall-readiness/ROADMAP.md) supersedes
+the earlier software sequencing below.*
 
 - [ ] **3a** Trust boundary: a two-origin laptop-hotspot proxy reference and
   configurable same-origin operator guards are in progress. Physical ingress
@@ -388,8 +391,8 @@ the manual ingress checks in [deploy/README.md](deploy/README.md).*
   tests, including a full backup/verify/restore drill; none of it has been
   exercised in a real deployment. Not complete, and not an unattended
   deployment.
-- [ ] **3c** Operational resilience: structured logs, health/readiness, asset-error states, soak tests — **deferred until the tablet trial confirms 2a–3b**
-- [ ] **3d** Engineering gate: ruff, targeted mypy, CI (basic CI starts in 2a) — **deferred for the same reason**
+- [ ] **3c** Operational resilience: health/readiness, bounded logs and image-error recovery are implemented and software-tested in the [readiness programme](docs/tablet-wall-readiness/ROADMAP.md); real-tablet soak remains open
+- [ ] **3d** Engineering gate: production Ruff and mypy run with the tests; the current [verification record](docs/tablet-wall-readiness/VERIFICATION.md) lists results. Hardware acceptance remains separate
 
 **Phase 4 — timed media, software slice**
 

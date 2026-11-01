@@ -249,7 +249,7 @@ def preflight(settings: Settings, address: str, wifi_name: str | None) -> None:
     operator = f"http://127.0.0.1:{settings.backend_port}"
     print(f"Preflight: interface {settings.interface}; hotspot address {address}\n"
           f"  Tablet URL: {tablet}\n"
-          f"  Controller (this computer only): {operator}/controller/\n"
+          f"  Controller (this computer only): {operator}/controller/physical.html\n"
           f"  Wi-Fi network: {wifi_name or 'unknown'}\n"
           f"  Data and logs: {settings.data_dir} "
           "(wall.db, assets/, media/, backend.log, caddy.log)\n"
@@ -361,7 +361,7 @@ def _run(settings: Settings, address: str, config_path: Path, ownership_path: Pa
                 readiness = readiness_summary(operator)
                 print(f"Ready. Tablet page, redirect, registration, WebSocket, and route restrictions passed.\n"
                       f"Tablets on {settings.interface}: {tablet}/client/\n"
-                      f"Controller on this computer only: {operator}/controller/\n"
+                      f"Controller on this computer only: {operator}/controller/physical.html\n"
                       f"Wi-Fi network: {wifi_name or 'unknown'}\n"
                       f"Data and logs: {data}\nSettings: {config_path}\n"
                       "HTTP trial: keep tablet screens awake manually. Press Ctrl+C to stop.", flush=True)

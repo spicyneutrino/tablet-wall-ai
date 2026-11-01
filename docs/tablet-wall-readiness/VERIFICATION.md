@@ -108,3 +108,46 @@ not measurements of panels, bezels, physical seams, sleep, battery, or optical
 synchronisation. Hardware, installed TLS/auth composition, host reboot, and
 real-device soak remain unverified. Experimental video tests are not evidence
 of usable tablet video.
+
+### Additional phone-width and content checks
+
+The same 106-check four-tablet journey was repeated with the operator initially
+at 390×844 and restored to that width after the explicit selection matrix. It
+passed with no page exceptions, unexpected failed requests, or remaining
+workarounds. Artifacts are in
+`/var/home/oak/.local/share/tablet-wall-ai/readiness-program/final-qa/20261101T135445Z-mobile/`.
+The embedded selection matrix deliberately also visits desktop width; this is
+not a claim that every assertion was executed only at phone width.
+
+A further actual-app check found that generated Black wall / Wall-sized grid
+controls expected fixture-only nested metadata while the mounted route returns
+a flat image DTO. The handler now consumes the canonical result and adds the
+published metadata to its local library before selecting the scene. This avoids
+requiring another refresh or briefly marking the new pattern unavailable. The
+new `node tests/operator_content.test.js` fails against the old handler and
+passes after the correction. Before-fix failure is retained at
+`/tmp/tablet-wall-pattern-regression-before.log`. All 18 JavaScript suites pass.
+
+The launcher now prints `/controller/physical.html`, the primary operator
+surface, in both preflight and Ready output. The README and image-wall runbook
+now name the actual tabs and controls, the two layout kinds, Fill/Fit, QR card,
+and recovery scope. `.venv/bin/python -m pytest -q tests/test_hotspot.py` passed
+29 cases. Production Ruff and mypy for 47 source files pass. No network settings,
+service, or live installation was changed.
+
+The added private-backend content/recovery run passed 17 behavioral checks plus
+one recorded recovery-time observation. It exercised Tablet colours, Black wall,
+Restore previous content, long Unicode labels with reduced motion, keyboard
+tabs and Preview/Cancel, targeted Reconnect, hidden-state exclusion, and
+hidden/offline recovery after a server restart without reloading the client.
+It also generated and painted the measured wall grid from the actual **Wall**
+tab, checked that logical calibration is disabled in measured mode, inspected
+visible control names and a keyboard focus outline, and exercised an actual
+401/sign-in form round trip after enabling auth on a restarted private backend.
+The client retained its identity. This tests loopback auth behavior, not the
+installed TLS/proxy deployment. Evidence and the rerunnable driver are in
+`/var/home/oak/.local/share/tablet-wall-ai/readiness-program/final-qa/20261101T140548Z-recovery/`.
+No operator page exceptions remained. Earlier driver errors are retained in
+sibling runs; they included wrong tab/DTO assumptions and an unaccepted native
+confirmation, not additional accepted product results. Owned servers and
+browsers were stopped after every run.
