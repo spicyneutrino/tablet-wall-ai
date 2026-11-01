@@ -1025,7 +1025,7 @@ for (const [W, H, iw, ih] of [[2000, 1000, 400, 400], [1000, 2000, 1600, 400], [
             assertCloseAll(underlayRect(h), [x, 0, W / 2, H], "opaque full slice");
             const draw = lastIndexOfNamed(h, "drawImage");
             const style = h.calls.slice(0, draw).filter(c => c.name === "setFillStyle").pop();
-            assert.strictEqual(style.args[0], "#000000");
+            assert.strictEqual(style.args[0], "#0b1120");
             tablets.push(h);
         }
         assertClose(screenX(wallTransform(tablets[0]), W / 2), W / 2, "left seam");
@@ -1900,7 +1900,7 @@ test("an opaque underlay is painted before the picture", async () => {
     const style = h.calls[styleIndex].args[0];
     assert.strictEqual(
         style,
-        "#000000",
+        "#0b1120",
         "the underlay is the opaque background, pinned"
     );
     assert.strictEqual(isOpaque(style), true, "…and fully opaque, so an alpha PNG cannot show the old frame through");
@@ -5404,7 +5404,7 @@ test("client shell: cache versions, HUD markup and the 56 px CSS pill", () => {
     );
 });
 
-test("physical contain uses the supplied global plan over black", async () => {
+test("physical contain uses the supplied global plan over an opaque background", async () => {
     const h = await startVideoHarness({ width: 800, height: 600 });
     h.setFetch(route({ [ASSET_A]: okResponse(assetBlob("A", 1280, 720)) }));
     const plan = view.normalizedSourceToPanel({
@@ -5427,7 +5427,7 @@ test("physical contain uses the supplied global plan over black", async () => {
     });
     assertCloseAll(wallTransform(h), expected.matrix, "server plan is authoritative");
     const style = h.calls.slice(0, lastIndexOfNamed(h, "drawImage")).filter(c => c.name === "setFillStyle").pop();
-    assert.strictEqual(style.args[0], "#000000");
+    assert.strictEqual(style.args[0], "#0b1120");
 });
 
 test("physical stills restore clipping and use rounded backing ratios", async () => {

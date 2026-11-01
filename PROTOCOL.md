@@ -685,7 +685,7 @@ A version-2 client that advertises `calibration` and/or `image` must:
   and preserves the whole image with letterboxing. Both center the scaled
   image. Logical tablets apply the same global rectangle then clip to their
   visible rect. Physical plans use the same fit onto the wall bounds before
-  mapping to each panel. Every tablet paints opaque black (`#000000`) beneath
+  mapping to each panel. Every tablet paints the opaque wall background (`#0b1120`) beneath
   the image, including letterboxes and transparent source pixels. The fit is
   persisted and survives scene recall and restart. Unknown fits are rejected.
 - A device that has not advertised the `image` capability receives the **same**

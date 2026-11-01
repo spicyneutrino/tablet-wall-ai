@@ -1685,7 +1685,7 @@
         var dprY = view.dprY;
         ctx.save();
         ctx.setTransform(dpr, 0, 0, dprY, 0, 0);
-        ctx.fillStyle = "#000000";
+        ctx.fillStyle = PATTERN.background;
         ctx.fillRect(0, 0, vp.w, vp.h);
         ctx.beginPath();
         ctx.rect(
@@ -1780,7 +1780,7 @@
         ctx.clip();
         /* Opaque underneath: a partially transparent source must never show
          * the previous frame's pixels through it. */
-        ctx.fillStyle = "#000000";
+        ctx.fillStyle = PATTERN.background;
         ctx.fillRect(visible.x, visible.y, visible.w, visible.h);
         ctx.drawImage(entry.source, dx, dy, dw, dh);
         ctx.restore();
