@@ -340,9 +340,9 @@ class SceneContent(BaseModel):
     @classmethod
     def supported_fit(cls, value: str | None) -> str | None:
         # Raises ValueError for anything the renderer cannot honour; only
-        # ``cover`` exists today (PROTOCOL.md "Still images").
+        # centered ``cover`` and ``contain`` (PROTOCOL.md "Still images").
         if value is not None and value not in SUPPORTED_FITS:
-            raise ValueError("only the cover fit is supported")
+            raise ValueError("only cover and contain fits are supported")
         return value
 
     @model_validator(mode="after")

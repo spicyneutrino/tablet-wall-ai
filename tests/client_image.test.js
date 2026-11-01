@@ -1007,6 +1007,32 @@ function test(name, fn) {
     tests.push({ name, fn });
 }
 
+for (const [W, H, iw, ih] of [[2000, 1000, 400, 400], [1000, 2000, 1600, 400], [2000, 1000, 1000, 1500]]) {
+    test(`contain fits once across ${W}x${H}, source ${iw}x${ih}`, async () => {
+        const scale = Math.min(W / iw, H / ih);
+        const expected = [(W - iw * scale) / 2, (H - ih * scale) / 2, iw * scale, ih * scale];
+        const tablets = [];
+        for (const x of [0, W / 2]) {
+            const h = await startHarness({ width: W / 2, height: H });
+            h.setFetch(route({ [ASSET_A]: okResponse(assetBlob("A", iw, ih)) }));
+            h.emit(wallFrame({
+                wall: { width: W, height: H },
+                scene: { content: imageContent({ fit: "contain", intrinsicWidth: iw, intrinsicHeight: ih }) },
+                placement: { x, y: 0, w: W / 2, h: H, bezel: ZERO_BEZEL },
+            }));
+            await drain();
+            assertCloseAll(lastDrawImage(h).slice(1), expected, "whole-wall contain rectangle");
+            assertCloseAll(underlayRect(h), [x, 0, W / 2, H], "opaque full slice");
+            const draw = lastIndexOfNamed(h, "drawImage");
+            const style = h.calls.slice(0, draw).filter(c => c.name === "setFillStyle").pop();
+            assert.strictEqual(style.args[0], "#000000");
+            tablets.push(h);
+        }
+        assertClose(screenX(wallTransform(tablets[0]), W / 2), W / 2, "left seam");
+        assertClose(screenX(wallTransform(tablets[1]), W / 2), 0, "right seam");
+    });
+}
+
 test("seam mapping: both tablets draw one global cover of the wall", async () => {
     /* The left tablet owns x 0..1000 of the wall, the right one x
      * 1000..2000. Both decode the same asset and must land on the same
@@ -1874,7 +1900,7 @@ test("an opaque underlay is painted before the picture", async () => {
     const style = h.calls[styleIndex].args[0];
     assert.strictEqual(
         style,
-        "#0b1120",
+        "#000000",
         "the underlay is the opaque background, pinned"
     );
     assert.strictEqual(isOpaque(style), true, "…and fully opaque, so an alpha PNG cannot show the old frame through");
@@ -5376,6 +5402,32 @@ test("client shell: cache versions, HUD markup and the 56 px CSS pill", () => {
         !CLIENT_SOURCE.includes("enableDisplayEl.style"),
         "the Enable display pill keeps no inline styles"
     );
+});
+
+test("physical contain uses the supplied global plan over black", async () => {
+    const h = await startVideoHarness({ width: 800, height: 600 });
+    h.setFetch(route({ [ASSET_A]: okResponse(assetBlob("A", 1280, 720)) }));
+    const plan = view.normalizedSourceToPanel({
+        active_size: [800, 600], bezels: ZERO_BEZEL,
+        center_mm: [0, 0], nudge_mm: [0, 0], mount_angle: 0,
+        bounds: [0, 0, 800, 600], source_size: [1280, 720], fit: "contain",
+    });
+    h.emit({
+        type: "render", mode: "physical", revision: 11, generation: "contain",
+        render_seq: 1, wall: { width: 800, height: 600 },
+        scene: { content: imageContent({ fit: "contain", intrinsicWidth: 1280, intrinsicHeight: 720 }) },
+        calibration: VIDEO_CALIBRATION, plan, slot: null,
+    });
+    await drain();
+    assertCloseAll(lastDrawImage(h).slice(1), [0, 0, 1280, 720], "source stays whole");
+    const expected = view.canvasTransformComponents({
+        backing: [800, 600], rect: [800, 600],
+        calibration: Object.assign({}, VIDEO_CALIBRATION, { panel_width: 800, panel_height: 600 }),
+        panel_from_source: plan.panel_from_source, source_size: [1280, 720],
+    });
+    assertCloseAll(wallTransform(h), expected.matrix, "server plan is authoritative");
+    const style = h.calls.slice(0, lastIndexOfNamed(h, "drawImage")).filter(c => c.name === "setFillStyle").pop();
+    assert.strictEqual(style.args[0], "#000000");
 });
 
 test("physical stills restore clipping and use rounded backing ratios", async () => {

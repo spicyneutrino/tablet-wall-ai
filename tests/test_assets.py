@@ -523,18 +523,35 @@ class TestPutSceneImage:
         assert main.wall["scene"]["content"] == expected
         assert persist.load_state()["scene"]["content"] == expected
 
-    def test_an_explicit_cover_fit_is_persisted(self, client, asset_dir):
+    @pytest.mark.parametrize("fit", ["cover", "contain"])
+    def test_an_explicit_fit_is_persisted(self, client, asset_dir, fit):
         data = image_bytes()
         put_file(asset_dir, "poster.png", data)
 
         response = client.put(
             "/scene",
-            json={"content": {"type": "image", "asset": digest(data), "fit": "cover"}},
+            json={"content": {"type": "image", "asset": digest(data), "fit": fit}},
         )
 
         assert response.status_code == 200
-        assert response.json()["scene"]["content"]["fit"] == "cover"
-        assert persist.load_state()["scene"]["content"]["fit"] == "cover"
+        assert response.json()["scene"]["content"]["fit"] == fit
+        assert persist.load_state()["scene"]["content"]["fit"] == fit
+
+    def test_contain_scene_recall_preserves_fit(self, client, asset_dir):
+        data = image_bytes()
+        put_file(asset_dir, "poster.png", data)
+        response = client.put(
+            "/scene",
+            json={"content": {"type": "image", "asset": digest(data), "fit": "contain"}},
+        )
+        assert response.status_code == 200
+        expected = response.json()["scene"]["content"]
+        assert client.put("/scenes/contained").status_code == 200
+        assert client.put("/scene", json={"content": {"type": "color"}}).status_code == 200
+        recalled = client.post("/scenes/contained/recall")
+        assert recalled.status_code == 200
+        assert recalled.json()["scene"]["content"] == expected
+        assert persist.load_state()["scene"]["content"]["fit"] == "contain"
 
     def test_an_unknown_asset_is_422_and_changes_nothing(self, client):
         unknown = digest(image_bytes())  # well formed, but no such file
@@ -570,7 +587,7 @@ class TestPutSceneImage:
         assert response.status_code == 422
         assert client.get("/wall").json() == before
 
-    @pytest.mark.parametrize("fit", ["contain", "fill", "stretch", "Cover"])
+    @pytest.mark.parametrize("fit", ["fill", "stretch", "Cover", "Contain", ""])
     def test_an_unsupported_fit_is_422(self, client, asset_dir, fit):
         data = image_bytes()
         put_file(asset_dir, "poster.png", data)
@@ -740,8 +757,9 @@ class TestCapabilityGate:
 
 
 class TestImageScenePersistence:
+    @pytest.mark.parametrize("fit", ["cover", "contain"])
     def test_the_image_scene_survives_a_restart_and_the_url_is_recomposed(
-        self, device_payload, asset_dir
+        self, device_payload, asset_dir, fit
     ):
         data = image_bytes("JPEG", size=(64, 48))
         put_file(asset_dir, "poster.jpg", data)
@@ -751,7 +769,7 @@ class TestImageScenePersistence:
             register(first, device_payload)
             assert first.put(
                 "/scene",
-                json={"content": {"type": "image", "asset": asset_id, "fit": "cover"}},
+                json={"content": {"type": "image", "asset": asset_id, "fit": fit}},
             ).status_code == 200
             before = first.get("/wall").json()
             persisted = persist.load_state()["scene"]["content"]
@@ -769,7 +787,7 @@ class TestImageScenePersistence:
         assert persisted == {
             "type": "image",
             "asset": asset_id,
-            "fit": "cover",
+            "fit": fit,
             "intrinsicWidth": 64,
             "intrinsicHeight": 48,
         }

@@ -506,7 +506,7 @@ the response is the complete wall state. Unplaced tablets are not added.
 
 Content only. Body is `{ "content": { "type": … } }`. For an image, send
 `{ "content": { "type": "image", "asset": "sha256:<64 lowercase hex digits>",
-"fit": "cover" } }`; `fit` may be omitted and defaults to `cover`. The server
+"fit": "cover" } }`; `fit` accepts `cover` or `contain`; omitted fit defaults to `cover`. The server
 looks up the asset and derives its intrinsic dimensions. It persists the ID,
 fit and derived dimensions, but not a URL. `200` returns the new wall state;
 `422` for an unknown type, invalid/missing asset, unsupported fit, or unknown
@@ -678,15 +678,16 @@ A version-2 client that advertises `calibration` and/or `image` must:
   "intrinsicHeight": 2160 }`. The server composes the URL; it is not persisted.
   Derived dimensions stay in the persisted scene so a now-missing asset can
   still be identified and rendered as an explicit failure, not silently
-  converted to colour. Only `cover` is currently supported.
-- **Fit** is centered `cover` of the image onto the **entire logical wall**:
-  with image `Iw × Ih` and wall `W × H`, scale by `max(W/Iw, H/Ih)` and centre
-  the overflow. Every tablet then applies the *same* global transform and clips
-  to its own visible rect. Covering the image independently into each tablet's
-  visible rect would destroy the seams, because each tablet would choose a
-  different scale. For transparent PNG pixels, every tablet first paints the
-  same opaque wall background (`#0b1120`), not its individually assigned
-  colour, so alpha cannot open a seam.
+  converted to colour. Both `cover` and `contain` are supported.
+- **Fit** is centered once onto the **entire wall**, never independently
+  onto each tablet. For image `Iw × Ih` and wall `W × H`, `cover` uses
+  `max(W/Iw, H/Ih)` and crops overflow; `contain` uses `min(W/Iw, H/Ih)`
+  and preserves the whole image with letterboxing. Both center the scaled
+  image. Logical tablets apply the same global rectangle then clip to their
+  visible rect. Physical plans use the same fit onto the wall bounds before
+  mapping to each panel. Every tablet paints opaque black (`#000000`) beneath
+  the image, including letterboxes and transparent source pixels. The fit is
+  persisted and survives scene recall and restart. Unknown fits are rejected.
 - A device that has not advertised the `image` capability receives the **same**
   generation, revision and placement but `scene.content` is rewritten to
   `{ "type": "color" }` in its own `wall` frame, without an asset URL. The

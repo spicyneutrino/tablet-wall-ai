@@ -734,7 +734,7 @@
         }
 
         /* Image content: the same wall mapping, clipped to this slice,
-         * carrying a centered cover of the whole wall. drawImageScene owns
+         * carrying a centered fit of the whole wall. drawImageScene owns
          * every image state — unplaced, loading, ready, failed. */
         if (wallState.contentType === "image") {
             showCanvas(true);
@@ -1061,8 +1061,8 @@
             content.fit === undefined || content.fit === null
                 ? "cover"
                 : content.fit;
-        if (fit !== "cover") {
-            /* Only centered cover exists. Drawing some other fit on one
+        if (fit !== "cover" && fit !== "contain") {
+            /* Drawing an unsupported fit on one
              * tablet only would break every seam it touches, so refuse it
              * out loud instead. */
             return {
@@ -1534,6 +1534,7 @@
                 }
                 imageCache = {
                     key: desc.key,
+                    fit: desc.fit,
                     source: result.source,
                     iw: iw,
                     ih: ih,
@@ -1615,11 +1616,11 @@
     }
 
     /*
-     * Centered cover of the WHOLE wall, drawn in wall coordinates under the
+     * Centered fit of the WHOLE wall, drawn in wall coordinates under the
      * very transform the calibration pattern uses — the visible rect mapped
      * onto this viewport, then clipped to it.
      *
-     * The cover rectangle depends only on the wall size and the image's
+     * The fit rectangle depends only on the wall size, fit and the image's
      * intrinsic size, so every tablet derives the identical rectangle and
      * the seams line up. Covering into each tablet's own visible rect instead
      * would hand every tablet a different scale (PROTOCOL.md "Fit").
@@ -1684,7 +1685,7 @@
         var dprY = view.dprY;
         ctx.save();
         ctx.setTransform(dpr, 0, 0, dprY, 0, 0);
-        ctx.fillStyle = PATTERN.background;
+        ctx.fillStyle = "#000000";
         ctx.fillRect(0, 0, vp.w, vp.h);
         ctx.beginPath();
         ctx.rect(
@@ -1764,10 +1765,10 @@
         var W = wallState.width;
         var H = wallState.height;
 
-        /* max(W/iw, H/ih), centred: the overflow is cropped equally on both
-         * sides, and the clip below crops whatever falls outside this
-         * device's visible rect. */
-        var s = Math.max(W / iw, H / ih);
+        /* Fit once to the whole wall; only the clip is device-specific. */
+        var s = entry.fit === "contain"
+            ? Math.min(W / iw, H / ih)
+            : Math.max(W / iw, H / ih);
         var dw = iw * s;
         var dh = ih * s;
         var dx = (W - dw) / 2;
@@ -1779,7 +1780,7 @@
         ctx.clip();
         /* Opaque underneath: a partially transparent source must never show
          * the previous frame's pixels through it. */
-        ctx.fillStyle = PATTERN.background;
+        ctx.fillStyle = "#000000";
         ctx.fillRect(visible.x, visible.y, visible.w, visible.h);
         ctx.drawImage(entry.source, dx, dy, dw, dh);
         ctx.restore();

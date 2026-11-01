@@ -57,8 +57,8 @@ SERVER_CAPS_V3 = ["calibration", "image", "physical"]
 ASSET_ID_PREFIX = "sha256:"
 _ASSET_ID_PATTERN = re.compile(r"sha256:[0-9a-f]{64}")
 
-# Only ``cover`` is currently supported, and it is matched exactly.
-SUPPORTED_FITS = ("cover",)
+# Global image fits are matched exactly.
+SUPPORTED_FITS = ("cover", "contain")
 DEFAULT_FIT = "cover"
 
 # Named save/recall: one pattern decides whether a path segment is a name at
