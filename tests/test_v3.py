@@ -1,10 +1,12 @@
 """Version 3 physical negotiation, render plan, and legacy fences (R2)."""
 
+import asyncio
 import hashlib
 import json
 import os
 from io import BytesIO
 from pathlib import Path
+from types import SimpleNamespace
 
 import pytest
 from fastapi.testclient import TestClient
@@ -144,6 +146,28 @@ def test_physical_image_is_not_sent_without_advertised_support(caps):
         assert frame["scene"]["content"] == {"type": "color"}
         assert frame["plan"] is None
         assert frame["calibration"]["reason"] == "tablet does not advertise image support"
+
+
+@pytest.mark.parametrize("caps, allowed", [([], False), (["physical"], False), (["image", "physical"], True)])
+def test_prepared_image_requires_advertised_image_support(monkeypatch, caps, allowed):
+    main.devices[DEVICE] = {"caps": caps}
+    main.device_sockets[DEVICE] = object()
+    monkeypatch.setattr(main, "_asset_descriptor", lambda _: {
+        "mime": "image/png", "intrinsicWidth": 200, "intrinsicHeight": 100,
+    })
+    monkeypatch.setattr(main, "_physical_plan_for", lambda *args: ({}, {}))
+    sent = []
+
+    async def send(socket, frame):
+        sent.append(frame)
+
+    monkeypatch.setattr(main, "_send_to", send)
+    pending = SimpleNamespace(asset="fixture", leases={}, as_frame=lambda: {})
+    session = SimpleNamespace(cohort=[DEVICE], lineage=lambda: {})
+    assert asyncio.run(main._send_prepare(session, pending, DEVICE)) is allowed
+    assert len(sent) == int(allowed)
+    if sent:
+        assert sent[0]["type"] == "prepare"
 
 
 def test_a_stale_viewport_gets_no_physical_claim():

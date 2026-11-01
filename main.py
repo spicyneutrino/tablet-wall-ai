@@ -2318,6 +2318,8 @@ async def _send_prepare(
     descriptor = _asset_descriptor(pending.asset)
     if descriptor is None:
         return False
+    if descriptor.get("kind") != "video" and "image" not in record.get("caps", ()):
+        return False
     plan, calibration = _physical_plan_for(
         device_id, record, descriptor["intrinsicWidth"], descriptor["intrinsicHeight"]
     )

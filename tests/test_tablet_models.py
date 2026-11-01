@@ -78,7 +78,7 @@ def test_rotation_matches_render_and_playback_and_keeps_revision_pin(client):
             "mount_angle": 0, "participating": True}
     main.wall["layout"] = {"kind": "physical", "bounds": {"x": 0, "y": 0, "width": 180, "height": 240}, "slots": {DEVICE: slot}}
     main.wall["scene"]["content"] = {"type": "image", "intrinsicWidth": 1800, "intrinsicHeight": 2400, "fit": "cover"}
-    record = {"viewport": viewport}
+    record = {"viewport": viewport, "caps": ["image", "physical"]}
     frame = _render_frame(DEVICE, record, profile, effective)
     plan, playback_cal = main._physical_plan_for(DEVICE, record, 1800, 2400)
     assert frame["calibration"] == playback_cal
