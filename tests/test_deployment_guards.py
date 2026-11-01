@@ -5,12 +5,33 @@ reference template and literal external resources, not dynamic network calls
 or a real host's firewall/TLS/tablet behaviour.
 """
 
+import os
 import re
+import subprocess
 from html.parser import HTMLParser
 from pathlib import Path
 from urllib.parse import urlsplit
 
+import pytest
+
 ROOT = Path(__file__).resolve().parents[1]
+
+
+@pytest.mark.parametrize("credential", [None, "", "short"])
+def test_reference_proxy_requires_its_operator_read_credential_before_starting(credential):
+    environment = os.environ.copy()
+    environment.update(WALL_HOTSPOT_IP="192.0.2.77", WALL_OPERATOR_PASSWORD_HASH="test-only")
+    environment.pop("WALL_OPERATOR_CREDENTIAL", None)
+    if credential is not None:
+        environment["WALL_OPERATOR_CREDENTIAL"] = credential
+    result = subprocess.run(
+        ["bash", str(ROOT / "deploy/run-hotspot.sh")], env=environment,
+        capture_output=True, text=True, timeout=5,
+    )
+    assert result.returncode != 0
+    assert "WALL_OPERATOR_CREDENTIAL" in result.stderr
+    assert "not assigned to a local interface" not in result.stderr
+    assert "test-only" not in result.stdout + result.stderr
 
 
 class ResourceParser(HTMLParser):

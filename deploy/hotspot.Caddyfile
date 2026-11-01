@@ -27,8 +27,8 @@ https://localhost:8444 {
 	}
 	reverse_proxy 127.0.0.1:8000 {
 		# Overwrite any client-supplied value after basic_auth succeeds.
-		# The backend trusts this header only in proxy mode, together with
-		# the exact operator Origin.
+		# Operator reads require this credential even with uploads disabled.
+		# Upload writes additionally require proxy mode and the operator Origin.
 		header_up X-Tablet-Wall-Operator {env.WALL_OPERATOR_CREDENTIAL}
 		header_up -Authorization
 		header_up -Cookie

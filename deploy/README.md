@@ -108,6 +108,12 @@ software does; this directory describes how traffic reaches it.
    strong operator password, save its resulting hash in the environment as
    `WALL_OPERATOR_PASSWORD_HASH` (quote the `$` characters). Never put the
    plaintext password, hash, private CA key, or browser session in the repo.
+   Also create a separate random internal credential of at least 16 characters
+   in private host configuration. Load the same value as
+   `TABLET_WALL_OPERATOR_CREDENTIAL` in the backend terminal and
+   `WALL_OPERATOR_CREDENTIAL` in the Caddy terminal. Operator image-library and
+   diagnostics reads require it even when uploads are disabled. Do not reuse
+   the operator password or print the credential in logs.
 3. Start **one** backend process from the repository root with absolute data
    paths, for example (adjust your storage directory):
 
@@ -120,9 +126,10 @@ software does; this directory describes how traffic reaches it.
    make run                         # defaults to HOST=127.0.0.1
    ```
 
-4. In another terminal with `WALL_HOTSPOT_IP` and the hash exported, run
+4. In another terminal with `WALL_HOTSPOT_IP`, the hash, and the internal
+   `WALL_OPERATOR_CREDENTIAL` exported, run
    `deploy/run-hotspot.sh`. The wrapper rejects a missing, wildcard or
-   non-local hotspot IP, validates the config, then starts Caddy. Do not
+   non-local hotspot IP or missing/short credential, validates the config, then starts Caddy. Do not
    bypass it with a raw `caddy run` on a shared machine.
    Follow Caddy's [local HTTPS instructions](https://caddyserver.com/docs/automatic-https#local-https)
    for locating/trusting its CA root on the laptop and tablets. Verify the
@@ -137,13 +144,12 @@ software does; this directory describes how traffic reaches it.
 
 Managed uploads stay disabled by default. To enable them behind this proxy,
 set the backend's `TABLET_WALL_UPLOAD_MODE=proxy` and an absolute
-`TABLET_WALL_MEDIA_DIR`. Generate a separate random secret of at least 16
-characters and provide the same value as `TABLET_WALL_OPERATOR_CREDENTIAL`
-to the backend and `WALL_OPERATOR_CREDENTIAL` to Caddy. Load it from private
-host configuration in both processes; do not put it in the repository or
-reuse the operator password. Caddy overwrites the internal header only after
+`TABLET_WALL_MEDIA_DIR`. Keep the shared internal credential configured as
+described above. Caddy overwrites the internal header only after
 authentication and strips it on tablet requests. Missing or mismatched
-credentials make upload and media-library requests fail closed.
+credentials make operator reads and upload requests fail closed. The simpler
+HTTP `make hotspot` profile uses a direct loopback operator connection and does
+not need this proxy credential.
 
 **Do not expose `:8000` to the hotspot.** `make run` now binds loopback by
 default; `make run HOST=0.0.0.0` bypasses the proxy and is insecure for this

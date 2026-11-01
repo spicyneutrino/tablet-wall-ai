@@ -4,6 +4,11 @@ set -euo pipefail
 
 : "${WALL_HOTSPOT_IP:?Set WALL_HOTSPOT_IP to the hotspot interface IPv4 address}"
 : "${WALL_OPERATOR_PASSWORD_HASH:?Set WALL_OPERATOR_PASSWORD_HASH to a Caddy password hash}"
+: "${WALL_OPERATOR_CREDENTIAL:?Set WALL_OPERATOR_CREDENTIAL to the backend operator-read credential}"
+if [ "${#WALL_OPERATOR_CREDENTIAL}" -lt 16 ]; then
+    echo 'WALL_OPERATOR_CREDENTIAL must contain at least 16 characters and match the backend credential' >&2
+    exit 1
+fi
 
 python3 - "$WALL_HOTSPOT_IP" <<'PY'
 import ipaddress
