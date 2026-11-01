@@ -1,9 +1,10 @@
 """Field readiness (R5): diagnostics, wake-lock reports and origin rebinding.
 
-Diagnostics share the managed library's admission, rebinding is the manual
-recovery for a tablet whose localStorage was wiped by an origin change, and the
-wake-lock field is a diagnostic the roster echoes. All three use the same
-temp database and media directory as the rest of the suite.
+Diagnostics use operator-read admission (independent of upload admission),
+rebinding is the manual recovery for a tablet whose localStorage was wiped by
+an origin change, and the wake-lock field is a diagnostic the roster echoes.
+All three use the same temp database and media directory as the rest of the
+suite.
 """
 
 import json
@@ -57,9 +58,38 @@ def placement(x=0):
 # ---------------------------------------------------------------------------
 
 
-def test_diagnostics_is_denied_while_uploads_are_disabled(client):
+def test_diagnostics_is_denied_while_uploads_are_disabled_to_a_tablet_peer(client, monkeypatch):
+    # The TestClient peer is "testclient", i.e. not loopback: the app itself
+    # refuses a tablet-side caller even when uploads are disabled.
+    assert media.upload_mode() == "disabled"
+    assert client.get("/diagnostics").status_code == 403
+
+    def must_not_verify():
+        pytest.fail("verify is opt-in and must not run for a plain read")
+
+    monkeypatch.setattr(media, "verify_integrity", must_not_verify)
+    monkeypatch.setattr(media, "_loopback_peer", lambda _request: True)
     response = client.get("/diagnostics")
-    assert response.status_code == 403
+    assert response.status_code == 200, response.text
+    assert response.headers["cache-control"] == "no-store"
+    assert "integrity" not in response.json()["media"]
+    # A forwarded request is a proxy hop, not a local operator.
+    assert client.get(
+        "/diagnostics", headers={"X-Forwarded-For": "192.168.137.2"}
+    ).status_code == 403
+
+
+def test_diagnostics_while_uploads_are_disabled_accepts_only_the_proxy_credential(client, monkeypatch):
+    credential = "diagnostics-credential-0123456789"
+    monkeypatch.setenv("TABLET_WALL_UPLOAD_MODE", "disabled")
+    monkeypatch.setenv("TABLET_WALL_OPERATOR_CREDENTIAL", credential)
+    assert client.get("/diagnostics").status_code == 403
+    forged = {"X-Tablet-Wall-Operator": "forged-by-a-tablet-0123456789"}
+    assert client.get("/diagnostics", headers=forged).status_code == 403
+    allowed = client.get("/diagnostics", headers={"X-Tablet-Wall-Operator": credential})
+    assert allowed.status_code == 200, allowed.text
+    assert allowed.headers["cache-control"] == "no-store"
+    assert "integrity" not in allowed.json()["media"]
 
 
 def test_diagnostics_is_denied_to_a_non_loopback_peer(client, monkeypatch):

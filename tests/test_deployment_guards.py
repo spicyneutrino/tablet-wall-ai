@@ -49,7 +49,7 @@ def test_tablet_ingress_strips_the_operator_credential():
     """The tablet listener must not forward the internal credential.
 
     Text inspection only: it catches an accidental Caddyfile edit. Real
-    authenticated-ingress behavior is exercised by the Caddy test in
+    authenticated-ingress behavior is exercised by the Caddy tests in
     ``tests/test_ingress.py``.
     """
     caddyfile = (ROOT / "deploy/hotspot.Caddyfile").read_text()
@@ -57,13 +57,42 @@ def test_tablet_ingress_strips_the_operator_credential():
     assert "import tablet-routes.caddy" in tablet
     tablet = (ROOT / "deploy/tablet-routes.caddy").read_text()
     tablet = re.sub(r"#.*", "", tablet)
-    assert tablet.count("header_up -X-Tablet-Wall-Operator") == 4
+    lines = tablet.splitlines()
+    proxy_lines = [index for index, line in enumerate(lines) if "reverse_proxy" in line]
+    assert len(proxy_lines) == 7
+    for index in proxy_lines:
+        assert lines[index + 1].strip() == "header_up -X-Tablet-Wall-Operator"
     assert not re.search(r"header_up\s+X-Tablet-Wall-Operator", tablet)
     assert "header_up X-Tablet-Wall-Operator {env.WALL_OPERATOR_CREDENTIAL}" in operator
     for path in ("/uploads", "/media", "/diagnostics", "/rebind"):
         assert path not in tablet
     assert re.search(r"@asset_bytes\s*\{[^}]*method GET HEAD", tablet, re.S), \
         "the exact published-asset route accepts HEAD as well as GET"
+
+
+def test_tablet_ingress_allows_only_the_exact_app_auth_entry_points():
+    tablet = re.sub(r"#.*", "", (ROOT / "deploy/tablet-routes.caddy").read_text())
+
+    def block(name: str) -> str:
+        match = re.search(rf"@{name}\s*\{{(.*?)\}}", tablet, re.S)
+        assert match, name
+        return " ".join(match.group(1).split())
+
+    login = block("auth_login")
+    assert login.startswith("method GET POST")
+    assert "path /auth/login" in login
+    logout = block("auth_logout")
+    assert logout.startswith("method POST")
+    assert "path /auth/logout" in logout
+    # A direct visit to /auth/login returns to the tablet client, not /controller.
+    bare = block("auth_login_bare")
+    assert bare.startswith("method GET")
+    assert "path /auth/login" in bare
+    assert "not query next=*" in bare
+
+    # Exact paths only: these are not prefixes or wildcards.
+    assert "path /auth/login*" not in tablet
+    assert "path /auth/logout*" not in tablet
 
 
 def test_frontend_declares_no_external_static_resources():
