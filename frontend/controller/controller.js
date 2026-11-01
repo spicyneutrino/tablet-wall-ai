@@ -1354,9 +1354,9 @@
             }
             const capsKnown = Array.isArray(device.caps);
             const caps = capsKnown ? device.caps : [];
-            const hasImage = device.protocol === 2 && caps.indexOf("image") !== -1;
+            const hasImage = (device.protocol === 2 || device.protocol === 3) && caps.indexOf("image") !== -1;
             const lacksImage = device.protocol === 1 ||
-                (device.protocol === 2 && capsKnown && !hasImage);
+                ((device.protocol === 2 || device.protocol === 3) && capsKnown && !hasImage);
             if (device.online === true) {
                 // A v1 socket receives no wall frame, regardless of caps.
                 // Missing protocol/caps is unknown, not proof of fallback.
@@ -1441,8 +1441,8 @@
      * The capability chip in a tile's meta row — shown only while the scene
      * is an image, which is when "this tablet cannot render it" means
      * anything. It reports what the tablet advertised, not whether the wall
-     * succeeded, and an empty `caps` list is called unknown rather than
-     * treated as a refusal.
+     * succeeded. Missing `caps` remain unknown; a reported list without
+     * `image` means no image support.
      */
     function renderCapChip(tile, device) {
         if (!tile.capChip) return;
@@ -1453,16 +1453,16 @@
 
         const capsKnown = Array.isArray(device.caps);
         const caps = capsKnown ? device.caps : [];
-        const hasImage = device.protocol === 2 && caps.indexOf("image") !== -1;
+        const hasImage = (device.protocol === 2 || device.protocol === 3) && caps.indexOf("image") !== -1;
         const lacksImage = device.protocol === 1 ||
-            (device.protocol === 2 && capsKnown && !hasImage);
+            ((device.protocol === 2 || device.protocol === 3) && capsKnown && !hasImage);
         const online = device.online === true;
 
         let kind;
         let text;
         if (online && hasImage) {
             kind = "ok";
-            text = "Shows images";
+            text = "Image capable";
         } else if (online && device.protocol === 1) {
             kind = "warn";
             text = "Old version";
@@ -1474,7 +1474,7 @@
             text = "Image support unknown";
         } else if (hasImage) {
             kind = "dim";
-            text = "Shows images";
+            text = "Image capable";
         } else if (device.protocol === 1) {
             kind = "dim";
             text = "Old version";
