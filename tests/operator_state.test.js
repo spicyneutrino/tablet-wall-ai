@@ -66,9 +66,11 @@ for (const protocol of [1, 2, null]) {
     assert.equal(model.tabletState(config, "tablet", now).status, "unknown");
 }
 for (const status of ["queued", "delivered", "shown"]) {
-    const config = fixture(); config.runtime.devices.tablet.identify = { status };
+    const config = fixture(); config.runtime.devices.tablet.identify = { state: status, active: true };
     assert.equal(model.tabletState(config, "tablet", now).status, "identifying");
 }
+const clearedIdentify = fixture(); clearedIdentify.runtime.devices.tablet.identify = { state: "cleared", active: false };
+assert.equal(model.tabletState(clearedIdentify, "tablet", now).showing, true, "cleared Identify metadata must not obscure the current scene");
 const expired = fixture();
 assert.equal(model.tabletState(expired, "tablet", now + 15001).status, "stale", "cached age grows after a snapshot");
 expired.runtime.devices.tablet.online = false;

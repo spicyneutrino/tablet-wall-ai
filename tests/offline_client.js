@@ -66,6 +66,8 @@ const sandbox = {
     clearTimeout,
     setInterval,
     clearInterval,
+    requestAnimationFrame: callback => setTimeout(() => callback(performance.now()), 0),
+    cancelAnimationFrame: clearTimeout,
     URL,
     performance,
     crypto: webcrypto,

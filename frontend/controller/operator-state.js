@@ -54,7 +54,7 @@
         if (mapping.state && mapping.state !== "ready") return result(mapping.state, mapping.reason || mapping.state.replaceAll("_", " "));
         if (config.layout.kind === "physical" && ((mapping.profile_revision !== undefined && mapping.profile_revision !== slot.profile_revision)
                 || (mapping.calibration_revision !== undefined && mapping.calibration_revision !== slot.calibration_revision))) return result("stale", "Active mapping revisions differ from the pinned slot");
-        if (device.identify && !["cleared", "expired"].includes(device.identify.status)) return result("identifying", "Identify overlay · image obscured");
+        if (device.identify && device.identify.active === true) return result("identifying", "Identify overlay · image obscured");
         if (config.runtime.presentation && config.runtime.presentation.owner === "playback") return result("playback", "Experimental playback owns the display");
         const render = device.render || {};
         const status = render.state || "unknown";
