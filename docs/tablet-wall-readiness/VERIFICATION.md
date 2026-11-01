@@ -437,3 +437,29 @@ all observations remain null/not run and hardware claims remain false. The
 network harness `--help` confirms `--case` and the documented arguments. No
 runtime application code, hardware, firewall or live data changed. Fresh narrow
 independent review of the corrected record is pending.
+
+### Hardware-preparation recheck and final wording fixes
+
+Fresh independent DeepSeek review of `d8ccbac` **closed all five findings** from
+`c4ff5ce`. It independently confirmed 21/21 exact requirements, field/example
+shapes, removal of the duplicate counter, network case/count semantics, links,
+active-hotspot prerequisite and every draft/nonclaim invariant. It found no
+safety or command blocker. Report is preserved at
+`readiness-program/hardware-prep/review-d8ccbac/REPORT.md`.
+
+The review retained two minor wording/example inconsistencies. Parent changed
+“observed null while not run” to “until an observation exists”, explicitly keeping
+inconclusive measurements. The generic observation now has `measurements: []`;
+a separate measurement-entry shape is used only for actual measurements.
+`readiness-program/hardware-prep/final-wording-checks.json` records the parent
+check: five JSON examples parse without duplicate keys; the old placeholder
+check fails as expected; corrected generic observations are empty; all 21
+requirements still match; all actual template observations remain null/not run;
+local links resolve. These final wording edits were checked by the parent and
+were not sent through another independent review cycle.
+
+Preparation documentation and the separate operator-record template are ready
+for a real trial. They do not claim the trial happened. No application code or
+runtime configuration changed after software acceptance at `29148ec`. No full
+suite was repeated for these documentation-only edits. TWR-17, issue #19 and
+the overall milestone remain open for actual signed hardware observations.

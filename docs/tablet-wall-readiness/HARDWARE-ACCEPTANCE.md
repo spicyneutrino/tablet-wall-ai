@@ -171,8 +171,10 @@ No new executable is needed to begin recording observations.
 - Fill declared targets and uncertainty before measurements. Zero is a valid
   measured displacement; unknown is `null`. Do not fill unknowns with zero.
 - For each performed row, fill `observed` using the shape below, with
-  `notes`, `manual_actions` and any `measurements`. Keep `observed: null` while
-  the row is not run. Record evidence paths with SHA-256 hashes. `evidence` entries are objects with `path` and `sha256`.
+  `notes`, `manual_actions` and any `measurements`. Keep `observed: null` until
+  an observation exists. Preserve observations from an inconclusive attempt even
+  when its disposition remains not run. Record evidence paths with SHA-256
+  hashes. `evidence` entries are objects with `path` and `sha256`.
   Use `sha256sum /absolute/path/to/evidence` for each file. Keep private photos,
   captures, logs and image files outside git and exclude credentials.
 - For H8, `trial_results` contains at least twenty entries in total with trial number,
@@ -227,29 +229,34 @@ committed physical mounting choice. Neither is inferred from the other.
 }
 ```
 
-Use this shape for a performed row's `observed` value. `measurements` stays
-empty for checks without millimetre measurements. Add one measurement entry per
-edge in H4, and per model/axis in H5. `device_ids` contains the full participating
-IDs, `location` identifies the actual seam or screen interval, and `quantity` is
-`seam displacement` or `scale interval`. `axis` is `x` or `y`. Use actual signed
-values where relevant and the declared target. A zero measurement is valid;
-unknown values remain null and do not justify pass.
+Use this generic shape for a performed row's `observed` value. `measurements`
+stays empty for checks without millimetre measurements:
 
 ```json
 {
   "notes": null,
   "manual_actions": [],
-  "measurements": [
-    {
-      "device_ids": [],
-      "location": null,
-      "quantity": null,
-      "axis": null,
-      "target_mm": null,
-      "observed_mm": null,
-      "uncertainty_mm": null
-    }
-  ]
+  "measurements": []
+}
+```
+
+For H4 and H5, add actual measurement entries to that array using this shape.
+Use one per edge in H4 and per model/axis in H5. `device_ids` contains the full
+participating IDs, `location` identifies the actual seam or screen interval,
+and `quantity` is `seam displacement` or `scale interval`. `axis` is `x` or `y`.
+Use actual signed values where relevant and the declared target. A zero
+measurement is valid; unknown values remain null and do not justify pass.
+Do not add this empty entry to an observation without an actual measurement.
+
+```json
+{
+  "device_ids": [],
+  "location": null,
+  "quantity": null,
+  "axis": null,
+  "target_mm": null,
+  "observed_mm": null,
+  "uncertainty_mm": null
 }
 ```
 
