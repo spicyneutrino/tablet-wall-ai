@@ -103,6 +103,7 @@ class LogPump:
         self.log = RotatingLog(path, max_bytes=max_bytes, backups=backups)
         self._stream: IO[bytes] | None = None
         self._thread: threading.Thread | None = None
+        self.error: OSError | ValueError | None = None
 
     def __enter__(self) -> LogPump:
         self.log.open()
@@ -130,10 +131,15 @@ class LogPump:
                 if not chunk:
                     break
                 self.log.write(chunk)
-        except (OSError, ValueError):
-            # A closed pipe during shutdown is expected; a write into a log
-            # that is already closing is not fatal to the process either.
-            pass
+        except (OSError, ValueError) as error:
+            self.error = error
+
+    def check(self) -> None:
+        if self.error is not None:
+            raise RuntimeError(
+                f"Child logging failed for {self.log.path}. "
+                "Check free disk space and directory permissions before restarting."
+            ) from self.error
 
     def __exit__(self, *_exc: object) -> None:
         if self._thread is not None:
@@ -144,4 +150,9 @@ class LogPump:
                 except OSError:
                     pass
                 self._thread.join(timeout=5)
-        self.log.close()
+        try:
+            self.log.close()
+        except (OSError, ValueError) as error:
+            self.error = self.error or error
+        if not _exc or _exc[0] is None:
+            self.check()

@@ -65,7 +65,7 @@ def staging_entries() -> list[str]:
 
 def test_upload_publishes_a_video_descriptor_that_matches_the_contract(operator, make_video):
     source = make_video("nonfaststart.mp4")
-    with TestClient(main.app) as client:
+    with TestClient(main.app, base_url="http://127.0.0.1") as client:
         response = post_video(client, source, name="intro.mp4")
         assert response.status_code == 201, response.text
         assert response.headers["cache-control"] == "no-store"
@@ -109,7 +109,7 @@ def test_upload_publishes_a_video_descriptor_that_matches_the_contract(operator,
 
 
 def test_stills_are_unchanged_next_to_a_video(operator, make_video):
-    with TestClient(main.app) as client:
+    with TestClient(main.app, base_url="http://127.0.0.1") as client:
         still = client.post("/uploads?name=a.jpg", content=jpeg(), headers=headers("image/jpeg"))
         clip = post_video(client, make_video("baseline.mp4"))
         assert still.status_code == 201 and clip.status_code == 201
@@ -125,11 +125,11 @@ def test_the_same_admission_gate_applies_to_video(monkeypatch, make_video):
     monkeypatch.setenv("TABLET_WALL_UPLOAD_MODE", "disabled")
     monkeypatch.setenv("TABLET_WALL_OPERATOR_ORIGIN", ORIGIN)
     source = make_video("baseline.mp4")
-    with TestClient(main.app) as client:
+    with TestClient(main.app, base_url="http://127.0.0.1") as client:
         assert post_video(client, source).status_code == 403
     monkeypatch.setenv("TABLET_WALL_UPLOAD_MODE", "loopback")
     monkeypatch.setattr(media, "_loopback_peer", lambda _request: True)
-    with TestClient(main.app) as client:
+    with TestClient(main.app, base_url="http://127.0.0.1") as client:
         wrong_origin = client.post(
             "/uploads", content=source.read_bytes(),
             headers={"Origin": "https://evil.example", "Content-Type": "video/mp4"},
@@ -145,12 +145,12 @@ def test_the_same_admission_gate_applies_to_video(monkeypatch, make_video):
     assert wrong_origin.status_code == 403
     assert no_origin.status_code == 403
     assert remote.status_code == 403
-    with TestClient(main.app) as client:
+    with TestClient(main.app, base_url="http://127.0.0.1") as client:
         assert len(client.get("/media").json()["assets"]) == 1  # only the admitted upload
 
 
 def test_quicktime_content_type_is_accepted_and_stored_as_mp4(operator, make_video):
-    with TestClient(main.app) as client:
+    with TestClient(main.app, base_url="http://127.0.0.1") as client:
         response = post_video(client, make_video("quicktime.mov"), "phone.mov", "video/quicktime")
         assert response.status_code == 201, response.text
         assert response.json()["asset"]["mime"] == "video/mp4"
@@ -163,7 +163,7 @@ def test_quicktime_content_type_is_accepted_and_stored_as_mp4(operator, make_vid
      ("audio.m4a", "no video"), ("garbage.bin", "not an MP4"), ("ffconcat.txt", "not an MP4")],
 )
 def test_a_rejected_video_leaves_nothing_behind(operator, make_video, name, fragment):
-    with TestClient(main.app) as client:
+    with TestClient(main.app, base_url="http://127.0.0.1") as client:
         response = post_video(client, make_video(name), name)
         library = client.get("/media")
     assert response.status_code == 422
@@ -174,7 +174,7 @@ def test_a_rejected_video_leaves_nothing_behind(operator, make_video, name, frag
 
 
 def test_a_url_or_concat_looking_name_is_only_a_label(operator, make_video):
-    with TestClient(main.app) as client:
+    with TestClient(main.app, base_url="http://127.0.0.1") as client:
         response = post_video(client, make_video("baseline.mp4"), name="concat:/etc/hostname|x.mp4")
         assert response.status_code == 201, response.text
         assert response.json()["asset"]["name"] == "hostname|x.mp4"
@@ -185,7 +185,7 @@ def test_a_url_or_concat_looking_name_is_only_a_label(operator, make_video):
 
 def test_unsupported_media_types_are_415_and_the_video_cap_is_enforced(operator, monkeypatch):
     monkeypatch.setattr(main, "MAX_VIDEO_BYTES", 1000)
-    with TestClient(main.app) as client:
+    with TestClient(main.app, base_url="http://127.0.0.1") as client:
         assert client.post("/uploads", content=b"x", headers=headers("text/plain")).status_code == 415
         assert client.post("/uploads", content=b"x", headers=headers("video/webm")).status_code == 415
         declared = client.post("/uploads", content=b"x" * 1001, headers=headers())
@@ -204,14 +204,14 @@ def test_unsupported_media_types_are_415_and_the_video_cap_is_enforced(operator,
 def test_the_still_cap_does_not_apply_to_a_video(operator, make_video, monkeypatch):
     monkeypatch.setattr(main, "MAX_SOURCE_BYTES", 10)
     monkeypatch.setattr(media, "MAX_SOURCE_BYTES", 10)
-    with TestClient(main.app) as client:
+    with TestClient(main.app, base_url="http://127.0.0.1") as client:
         assert post_video(client, make_video("baseline.mp4")).status_code == 201
 
 
 def test_quota_exhaustion_is_a_507_and_leaves_no_objects(operator, make_video, monkeypatch):
     monkeypatch.setattr(media, "QUOTA_BYTES", 1)
     monkeypatch.setattr(media, "FREE_RESERVE_BYTES", 0)
-    with TestClient(main.app) as client:
+    with TestClient(main.app, base_url="http://127.0.0.1") as client:
         response = post_video(client, make_video("baseline.mp4"))
         library = client.get("/media")
     assert response.status_code == 507
@@ -226,7 +226,7 @@ def test_the_quota_reserves_room_for_the_remuxed_copy(operator, make_video, monk
     # Room for the source alone, not for source plus the remux output.
     monkeypatch.setattr(media, "QUOTA_BYTES", size + size // 2)
     monkeypatch.setattr(media, "FREE_RESERVE_BYTES", 0)
-    with TestClient(main.app) as client:
+    with TestClient(main.app, base_url="http://127.0.0.1") as client:
         response = post_video(client, source)
     assert response.status_code == 507
     assert media_files() == [] and staging_entries() == []
@@ -241,7 +241,7 @@ def test_a_crash_after_the_objects_are_linked_but_before_the_commit_publishes_no
     def crash():
         raise RuntimeError("simulated power loss before the commit")
 
-    with TestClient(main.app) as client:
+    with TestClient(main.app, base_url="http://127.0.0.1") as client:
         monkeypatch.setattr(persist, "_connection", crash)
         failed = post_video(client, source)
         monkeypatch.setattr(persist, "_connection", real_connection)
@@ -268,7 +268,7 @@ def test_a_worker_crash_before_publication_is_a_clean_failure(operator, make_vid
         raise RuntimeError("worker vanished")
 
     monkeypatch.setattr(media, "run_video_worker", explode)
-    with TestClient(main.app) as client:
+    with TestClient(main.app, base_url="http://127.0.0.1") as client:
         response = post_video(client, make_video("baseline.mp4"))
         library = client.get("/media")
     assert response.status_code == 500
@@ -277,7 +277,7 @@ def test_a_worker_crash_before_publication_is_a_clean_failure(operator, make_vid
 
 
 def test_a_video_or_poster_is_never_a_still_scene_image(operator, make_video):
-    with TestClient(main.app) as client:
+    with TestClient(main.app, base_url="http://127.0.0.1") as client:
         descriptor = post_video(client, make_video("baseline.mp4")).json()["asset"]
         still = client.post("/uploads", content=jpeg(), headers=headers("image/jpeg")).json()["asset"]
         for object_id in (descriptor["id"], descriptor["poster"]["id"]):
@@ -296,7 +296,7 @@ def test_a_video_or_poster_is_never_a_still_scene_image(operator, make_video):
 
 
 def test_the_playlist_hook_returns_the_duration_for_a_content_id(operator, make_video):
-    with TestClient(main.app) as client:
+    with TestClient(main.app, base_url="http://127.0.0.1") as client:
         descriptor = post_video(client, make_video("baseline.mp4")).json()["asset"]
         still = client.post("/uploads", content=jpeg(), headers=headers("image/jpeg")).json()["asset"]
     assert media.video_duration_ms(descriptor["id"]) == 2000
@@ -309,7 +309,7 @@ def test_the_playlist_hook_returns_the_duration_for_a_content_id(operator, make_
 
 
 def test_verify_reports_a_corrupt_video_without_touching_it(operator, make_video):
-    with TestClient(main.app) as client:
+    with TestClient(main.app, base_url="http://127.0.0.1") as client:
         descriptor = post_video(client, make_video("baseline.mp4")).json()["asset"]
         clean = client.post("/media/verify", headers={"Origin": ORIGIN}).json()
         assert clean == {"ok": True, "problems": []}
@@ -329,7 +329,7 @@ def test_an_uploaded_video_survives_backup_and_restore_and_is_served_with_ranges
 ):
     from deploy import backup
 
-    with TestClient(main.app) as client:
+    with TestClient(main.app, base_url="http://127.0.0.1") as client:
         descriptor = post_video(client, make_video("hd.mp4")).json()["asset"]
         original = client.get(descriptor["url"]).content
     persist.save_meta("playlist", {
@@ -352,7 +352,7 @@ def test_an_uploaded_video_survives_backup_and_restore_and_is_served_with_ranges
     monkeypatch.setenv("TABLET_WALL_MEDIA_DIR", str(restored / "media"))
     monkeypatch.setenv("TABLET_WALL_ASSET_DIR", str(restored / "assets"))
 
-    with TestClient(main.app) as client:
+    with TestClient(main.app, base_url="http://127.0.0.1") as client:
         assert media.list_assets() == [descriptor]
         part = client.get(descriptor["url"], headers={"Range": "bytes=100-299"})
         assert part.status_code == 206 and part.content == original[100:300]

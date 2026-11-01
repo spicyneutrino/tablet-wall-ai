@@ -28,6 +28,11 @@ The policy is written for the pages this project actually serves:
 
 from __future__ import annotations
 
+from collections.abc import Callable
+from urllib.parse import urlsplit
+
+from starlette.datastructures import Headers
+from starlette.responses import JSONResponse
 from starlette.types import ASGIApp, Message, Receive, Scope, Send
 
 CONTENT_SECURITY_POLICY = (
@@ -50,6 +55,42 @@ STATIC_HEADERS = {
     "X-Frame-Options": "DENY",
     "Referrer-Policy": "same-origin",
 }
+
+
+class ConfiguredHostMiddleware:
+    """Fence configured deployment hosts without changing unconfigured development."""
+
+    def __init__(self, app: ASGIApp, allowed_hosts: Callable[[], set[str] | None]):
+        self.app = app
+        self.allowed_hosts = allowed_hosts
+
+    async def __call__(self, scope: Scope, receive: Receive, send: Send) -> None:
+        allowed = self.allowed_hosts() if scope["type"] in ("http", "websocket") else None
+        if allowed is not None:
+            hosts = Headers(scope=scope).getlist("host")
+            valid = False
+            if len(hosts) == 1:
+                raw = hosts[0]
+                try:
+                    parsed = urlsplit("//" + raw)
+                    valid = (
+                        raw == raw.strip() and not any(ord(char) <= 32 for char in raw)
+                        and parsed.hostname is not None
+                        and parsed.hostname.lower().rstrip(".") in allowed
+                        and parsed.username is None and parsed.password is None
+                        and not parsed.path and not parsed.query and not parsed.fragment
+                        and (parsed.port is None or 0 < parsed.port <= 65535)
+                    )
+                except ValueError:
+                    pass
+            if not valid:
+                if scope["type"] == "websocket":
+                    await send({"type": "websocket.close", "code": 1008})
+                else:
+                    await JSONResponse(status_code=400, content={"detail": "Host is not admitted for this deployment"},
+                                       headers={"Cache-Control": "no-store"})(scope, receive, send)
+                return
+        await self.app(scope, receive, send)
 
 
 class SecurityHeadersMiddleware:

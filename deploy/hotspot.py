@@ -210,11 +210,18 @@ def startup_checks(tablet: str, operator: str) -> None:
         raise RuntimeError("The tablet WebSocket upgrade failed.")
 
 
-def wait_for(origin: str, children: list[subprocess.Popen[bytes]], stopped: threading.Event) -> None:
+def check_servers(children: list[subprocess.Popen[bytes]], logs: tuple[log_rotation.LogPump, ...]) -> None:
+    for log in logs:
+        log.check()
+    if any(child.poll() is not None for child in children):
+        raise RuntimeError("A server stopped. See backend.log and caddy.log.")
+
+
+def wait_for(origin: str, children: list[subprocess.Popen[bytes]], stopped: threading.Event,
+             logs: tuple[log_rotation.LogPump, ...] = ()) -> None:
     deadline = time.monotonic() + 20
     while not stopped.is_set() and time.monotonic() < deadline:
-        if any(child.poll() is not None for child in children):
-            raise RuntimeError("A server exited during startup. See backend.log and caddy.log.")
+        check_servers(children, logs)
         try:
             http_request(origin, "/client/")
             return
@@ -343,12 +350,12 @@ def _run(settings: Settings, address: str, config_path: Path, ownership_path: Pa
                      "--port", str(settings.backend_port)],
                     env, backend_log,
                 ))
-                wait_for(operator, children, stopped)
+                wait_for(operator, children, stopped, (backend_log, proxy_log))
                 children.append(spawn_logged(
                     [caddy, "run", "--config", str(proxy_path), "--adapter", "caddyfile"],
                     env, proxy_log,
                 ))
-                wait_for(tablet, children, stopped)
+                wait_for(tablet, children, stopped, (backend_log, proxy_log))
                 startup_checks(tablet, operator)
                 save_json(config_path, asdict(settings))
                 readiness = readiness_summary(operator)
@@ -379,8 +386,7 @@ def _run(settings: Settings, address: str, config_path: Path, ownership_path: Pa
                           f"Readiness card: {operator}/api/v3/readiness\n"
                           f"Join QR (local image): {operator}/api/v3/join-qr", flush=True)
                 while not stopped.wait(.5):
-                    if any(child.poll() is not None for child in children):
-                        raise RuntimeError("A server stopped. See backend.log and caddy.log.")
+                    check_servers(children, (backend_log, proxy_log))
             finally:
                 # Stop writers before the log readers are joined, so a normal
                 # stop reaches EOF instead of waiting on a live pipe.

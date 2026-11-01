@@ -14,6 +14,40 @@ import pytest
 from deploy import hotspot
 
 
+def test_failed_log_writer_is_reported_before_a_live_child_can_be_left_blocked(tmp_path, monkeypatch):
+    import errno
+
+    def full_disk(_chunk):
+        raise OSError(errno.ENOSPC, "injected disk full")
+
+    with pytest.raises(RuntimeError, match="Child logging failed.*backend.log") as caught:
+        with hotspot.log_rotation.LogPump(tmp_path / "backend.log") as pump:
+            monkeypatch.setattr(pump.log, "write", full_disk)
+            child = subprocess.Popen([sys.executable, "-c",
+                "import os; os.write(1, b'x' * (4 * 1024 * 1024))"], stdout=subprocess.PIPE)
+            try:
+                pump.attach(child.stdout)
+                pump._thread.join(timeout=2)
+                assert not pump._thread.is_alive()
+                assert child.poll() is None
+                hotspot.check_servers([child], (pump,))
+            finally:
+                hotspot.stop_children([child])
+                child.stdout.close()
+    assert isinstance(caught.value.__cause__, OSError)
+    assert "free disk space" in str(caught.value)
+    assert child.poll() is not None
+
+
+def test_startup_reports_a_log_failure_before_trying_http(tmp_path, monkeypatch):
+    import threading
+    pump = hotspot.log_rotation.LogPump(tmp_path / "caddy.log")
+    pump.error = OSError("log unavailable")
+    monkeypatch.setattr(hotspot, "http_request", lambda *_: pytest.fail("HTTP must not mask log failure"))
+    with pytest.raises(RuntimeError, match="Child logging failed"):
+        hotspot.wait_for("http://127.0.0.1:1", [], threading.Event(), (pump,))
+
+
 @pytest.fixture(autouse=True)
 def isolated_runtime_directory(tmp_path, monkeypatch):
     monkeypatch.setenv("XDG_RUNTIME_DIR", str(tmp_path))

@@ -104,11 +104,18 @@ database rows are marked `unavailable` in the snapshot. If you need the whole
 library, copy it separately and say so; do not describe a wall-recovery
 snapshot as a full library backup.
 
+The launcher's environment belongs to its child processes. In a fresh shell,
+set the same data directory supplied to `--data-dir`; the launcher does not
+export storage variables into your shell.
+
 ```sh
+wall_data_dir=/absolute/path/to/wall-data
+mkdir -p /absolute/backups
+
 uv run python deploy/backup.py backup \
-  --db "$TABLET_WALL_DB" \
-  --assets "$TABLET_WALL_ASSET_DIR" \
-  --media "$TABLET_WALL_MEDIA_DIR" \
+  --db "$wall_data_dir/wall.db" \
+  --assets "$wall_data_dir/assets" \
+  --media "$wall_data_dir/media" \
   --dest /absolute/backups/wall-YYYYMMDD
 
 uv run python deploy/backup.py verify --src /absolute/backups/wall-YYYYMMDD
@@ -125,6 +132,8 @@ Stop the service first. Restore never overwrites and never records permanent
 paths; you repoint the environment afterwards.
 
 ```sh
+mkdir -p /absolute/restored-YYYYMMDD
+
 uv run python deploy/backup.py restore \
   --src /absolute/backups/wall-YYYYMMDD \
   --db /absolute/restored-YYYYMMDD/wall.db \

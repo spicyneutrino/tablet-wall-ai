@@ -49,6 +49,12 @@ Rules: every placeholder must be replaced before use; a leftover
 `/REPLACE/...` in a live unit is a failed deploy, not a warning. Keep the two
 origins byte-for-byte what the browser sends, including scheme and port.
 
+When either deployment origin is configured, the backend admits HTTP and
+WebSocket Host headers only for those configured hosts and loopback addresses.
+Foreign, missing, and ambiguous hosts are refused before routing. Unconfigured
+development keeps its existing host behavior. This check does not authenticate
+a tablet or replace the operator Origin and credential checks.
+
 ## Running the service
 
 1. Decide **user unit vs system unit yourself** (see the header of
@@ -131,6 +137,9 @@ active file of at most 1,000,000 bytes plus two archives (`backend.log.1`,
 so even an unterminated line cannot grow launcher memory or the disk. The log
 paths and startup diagnostics do not change. Stopping the launcher terminates
 the children before joining their readers, so Ctrl+C remains prompt.
+If a reader or log write fails, startup and supervision report the failed log
+path and stop the child processes. Check free disk space and permissions before
+restarting; a live child blocked behind a failed log reader is not healthy.
 
 The systemd reference above uses the journal instead. Bound it in
 `/etc/systemd/journald.conf` with `SystemMaxUse=` and `MaxRetentionSec=`, or

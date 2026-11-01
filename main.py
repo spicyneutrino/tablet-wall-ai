@@ -49,7 +49,7 @@ from tabletwall import hub as hub
 from tabletwall.auth import AuthMiddleware
 from tabletwall import operability
 from tabletwall.routes import calibration_check, health as health_routes
-from tabletwall.security_headers import SecurityHeadersMiddleware
+from tabletwall.security_headers import ConfiguredHostMiddleware, SecurityHeadersMiddleware
 from tabletwall.hub import (
     _broadcast,
     _broadcast_offline,
@@ -865,7 +865,21 @@ async def operator_origin_guard(request: Request, call_next):
     return await call_next(request)
 
 
+def _deployment_hosts() -> set[str] | None:
+    origins = [_origin_env_state(name) for name in (OPERATOR_ORIGIN_ENV, TABLET_ORIGIN_ENV)]
+    if all(state == _ORIGIN_UNSET for state, _origin in origins):
+        return None
+    hosts = {"127.0.0.1", "localhost", "::1"}
+    for _state, origin in origins:
+        if origin is not None:
+            host = urlsplit(origin).hostname
+            if host is not None:
+                hosts.add(host.lower().rstrip("."))
+    return hosts
+
+
 app.add_middleware(AuthMiddleware)
+app.add_middleware(ConfiguredHostMiddleware, allowed_hosts=_deployment_hosts)
 app.add_middleware(SecurityHeadersMiddleware)
 
 

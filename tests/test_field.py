@@ -149,7 +149,7 @@ def test_diagnostics_reports_storage_db_clients_and_orphans(client, operator, mo
         handle.write(b"left behind by a crash before commit")
     assert client.get("/diagnostics").json()["media"]["orphans"] == 1
 
-    with client.websocket_connect(f"/ws/device?device_id={one}&protocol=3"):
+    with client.websocket_connect("ws://127.0.0.1" + (f"/ws/device?device_id={one}&protocol=3")):
         assert client.get("/diagnostics").json()["clients"]["online"] == 1
 
 
@@ -209,9 +209,9 @@ def test_reregistration_without_a_report_keeps_the_last_one(client):
 
 def test_heartbeat_reports_wake_lock_and_tells_controllers_once(client):
     device_id = register(client)
-    with client.websocket_connect("/ws/controller?protocol=3") as controller:
+    with client.websocket_connect("ws://127.0.0.1/ws/controller?protocol=3") as controller:
         assert controller.receive_json()["type"] == "snapshot"
-        with client.websocket_connect(f"/ws/device?device_id={device_id}&protocol=3") as device:
+        with client.websocket_connect("ws://127.0.0.1" + (f"/ws/device?device_id={device_id}&protocol=3")) as device:
             device.receive_json()  # welcome
             device.send_json({"type": "heartbeat", "wake_lock": "held"})
             device.send_json({"type": "heartbeat", "wake_lock": "held"})
@@ -292,7 +292,7 @@ def test_rebind_survives_a_server_restart_in_between(client):
 
 def test_rebind_refuses_a_live_old_device(client):
     old, _other, new = lost_tablet_scenario(client)
-    with client.websocket_connect(f"/ws/device?device_id={old}&protocol=3") as socket:
+    with client.websocket_connect("ws://127.0.0.1" + (f"/ws/device?device_id={old}&protocol=3")) as socket:
         socket.receive_json()
         response = client.post(f"/devices/{new}/rebind", json={"replaces": old})
         assert response.status_code == 409
@@ -311,7 +311,7 @@ def test_rebind_refuses_unknown_or_already_placed_targets(client):
 
 def test_rebind_closes_a_connected_tablet_so_it_learns_its_new_number(client):
     old, _other, new = lost_tablet_scenario(client)
-    with client.websocket_connect(f"/ws/device?device_id={new}&protocol=3") as socket:
+    with client.websocket_connect("ws://127.0.0.1" + (f"/ws/device?device_id={new}&protocol=3")) as socket:
         assert socket.receive_json()["number"] == 3
         assert client.post(f"/devices/{new}/rebind", json={"replaces": old}).status_code == 200
         with pytest.raises(WebSocketDisconnect) as closed:

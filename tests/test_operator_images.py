@@ -41,7 +41,7 @@ def image_environment(monkeypatch):
 
 @pytest.fixture
 def operator(image_environment):
-    with TestClient(main.app, client=("127.0.0.1", 50000)) as client:
+    with TestClient(main.app, base_url="http://127.0.0.1", client=("127.0.0.1", 50000)) as client:
         yield client
 
 
@@ -139,12 +139,12 @@ def test_inventory_merges_deduplicates_and_serves_real_metadata(
     {"X-Tablet-Wall-Operator": "forged"},
 ])
 def test_forged_operator_headers_cannot_read_inventory(image_environment, host, headers):
-    with TestClient(main.app, client=(host, 50001)) as client:
+    with TestClient(main.app, base_url="http://127.0.0.1", client=(host, 50001)) as client:
         assert client.get("/api/v3/images", headers=headers).status_code == 403
 
 
 def test_remote_inventory_requires_exactly_one_operator_credential(image_environment):
-    with TestClient(main.app, client=("192.0.2.7", 50001)) as client:
+    with TestClient(main.app, base_url="http://127.0.0.1", client=("192.0.2.7", 50001)) as client:
         assert client.get("/api/v3/images").status_code == 403
         accepted = client.get(
             "/api/v3/images", headers={"X-Tablet-Wall-Operator": CREDENTIAL}
@@ -191,7 +191,7 @@ def test_inventory_and_scene_exclude_videos_and_their_posters(operator, monkeypa
 def test_scene_a_to_b_and_restart_expose_the_real_scene(image_environment, asset_dir, mode):
     first = curated(asset_dir)
     second = curated(asset_dir, "second.png", (45, 90), "green")
-    with TestClient(main.app) as client:
+    with TestClient(main.app, base_url="http://127.0.0.1") as client:
         selected = select(client, first["id"])
         assert selected.status_code == 200, selected.text
         before = selected.json()
@@ -220,7 +220,7 @@ def test_scene_a_to_b_and_restart_expose_the_real_scene(image_environment, asset
         assert "url" not in stored["scene"]["content"]
     main.wall.clear()
     main.wall.update(main._fresh_wall())
-    with TestClient(main.app) as restarted:
+    with TestClient(main.app, base_url="http://127.0.0.1") as restarted:
         restored = restarted.get("/api/v3/config").json()
         assert restored["scene"] == after["scene"]
         assert restored["layout"] == after["layout"]
