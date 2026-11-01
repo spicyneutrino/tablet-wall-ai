@@ -695,14 +695,14 @@ class RenderRegistry:
             return result("offline")
         if caps is not None:
             cap_set = {caps} if isinstance(caps, str) else set(caps)
-            if "render_ack" not in cap_set:
-                return result("unsupported", "capability")
             if (
                 "image" not in cap_set
                 and expected is not None
                 and expected.asset is not None
             ):
                 return result("unsupported", "capability")
+            if "render_ack" not in cap_set:
+                return result("unknown", "capability")
         if identify_active:
             return result("identifying")
         if presentation_active:

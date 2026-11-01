@@ -19,6 +19,20 @@ CREDENTIAL = "private-test-operator-credential"
 IMAGE_KEYS = {"id", "name", "width", "height", "url", "thumbnail_url", "source"}
 
 
+def test_missing_managed_bytes_are_unavailable_in_authoritative_config(operator, monkeypatch):
+    from pathlib import Path
+    managed = upload(operator, monkeypatch)
+    selected = select(operator, managed["id"])
+    assert selected.status_code == 200
+    before = operator.get("/api/v3/config").json()
+    entry = media.find_object(managed["id"])
+    (Path(media.media_dir()) / entry["path"]).unlink()
+    after = operator.get("/api/v3/config").json()
+    assert after["scene"]["content"]["asset"] == managed["id"]
+    assert after["scene"]["content"]["available"] is False
+    assert after["etag"] == before["etag"]
+
+
 @pytest.fixture
 def image_environment(monkeypatch):
     monkeypatch.setenv("TABLET_WALL_UPLOAD_MODE", "disabled")

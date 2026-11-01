@@ -27,7 +27,7 @@ window.PhysicalStage = {
             state.stage = window.OperatorStage.draw({ svg: el.stageSvg, layout,
                 content, profileFor,
                 labelFor: id => numberedLabel(id, latestProfile(id)),
-                statusFor: id => window.OperatorState.tabletState(config, id, Date.now()),
+                statusFor: id => window.OperatorState.tabletState(config, id, performance.now()),
                 selectedId: state.selectedId, runtime: config.runtime,
                 resolutionNode: document.getElementById("stage-resolution") });
             const bounds = window.OperatorState.bounds(layout);
@@ -338,7 +338,7 @@ window.PhysicalStage = {
                 meta.appendChild(profileText);
 
                 const status = state.operatorConfig && window.OperatorState
-                    ? { text: window.OperatorState.tabletState(state.operatorConfig, entry.id, Date.now()).text, kind: "info" }
+                    ? { text: window.OperatorState.tabletState(state.operatorConfig, entry.id, performance.now()).text, kind: "info" }
                     : calibrationStatus(entry.profile, entry.calibration);
                 const calText = document.createElement("span");
                 calText.className = "dev-cal";

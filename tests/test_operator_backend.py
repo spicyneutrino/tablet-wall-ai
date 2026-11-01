@@ -40,6 +40,74 @@ def test_mounted_readiness_health_and_qr_use_live_wall(client, monkeypatch):
         assert response.headers["x-frame-options"] == "DENY"
 
 
+@pytest.mark.parametrize("protocol", [1, 2])
+def test_new_legacy_controller_cannot_observe_a_fake_physical_wall(client, protocol):
+    from starlette.websockets import WebSocketDisconnect
+    register(client)
+    measurements()
+    physical(client)
+    with pytest.raises(WebSocketDisconnect) as caught:
+        with client.websocket_connect(f"/ws/controller?protocol={protocol}") as socket:
+            socket.receive_json()
+    assert caught.value.code == 4426
+
+
+def test_number_release_broadcast_cannot_overwrite_a_new_socket_owner(client, monkeypatch):
+    import asyncio
+    register(client)
+    register(client, B)
+    main.devices[B]["last_seen_mono"] = main.time.monotonic() - 10000
+    main.devices[A].pop("number", None)
+
+    async def exercise():
+        ready = asyncio.Event()
+
+        class Socket:
+            def __init__(self):
+                self.closed = asyncio.Event()
+                self.frames = []
+
+            async def accept(self):
+                pass
+
+            async def close(self, **kwargs):
+                self.closed.set()
+
+            async def receive(self):
+                await self.closed.wait()
+                return {"type": "websocket.disconnect"}
+
+            async def send_json(self, frame):
+                self.frames.append(deepcopy(frame))
+                if self is newer and frame["type"] == "welcome":
+                    ready.set()
+
+        older, newer = Socket(), Socket()
+        tasks = []
+
+        async def connect(socket, caps):
+            await main.ws_device(socket, device_id=A, protocol="3", caps=caps,
+                w="600", h="800", dpr="1", orientation="0", mode="fullscreen", visual_scale="1")
+
+        async def broadcast(frame):
+            if frame["type"] == "device_updated" and frame["device"]["device_id"] == B and not tasks:
+                tasks.append(asyncio.create_task(connect(newer, CAPS)))
+                await asyncio.wait_for(ready.wait(), 2)
+
+        monkeypatch.setattr(main, "_broadcast", broadcast)
+        try:
+            await asyncio.wait_for(connect(older, "image,physical"), 3)
+            welcome = next(frame for frame in newer.frames if frame["type"] == "welcome")
+            assert main.device_sockets[A] is newer
+            assert main.devices[A]["connection_id"] == welcome["connection_id"]
+            assert "render_ack" in main.devices[A]["caps"]
+        finally:
+            await newer.close()
+            await asyncio.gather(*tasks)
+
+    asyncio.run(exercise())
+
+
 def config(client):
     return client.get("/api/v3/config").json()
 

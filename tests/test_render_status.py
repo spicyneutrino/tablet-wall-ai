@@ -716,7 +716,7 @@ def test_unsupported_capability_is_never_displayed(expected):
     unnegotiated_image = project(expected, caps=("render_ack",))
     unknown = project(expected, caps=None)
 
-    assert unsupported.state == "unsupported"
+    assert unsupported.state == "unknown"
     assert unsupported.reason == "capability"
     assert unsupported.current is False
     assert unnegotiated_image.state == "unsupported"

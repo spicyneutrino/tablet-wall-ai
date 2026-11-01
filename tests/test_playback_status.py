@@ -21,6 +21,38 @@ def session():
     )
 
 
+def test_unexpected_playback_failure_is_visible_and_not_retried_silently(monkeypatch, caplog):
+    import asyncio
+    from copy import deepcopy
+
+    main._playback_session = session()
+    wall_before = deepcopy(main.wall)
+    calls = []
+
+    def broken_tick(*args):
+        calls.append(True)
+        raise RuntimeError("secret-like exception details must not reach status or logs")
+
+    monkeypatch.setattr(playback, "tick", broken_tick)
+    monkeypatch.setattr(main, "_server_clock", None)
+
+    async def exercise():
+        task = asyncio.create_task(main._playback_loop())
+        try:
+            await asyncio.sleep(0.35)
+            assert main._playback_status()["state"] == "failed"
+            assert "return to still images" in main._playback_status()["blocked_reason"]
+            assert len(calls) == 1
+        finally:
+            task.cancel()
+            await asyncio.gather(task, return_exceptions=True)
+
+    asyncio.run(exercise())
+    assert main.wall == wall_before
+    assert caplog.text.count("Experimental playback loop failed") == 1
+    assert "secret-like" not in caplog.text
+
+
 def video_session(*, policy="strict", cohort=("dev-1", "dev-2")):
     """A strict session whose first video occurrence has committed."""
     s = playback.start(

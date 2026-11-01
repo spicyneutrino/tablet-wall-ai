@@ -14,6 +14,7 @@ import contextlib
 import hashlib
 import ipaddress
 import json
+import logging
 import os
 import re
 import shutil
@@ -46,6 +47,7 @@ from starlette.datastructures import Headers
 # ``monkeypatch.setattr(main.hub, "HEARTBEAT_TIMEOUT_S", ...)``.
 from tabletwall import hub as hub
 from tabletwall.auth import AuthMiddleware
+from tabletwall import operability
 from tabletwall.routes import health as health_routes
 from tabletwall.security_headers import SecurityHeadersMiddleware
 from tabletwall.hub import (
@@ -482,7 +484,8 @@ def _commit_wall(
     have been told all still agree, the route fails loudly as a 5xx, and no
     broadcast follows (PROTOCOL.md "A commit happens before notification, so
     a controller is never told about state that would not survive a
-    restart"). Every wall-mutating route commits through here.
+    restart"). Layout and scene routes use this boundary; lifecycle routes use
+    ``_commit_lifecycle`` to include roster and history writes in their commit.
     """
     proposed = deepcopy(wall)
     change(proposed)
@@ -1821,9 +1824,8 @@ def _config_payload() -> dict[str, Any]:
     if payload["scene"]["content"].get("type") == "image":
         payload["scene"]["content"].setdefault("fit", "cover")
         payload["scene"]["content"].setdefault("background", "#0b1120")
-        payload["scene"]["content"]["available"] = (
-            media.find_object(payload["scene"]["content"]["asset"]) is not None
-            or assets.find(payload["scene"]["content"]["asset"]) is not None)
+        payload["scene"]["content"]["available"] = operability.asset_available(
+            payload["scene"]["content"]["asset"])
     payload["operator_state_version"] = 1
     payload["layout"].setdefault("sizing", {"mode": "fixed", "padding": 0})
     payload.setdefault("referenced_displays", [])
@@ -2881,13 +2883,14 @@ async def _abort_playback(reason: str) -> None:
 
 
 async def _playback_loop() -> None:
+    last_fault_log = float("-inf")
     while True:
         await asyncio.sleep(0.1)
         try:
             if _server_clock is not None and _server_clock.check_suspend():
                 await _abort_playback("host suspend")
             session = _playback_session
-            if session is None:
+            if session is None or session.state in ("stopped", "failed"):
                 continue
             _revoke_missing_leases(session)
             actions = playback.tick(session, _now_ms())
@@ -2908,8 +2911,21 @@ async def _playback_loop() -> None:
                     await _broadcast_playback()
         except asyncio.CancelledError:
             raise
-        except Exception:
-            continue
+        except Exception as error:
+            now = time.monotonic()
+            if now - last_fault_log >= 60:
+                logging.getLogger(__name__).error(
+                    "Experimental playback loop failed (%s)", type(error).__name__
+                )
+                last_fault_log = now
+            session = _playback_session
+            if session is not None and session.state not in ("stopped", "failed"):
+                session.state = "failed"
+                session.blocked_reason = "Internal experimental playback error. Stop and return to still images."
+                session.pending = None
+                with contextlib.suppress(Exception):
+                    await _send_terminal_hold(session)
+                    await _broadcast_playback()
 
 
 class PlaylistCommand(BaseModel):
@@ -3446,9 +3462,6 @@ async def ws_device(
         _touch_device(key)
         released = _ensure_device_number(key)
     replaced = _claim_device_socket(key, websocket, record)
-    for old_id in released:
-        if old_id in devices:
-            await _broadcast({"type": "device_updated", "device": _device_record(old_id)})
     record["protocol"] = negotiated
     record["caps"] = _parse_caps(caps)
     record["connection_id"] = uuid.uuid4().hex
@@ -3463,6 +3476,13 @@ async def ws_device(
     if replaced is not None and replaced is not websocket:
         with contextlib.suppress(Exception):
             await replaced.close(code=WS_CLOSE_REPLACED)
+
+    for old_id in released:
+        if old_id in devices:
+            await _broadcast({"type": "device_updated", "device": _device_record(old_id)})
+    if device_sockets.get(key) is not websocket:
+        await websocket.close(code=WS_CLOSE_REPLACED)
+        return
 
     connection = writers.attach(websocket)
     try:
@@ -3539,7 +3559,7 @@ async def ws_controller(
     await websocket.accept()
 
     negotiated = _parse_protocol(protocol)
-    if negotiated is None:
+    if negotiated is None or (negotiated != 3 and wall["layout"].get("kind") == "physical"):
         await websocket.close(code=WS_CLOSE_UNSUPPORTED_PROTOCOL)
         return
 
