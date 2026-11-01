@@ -2778,6 +2778,8 @@
 
     async function deleteLayout(name, logical) {
         if (state.busy) return;
+        const focused = document.activeElement;
+        const focusIndex = Array.from(el.savedLayouts.querySelectorAll(".saved-row")).indexOf(focused.closest(".saved-row"));
         if (!window.confirm("Delete saved layout \"" + name + "\"?")) return;
         clearError();
         setBusy(true);
@@ -2796,6 +2798,12 @@
             handleWriteError(error, el.layoutMsg);
         } finally {
             setBusy(false);
+            if (focusIndex >= 0 && document.activeElement === document.body) {
+                const rows = el.savedLayouts.querySelectorAll(".saved-row");
+                const row = rows[Math.min(focusIndex, rows.length - 1)];
+                const target = row && row.querySelector("button:not(:disabled)") || el.layoutName;
+                target.focus();
+            }
         }
     }
 

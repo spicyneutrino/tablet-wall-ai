@@ -97,10 +97,18 @@ window.OperatorDevices = {
         }
         async function run(work) {
             if (busy) return;
+            const focused = document.activeElement;
             busy = true; render();
             try { await work(); }
             catch (error) { if (error.status === 412) showConflict("Tablet action inputs changed. Review and preview again."); message("Action unavailable or failed. " + error.message + " Refresh status and retry."); }
-            finally { busy = false; render(); }
+            finally {
+                busy = false; render();
+                if (focused && focused !== document.body && document.activeElement === document.body) {
+                    const target = focused.isConnected && !focused.disabled && focused.getClientRects().length
+                        ? focused : document.querySelector('.dev-pick[aria-pressed="true"]');
+                    if (target) target.focus();
+                }
+            }
         }
         $("tablet-label-form").addEventListener("submit", event => {
             event.preventDefault(); const id = selectedId, label = $("tablet-label").value.trim();

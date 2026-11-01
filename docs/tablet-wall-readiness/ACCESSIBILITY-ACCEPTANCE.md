@@ -1,5 +1,24 @@
 # TWR-14 accessibility acceptance
 
+## Parent correction and repeat
+
+The parent corrected both focus defects below. Tablet actions restore the
+previous usable control after busy rendering, or the selected tablet row when
+that control is no longer available. Saved-layout deletion moves focus to a
+surviving neighbouring row action, or to the name field when the list is empty.
+Focus already moved to another control is retained.
+
+The unchanged runner then passed **82 of 82 checks**, including both previously
+failing focus checks, at
+`readiness-program/final-qa/20261101-accessibility-root-fixed/`. No unexpected
+console/network errors remained; private data was removed and owned processes
+stopped. Minimum sampled contrast remains 4.5174534575546:1. The run started at
+`a3ae097` with the two focus changes uncommitted; those exact source edits are
+recorded in the parent correction commit. Independent recheck of that commit
+remains required. Original failures and limits are retained below.
+
+## Original independent run at `b8a07fa`
+
 TWR-14 A3 remains open. The actual application loses keyboard focus after two
 successful destructive actions. A4 and the bounded A5 checks pass in the
 recorded desktop and phone matrix. This is software evidence, not a WCAG

@@ -221,3 +221,36 @@ independent actual-browser probe to hold and release the real response; the
 active pattern stayed available and backend readback retained `contain` and
 `available: true`. Passing evidence is in
 `readiness-program/final-qa/20261101T141818Z-inventory-race/`.
+
+The fresh independent narrow recheck **passed `b8a07fa`**. It ran all 18 Node
+suites and additional probes for delayed inventory successes and errors, normal
+subsequent empty/populated refreshes, current-error reporting and loading-state
+release. The keyboard boundary fallback was also inspected: a successful move
+has at least two rows, so the opposite direction is enabled. No actionable
+correctness or simplicity findings remained in this delta. The review did not
+repeat the full browser journey or Python suite. Its result is retained in
+`readiness-program/reviews/inventory-focus-b8a07fa.md`.
+
+### Portable accessibility acceptance and focus corrections
+
+Integrated worker commit `bf49166` as `a3ae097`, owning only the portable
+`simulator/browser/operator_accessibility.py` runner and its
+[acceptance report](ACCESSIBILITY-ACCEPTANCE.md). Its actual app run passed
+80/82 and retained two P2 failures: Remove from wall and Delete saved arrangement
+left keyboard focus on body. Parent corrected these paths while retaining
+another control that the operator deliberately focused during the request.
+Remove falls back to the selected tablet row; deleting the last saved arrangement
+focuses its name input, and surviving rows provide a neighbouring enabled action.
+
+`.venv/bin/python simulator/browser/operator_accessibility.py --artifacts
+/var/home/oak/.local/share/tablet-wall-ai/readiness-program/final-qa/20261101-accessibility-root-fixed`
+then passed **82/82** checks. All 18 Node suites and scoped runner Ruff pass.
+The actual browser matrix covers normal, 200% CSS zoom and separately enlarged
+root text at 1600×1000 and 390×844; keyboard Apply/Cancel, native confirmations,
+first/last reorder, nudge, tab arrows, polling and roster focus retention,
+Unicode labels, error live regions, visible names, and computed text contrast
+for enabled primary, health, chip, hint and readiness/error states. The minimum
+sample is 4.5174534575546:1. This is bounded accessibility evidence, not a full
+WCAG or assistive-technology speech certification. Private data removal is
+recorded true, and owned processes stopped. The source was tested before the
+focus-fix commit; the report retains that source-identity qualification.

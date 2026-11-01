@@ -3,7 +3,7 @@
 **Document status:** Open. Software integration is implemented and final detailed
 acceptance is in progress. Hardware acceptance is not run. No hardware claim is
 made anywhere in this document.
-**Baseline for current-state claims:** `981b2db` (`style: remove ingress test
+**Historical baseline used to combine the reviews:** `981b2db` (`style: remove ingress test
 trailing blank line`), integration branch `work/tablet-wall-readiness`. The
 branch advanced to `18afa5c` while this document was being written; §4.4 records
 the observed state at each point.
@@ -169,7 +169,11 @@ one overwrite the other `[D]`.
 
 ---
 
-## 4. Current state at `981b2db`
+## 4. Historical state at `981b2db`
+
+This section preserves the starting evidence and defect inventory. It does not
+describe the final runtime. Use the status board in §10 and VERIFICATION.md for
+implemented corrections and their current acceptance evidence.
 
 ### 4.1 What landed between the assessed baseline and the document baseline
 
@@ -186,7 +190,7 @@ deprecation warnings, 109.30 s (`VERIFICATION.md`). It is inherited evidence,
 not re-run for this document. The two landed fixes have their own focused
 records.
 
-### 4.2 Capabilities that are real today and must be retained
+### 4.2 Baseline capabilities to retain
 
 These are not proposals. They are load-bearing and a consolidation that loses
 them is a regression.
@@ -225,7 +229,7 @@ them is a regression.
     bitmap/object-URL release, local retry, reconnect backoff, wake-lock
     reporting, and accessible controller markup (`[S]` `frontend/client/client.js`).
 
-### 4.3 Current gaps that block dependable use
+### 4.3 Baseline gaps that motivated the programme
 
 Each gap is a consolidation of claims that survived re-checking. IDs are stable
 for tracking.
@@ -1695,8 +1699,9 @@ Open decisions recorded here rather than assumed:
   “opus-5.5-existing-report”); it is treated as a pre-existing assessment, not a
   same-run peer. Its claims were re-checked where a decision depends on them.
   See [reviews/README.md](reviews/README.md).
-- Current-state claims use `981b2db`; product claims from the reviews use
-  `0ff56e3`. Do not conflate them.
+- Historical baseline claims in §4 use `981b2db`; the source reviews use
+  `0ff56e3`. Current implementation and acceptance are in §10 and
+  VERIFICATION.md. Do not conflate these checkpoints.
 - Update rules: change a package's acceptance only with a logged decision;
   never mark hardware verified from software; never delete a failure from the
   evidence trail; keep deferred items in §12 until a written reopen decision.
