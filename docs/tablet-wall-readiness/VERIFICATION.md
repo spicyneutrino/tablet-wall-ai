@@ -376,3 +376,64 @@ endpoint, panel, live data, service, firewall or reboot was exercised.
 This is preparation documentation, not new application behavior or hardware
 acceptance. TWR-17 and issue #19 remain open; software acceptance at `29148ec`
 is unchanged. Fresh review of this preparation delta is pending.
+
+### Independent fresh-shell release rehearsal
+
+DeepSeek Flash independently **passed** the runbook at `2e5aca4`
+(application-identical to reviewed `29148ec`). Its report and raw logs are
+preserved at `readiness-program/release-procedure/deepseek-2e5aca4/`, copied
+from `/tmp/opencode/twr-runbook-thloFQ/`.
+
+Actual private-loopback checks covered fresh-shell `env -i` backup/verify/restore,
+restored boot and image bytes; normal health plus unreadable-DB and schema-mismatch
+503/recovery; unknown readiness fields and read-only backup projection; missing
+curated-image detection/recovery; excluded unused content; and the 29-check
+restore drill. Tampered-snapshot verify/restore failed safely with zero targets
+created, as did restore into environment-configured targets. Paths containing
+spaces worked. The generated Caddy configuration passed validation and the
+launcher's startup checks on loopback. Fifteen operator-route variants, including
+health/readiness/QR, returned 403 through the tablet listener even with a forged
+operator header; allowed client/assets remained available. No defect was found.
+
+The report retains three non-blocking limits: diagnostics verification is nested
+under `media.integrity` and its successful empty-upload result proves no image
+bytes; a later restore to environment-named paths is deliberately refused even
+if no service is running; startup checks probe fewer denied routes than this
+manual rehearsal, though the catch-all denied all tested paths. These observations
+do not establish a product failure or justify unrelated application changes.
+
+The actual hotspot launcher, real firewall ownership/Ctrl+C, browser, TLS/auth
+proxy composition, host reboot and hardware were not exercised. All owned
+processes stopped and listeners closed. The full suites, browser feature run,
+accessibility matrix and efficiency benchmark were not repeated. TWR-17 remains
+unrun. The independent review of the separate preparation-document delta is
+still pending.
+
+### Preparation record field corrections
+
+Fresh DeepSeek review of `c4ff5ce` independently passed command runnability,
+new-path restore, all links/anchors and draft/nonclaim invariants, but retained
+two P2 documentation findings: required network/device/measurement facts lacked
+explicit fields, and H11/H16 template summaries differed from the canonical rows.
+Three P3 clarifications covered absorbed model/mixed-device checks, hotspot
+reactivation after reboot and the network case/count rule. Original report is
+preserved at `readiness-program/hardware-prep/review-c4ff5ce/REPORT.md`.
+
+Parent added explicit network fields and exact JSON shapes for device entries,
+performed observations, millimetre measurements and the planned network cohort.
+Planning is separate from observations. The duplicate `trials` counter is removed;
+actual H8 count is the `trial_results` length. Every template requirement now
+matches its canonical checklist sentence verbatim. H11 calls out hotspot
+reactivation; the two absorbed checks are mapped explicitly. The twenty-trial
+minimum is total across the declared cohort/cases, representing every model;
+the existing harness produces twenty entries per named-device invocation and
+all results are retained. These clarify the procedure, not measured outcomes.
+
+`readiness-program/hardware-prep/record-contract-corrections/checks.json` records
+an executable old/new contract comparison: `c4ff5ce` fails the new field/parity
+checks; corrected files pass. Every JSON example parses, all 21 IDs match in
+order, requirements match exactly, network/example shapes and local links exist,
+all observations remain null/not run and hardware claims remain false. The
+network harness `--help` confirms `--case` and the documented arguments. No
+runtime application code, hardware, firewall or live data changed. Fresh narrow
+independent review of the corrected record is pending.

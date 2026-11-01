@@ -52,7 +52,8 @@ new browser origin and therefore new tablet identities. Use those trial identiti
 do not clear or rebind the working installation. Existing reservations from the
 snapshot remain visible until intentionally replaced in the trial copy.
 
-For H11 after reboot, set `trial_root` to the **same recorded directory** and
+For H11 after reboot, ensure the hotspot is active, recording any action
+needed to re-enable it. Set `trial_root` to the **same recorded directory** and
 run only the launcher command again. Do not run `mktemp`, restore the old
 snapshot again, or recreate the trial data. Those actions would test a different
 installation or discard the arrangements changed during the trial.
@@ -99,6 +100,11 @@ remains in the record after a successful retry; record the retry separately.
 | HW-FIT | Fit and Fill | Marked source borders/corners and observed bars, crop, bezels and gaps match the preview across the wall. |
 | HW-AUTH | Authenticated deployment only | Record a real tablet sign-in/expiry/recovery and denied operator ingress. For profile A mark not run with “Unauthenticated HTTP profile”; do not imply auth passed. |
 
+The previous checklist's **Model and viewport** check is retained in preparation,
+the device entries and H6. Its **Mixed devices** check is retained in H4 and H5:
+include each actual iPad/Google boundary in seam measurements and both models in
+scale measurements. State the scope explicitly if a trial lacks mixed models.
+
 ## Record connectivity separately from image recovery
 
 The existing [network trial harness](../../deploy/network_trials.py) observes an
@@ -110,7 +116,8 @@ evidence, but it does not inspect the current image or a panel.
 ```sh
 uv run python deploy/network_trials.py --artifacts /absolute/new-network-evidence \
   --base-url http://127.0.0.1:18000 --tablet-device-id ACTUAL_TRIAL_UUID \
-  --restored-stdin --ap "actual AP and firmware" --wan "actual WAN state"
+  --restored-stdin --case "declared-case-label" \
+  --ap "actual AP and firmware" --wan "actual WAN state"
 ```
 
 After the harness observes each outage, enter an independently observed UTC
@@ -118,8 +125,13 @@ restoration marker as `ISO-8601 | case | note`. See
 [network timing procedure](../validation/SOAK-AND-NETWORK.md) for marker semantics.
 Alongside each transport result, record restoration-to-correct-image time and its
 observation method. A screen recording with a visible independent timer is one
-option. Include clock/timing uncertainty. Repeat the declared cases for all
-participating models; do not count a dry browser run as one of the twenty trials.
+option. Include clock/timing uncertainty. Before running, declare the cases and
+allocation in `run.wifi_trial_plan`. H8 needs at least twenty actual trials in
+total across that declared cohort and case plan, with every participating model
+represented. The harness produces twenty trials per invocation for one named
+identity; two invocations produce forty entries, not twenty. Keep every entry
+and failure. More trials do not remove failed ones. A dry browser run never
+counts toward this total.
 
 ## Check ingress from a second peer
 
@@ -158,13 +170,15 @@ No new executable is needed to begin recording observations.
   and every actual device's full ID, model, OS/browser, mode, revisions and power settings.
 - Fill declared targets and uncertainty before measurements. Zero is a valid
   measured displacement; unknown is `null`. Do not fill unknowns with zero.
-- For each performed row, record observed values, interventions and evidence
-  paths with SHA-256 hashes. `evidence` entries are objects with `path` and `sha256`.
+- For each performed row, fill `observed` using the shape below, with
+  `notes`, `manual_actions` and any `measurements`. Keep `observed: null` while
+  the row is not run. Record evidence paths with SHA-256 hashes. `evidence` entries are objects with `path` and `sha256`.
   Use `sha256sum /absolute/path/to/evidence` for each file. Keep private photos,
   captures, logs and image files outside git and exclude credentials.
-- For H8, `trial_results` contains at least twenty entries with trial number,
+- For H8, `trial_results` contains at least twenty entries in total with trial number,
   restoration time, correct-image time/duration, timing uncertainty, device ID,
-  manual actions and result, plus linked raw transport/visual evidence.
+  manual actions and result, plus linked raw transport/visual evidence. Its count
+  is the array length; there is no separate `trials` field to disagree with it.
 - For H17, set `duration_seconds` from observed start/end, at least 7200 for a
   two-hour pass. Record gaps, not just start/end pictures.
 - `record_state` remains `draft` while fields are missing. Set it to `recorded`
@@ -176,12 +190,76 @@ No new executable is needed to begin recording observations.
   devices, conditions and unresolved rows before TWR-17 can be closed. No tool or
   template promotes the milestone automatically.
 
+Before H8, fill `run.wifi_trial_plan.cases` with the declared case labels.
+Each entry in `run.wifi_trial_plan.allocations` has this shape. The plan is
+metadata, not an observation; keep H8's `observed` null until a trial is performed.
+Planned counts do not count as completed trials.
+
+```json
+{
+  "device_id": null,
+  "case": null,
+  "planned_trials": null
+}
+```
+
+Use this shape for each entry added to `devices`. All example values are
+unknown; copy the shape for each actual participant and fill observed facts.
+`orientation_degrees` is browser orientation, while `mount_quarter_turn` is the
+committed physical mounting choice. Neither is inferred from the other.
+
+```json
+{
+  "label": null,
+  "device_id": null,
+  "model": null,
+  "os": null,
+  "browser": null,
+  "launch_mode": null,
+  "orientation_degrees": null,
+  "mount_quarter_turn": null,
+  "viewport_css": {"width": null, "height": null},
+  "zoom": null,
+  "profile_id": null,
+  "profile_revision": null,
+  "calibration_revision": null,
+  "power_settings": null
+}
+```
+
+Use this shape for a performed row's `observed` value. `measurements` stays
+empty for checks without millimetre measurements. Add one measurement entry per
+edge in H4, and per model/axis in H5. `device_ids` contains the full participating
+IDs, `location` identifies the actual seam or screen interval, and `quantity` is
+`seam displacement` or `scale interval`. `axis` is `x` or `y`. Use actual signed
+values where relevant and the declared target. A zero measurement is valid;
+unknown values remain null and do not justify pass.
+
+```json
+{
+  "notes": null,
+  "manual_actions": [],
+  "measurements": [
+    {
+      "device_ids": [],
+      "location": null,
+      "quantity": null,
+      "axis": null,
+      "target_mm": null,
+      "observed_mm": null,
+      "uncertainty_mm": null
+    }
+  ]
+}
+```
+
 Use this shape for each H8 `trial_results` entry. Replace unknown values only
 with actual observations, and retain the evidence for a failed trial:
 
 ```json
 {
   "trial": 1,
+  "case": null,
   "device_id": null,
   "restored_utc": null,
   "correct_image_utc": null,

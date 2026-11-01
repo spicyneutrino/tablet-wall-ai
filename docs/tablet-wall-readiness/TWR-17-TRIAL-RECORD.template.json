@@ -25,7 +25,18 @@
     "operator_origin": null,
     "data_dir": null,
     "isolation": "restored-copy",
-    "isolation_note": "Use a restored copy with explicit new paths. Record changes to any origin and resulting browser identities."
+    "isolation_note": "Use a restored copy with explicit new paths. Record changes to any origin and resulting browser identities.",
+    "ssid": null,
+    "interface": null,
+    "access_point": null,
+    "ap_firmware": null,
+    "band": null,
+    "channel": null,
+    "wan_state": null,
+    "wifi_trial_plan": {
+      "cases": [],
+      "allocations": []
+    }
   },
   "backup": {
     "snapshot_dir": null,
@@ -45,11 +56,10 @@
     {
       "id": "H1",
       "source": "HARDWARE-ACCEPTANCE.md#canonical-checklist",
-      "requirement": "Logical 1x4 baseline: known image displays as before; no regression",
+      "requirement": "Known image displays as before; record the trial-origin identities and saved arrangement.",
       "status": "not run",
       "observed": null,
       "reason": "No physical observation recorded.",
-      "trials": null,
       "evidence": [],
       "trial_results": [],
       "duration_seconds": null
@@ -57,11 +67,10 @@
     {
       "id": "H2",
       "source": "HARDWARE-ACCEPTANCE.md#canonical-checklist",
-      "requirement": "Physical 2x2 with supplied models: correct quadrants, no swap/upside-down, within 10 s",
+      "requirement": "Correct quadrants, no swapped/upside-down panel, current image within 10 s of Apply.",
       "status": "not run",
       "observed": null,
       "reason": "No physical observation recorded.",
-      "trials": null,
       "evidence": [],
       "trial_results": [],
       "duration_seconds": null
@@ -69,11 +78,10 @@
     {
       "id": "H3",
       "source": "HARDWARE-ACCEPTANCE.md#canonical-checklist",
-      "requirement": "Physical 1x4: correct row order; orientation as intended",
+      "requirement": "Correct row order and physical mount direction.",
       "status": "not run",
       "observed": null,
       "reason": "No physical observation recorded.",
-      "trials": null,
       "evidence": [],
       "trial_results": [],
       "duration_seconds": null
@@ -81,11 +89,10 @@
     {
       "id": "H4",
       "source": "HARDWARE-ACCEPTANCE.md#canonical-checklist",
-      "requirement": "Seams: record displacement per edge with uncertainty; compare with 2 mm target honestly",
+      "requirement": "Measure displacement at every horizontal/vertical edge, state measurement uncertainty and compare with the declared 2 mm target. Preserve failures or inconclusive results.",
       "status": "not run",
       "observed": null,
       "reason": "No physical observation recorded.",
-      "trials": null,
       "evidence": [],
       "trial_results": [],
       "duration_seconds": null
@@ -93,11 +100,10 @@
     {
       "id": "H5",
       "source": "HARDWARE-ACCEPTANCE.md#canonical-checklist",
-      "requirement": "Scale: 50 mm interval measured on each model; record deviation",
+      "requirement": "Measure a 50 mm interval on each model and record deviation and uncertainty against the declared target.",
       "status": "not run",
       "observed": null,
       "reason": "No physical observation recorded.",
-      "trials": null,
       "evidence": [],
       "trial_results": [],
       "duration_seconds": null
@@ -105,11 +111,10 @@
     {
       "id": "H6",
       "source": "HARDWARE-ACCEPTANCE.md#canonical-checklist",
-      "requirement": "Rotation/zoom/fullscreen: fence or correct re-render; no silent wrong plan",
+      "requirement": "Correct re-render or visible mapping fence; no silent wrong plan. Record browser launch-mode assumptions.",
       "status": "not run",
       "observed": null,
       "reason": "No physical observation recorded.",
-      "trials": null,
       "evidence": [],
       "trial_results": [],
       "duration_seconds": null
@@ -117,11 +122,10 @@
     {
       "id": "H7",
       "source": "HARDWARE-ACCEPTANCE.md#canonical-checklist",
-      "requirement": "Image failure/retry: failure named; retry recovers; old token cannot green the new image",
+      "requirement": "The intended tablet fails visibly, the controller names it, Retry recovers, and stale reports do not confirm the next image.",
       "status": "not run",
       "observed": null,
       "reason": "No physical observation recorded.",
-      "trials": null,
       "evidence": [],
       "trial_results": [],
       "duration_seconds": null
@@ -129,11 +133,10 @@
     {
       "id": "H8",
       "source": "HARDWARE-ACCEPTANCE.md#canonical-checklist",
-      "requirement": "20 actual Wi-Fi restoration trials; independently time restoration to correct current image within 10 seconds per trial; transport status alone is insufficient",
+      "requirement": "Twenty real trials. Independently time connectivity restoration to the correct current image, within 10 s per trial. Record taps/reloads and all failures. Transport reconnection alone is insufficient.",
       "status": "not run",
       "observed": null,
       "reason": "No physical observation recorded.",
-      "trials": null,
       "evidence": [],
       "trial_results": [],
       "duration_seconds": null
@@ -141,11 +144,10 @@
     {
       "id": "H9",
       "source": "HARDWARE-ACCEPTANCE.md#canonical-checklist",
-      "requirement": "Sleep/wake: record whether tap/unlock/reload/reopen is required",
+      "requirement": "Record sleep settings and whether tap, unlock, reload or reopen is required; record time to correct image.",
       "status": "not run",
       "observed": null,
       "reason": "No physical observation recorded.",
-      "trials": null,
       "evidence": [],
       "trial_results": [],
       "duration_seconds": null
@@ -153,11 +155,10 @@
     {
       "id": "H10",
       "source": "HARDWARE-ACCEPTANCE.md#canonical-checklist",
-      "requirement": "Server restart: all tablets resync without manual reload, or failure recorded",
+      "requirement": "All tablets resync without manual reload, or retain the failure and every intervention.",
       "status": "not run",
       "observed": null,
       "reason": "No physical observation recorded.",
-      "trials": null,
       "evidence": [],
       "trial_results": [],
       "duration_seconds": null
@@ -165,11 +166,10 @@
     {
       "id": "H11",
       "source": "HARDWARE-ACCEPTANCE.md#canonical-checklist",
-      "requirement": "Host reboot: record the profile-A manual relaunch or the actual installed service; layout/content return; record every intervention",
+      "requirement": "For profile A, reboot then manually relaunch the same explicit trial command and record the intervention; content/layout must return. Automatic service recovery is not claimed. Test an installed service only under a separate documented profile.",
       "status": "not run",
       "observed": null,
       "reason": "No physical observation recorded.",
-      "trials": null,
       "evidence": [],
       "trial_results": [],
       "duration_seconds": null
@@ -177,11 +177,10 @@
     {
       "id": "H12",
       "source": "HARDWARE-ACCEPTANCE.md#canonical-checklist",
-      "requirement": "Cross-kind switch: both arrangements recoverable; safety copy named",
+      "requirement": "Logical and measured arrangements remain recoverable, including the named safety copy.",
       "status": "not run",
       "observed": null,
       "reason": "No physical observation recorded.",
-      "trials": null,
       "evidence": [],
       "trial_results": [],
       "duration_seconds": null
@@ -189,11 +188,10 @@
     {
       "id": "H13",
       "source": "HARDWARE-ACCEPTANCE.md#canonical-checklist",
-      "requirement": "Rebind + recall: saved 2x2 and 1x4 use the new identity; old one not resurrected",
+      "requirement": "In the trial copy, replace a lost identity; saved 2\u00d72 and 1\u00d74 use the intended replacement and do not resurrect the old ID.",
       "status": "not run",
       "observed": null,
       "reason": "No physical observation recorded.",
-      "trials": null,
       "evidence": [],
       "trial_results": [],
       "duration_seconds": null
@@ -201,11 +199,10 @@
     {
       "id": "H14",
       "source": "HARDWARE-ACCEPTANCE.md#canonical-checklist",
-      "requirement": "Forget/remove: roster and slots behave as documented; history preserved",
+      "requirement": "Slots, offline roster and retained history behave as documented; record saved reservations.",
       "status": "not run",
       "observed": null,
       "reason": "No physical observation recorded.",
-      "trials": null,
       "evidence": [],
       "trial_results": [],
       "duration_seconds": null
@@ -213,11 +210,10 @@
     {
       "id": "H15",
       "source": "HARDWARE-ACCEPTANCE.md#canonical-checklist",
-      "requirement": "Restore to new paths: referenced content, layout, devices intact; unused uploads explicitly absent",
+      "requirement": "Referenced image bytes, arrangements, labels and device identities survive; record that unused library content is excluded.",
       "status": "not run",
       "observed": null,
       "reason": "No physical observation recorded.",
-      "trials": null,
       "evidence": [],
       "trial_results": [],
       "duration_seconds": null
@@ -225,11 +221,10 @@
     {
       "id": "H16",
       "source": "HARDWARE-ACCEPTANCE.md#canonical-checklist",
-      "requirement": "Ingress from second peer: operator and direct backend unreachable",
+      "requirement": "From another hotspot peer, operator routes on the tablet listener return 403 and the direct backend port is unreachable. Record exact URLs and results.",
       "status": "not run",
       "observed": null,
       "reason": "No physical observation recorded.",
-      "trials": null,
       "evidence": [],
       "trial_results": [],
       "duration_seconds": null
@@ -237,11 +232,10 @@
     {
       "id": "H17",
       "source": "HARDWARE-ACCEPTANCE.md#canonical-checklist",
-      "requirement": "2 h still soak: no unplanned stall, lost member, stale paint, or unexplained restart",
+      "requirement": "Record start/end, actual duration, power/thermal conditions and every interruption. No unexplained stall, stale image, lost member or restart.",
       "status": "not run",
       "observed": null,
       "reason": "No physical observation recorded.",
-      "trials": null,
       "evidence": [],
       "trial_results": [],
       "duration_seconds": null
@@ -249,11 +243,10 @@
     {
       "id": "H18",
       "source": "HARDWARE-ACCEPTANCE.md#canonical-checklist",
-      "requirement": "Kiosk/power: documented OS settings; exit path known",
+      "requirement": "Actual OS settings recorded, screen stays usable under the observed conditions, and the exit path is known.",
       "status": "not run",
       "observed": null,
       "reason": "No physical observation recorded.",
-      "trials": null,
       "evidence": [],
       "trial_results": [],
       "duration_seconds": null
@@ -261,11 +254,10 @@
     {
       "id": "HW-JOIN",
       "source": "HARDWARE-ACCEPTANCE.md#canonical-checklist",
-      "requirement": "Join and identify: each real tablet appears once; Identify flashes the intended tablet; a reload retains its identity",
+      "requirement": "Every real tablet appears once; Identify flashes its intended number/name; reload retains the trial identity.",
       "status": "not run",
       "observed": null,
       "reason": "No physical observation recorded.",
-      "trials": null,
       "evidence": [],
       "trial_results": [],
       "duration_seconds": null
@@ -273,11 +265,10 @@
     {
       "id": "HW-FIT",
       "source": "HARDWARE-ACCEPTANCE.md#canonical-checklist",
-      "requirement": "Fit and Fill: source fit within wall bounds, crop, bars and expected bezel/gap occlusion agree with preview and observed panels",
+      "requirement": "Marked source borders/corners and observed bars, crop, bezels and gaps match the preview across the wall.",
       "status": "not run",
       "observed": null,
       "reason": "No physical observation recorded.",
-      "trials": null,
       "evidence": [],
       "trial_results": [],
       "duration_seconds": null
@@ -285,11 +276,10 @@
     {
       "id": "HW-AUTH",
       "source": "HARDWARE-ACCEPTANCE.md#canonical-checklist",
-      "requirement": "Authentication: on an authenticated trial sign in from a tablet, expire or sign out, verify a clear recovery path, and tablet ingress denies operator controls",
+      "requirement": "Record a real tablet sign-in/expiry/recovery and denied operator ingress. For profile A mark not run with \u201cUnauthenticated HTTP profile\u201d; do not imply auth passed.",
       "status": "not run",
       "observed": null,
       "reason": "Not applicable to unauthenticated profile A; not run. An authenticated trial is separate.",
-      "trials": null,
       "evidence": [],
       "trial_results": [],
       "duration_seconds": null
