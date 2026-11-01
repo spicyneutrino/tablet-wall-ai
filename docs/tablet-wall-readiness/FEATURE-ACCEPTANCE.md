@@ -1,5 +1,27 @@
 # Feature acceptance record: TWR-04/05/06/08/09/10/11/13
 
+## Parent correction and passing repeat
+
+The parent fixed both reported UI mismatches. Model suggestions now come from
+`runtime.devices[id].model_suggestions`, filtered against the received model
+catalogue, rather than repeating the signature algorithm over telemetry omitted
+from the runtime projection. The still-image file picker now advertises JPEG
+and PNG. Forcing unsupported WebP through the browser automation still tests the
+server's readable rejection and unchanged layout.
+
+The portable driver then passed **183 checks, zero failures and zero findings**
+at `readiness-program/final-evidence/acceptance-root-fixed/`. Its driver SHA-256
+is `d016d76047d45213fd2822486c02e23c53fafdb55983fd436824c0d0ad9c48b0`.
+It started at `c3dab2b` with the two production fixes uncommitted; the exact source
+edits are recorded in the parent correction commit. The model prompt was visually
+inspected, as was successful upload state. A bounded wait now allows the actual
+model suggestion to arrive after registration. Unsupported upload advertising is
+asserted explicitly. Source and driver changes require the final independent
+review before programme software completion. Original evidence and failures are
+retained below.
+
+## Original independent run at `0cc4cec`
+
 ## What this record is
 
 This is the rerunnable, private-loopback acceptance evidence requested after the
@@ -39,9 +61,10 @@ One private Uvicorn process served the checked-out tree over loopback with
 temporary data paths. Four real Chromium contexts registered as tablets through
 the shipped client, provided real viewports, opened real WebSockets, decoded
 real images, and returned real `render_ack` evidence. The operator page was the
-shipped `physical.html` with the shipped scripts. All writes outside the UI were
-test-image creation before startup and isolated reads. No backend fixture stood
-in for a route.
+shipped `physical.html` with the shipped scripts. Layout, scene and lifecycle changes used the actual UI. Filesystem writes
+created test images before startup and exercised the documented backup/restore
+tools. The direct legacy write probe was required to be refused without mutation.
+No backend fixture stood in for a route.
 
 The screenshots below are in the artifact directory's `screenshots/` directory.
 The `results.json` file records every check, the two findings, the application
@@ -96,7 +119,7 @@ minor finding below.
 | --- | --- | --- |
 | A1 label survives restart and reconnect; appears in list, card, and saved references | **Pass** | `North panel α` survived a real backend restart and socket reconnect, appeared in the tablet list and selected card, and the saved `Portrait row` arrangement still referenced the same identity and recalled with the label. Screenshot `16-upload-success.png` shows the label on the stage. |
 | A2 Identify correct number and name within 1 s; revision unchanged; expires | **Pass** | `#identify-number` read `#2`, `#identify-label` read `North panel α`, click-to-visible-overlay was **0.174 s** on loopback, the wall revision did not change, and the overlay cleared on expiry. This is a loopback DOM timing observation, not a hardware claim. Screenshot `13-identify.png`. |
-| A3 Remove, A4 Forget, A5 online refusal, A6 history retention | Retained from the 106-check journey | `/var/home/oak/.local/share/tablet-wall-ai/readiness-program/final-qa/20261101T120950Z/` records Remove, offline Forget after acknowledgement, online refusal, re-registration, and retained history. This run did not repeat them. |
+| A3 Remove, A4 Forget, A5 online refusal, A6 history retention | Retained from the 106-check journey | `/var/home/oak/.local/share/tablet-wall-ai/readiness-program/final-qa/20261101T120950Z/` records Remove, offline Forget after acknowledgement and re-registration. Focused operator/lifecycle tests cover online refusal and history retention. This run did not repeat them. |
 
 ### TWR-09: rebind preview and return points
 
@@ -113,7 +136,7 @@ minor finding below.
 | --- | --- | --- |
 | A1 four connected tablets apply 2 x 2 in number order with one revision increment and one broadcast | **Pass** for revision and order; broadcast **referenced** | Revision went 0 to 1 exactly once, and #1..#4 occupied row-major positions. The route-level broadcast result is not re-measured here; `docs/tablet-wall-readiness/EFFICIENCY.md` records the atomic-grid route and the one-broadcast outcome, and the brief directed this run to reference it rather than invent a browser broadcast metric. |
 | A2 1 x 4 in number order, one row, explicit orientation, mount angle not hard-coded | **Pass** | The physical 1 x 4 applied in one revision (1 to 2), one measured row, left-to-right #1..#4, with explicit `0°` mount angles and pinned profile and calibration revisions. Screenshot `05-physical-1x4.png`. |
-| A5 preview changes nothing; Apply failure leaves the prior arrangement; Cancel changes nothing | Preview and Apply are exercised; failure and Cancel retained from the 106-check journey | The preview was labelled before Apply and the cross-kind confirmation named the safety copy. The final journey records Cancel and injected failure. |
+| A5 preview changes nothing; Apply failure leaves the prior arrangement; Cancel changes nothing | Preview and Apply are exercised; failure and Cancel retained from the 106-check journey | The preview was labelled before Apply and the cross-kind confirmation named the safety copy. The portable accessibility runner exercises keyboard Cancel. Focused grid and transition tests cover failed-write rollback; the final journey’s injected failure is an image failure, not a failed layout write. |
 | A3 width arithmetic, A4 manual adds, A6 release guard, A7 empty draft, A8 offline reservations, A9 keyboard | Retained from the 106-check journey and focused grid tests | `tests/test_grid.py`, `tests/test_geometry.py`, and the final journey record these cases. |
 
 ### TWR-11: calibration provenance, pinned health, test grid
@@ -136,7 +159,7 @@ minor finding below.
 | A1 preflight, A2 `/healthz` schema and no path leak | **Pass** | `/healthz` answered 200 with `schema`, `generation`, `revision`, `counts`, and `storage_readable`; the body contained neither the asset path nor the data path. |
 | A3 log rotation, A6 headers/CSP, A7 kiosk checklist | Covered by existing focused tests | Not repeated here. |
 
-## Product gap: TWR-11 A1 suggestion is not rendered
+## Original product gap, corrected in parent: TWR-11 A1 suggestion is not rendered
 
 The server has the signature match and exposes it in `runtime.devices[id].model_suggestions`.
 The console does not use that field. `frontend/controller/physical.js` renders
@@ -160,7 +183,7 @@ telemetry from `/devices` or render the suggestion from the server's
 `model_suggestions` field, then re-run this driver and update the check to pass.
 This is not a hardware result.
 
-## Minor finding: webp is advertised but rejected
+## Original minor finding, corrected in parent: webp is advertised but rejected
 
 The file input's `accept` attribute includes `image/webp`
 (`frontend/controller/physical.html`), while `POST /uploads` accepts only
@@ -225,6 +248,6 @@ python deploy/backup.py restore --src <artifact>/backup/snapshot --db <artifact>
 ## Closing state
 
 The run recorded 180 passing checks; the only acceptance failure was the TWR-11 A1 prompt. That failure and
-the webp mismatch are reported for a production decision. A1 must be fixed and
-this driver re-run before TWR-11 A1 can be marked complete. TWR-17 hardware
+the webp mismatch are reported for a production decision. The parent has now fixed A1 and repeated the driver successfully as recorded
+at the top of this document. Independent review of that correction remains open. TWR-17 hardware
 evidence remains missing.

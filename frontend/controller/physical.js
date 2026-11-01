@@ -1812,12 +1812,7 @@
             modelSelect.value = assignment.mode === "explicit" ? assignment.model_id : assignment.mode === "manual" ? "manual" : "";
         }
         const record = state.roster[id] || {};
-        const matches = Object.keys(state.tabletModels).filter(function (key) {
-            const model = state.tabletModels[key];
-            return Math.min(record.screen_width, record.screen_height) === Math.min(model.screen_width, model.screen_height)
-                && Math.max(record.screen_width, record.screen_height) === Math.max(model.screen_width, model.screen_height)
-                && Math.abs(record.screen_dpr - model.dpr) < 0.02 && record.platform_family === model.platform;
-        });
+        const matches = (record.model_suggestions || []).filter(function (key) { return state.tabletModels[key]; });
         document.getElementById("tablet-model-status").textContent = matches.length === 1
             ? "Looks like " + state.tabletModels[matches[0]].label + ". Choose that model and Confirm only after checking the hardware. Screen signature is a suggestion, not proof."
             : matches.length ? "Ambiguous screen signature." : "Unknown screen signature.";

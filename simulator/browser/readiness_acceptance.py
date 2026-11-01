@@ -118,6 +118,7 @@ class Instance:
                         return self
             except Exception:
                 time.sleep(0.1)
+        self.stop()
         raise RuntimeError(f"{self.tag} did not become healthy")
 
     def stop(self) -> None:
@@ -511,10 +512,6 @@ def run_tool(*args: str) -> subprocess.CompletedProcess:
     return result
 
 
-# ---------------------------------------------------------------------------
-# Phases
-# ---------------------------------------------------------------------------
-
 
 def phase_start(page):
     notes.append("Application SHA " + APP_SHA + " on branch " + branch())
@@ -563,6 +560,8 @@ def phase_tablets():
     select_tablet(page, first["id"])
     tab(page, "System")
     page.locator("#measurement-details").evaluate("node => node.open = true")
+    wait_until(lambda: "Looks like Google Pixel C" in page.locator("#tablet-model-status").inner_text(),
+               "the authoritative model suggestion did not render", timeout=5)
     status_text = page.locator("#tablet-model-status").inner_text()
     page.locator("#tablet-model-status").scroll_into_view_if_needed()
     shot(page, "02-model-status.png", full=False)
@@ -1302,15 +1301,20 @@ def phase_uploads():
     wait_until(lambda: "Upload rejected." in page.locator("#upload-message").inner_text(),
                "webp upload did not report a rejection", timeout=30)
     webp_message = page.locator("#upload-message").inner_text()
-    if "only image/jpeg, image/png" in webp_message:
+    advertised = page.locator("#upload-file").get_attribute("accept") or ""
+    check(set(advertised.split(",")) == {"image/jpeg", "image/png"},
+          "TWR-04 A3 the still-image picker advertises exactly the supported JPEG/PNG types")
+    check("only image/jpeg, image/png" in webp_message,
+          "TWR-04 A3 bypassing the picker with unsupported WebP still reports a readable rejection")
+    if "image/webp" in advertised and "only image/jpeg, image/png" in webp_message:
         findings.append(
             "TWR-04 A3 minor mismatch: the file input advertises image/webp, but POST /uploads "
             "rejects image/webp with 415 (" + webp_message + "). A user can select a type the "
             "server refuses. Screenshot: 18-upload-webp-mismatch.png")
         print("FINDING webp accept/upload mismatch", flush=True)
     check(config()["layout"] == layout_before,
-          "TWR-04 A3 an unsupported advertised type still leaves the layout unchanged")
-    shot(page, "18-upload-webp-mismatch.png", full=True)
+          "TWR-04 A3 a forced unsupported upload still leaves the layout unchanged")
+    shot(page, "18-upload-webp-rejected.png", full=True)
 
 
 def phase_playback():
@@ -1531,8 +1535,6 @@ def main() -> int:
             phase("return point", phase_return_point)
             phase("fence", phase_fence)
 
-            # Uploads require a fresh process with loopback admission; the same
-            # durable paths keep the wall and labels.
             server.stop()
             server = Instance(DATA / "wall.db", ASSETS, MEDIA, BACKUPS, "loopback",
                               port=server.port, origin=server.origin, tag="server-uploads").start()

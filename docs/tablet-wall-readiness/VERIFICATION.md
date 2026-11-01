@@ -265,3 +265,40 @@ The original portable focus assertions only excluded BODY; parent tightened them
 to the chosen usable target. Production behavior is unchanged by that test edit.
 The scoped review found no remaining correctness issue. Private data and owned
 processes were cleaned up. Summary `reviews/removal-focus-7806530.md`.
+
+### Portable feature acceptance and authoritative model suggestion
+
+Integrated worker `5cb7a53` as `c3dab2b`, owning only
+`simulator/browser/readiness_acceptance.py` and its
+[feature acceptance report](FEATURE-ACCEPTANCE.md). Its original 180-pass run
+retained one failed acceptance case and two findings: the controller recomputed
+model suggestions from raw telemetry that config projection omitted, and the
+file picker advertised WebP while uploads refused it.
+
+Parent now renders the server's canonical `model_suggestions`, filtered through
+the current catalogue. It does not assign or confirm a model implicitly. The
+picker now advertises only JPEG/PNG. The runner waits for the asynchronous
+suggestion and explicitly verifies both advertising and forced unsupported-type
+rejection. Its startup health-timeout path also stops its private child.
+
+`.venv/bin/python simulator/browser/readiness_acceptance.py --artifacts
+/var/home/oak/.local/share/tablet-wall-ai/readiness-program/final-evidence/acceptance-root-fixed`
+passed **183 checks, zero failures and zero findings**. Source/driver SHA and
+run-identity qualifications are in the report. The root inspected prompt/upload
+screenshots. This closes the missing bounded feature assertions, subject to final
+independent review. The run exercises the actual image A→B/reload, marked-border
+Fit/Fill and visible resolution arithmetic, uploads/progress/rejection, inactive
+experimental playback after a dismissed confirmation, legacy measured-wall
+fence, named image failure/retry and empty/offline wall, restart-persistent label,
+Identify number/name and timing, nonmutating replacement preview/revision maps,
+return-point names, one-revision ordered grids, model confirmation/provenance and
+viewport fence, and the complete start→health→Black wall→stop→backup→verify→restore
+new paths→boot sequence. Existing transaction, capability, geometry, ruler and
+security tests and the retained 106-check journey cover the complementary rows.
+No hardware, installed TLS/proxy, host reboot or soak conclusion follows.
+
+The stricter accessibility runner was also repeated at the committed `528b24c`
+with usable target identity/visibility/enabled assertions. All **82/82** passed;
+private-data removal is true. Evidence `final-qa/20261101-accessibility-strict-targets/`
+under readiness-program. Its driver SHA-256 is
+`d57f340205793ca935c0f3e0b735f0c74f2a05c2ca757cf0bf3eb3c48ea64e12`.
