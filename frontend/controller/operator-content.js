@@ -3,7 +3,7 @@ window.OperatorContent = {
     create({ state, api, ingestConfig, renderStage, announce, showConflict, isDirty }) {
         const $ = id => document.getElementById(id);
         let images = [], selected = null, fit = "cover", selectionDirty = false, loading = false, busy = false, inventoryReady = false;
-        let previous = null, uploadAllowed = null, xhr = null, uploadChecked = false;
+        let previous = null, uploadAllowed = null, xhr = null, uploadChecked = false, inventoryVersion = 0;
         const message = text => { $("image-message").textContent = text; };
         const sceneInput = content => content.type === "image"
             ? Object.assign({ type: "image", asset: content.asset, fit: content.fit || "cover" }, content.background && state.operatorConfig && state.operatorConfig.operator_state_version === 1 ? { background: content.background } : {})
@@ -61,14 +61,16 @@ window.OperatorContent = {
         async function refresh() {
             if (loading) return;
             loading = true; message("Loading still images…"); render();
+            const version = inventoryVersion;
             try {
                 const result = await api("GET", "/api/v3/images");
+                if (version !== inventoryVersion) return;
                 if (!Array.isArray(result.images)) throw new Error("Image inventory was not returned.");
                 images = result.images; inventoryReady = true;
                 message(images.length ? images.length + " still images available. Selection previews here; Show on wall applies it."
                     : "No still images yet. Copy an image to the configured folder or upload when enabled, then Refresh images.");
             } catch (error) {
-                message("Image library unavailable. " + error.message + " Retry with Refresh images. The active scene is unchanged.");
+                if (version === inventoryVersion) message("Image library unavailable. " + error.message + " Retry with Refresh images. The active scene is unchanged.");
             } finally { loading = false; render(); renderStage(); }
         }
         async function show(content) {
@@ -140,6 +142,7 @@ window.OperatorContent = {
             try {
                 const image = await api("POST", "/api/v3/test-pattern", { pattern }, { etag: true });
                 if (!image || !image.id) throw new Error("Pattern image metadata was not returned.");
+                inventoryVersion += 1;
                 images = images.filter(item => item.id !== image.id).concat(image);
                 await show({ type: "image", asset: image.id, fit: "contain" });
             } catch (error) { message("Pattern unavailable on this server. " + error.message + " Choose a prepared grid or opaque black image from the library."); }

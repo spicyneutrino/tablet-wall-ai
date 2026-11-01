@@ -203,3 +203,21 @@ The read-only coverage audit is preserved at
 acceptance assertions are being collected by portable feature/accessibility
 runners. Its hardware requirement for programme-level software completion is
 rejected in [TRACKING.md](TRACKING.md); ROADMAP §2.2 remains authoritative.
+
+### Generated-pattern inventory ordering
+
+The bounded independent review of `f2a8c5f` found a P2 race: an inventory read
+started before publishing a pattern could return later and overwrite the local
+merge, falsely marking the available active image unavailable. The backend scene
+was unchanged. Report `/tmp/tablet-review-f2a8c5f-qcGx0P/REVIEW.md` retains the
+actual-browser and deterministic reproductions.
+
+The content module now versions inventory mutations. Reads begun before a
+publication cannot replace its local inventory or overwrite its status with an
+obsolete failure. The canonical-pattern Node test was extended to delay an empty
+older inventory response; it failed with the active pattern ID instead of null
+before the fix and passes after it. All 18 Node suites pass. Root adapted the
+independent actual-browser probe to hold and release the real response; the
+active pattern stayed available and backend readback retained `contain` and
+`available: true`. Passing evidence is in
+`readiness-program/final-qa/20261101T141818Z-inventory-race/`.

@@ -16,24 +16,32 @@ const state = { layoutKind: "logical", etag: "current", etagState: "current", co
 const image = { id: "sha256:pattern", name: "black.png", width: 64, height: 64,
     source: "curated", url: "/assets/sha256:pattern", thumbnail_url: "/assets/sha256:pattern", etag: "current" };
 const calls = [];
+let releaseInventory;
+const oldInventory = new Promise(resolve => { releaseInventory = resolve; });
 const context = vm.createContext({ window: { OperatorState: model }, document: { getElementById: node }, Option: function () {} });
 vm.runInContext(fs.readFileSync(require.resolve("../frontend/controller/operator-content.js"), "utf8"), context);
-context.window.OperatorContent.create({ state, renderStage() {}, announce() {}, showConflict() {}, isDirty: () => false,
+const content = context.window.OperatorContent.create({ state, renderStage() {}, announce() {}, showConflict() {}, isDirty: () => false,
     ingestConfig(config) { state.scene = config.scene; },
     async api(method, path, body) {
         calls.push({ method, path, body });
         if (path === "/api/v3/test-pattern") return image;
-        if (path === "/api/v3/images") return { images: [image] };
+        if (path === "/api/v3/images") return oldInventory;
         if (path === "/api/v3/scene") return { scene: { content: body.content } };
         throw new Error("unexpected route " + path);
     } });
 (async () => {
+    const refresh = content.refresh();
     await node("pattern-black").click();
-    assert.deepEqual(calls.map(call => call.path), ["/api/v3/test-pattern", "/api/v3/scene"]);
-    assert.equal(calls[1].body.content.asset, image.id, "the generated flat image DTO is shown without fixture-only aliases");
-    assert.equal(calls[1].body.content.fit, "contain");
+    assert.deepEqual(calls.map(call => call.path), ["/api/v3/images", "/api/v3/test-pattern", "/api/v3/scene"]);
+    assert.equal(calls[2].body.content.asset, image.id, "the generated flat image DTO is shown without fixture-only aliases");
+    assert.equal(calls[2].body.content.fit, "contain");
     assert.equal(state.activeImageUnavailableId, null, "the new pattern is inventoried before its scene is shown");
     assert.ok(!node("active-image").textContent.includes("Unavailable"));
     assert.ok(node("active-image").textContent.includes("black.png"));
-    console.log("Generated pattern canonical DTO, library refresh and scene application passed");
+    releaseInventory({ images: [] });
+    await refresh;
+    assert.equal(state.activeImageUnavailableId, null, "an older inventory read cannot erase a published pattern");
+    assert.ok(node("active-image").textContent.includes("black.png"));
+    assert.ok(!node("active-image").textContent.includes("Unavailable"));
+    console.log("Generated pattern canonical DTO, publication/read ordering and scene application passed");
 })().catch(error => { console.error(error); process.exitCode = 1; });
