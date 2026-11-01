@@ -1205,7 +1205,7 @@ from `VERIFICATION.md`.
 **Depends:** TWR-03 … TWR-13, TWR-14; TWR-15 before any untrusted-network claim.
 **Purpose:** Establish what the actual iPads and Pixel Cs do, including failure
 and manual intervention.
-**In scope:** the checklist in §12.6 on the supplied devices; physical 2×2 and
+**In scope:** the canonical checklist linked from §13.6 on the supplied devices; physical 2×2 and
 1×4; seams with uncertainty; rotation/zoom/fullscreen; sleep/wake; Wi-Fi loss;
 server restart; host reboot rehearsal on the chosen profile; verified restore;
 2 h still soak; ingress from a second peer; kiosk/power behaviour; photos and
@@ -1216,8 +1216,12 @@ unattended claims beyond the recorded soak.
 reason; failures are retained; the evidence report carries the application SHA,
 device/OS/browser versions, origin, modes, and durations. A test count is not a
 substitute.
-**Evidence:** `docs/validation/` report using `EVIDENCE-SCHEMA.md`; photos;
-signed operator row; `hardware_claim` only for the tested configuration.
+**Evidence:** signed operator record using
+[TWR-17-TRIAL-RECORD.template.json](TWR-17-TRIAL-RECORD.template.json) and the
+[trial record contract](HARDWARE-ACCEPTANCE.md#trial-record-contract); photos,
+logs and per-tool evidence may be attached. The aggregate operator record is
+separate from the kit schema in `docs/validation/EVIDENCE-SCHEMA.md`. No
+automatic hardware claim follows from completing the record.
 
 ---
 
@@ -1607,45 +1611,23 @@ include credentials, cookies, or private images in evidence.
 
 ### 13.6 Hardware validation plan (TWR-17)
 
-Preparation:
+Use [HARDWARE-ACCEPTANCE.md](HARDWARE-ACCEPTANCE.md), the canonical preparation
+procedure and H1–H18 plus HW-JOIN/HW-FIT/HW-AUTH checklist. Its operator record
+retains every pass, fail and reasoned not-run result, including interventions.
+There is no second independent checklist in this document.
 
-1. Verified backup of the database, curated assets, and media; record the SHA.
-2. Save the current logical 4×1 wall under a named layout; do not rely only on
-   the automatic “Before physical” copy.
-3. Confirm each tablet's model; do not proceed on an unconfirmed model.
-4. Choose an image with labelled corners, diagonals, circles, and fine lines
-   generated for the committed bounds; then a real poster/photo.
-5. Record model, OS/browser, origin, launch mode, orientation, viewport, zoom,
-   pinned profile/calibration revision.
-6. If possible, measure one tablet with a full-span ruler; otherwise label the
-   run approximate and do not claim 2 mm.
+Use the supplied model measurements. A full-span ruler is optional; without new
+measurement evidence the model remains approximate at its provisional uncertainty.
+The 2 mm seam target, twenty real network-restoration trials and two-hour powered
+still observation are unchanged. Record actual image recovery separately from
+transport presence. Under profile A, H11 records manual relaunch after host reboot;
+automatic service recovery requires its own installed profile. HW-AUTH stays
+not run for the unauthenticated HTTP profile.
 
-Run and record:
-
-| # | Check | Pass condition |
-| --- | --- | --- |
-| H1 | Logical 4×1 baseline | Known image displays as before; no regression |
-| H2 | Physical 2×2 with supplied models | Correct quadrants, no swap/upside-down, within 10 s |
-| H3 | Physical 1×4 | Correct row order; orientation as intended |
-| H4 | Seams | Record displacement per edge with uncertainty; compare with 2 mm target honestly |
-| H5 | Scale | 50 mm interval measured on each model; record deviation |
-| H6 | Rotation/zoom/fullscreen | Fence or correct re-render; no silent wrong plan |
-| H7 | Image failure/retry | Failure named; retry recovers; old token cannot green the new image |
-| H8 | Wi-Fi drop/restore | Correct within 10 s per trial; formal gate needs 20 trials |
-| H9 | Sleep/wake | Record whether tap/unlock/reload/reopen is required |
-| H10 | Server restart | All tablets resync without manual reload, or failure recorded |
-| H11 | Host reboot rehearsal | Service returns on the chosen profile; content/layout intact |
-| H12 | Cross-kind switch | Both arrangements recoverable; safety copy named |
-| H13 | Rebind + recall | Saved 2×2 and 1×4 use the new identity; old one not resurrected |
-| H14 | Forget/remove | Roster and slots behave as documented; history preserved |
-| H15 | Restore to new paths | Referenced content, layout, devices intact; unused uploads explicitly absent |
-| H16 | Ingress from second peer | Operator and direct backend unreachable |
-| H17 | 2 h still soak | No unplanned stall, lost member, stale paint, or unexplained restart |
-| H18 | Kiosk/power | Documented OS settings; exit path known |
-
-Exit rule: write a `docs/validation/` report using `EVIDENCE-SCHEMA.md`, retain
-failures, and mark gates only for what was actually measured. Video and optical
-gates remain **MISSING**.
+Record the exact integration-branch commit and explicit restored-copy paths.
+Signed observations do not automatically confer acceptance. Failures and not-run
+rows remain visible in the scoped review decision. Video and optical gates remain
+**MISSING**. TWR-17 stays open until actual evidence and that decision exist.
 
 ### 13.7 Completion rules
 

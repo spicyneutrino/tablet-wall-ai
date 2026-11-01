@@ -344,3 +344,35 @@ review blocker remains. The subsequent closure commit changes documentation
 only, not the reviewed application. **Milestone complete remains open** for
 TWR-17. No measured-panel precision, Safari, installed TLS/proxy, host reboot,
 OS sleep, powered soak, hardware capacity or dependable-video claim follows.
+
+### TWR-17 preparation reconciliation after software acceptance
+
+DeepSeek Flash's read-only hardware-preparation review at `2e5aca4` found two
+different checklists, a nonexistent §12.6 reference, and an aggregate trial record
+that the cited kit schema could not express. The parent reconciled these into
+[one canonical 21-row checklist](HARDWARE-ACCEPTANCE.md) and a separate
+[operator JSON template](TWR-17-TRIAL-RECORD.template.json). All template rows
+remain not run; unknown metadata and measured tolerances stay null. The existing
+kit schema is unchanged and still governs individual tool reports.
+
+The procedure now links backup/restore to explicit new trial paths and separate
+launcher configuration/ports, records the exact integration-branch commit and
+changed-origin identities, defines profile-A host reboot as manual relaunch, and
+gives second-peer ingress URLs. H8 retains twenty actual Wi-Fi trials and requires
+correct-image timing separately from the existing transport-only harness. The
+2 mm seam target and two-hour still observation remain unchanged. No new ruler
+measurement is a prerequisite. Authentication remains not run for profile A.
+
+Private rehearsal at
+`readiness-program/hardware-prep/20261101T164451Z/checks.json` verified the existing
+independent-review snapshot, restored it to new temporary targets with actual
+image bytes, and checked the package-module launcher invocation and arguments.
+Checklist/template row parity, all-not-run/nonclaim invariants, valid JSON and
+local links passed. Two preparation-command mistakes were observed and corrected:
+`deploy/hotspot.py` needed `-m deploy.hotspot`, and the restore target parent needed
+an explicit mkdir. Temporary restored data was removed. No hotspot command, real
+endpoint, panel, live data, service, firewall or reboot was exercised.
+
+This is preparation documentation, not new application behavior or hardware
+acceptance. TWR-17 and issue #19 remain open; software acceptance at `29148ec`
+is unchanged. Fresh review of this preparation delta is pending.

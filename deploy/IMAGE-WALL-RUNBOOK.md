@@ -5,6 +5,11 @@ tablets on a laptop hotspot, the controller on that laptop's loopback. This
 page does not describe an unattended server. Commands assume the repository
 root and `uv`.
 
+For the consolidated implementation's real-tablet acceptance, use the
+[isolated trial procedure and canonical checklist](../docs/tablet-wall-readiness/HARDWARE-ACCEPTANCE.md).
+It restores a verified snapshot to new paths, selects the integration-branch
+commit, uses separate launcher configuration/ports, and records all observations.
+
 ## 1. Before starting
 
 - One tablet at a time is easiest for the first join. Charge the tablets.
