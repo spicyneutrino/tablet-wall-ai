@@ -1217,7 +1217,7 @@ signed operator row; `hardware_claim` only for the tested configuration.
 ## 10. Status board and GitHub map
 
 All issues are **OPEN**. “Integrated” describes code on the feature branch,
-not a merge to main or completed acceptance. This board reflects `9d91591`.
+not a merge to main or completed acceptance. This board reflects `2ee4659`.
 
 | TWR | Issue | Title | Status | Software | Hardware |
 | --- | --- | --- | --- | --- | --- |
@@ -1232,8 +1232,8 @@ not a merge to main or completed acceptance. This board reflects `9d91591`.
 | TWR-08 | [#13](https://github.com/spicyneutrino/tablet-wall-ai/issues/13) | Labels, Identify, Remove, Forget | Open — integrated, acceptance pending | Partial (transactional routes and Identify expiry pass; full browser journey pending) | Identify/forget in TWR-17 |
 | TWR-09 | [#13](https://github.com/spicyneutrino/tablet-wall-ai/issues/13) | Rebind repair and cross-kind safety | Open — integrated, acceptance pending | Partial (transactional saved-layout repair and safety copies pass; rendered recall pending) | Rebind/restore in TWR-17 |
 | TWR-10 | [#14](https://github.com/spicyneutrino/tablet-wall-ai/issues/14) | Atomic 2×2 and 1×4 presets | Open — integrated, acceptance pending | Partial (ordered atomic grid routes pass; four-tablet browser acceptance pending) | Physical 2×2/1×4 in TWR-17 |
-| TWR-11 | [#15](https://github.com/spicyneutrino/tablet-wall-ai/issues/15) | Calibration trust and test grid | Open — integrated, acceptance pending | Partial (pinned health and pattern publication integrated; trust UI review pending) | Seam/scale in TWR-17 |
-| TWR-12 | [#15](https://github.com/spicyneutrino/tablet-wall-ai/issues/15) | Longer ruler and consistency | Open — integrated, acceptance pending | Partial (long ruler passes browser checks; save consistency UI pending) | Ruler work in TWR-17 |
+| TWR-11 | [#15](https://github.com/spicyneutrino/tablet-wall-ai/issues/15) | Calibration trust and test grid | Open — integrated, acceptance pending | Partial (pinned health and pattern publication integrated; trust card passes actual browser checks) | Seam/scale in TWR-17 |
+| TWR-12 | [#15](https://github.com/spicyneutrino/tablet-wall-ai/issues/15) | Longer ruler and consistency | Open — integrated, acceptance pending | Partial (mounted ruler review/save and pinned health pass desktop/mobile checks; final review pending) | Ruler work in TWR-17 |
 | TWR-13 | [#17](https://github.com/spicyneutrino/tablet-wall-ai/issues/17) | Readiness, health, backup, runbook | Open — integrated, acceptance pending | Partial (health/QR/CSP/log bounds and restore drill pass; readiness card pending) | Reboot/restore in TWR-17 |
 | TWR-14 | [#18](https://github.com/spicyneutrino/tablet-wall-ai/issues/18) | Unified console and browser acceptance | Open — integrated, acceptance pending | Partial (unified console integrated; complete rendered acceptance pending) | Phone/keyboard real device optional |
 | TWR-15 | [#16](https://github.com/spicyneutrino/tablet-wall-ai/issues/16) | Approved joining and revocation | Deferred — current profile A | Not implemented; required before untrusted-network use | Only if triggered |
@@ -1245,7 +1245,7 @@ console, and operations modules are integrated. The full Python checkpoint at
 `8c3356a` passed 1,684 tests; later review fixes passed their focused checks.
 The actual private-browser logical image path now agrees across header, stage,
 and tablet cards at desktop and narrow widths. Full four-tablet journeys,
-calibration-save review, the readiness card, efficiency measurements, and fresh
+final calibration review, the readiness card, efficiency measurements, and fresh
 security review are still in progress. TWR-17 requires real hardware evidence.
 
 ---
