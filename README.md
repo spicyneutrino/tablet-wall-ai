@@ -200,6 +200,11 @@ arrangement changes. See [wall sizing behavior](docs/WALL-SIZING.md) and
 
 ## HTTP API
 
+The primary console uses the authoritative v3 routes described in
+[the operator protocol](docs/OPERATOR-PROTOCOL.md). The compatibility endpoints
+below retain logical editing. `/wall` and `/scene` refuse a measured wall with
+an upgrade conflict; use v3 to read or change its actual layout and scene.
+
 | Method   | Path                          | Purpose                               |
 | -------- | ----------------------------- | ------------------------------------- |
 | `GET`    | `/`                           | Liveness greeting                     |
@@ -413,7 +418,7 @@ schema or roadmap space is reserved on the assumption that something will.
 
 Run `uv sync --all-groups` before the checks. `make test` runs Python tests and all JavaScript suites. `make lint` runs Ruff syntax, undefined-name, unused-import, and common-defect checks on production Python. `make typecheck` checks annotated production code with strict optional handling; unannotated function bodies are not yet enforced.
 
-`make coverage` measures Python lines and branches, including worker subprocesses, writes `coverage.xml`, and enforces an 80% combined floor. Browser tests run separately with `uv run --group browser python -m simulator.browser.controller_run --artifacts /tmp/new-controller-run` and `uv run --group browser python -m simulator.browser.field_run --artifacts /tmp/new-field-run`. Use a fresh artifact directory each time.
+`make coverage` measures Python lines and branches, including worker subprocesses, writes `coverage.xml`, and enforces an 80% combined floor. Current image-wall browser acceptance uses `uv run --group browser python -m simulator.browser.readiness_acceptance --artifacts /tmp/new-readiness-run` and `uv run --group browser python -m simulator.browser.operator_accessibility --artifacts /tmp/new-accessibility-run`. Use a fresh artifact directory each time. The older `controller_run` covers experimental playback; it is not the image-wall acceptance gate. See the [browser runner guide](simulator/README.md#current-image-wall-acceptance).
 
 For repeatable viewport and reconnect checks, run `uv run --group browser python -m simulator.browser.audit_round --round 6 --artifacts /tmp/new-viewport-audit`. The browser runners always use temporary database, media, and asset paths. For any manual app launch, set those paths to a disposable scratch copy before startup; startup creates directories, writes SQLite, and cleans staging.
 

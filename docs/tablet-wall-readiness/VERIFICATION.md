@@ -302,3 +302,13 @@ with usable target identity/visibility/enabled assertions. All **82/82** passed;
 private-data removal is true. Evidence `final-qa/20261101-accessibility-strict-targets/`
 under readiness-program. Its driver SHA-256 is
 `d57f340205793ca935c0f3e0b735f0c74f2a05c2ca757cf0bf3eb3c48ea64e12`.
+
+### Final combined test checkpoint at `47dd0c3`
+
+`.venv/bin/python -m pytest -q --junitxml=/var/home/oak/.local/share/tablet-wall-ai/readiness-program/final-evidence/final-software.xml`
+passed **1,782 tests**, three dependency deprecation warnings, 85.83 s. The log
+is beside the JUnit as `final-software.log`. All **18** Node suites pass.
+Production Ruff plus both portable runners pass; mypy passes for **47** source
+files. This checkpoint includes the final model-suggestion and upload-picker
+production fixes. The final independent review is still pending; hardware is
+not part of this software test count.
