@@ -11,7 +11,7 @@ from fastapi.testclient import TestClient
 from PIL import Image
 
 import main
-from tabletwall import assets, media, persist
+from tabletwall import assets, media, persist, playback
 from video_fixtures import make_video as make_video, needs_ffmpeg, video_dir as video_dir
 
 ORIGIN = "https://operator.wall.test:8444"
@@ -70,6 +70,19 @@ def test_empty_library_is_useful_with_uploads_disabled(operator):
     assert response.status_code == 200
     assert response.json() == {"images": []}
     assert response.headers["cache-control"] == "no-store"
+
+
+def test_selecting_a_static_image_stops_an_experimental_presentation(operator, asset_dir):
+    entry = curated(asset_dir)
+    main._playback_session = playback.start(
+        [{"asset": entry["id"], "dwell_ms": 1000}], False,
+        ["0f8fad5b-d9cb-469f-a165-70867728950e"], main._now_ms(),
+        generation=main.wall["generation"], clock_epoch="test",
+    )
+    assert select(operator, entry["id"]).status_code == 200
+    assert main._playback_session is None
+    assert operator.get("/api/v3/playback").json()["state"] == "stopped"
+    assert operator.get("/api/v3/config").json()["scene"]["content"]["asset"] == entry["id"]
 
 
 def test_inventory_merges_deduplicates_and_serves_real_metadata(

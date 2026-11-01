@@ -1945,6 +1945,7 @@ async def put_scene_v3(update: SceneUpdate, request: Request):
         target["scene"]["content"] = scene_content
 
     _commit_wall(apply)
+    await _abort_playback("static scene selected")
     await _broadcast_wall()
     return await get_config_v3()
 
