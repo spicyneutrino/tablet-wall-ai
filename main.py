@@ -78,7 +78,7 @@ from tabletwall.protocol import (
 # Curated still-image assets (PROTOCOL.md "Still images"): the directory scan,
 # content IDs, and byte-verified serving behind ``GET /assets``.
 from tabletwall import assets, clock, displays, geometry, media, media_video, playback
-from tabletwall import persist, workers, tablet_models
+from tabletwall import operator_images, persist, workers, tablet_models
 from tabletwall import sizing as wall_sizing
 from tabletwall import writer as writers
 from tabletwall.media_limits import (
@@ -117,6 +117,7 @@ from tabletwall.state import (
     _fresh_wall,
     _is_online,
     _new_generation,
+    _project_scene,
     _touch_device,
     _viewport_matches,
     _wall_state,
@@ -1237,35 +1238,7 @@ async def put_scene(update: SceneUpdate):
     # Content only: the layout is untouched, the revision bumps, the new
     # state is committed, and only then is it broadcast — same ordering as
     # ``PUT /wall`` above.
-    content = update.content
-    if content.type == "image":
-        # Managed uploads are indexed, so check them first; only an unknown
-        # managed ID falls back to the curated scan. Intrinsic dimensions come
-        # from the published record or the file this scan just validated —
-        # never from the caller.
-        assert content.asset is not None
-        managed = await asyncio.to_thread(media.find_object, content.asset)
-        if managed is not None:
-            asset_id, width, height = managed["id"], managed["width"], managed["height"]
-        else:
-            asset = await asyncio.to_thread(assets.find, content.asset)
-            if asset is None:
-                # Well-formed ID, no such asset: an invalid *body*, so 422 and
-                # nothing is committed (PROTOCOL.md "PUT /scene").
-                raise HTTPException(status_code=422, detail="Unknown asset")
-            asset_id, width, height = asset.id, asset.width, asset.height
-        # Persisted: ID, fit, and the derived dimensions. Deliberately no URL
-        # — it is composed from the ID on the way out, so it can never go
-        # stale in the database (PROTOCOL.md "Still images").
-        scene_content: dict[str, Any] = {
-            "type": "image",
-            "asset": asset_id,
-            "fit": content.fit,
-            "intrinsicWidth": width,
-            "intrinsicHeight": height,
-        }
-    else:
-        scene_content = {"type": content.type}
+    scene_content = await _resolve_scene_content(update.content)
 
     def apply(target: dict[str, Any]) -> None:
         target["scene"]["content"] = scene_content
@@ -1882,6 +1855,7 @@ def _config_payload() -> dict[str, Any]:
         "revision": wall["revision"],
         "generation": wall["generation"],
         "layout": layout_state,
+        "scene": _project_scene(wall["scene"]),
         "displays": displays.list_profiles(),
         "calibrations": displays.list_calibrations(),
         "tablet_models": tablet_models.BUILTINS,
@@ -1925,6 +1899,54 @@ async def get_config_v3():
         content={**payload, "etag": etag},
         headers={"ETag": etag, "Cache-Control": "no-store"},
     )
+
+
+@app.get("/api/v3/images")
+def get_images_v3(request: Request):
+    try:
+        media.admit_operator_read(request)
+    except media.StoreError as error:
+        return _store_error(error)
+    return JSONResponse(
+        content={"images": operator_images.list_images()},
+        headers={"Cache-Control": "no-store"},
+    )
+
+
+async def _resolve_scene_content(content: SceneContent) -> dict[str, Any]:
+    if content.type != "image":
+        return {"type": content.type}
+    assert content.asset is not None
+    managed = await asyncio.to_thread(media.find_object, content.asset)
+    if managed is not None:
+        asset_id, width, height = managed["id"], managed["width"], managed["height"]
+    else:
+        asset = await asyncio.to_thread(assets.find, content.asset)
+        if asset is None:
+            raise HTTPException(status_code=422, detail="Unknown asset")
+        asset_id, width, height = asset.id, asset.width, asset.height
+    return {
+        "type": "image",
+        "asset": asset_id,
+        "fit": content.fit,
+        "intrinsicWidth": width,
+        "intrinsicHeight": height,
+    }
+
+
+@app.put("/api/v3/scene")
+async def put_scene_v3(update: SceneUpdate, request: Request):
+    _require_config_etag(request)
+    scene_content = await _resolve_scene_content(update.content)
+    # Resolution yields to other requests; fence the actual commit as well.
+    _require_config_etag(request)
+
+    def apply(target: dict[str, Any]) -> None:
+        target["scene"]["content"] = scene_content
+
+    _commit_wall(apply)
+    await _broadcast_wall()
+    return await get_config_v3()
 
 
 class TabletAssignmentCommand(BaseModel):
