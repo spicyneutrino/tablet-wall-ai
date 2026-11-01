@@ -105,7 +105,7 @@ Every payload that carries a device uses this exact shape:
 - `protocol` is the last negotiated major (or `null` before a socket connects);
   `caps` is the list advertised by that socket (empty until then). A version-1
   socket does not receive `wall` frames even if it supplies a `caps` query
-  parameter; image support requires **both** protocol 2 and the `image` cap.
+  parameter; image support requires protocol 2 or 3 and the `image` cap.
 
 ## Messages
 
