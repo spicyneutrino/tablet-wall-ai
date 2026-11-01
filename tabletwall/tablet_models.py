@@ -1,5 +1,6 @@
 """Measured tablet models and revision-pinned viewport adaptation."""
 import math
+from collections.abc import Iterable
 from copy import deepcopy
 from typing import Any
 
@@ -18,6 +19,39 @@ BUILTINS: dict[str, dict[str, Any]] = {
 def assignments() -> dict[str, Any]:
     value = persist.load_meta("tablet_model_assignments")
     return value if isinstance(value, dict) else {}
+
+
+def snapshot_for_calibration(
+    calibration: dict[str, Any], candidates: Iterable[dict[str, Any]],
+) -> dict[str, Any] | None:
+    """Inherit only an unambiguous historical model with this profile and CSS scale."""
+    if calibration.get("method") != "tablet-model approximate":
+        return None
+    css_scale = calibration.get("mm_per_css")
+    if not isinstance(css_scale, list) or len(css_scale) != 2:
+        return None
+    matches = [candidate for candidate in candidates
+        if isinstance(candidate, dict) and isinstance(candidate.get("model"), dict)
+        and candidate.get("model_id")
+        and candidate.get("profile_revision") == calibration.get("profile_revision")
+        and candidate["model"].get("mm_per_css") == css_scale]
+    if not matches or any((match["model_id"], match["model"]) != (
+        matches[0]["model_id"], matches[0]["model"]) for match in matches):
+        return None
+    source = next((match for match in matches if match.get("mode") == "explicit"), matches[0])
+    return {**deepcopy(source), "profile_revision": calibration["profile_revision"],
+            "calibration_revision": calibration["revision"]}
+
+
+def remember_calibration(device_id: str, calibration: dict[str, Any]) -> None:
+    if calibration.get("method") != "tablet-model approximate":
+        return
+    snapshot = pinned_assignment(device_id, calibration)
+    if not snapshot:
+        raise ValueError("No unambiguous historical model matches this profile and CSS scale. Confirm the model or record a measured manual calibration.")
+    history = persist.load_meta("tablet_model_calibrations") or {}
+    history.setdefault(device_id, {})[str(calibration["revision"])] = snapshot
+    persist.save_meta("tablet_model_calibrations", history)
 
 
 def match(telemetry: dict[str, Any]) -> list[str]:
@@ -95,12 +129,13 @@ def copy_assignment(source_id: str, target_id: str, profile_offset: int, calibra
 
 
 def pinned_assignment(device_id: str, calibration: dict[str, Any] | None) -> dict[str, Any]:
-    if calibration is None:
+    if calibration is None or calibration.get("method") != "tablet-model approximate":
         return {}
     history = persist.load_meta("tablet_model_calibrations") or {}
     assignment = history.get(device_id, {}).get(str(calibration.get("revision")))
     if assignment is None:
-        assignment = assignments().get(device_id, {})
+        assignment = snapshot_for_calibration(calibration,
+            [*history.get(device_id, {}).values(), assignments().get(device_id, {})]) or {}
     if (assignment.get("profile_revision") != calibration.get("profile_revision")
             or assignment.get("calibration_revision") != calibration.get("revision")):
         return {}

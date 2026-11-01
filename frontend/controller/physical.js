@@ -1304,6 +1304,7 @@
     const {
         addSelectedDevice, deleteSelectedSlot, endDrag, nudgeSelected, onPointerCancel, onPointerDown, onPointerMove, onPointerUp, renderDeviceHealth, renderDeviceList, renderStage, rotateSelected, selectDevice, syncInspector
     } = window.PhysicalStage.create({
+        selectionChanged: () => { if (operatorDevices) operatorDevices.render(); },
         DRAG_THRESHOLD_PX, WAKE_LOCK_TEXT, afterDraftChange, announce, bodyMetrics, calibrationFor, calibrationStatus, clearMsg, clone, compactView, deviceEntries, deviceLabel, deviceNumber, deviceRows, el, finiteOr, formatNumber, isOnline, latestProfile, mutateDraft, numberedLabel, populateDeviceCard, profileFor, pushUndo, roundTo, selectedSlot, setInputValue, shortId, showError, showTab, state, syncTabDots, validPair
     });
 

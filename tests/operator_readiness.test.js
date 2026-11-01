@@ -52,7 +52,7 @@ const full = {
     tablet_url: "http://192.168.50.1:8080/client/",
     join_qr_url: "/api/v3/join-qr",
     wifi: { name: "Wall-Net", known: true },
-    security: { transport: "http", authentication: "disabled", uploads: false,
+    security: { transport: "http", authentication: "disabled", uploads: "disabled",
         trust: "Trusted local hotspot. Registration is open." },
     content: { type: "image", available: true,
         summary: "A still image is selected and its bytes are available." },
@@ -138,6 +138,11 @@ function factsText(nodes) {
         join_qr_url: "https://evil.example/qr" });
     assert.equal(externalQr.qr.state, "unusable");
     assert.equal(externalQr.qr.href, null);
+    for (const path of ["//evil.example/qr", "/\\evil.example/qr", "/\\\\evil.example/qr"]) {
+        assert.equal(view({ ...full, join_qr_url: path }).qr.state, "unusable",
+            "URL normalization must not turn an apparently local QR path into an external request");
+    }
+    assert.equal(view({ security: { uploads: true } }).facts.find(row => row[0] === "Uploads")[1], "Not reported");
     assert.match(externalQr.url.note, /not a same-origin path/);
 
     /* Rendered reading: the real endpoint is fetched, not /operator-config. */

@@ -23,7 +23,7 @@ from pydantic import (
     field_validator,
 )
 
-from tabletwall import layouts
+from tabletwall import layouts, tablet_models
 
 
 class LifecycleError(ValueError):
@@ -505,6 +505,10 @@ def _measurement_copy(
             )
     for revision, calibration in calibrations.items():
         _check_pair(old_id, calibration.get("profile_revision"), revision, inputs)
+        if str(revision) not in snapshots:
+            inherited = tablet_models.snapshot_for_calibration(calibration, snapshots.values())
+            if inherited is not None:
+                snapshots[str(revision)] = inherited
     _validate_model_snapshots(old_id, snapshots, inputs)
     target_profiles, target_cals = (
         inputs.profiles.get(new_id, {}),

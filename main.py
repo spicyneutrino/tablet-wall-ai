@@ -2017,8 +2017,9 @@ async def put_calibration_v3(
                 uncertainty_mm=command.uncertainty_mm,
                 method=command.method,
             )
+            tablet_models.remember_calibration(device_id, saved)
             tablet_models.assign(device_id, "manual")
-    except displays.DisplayError as error:
+    except (displays.DisplayError, ValueError) as error:
         raise HTTPException(status_code=422, detail=str(error)) from error
     await _abort_playback("mapping changed")
     await _broadcast_wall()

@@ -8,6 +8,24 @@ from tabletwall.state import _render_frame
 DEVICE = "ad9d08f6-80e9-453e-8961-33e2de09f93c"
 
 
+def test_inherited_snapshot_requires_exact_profile_scale_and_unambiguous_history(monkeypatch):
+    model = deepcopy(tablet_models.BUILTINS["ipad-air-2"])
+    source = {"mode": "explicit", "model_id": "ipad-air-2", "model": model,
+        "profile_revision": 2, "calibration_revision": 3}
+    calibration = {"method": "tablet-model approximate", "profile_revision": 2,
+        "revision": 4, "mm_per_css": model["mm_per_css"]}
+    original = deepcopy(source)
+    monkeypatch.setitem(tablet_models.BUILTINS, "ipad-air-2", {**model, "mm_per_css": [9, 9]})
+    inherited = tablet_models.snapshot_for_calibration(calibration, [source])
+    assert inherited["calibration_revision"] == 4
+    assert inherited["model"] == original["model"]
+    assert source == original
+    for change in ({"method": "ruler-measured"}, {"profile_revision": 99}, {"mm_per_css": None}, {"mm_per_css": [.3, .3]}):
+        assert tablet_models.snapshot_for_calibration({**calibration, **change}, [source]) is None
+    ambiguous = {**source, "model_id": "other", "model": {**model, "label": "Other hardware"}}
+    assert tablet_models.snapshot_for_calibration(calibration, [source, ambiguous]) is None
+
+
 @pytest.mark.parametrize("orientation,width,height,quarter", [
     (270, 900, 1280, 0), (0, 1280, 900, 3),
     (90, 900, 1280, 2), (180, 1280, 900, 1),

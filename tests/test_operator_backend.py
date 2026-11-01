@@ -493,6 +493,88 @@ def rebind_setup(client):
         "transfer_label": True}
 
 
+@pytest.mark.parametrize("legacy_gap", [False, True])
+def test_rebind_keeps_model_source_after_capturing_a_new_viewport(client, legacy_gap):
+    register(client)
+    assigned = client.put(f"/api/v3/tablet-assignments/{A}", headers=headers(client),
+        json={"mode": "explicit", "model_id": "google-pixel-c"}).json()["assignment"]
+    source = displays.calibration(A, assigned["calibration_revision"])
+    command = {key: source[key] for key in ("profile_revision", "viewport_width",
+        "viewport_height", "dpr", "orientation", "mode", "quarter_turn",
+        "panel_offset_mm", "mm_per_css", "anchor_edge", "uncertainty_mm", "method")}
+    command.update(viewport_width=600, viewport_height=800, mode="tab")
+    saved = client.put(f"/api/v3/calibrations/{A}", headers=headers(client), json=command)
+    saved.raise_for_status()
+    calibration = saved.json()["calibration"]
+    assert tablet_models.assignments()[A]["mode"] == "manual"
+    history = persist.load_meta("tablet_model_calibrations")
+    if legacy_gap:
+        history[A].pop(str(calibration["revision"]), None)
+        persist.save_meta("tablet_model_calibrations", history)
+    else:
+        assert history[A][str(calibration["revision"])]["model"] == assigned["model"]
+    layout = physical(client)["layout"]
+    layout["slots"][A]["calibration_revision"] = calibration["revision"]
+    client.put("/api/v3/layout", headers=headers(client),
+        json={key: layout[key] for key in ("bounds", "slots")}).raise_for_status()
+    client.put("/api/v3/layouts/viewport", headers=headers(client)).raise_for_status()
+    register(client, B)
+    body = {"replaces": A, "hardware": "same_hardware", "active": True,
+        "saved_layouts": [{"name": "viewport", "etag": persist.snapshot_digests("layout")["viewport"]}],
+        "transfer_label": True}
+    before = persist.load_meta("tablet_model_calibrations")
+    preview = client.post(f"/api/v3/devices/{B}/rebind/preview", headers=headers(client), json=body)
+    preview.raise_for_status()
+    assert preview.json()["conflicts"] == []
+    assert persist.load_meta("tablet_model_calibrations") == before
+    body["new_connection_id"] = preview.json()["new_connection_id"]
+    client.post(f"/api/v3/devices/{B}/rebind", headers=headers(client), json=body).raise_for_status()
+    client.post("/api/v3/layouts/viewport/recall", headers=headers(client)).raise_for_status()
+    assert set(config(client)["layout"]["slots"]) == {B}
+    pin = config(client)["layout"]["slots"][B]["calibration_revision"]
+    copied = displays.calibration(B, pin)
+    assert copied["viewport_width"] == 600
+    assert tablet_models.pinned_assignment(B, copied)["model"] == assigned["model"]
+
+
+def test_model_tagged_save_cannot_create_an_untraceable_model_scale(client):
+    register(client)
+    client.put(f"/api/v3/tablet-assignments/{A}", headers=headers(client),
+        json={"mode": "explicit", "model_id": "google-pixel-c"}).raise_for_status()
+    source = displays.latest_calibration(A)
+    command = {key: source[key] for key in ("profile_revision", "viewport_width",
+        "viewport_height", "dpr", "orientation", "mode", "quarter_turn",
+        "panel_offset_mm", "mm_per_css", "anchor_edge", "uncertainty_mm", "method")}
+    command["mm_per_css"] = [.3, .3]
+    before = config(client)["etag"]
+    response = client.put(f"/api/v3/calibrations/{A}", headers=headers(client), json=command)
+    assert response.status_code == 422
+    assert config(client)["etag"] == before
+
+
+def test_model_health_dpr_fence_also_blocks_the_render_plan(client):
+    register(client)
+    client.put(f"/api/v3/tablet-assignments/{A}", headers=headers(client),
+        json={"mode": "explicit", "model_id": "ipad-air-2"}).raise_for_status()
+    source = displays.latest_calibration(A)
+    command = {key: source[key] for key in ("profile_revision", "viewport_width",
+        "viewport_height", "dpr", "orientation", "mode", "quarter_turn",
+        "panel_offset_mm", "mm_per_css", "anchor_edge", "uncertainty_mm", "method")}
+    command.update(viewport_width=600, viewport_height=800, dpr=1, mode="tab")
+    saved = client.put(f"/api/v3/calibrations/{A}", headers=headers(client), json=command).json()["calibration"]
+    layout = physical(client)["layout"]
+    layout["slots"][A]["calibration_revision"] = saved["revision"]
+    client.put("/api/v3/layout", headers=headers(client),
+        json={key: layout[key] for key in ("bounds", "slots")}).raise_for_status()
+    main.wall["scene"]["content"] = {"type": "image", "asset": "sha256:" + "a" * 64,
+        "intrinsicWidth": 100, "intrinsicHeight": 100, "fit": "cover"}
+    with client.websocket_connect(url(mode="tab")) as socket:
+        frame = receive(socket, "render")
+        assert frame["mapping"]["state"] == "viewport_mismatch"
+        assert frame["plan"] is None
+        assert status(client)["mapping"]["state"] == frame["mapping"]["state"]
+
+
 @pytest.mark.parametrize("failure", [None, "roster", "last_snapshot"])
 def test_rebind_all_histories_saved_recall_and_final_write_rollback(client, monkeypatch, failure):
     body = rebind_setup(client)

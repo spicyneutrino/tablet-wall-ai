@@ -72,7 +72,11 @@
         }
 
         const rawQr = stringOrNull(body && body.join_qr_url);
-        const qrPath = rawQr !== null && rawQr.startsWith("/") && !rawQr.startsWith("//");
+        let qrPath = false;
+        if (rawQr !== null && rawQr.startsWith("/")) {
+            try { qrPath = new URL(rawQr, "http://operator.invalid").origin === "http://operator.invalid"; }
+            catch (_) { qrPath = false; }
+        }
         const qr = {
             href: copyable && qrPath ? rawQr : null,
             state: !copyable || rawQr === null ? "absent" : qrPath ? "ready" : "unusable"
@@ -94,9 +98,9 @@
         const transport = body && stringOrNull(security.transport);
         const authentication = body && stringOrNull(security.authentication);
         const uploads = body ? security.uploads : undefined;
-        const uploadsText = uploads === true || uploads === "loopback" || uploads === "proxy"
-            ? "Enabled on the " + (typeof uploads === "string" ? uploads : "operator") + " path"
-            : uploads === false || uploads === "disabled"
+        const uploadsText = uploads === "loopback" || uploads === "proxy"
+            ? "Enabled on the " + uploads + " path"
+            : uploads === "disabled"
                 ? "Disabled; use the configured image folder"
                 : "Not reported";
         const trust = body && stringOrNull(security.trust);

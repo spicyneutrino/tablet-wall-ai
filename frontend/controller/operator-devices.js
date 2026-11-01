@@ -161,7 +161,8 @@ window.OperatorDevices = {
                 const preview = await api("POST", path(target, "/rebind/preview"), body, { ifMatch: etag });
                 if (version !== replaceVersion || id !== selectedId || state.etag !== etag || preview.base_etag !== etag || (preview.conflicts || []).length) throw new Error("Replacement conflicts. " + JSON.stringify(preview.conflicts || []));
                 replacement = { id, target, body, preview };
-                $("replace-summary").textContent = "Preview only. Update active: " + preview.affected_active + ". Selected saved arrangements: " + body.saved_layouts.map(item => item.name).join(", ")
+                $("replace-summary").textContent = "Preview only. Replace " + labelFor(id) + " (" + id.slice(0, 8)
+                    + ") with " + labelFor(target) + " (" + target.slice(0, 8) + "). Update active: " + preview.affected_active + ". Selected saved arrangements: " + body.saved_layouts.map(item => item.name).join(", ")
                     + ". Untouched saved reservations: " + (preview.untouched_saved || []).map(item => item.name).join(", ")
                     + ". Profile revision map " + JSON.stringify(preview.profile_revision_map) + "; calibration map " + JSON.stringify(preview.calibration_revision_map)
                     + ". Label after: " + (preview.label_after || "none") + "; number after: " + (preview.number_after || "unassigned") + ".";

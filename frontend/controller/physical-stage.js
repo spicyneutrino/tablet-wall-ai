@@ -4,7 +4,7 @@
 window.PhysicalStage = {
     create: function (dependencies) {
         const {
-            DRAG_THRESHOLD_PX, WAKE_LOCK_TEXT, afterDraftChange, announce, bodyMetrics, calibrationFor, calibrationStatus, clearMsg, clone, compactView, deviceEntries, deviceLabel, deviceNumber, deviceRows, el, finiteOr, formatNumber, isOnline, latestProfile, mutateDraft, numberedLabel, populateDeviceCard, profileFor, pushUndo, roundTo, selectedSlot, setInputValue, shortId, showError, showTab, state, syncTabDots, validPair
+            DRAG_THRESHOLD_PX, WAKE_LOCK_TEXT, afterDraftChange, announce, bodyMetrics, calibrationFor, calibrationStatus, clearMsg, clone, compactView, deviceEntries, deviceLabel, deviceNumber, deviceRows, el, finiteOr, formatNumber, isOnline, latestProfile, mutateDraft, numberedLabel, populateDeviceCard, profileFor, pushUndo, roundTo, selectedSlot, selectionChanged, setInputValue, shortId, showError, showTab, state, syncTabDots, validPair
         } = dependencies;
 
         function focusStageSlot(id) {
@@ -150,6 +150,7 @@ window.PhysicalStage = {
         function revealInspector() {
             if (state.drag || compactView()) return;
             if (!el.inspectorBody || el.inspectorBody.hidden) return;
+            selectionChanged();
             showTab("tablet", { persist: true });
             const card = el.inspectorBody.closest(".inspector") || el.inspectorBody;
             if (card && typeof card.scrollIntoView === "function") {

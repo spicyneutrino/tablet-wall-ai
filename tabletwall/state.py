@@ -446,6 +446,11 @@ def mapping_decision(
             state, reason = "needs_calibration", "calibration does not match pinned profile"
         elif not _viewport_matches(calibration, viewport or {}):
             state, reason = "viewport_mismatch", "viewport does not match pinned calibration"
+        elif health is not None and health["provenance"]["kind"] == "model":
+            if not health["provenance"]["model_snapshot"]["available"]:
+                state, reason = "needs_calibration", "historical model source is unavailable; confirm the actual model or record a measured calibration"
+            elif health["status"] != "ready":
+                state, reason = health["status"], health["status_reason"]
     digest = hashlib.sha256(json.dumps({
         "layout": layout, "entry": entry, "profile": profile, "calibration": calibration,
         "viewport": viewport, "caps": sorted(caps), "content": content,
