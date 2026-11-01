@@ -973,6 +973,7 @@
         const oldDraft = state.draft, oldBase = state.base, oldEtag = state.etag;
         const conflicting = keepDraft && settings.remote && config.etag !== oldEtag;
         state.readFence.event();
+        config = window.OperatorState.observeConfig(config, performance.now());
         state.operatorConfig = config;
         state.scene = config.scene || null;
         state.capabilities = config.capabilities || {};
@@ -3122,7 +3123,7 @@
             if (document.visibilityState === "hidden") return;
             if (state.operatorConfig) {
                 const signature = JSON.stringify(Object.keys(window.OperatorState.entries(state.operatorConfig.layout))
-                    .map(id => [id, window.OperatorState.tabletState(state.operatorConfig, id, Date.now()).status]));
+                    .map(id => [id, window.OperatorState.tabletState(state.operatorConfig, id, performance.now()).status]));
                 if (signature !== state.evidenceSignature) { state.evidenceSignature = signature; renderAll(); }
             }
             if (state.playbackBusy || state.playbackFetching) return;

@@ -34,7 +34,7 @@ window.OperatorDevices = {
                 $("replace-target").value = ""; $("replace-hardware").value = "";
             }
             $("tablet-action-name").textContent = id ? labelFor(id) : "Select a tablet in the list or stage.";
-            $("tablet-evidence").textContent = id ? window.OperatorState.tabletState(config(), id, Date.now()).text : "";
+            $("tablet-evidence").textContent = id ? window.OperatorState.tabletState(config(), id, performance.now()).text : "";
             const mapping = device && device.mapping || {};
             const slot = state.base && state.base.slots && state.base.slots[id];
             const profile = slot && profileFor(id, slot.profile_revision), calibration = slot && calibrationFor(id, slot.calibration_revision);

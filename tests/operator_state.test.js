@@ -8,7 +8,7 @@ function fixture() {
     return { generation: "g", revision: 8, layout: { kind: "physical", bounds: { x: -10, y: 20, width: 400, height: 100 },
         slots: { tablet: { participating: true } } }, scene: { content: { type: "image", asset: "image" } },
         runtime: { observed_at: new Date(now).toISOString(), presentation: { owner: "static" }, devices: { tablet: { online: true, protocol: 3,
-            caps: ["image", "render_ack"], mapping: { status: "ready" }, render: { status: "displayed", expected_token: { ...token }, token: { ...token }, age_ms: 0 } } } } };
+            caps: ["image", "render_ack"], mapping: { state: "ready" }, render: { state: "displayed", current: true, expected_token: { ...token }, accepted_token: { ...token }, age_ms: 0, observed_mono: now } } } } };
 }
 const logical = { width: 320, height: 60, placements: { one: { x: 0, y: 0, w: 80, h: 60 } } };
 const draft = model.layoutDraft(logical);
@@ -35,17 +35,28 @@ for (const layout of [draft, fixture().layout]) {
 const roster = { a: { number: 4 }, b: { number: 1 }, c: { label: "alpha" }, d: { label: "Zulu" }, e: { number: null, label: "Beta" } };
 assert.deepEqual(Object.keys(roster).sort((a, b) => model.compareIds(roster, {}, a, b)), ["b", "a", "c", "e", "d"]);
 assert.equal(model.tabletState(fixture(), "tablet", now).showing, true);
+const notCurrent = fixture(); notCurrent.runtime.devices.tablet.render.current = false;
+assert.equal(model.tabletState(notCurrent, "tablet", now).showing, false, "server rejection cannot become a green badge");
+const newConnection = fixture(); newConnection.runtime.devices.tablet.connection_id = "socket-2";
+assert.equal(model.tabletState(newConnection, "tablet", now).showing, false, "a reconnect cannot reuse the previous connection's evidence");
+const clockJump = fixture(); clockJump.runtime.observed_at = "1900-01-01T00:00:00Z";
+assert.equal(model.tabletState(clockJump, "tablet", now).showing, true, "wall-clock dates must not control evidence expiry");
+const original = fixture();
+const observed = model.observeConfig(original, now + 1000);
+assert.equal(original.runtime.devices.tablet.render.observed_mono, now, "observing a response must not mutate its input");
+assert.equal(model.tabletState(observed, "tablet", now + 1000).showing, true);
+assert.equal(model.tabletState(observed, "tablet", now + 16000).showing, false, "local monotonic time ages a cached response");
 assert.deepEqual(model.aggregate(fixture(), now).total, 1);
 for (const key of Object.keys(token)) {
-    const config = fixture(); config.runtime.devices.tablet.render.token[key] = "obsolete";
+    const config = fixture(); config.runtime.devices.tablet.render.accepted_token[key] = "obsolete";
     assert.equal(model.tabletState(config, "tablet", now).showing, false, "old " + key + " must never count as showing");
 }
 for (const status of ["blocked", "loading", "failed", "hidden", "stale", "unsupported", "unknown", "painted", "future"]) {
-    const config = fixture(); config.runtime.devices.tablet.render.status = status;
+    const config = fixture(); config.runtime.devices.tablet.render.state = status;
     assert.equal(model.tabletState(config, "tablet", now).showing, false, status);
 }
 for (const status of ["needs_calibration", "viewport_mismatch", "zoom_changed", "unsupported_content", "unsupported_client"]) {
-    const config = fixture(); config.runtime.devices.tablet.mapping.status = status;
+    const config = fixture(); config.runtime.devices.tablet.mapping.state = status;
     assert.equal(model.tabletState(config, "tablet", now).status, status);
 }
 const wrongPins = fixture(); wrongPins.runtime.devices.tablet.mapping.profile_revision = 4;

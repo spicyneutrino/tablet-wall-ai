@@ -53,7 +53,9 @@ window.OperatorSync = {
                         else if (device) state.roster[id] = Object.assign({}, state.roster[id], device, frame.status || {});
                         else if (frame.status) state.roster[id] = Object.assign({}, state.roster[id], frame.status);
                         else if (frame.type === "device_offline" && state.roster[id]) state.roster[id] = Object.assign({}, state.roster[id], { online: false });
-                        if (device && device.render && state.roster[id]) state.roster[id].render = Object.assign({}, device.render, { observed_at: new Date().toISOString() });
+                        if ((device && device.render || frame.status && frame.status.render) && state.roster[id]) {
+                            state.roster[id] = window.OperatorState.observeDevice(state.roster[id], performance.now());
+                        }
                         state.rosterCheckedAt = new Date().toISOString(); state.rosterError = null;
                         if (state.operatorConfig) state.operatorConfig = Object.assign({}, state.operatorConfig, { runtime: Object.assign({}, state.operatorConfig.runtime, { devices: state.roster }) });
                         renderAll();

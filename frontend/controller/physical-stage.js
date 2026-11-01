@@ -206,7 +206,7 @@ window.PhysicalStage = {
 
         function renderDeviceHealth() {
             if (window.OperatorState && state.operatorConfig) {
-                const result = window.OperatorState.aggregate(state.operatorConfig, Date.now());
+                const result = window.OperatorState.aggregate(state.operatorConfig, performance.now());
                 const stale = !!state.rosterError;
                 const facts = result.states.reduce((all, item) => {
                     if (!item.showing) all[item.status] = (all[item.status] || 0) + 1;

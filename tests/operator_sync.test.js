@@ -11,7 +11,7 @@ class Socket {
 }
 const state = { readFence: model.readFence(), roster: {}, busy: false };
 const context = vm.createContext({ window: { OperatorState: model, location: { href: "http://127.0.0.1:8080/controller/physical.html" } },
-    document: { visibilityState: "visible", getElementById: () => connection }, WebSocket: Socket, URL, Date,
+    document: { visibilityState: "visible", getElementById: () => connection }, WebSocket: Socket, URL, Date, performance: { now: () => 1000 },
     setTimeout: () => 1, clearTimeout: () => {}, setInterval: () => 1, clearInterval: () => {} });
 vm.runInContext(fs.readFileSync(require.resolve("../frontend/controller/operator-sync.js"), "utf8"), context);
 const sync = context.window.OperatorSync.create({ state,
@@ -33,9 +33,12 @@ const flush = () => new Promise(resolve => setImmediate(resolve));
     assert.equal(requests.length, 1, "update during fetch queues a fresh read after discarding the old response");
     requests.shift()(config(9)); await flush();
     assert.deepEqual(received.map(item => item.config.revision), [8, 9]);
-    sockets[0].onmessage({ data: JSON.stringify({ type: "device_updated", device: { device_id: "tablet", online: true, render: { status: "loading" } } }) });
-    assert.equal(state.roster.tablet.render.status, "loading");
-    assert.equal(state.operatorConfig.runtime.devices.tablet.render.status, "loading", "runtime evidence updates authoritative status without a layout write");
+    state.roster.other = { render: { state: "displayed", age_ms: 100, observed_mono: 10 } };
+    sockets[0].onmessage({ data: JSON.stringify({ type: "device_updated", device: { device_id: "tablet", online: true, render: { state: "loading" } } }) });
+    assert.equal(state.roster.tablet.render.state, "loading");
+    assert.equal(state.operatorConfig.runtime.devices.tablet.render.state, "loading", "runtime evidence updates authoritative status without a layout write");
+    assert.equal(state.roster.tablet.render.observed_mono, 1000);
+    assert.equal(state.roster.other.render.observed_mono, 10, "one tablet's report cannot refresh another tablet's stale evidence");
     sockets[0].onmessage({ data: JSON.stringify({ type: "device_offline", device_id: "tablet" }) });
     assert.equal(state.roster.tablet.online, false);
     sockets[0].onmessage({ data: JSON.stringify({ type: "device_removed", device_id: "tablet" }) });
