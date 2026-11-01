@@ -6,7 +6,7 @@
     <meta name="mobile-web-app-capable" content="yes">
     <meta name="apple-mobile-web-app-capable" content="yes">
     <title>Tablet Wall</title>
-    <link rel="stylesheet" href="client.css?v=4">
+    <link rel="stylesheet" href="client.css?v=5">
 </head>
 <body>
     <canvas id="surface" aria-hidden="true"></canvas>
@@ -19,10 +19,15 @@
         <span id="hud-state" class="hud-state"></span>
     </div>
     <div id="video-unavailable" role="status" aria-live="polite" data-visible="false"></div>
+    <div id="identify" role="status" aria-live="polite" aria-atomic="true" hidden>
+        <span id="identify-number"></span>
+        <span id="identify-label"></span>
+    </div>
+    <a id="auth-login" hidden>Sign in to restore this display</a>
     <button id="takeover" type="button" hidden>Take over this screen</button>
     <button id="fs-toggle" type="button" hidden aria-label="Enter full screen">Full screen</button>
     <script src="view.js?v=2"></script>
-    <script src="client.js?v=12"></script>
-    <script src="ruler.js?v=1"></script>
+    <script src="client.js?v=13"></script>
+    <script src="ruler.js?v=2"></script>
 </body>
 </html>

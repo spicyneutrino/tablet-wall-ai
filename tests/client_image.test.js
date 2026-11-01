@@ -410,6 +410,10 @@ function createHarness(opts = {}) {
         return el;
     }
 
+    const identify = makeElement("div"); identify.setAttribute("id", "identify"); identify.hidden = true;
+    const identifyNumber = makeElement("span"); identifyNumber.setAttribute("id", "identify-number");
+    const identifyLabel = makeElement("span"); identifyLabel.setAttribute("id", "identify-label");
+    const authLogin = makeElement("a"); authLogin.setAttribute("id", "auth-login"); authLogin.hidden = true;
     const documentMock = {
         getElementById(id) {
             if (id === "surface") return canvas;
@@ -419,7 +423,7 @@ function createHarness(opts = {}) {
             if (id === "hud-identity") return hudIdentity;
             if (id === "hud-state") return hudState;
             if (id === "video-unavailable") return videoUnavailable;
-            return null;
+            return elements.find(el => el.attributes.id === id) || null;
         },
         documentElement: {
             clientWidth: opts.width || VP.width,
@@ -456,7 +460,7 @@ function createHarness(opts = {}) {
 
     /* Always resolves to a promise: client.js chains `.then` on it. The
      * router defaults to a successful, body-less response (registration). */
-    let fetchImpl = () => ({ ok: true, status: 200 });
+    let fetchImpl = opts.fetch || (() => ({ ok: true, status: 200 }));
     function fetchMock(url, options) {
         fetchLog.push({ url, options });
         return Promise.resolve().then(() => fetchImpl(url, options));
@@ -641,6 +645,7 @@ function createHarness(opts = {}) {
         clearTimeout: sandboxClearTimeout,
         setInterval: sandboxSetInterval,
         clearInterval: sandboxClearInterval,
+        Date: opts.Date || Date,
         performance: {
             now() {
                 return perfNow;
@@ -682,6 +687,12 @@ function createHarness(opts = {}) {
 
     return {
         calls,
+        document: documentMock,
+        ctx,
+        dispose() {
+            for (const timer of timers) sandboxClearTimeout(timer);
+            for (const interval of intervals) sandboxClearInterval(interval);
+        },
         bitmaps,
         warnings,
         fetchLog,
@@ -2907,8 +2918,8 @@ function videoRecoveryCommit(harness, overrides) {
 
 async function startVideoHarness(opts) {
     const h = await startHarness(opts);
-    /* The server would have sent welcome and opened the socket. */
     h.socket().readyState = 1;
+    h.emit({ type: "welcome", heartbeat_interval_ms: 5000, protocol: 3 });
     return h;
 }
 
@@ -3480,7 +3491,7 @@ test("video: a wall generation change disposes an armed commit", async () => {
 });
 
 test("playback stop restores the scene the server persisted", async () => {
-    const h = await startHarness(VP);
+    const h = await startVideoHarness(VP);
     h.socket().readyState = 1;
     h.setFetch(route({ [ASSET_A]: okResponse(assetBlob("A", 400, 400)) }));
     h.emit(wallFrame());
@@ -5124,6 +5135,7 @@ test("video recovery: a replaced socket cannot resurrect or freeze playback", as
         "the client reopens its device socket"
     );
     h.socket().readyState = 1;
+    h.emit({ type: "welcome", heartbeat_interval_ms: 5000, protocol: 3 });
 
     /* A queued prepare on the socket that already failed must not start a
      * player again. */
@@ -5383,8 +5395,8 @@ test("client shell: cache versions, HUD markup and the 56 px CSS pill", () => {
     const html = fs.readFileSync(CLIENT_HTML, "utf8");
     const css = fs.readFileSync(CLIENT_CSS, "utf8");
 
-    assert.match(html, /client\.css\?v=4/, "the stylesheet version was bumped");
-    assert.match(html, /client\.js\?v=12/, "the script version was bumped");
+    assert.match(html, /client\.css\?v=5/, "the stylesheet version was bumped");
+    assert.match(html, /client\.js\?v=13/, "the script version was bumped");
     assert.match(html, /id="hud"/, "the HUD has static markup");
     assert.match(html, /id="video-unavailable"/, "the failure notice has static markup");
 
@@ -5510,7 +5522,10 @@ test("queued physical frames cannot revive a picture after its viewport changes"
 /* Runner                                                             */
 /* ------------------------------------------------------------------ */
 
-(async function main() {
+module.exports = { createHarness, startHarness, drain, waitFor, deferred, wallFrame,
+    imageContent, okResponse, assetBlob, route, startVideoHarness, VIDEO_CALIBRATION, VIDEO_PLAN };
+
+if (require.main === module) (async function main() {
     let failed = 0;
     for (const entry of tests) {
         try {
