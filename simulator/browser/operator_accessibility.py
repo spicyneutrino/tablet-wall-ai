@@ -64,7 +64,7 @@ def main():
         locator.press('Enter')
 
     def focus(page):
-        return page.evaluate("() => ({tag:document.activeElement.tagName,id:document.activeElement.id,text:document.activeElement.textContent.slice(0,100),disabled:!!document.activeElement.disabled})")
+        return page.evaluate("() => ({tag:document.activeElement.tagName,id:document.activeElement.id,text:document.activeElement.textContent.slice(0,100),disabled:!!document.activeElement.disabled,visible:document.activeElement.getClientRects().length>0,selectedTablet:document.activeElement.matches('.dev-pick[aria-pressed=true]')})")
 
     def contrast(page, state):
         rows = page.evaluate(CONTRAST)
@@ -187,7 +187,8 @@ def main():
                     keyboard(tablet_tab)
                     keyboard(page.locator('#tablet-remove'))
                     wait(lambda: 'Removed active slot' in page.locator('#tablet-action-message').inner_text())
-                    check(focus(page)['tag'] != 'BODY', 'focus after remove', focus(page))
+                    active = focus(page)
+                    check(active['selectedTablet'] and active['visible'] and not active['disabled'], 'focus after remove', active)
                     page.screenshot(path=str(out / 'remove-focus.png'), full_page=True)
                     check(bool(dialogs), 'native Remove confirmation accepted', dialogs)
                     keyboard(wall)
@@ -197,7 +198,8 @@ def main():
                     wait(lambda: saved.count() == 1)
                     keyboard(saved.get_by_role('button', name='Delete', exact=True))
                     wait(lambda: saved.count() == 0)
-                    check(focus(page)['tag'] != 'BODY', 'focus after snapshot delete', focus(page))
+                    active = focus(page)
+                    check(active['id'] == 'layout-name' and active['visible'] and not active['disabled'], 'focus after snapshot delete', active)
                     page.screenshot(path=str(out / 'delete-focus.png'), full_page=True)
                     for width, height in [(1600, 1000), (390, 844)]:
                         page.set_viewport_size({'width': width, 'height': height})

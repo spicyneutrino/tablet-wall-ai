@@ -1224,7 +1224,8 @@ signed operator row; `hardware_claim` only for the tested configuration.
 
 Issues remain **OPEN** until their own acceptance is recorded. “Integrated”
 describes code on the feature branch, not a merge to main. This board reflects
-`0cc4cec`; detailed final acceptance and its independent check are pending. The
+`7806530`; detailed feature acceptance is pending. The final focus
+corrections independently passed 82 accessibility checks and 23 edge cases. The
 current executed checks are in [VERIFICATION.md](VERIFICATION.md).
 
 | TWR | Issue | Title | Status | Software | Hardware |
@@ -1243,7 +1244,7 @@ current executed checks are in [VERIFICATION.md](VERIFICATION.md).
 | TWR-11 | [#15](https://github.com/spicyneutrino/tablet-wall-ai/issues/15) | Calibration trust and test grid | Open — integrated, acceptance pending | Pinned trust, actual generated grid and explicit viewport fences pass; suggestion/provenance text assertions being checked | Seam/scale in TWR-17 |
 | TWR-12 | [#15](https://github.com/spicyneutrino/tablet-wall-ai/issues/15) | Longer ruler and consistency | Open — integrated, acceptance pending | Long/short ruler and explicit consistency choices pass mounted desktop/mobile checks and independent calibration review | Ruler work in TWR-17 |
 | TWR-13 | [#17](https://github.com/spicyneutrino/tablet-wall-ai/issues/17) | Readiness, health, backup, runbook | Open — integrated, acceptance pending | Readiness/QR, CSP, Host/logging and backup/restore checks pass; unified operator recovery transcript being packaged | Reboot/restore in TWR-17 |
-| TWR-14 | [#18](https://github.com/spicyneutrino/tablet-wall-ai/issues/18) | Unified console and browser acceptance | Open — integrated, acceptance pending | 106-check desktop-led and phone-led journeys, independent races and added content/recovery pass; detailed a11y/coverage acceptance being completed | Phone/keyboard real device optional |
+| TWR-14 | [#18](https://github.com/spicyneutrino/tablet-wall-ai/issues/18) | Unified console and browser acceptance | Open — integrated, acceptance pending | 106-check desktop-led/phone-led journeys and independent races pass; [82/82 accessibility checks](ACCESSIBILITY-ACCEPTANCE.md) pass after focus corrections; final feature mapping/review pending | Phone/keyboard real device optional |
 | TWR-15 | [#16](https://github.com/spicyneutrino/tablet-wall-ai/issues/16) | Approved joining and revocation | Deferred — current profile A | Not implemented; required before untrusted-network use | Only if triggered |
 | TWR-16 | [#20](https://github.com/spicyneutrino/tablet-wall-ai/issues/20) | Measured efficiency baseline | Open — integrated, acceptance pending | [Pinned measured baseline and per-cost decisions](EFFICIENCY.md) independently checked; no optimisation or hardware capacity claim | No |
 | TWR-17 | [#19](https://github.com/spicyneutrino/tablet-wall-ai/issues/19) | Real-tablet acceptance | Open | — | **Required** |
@@ -1253,7 +1254,8 @@ console and operations modules are integrated. The latest full Python
 checkpoint is 1,782 passing cases; 18 current JavaScript suites, production Ruff
 and mypy for 47 files pass. Desktop-led and phone-led 106-check journeys and the
 independent `0529eaa` recheck pass. Detailed feature/accessibility assertions and
-review of the final small corrections remain open. TWR-17 is independently open
+review of the final focus corrections remain open. The portable accessibility
+runner passes 82/82; detailed feature acceptance remains open. TWR-17 is independently open
 for real-device evidence; it is not a prerequisite for the software finish line.
 See [VERIFICATION.md](VERIFICATION.md) for exact revisions, commands and limits.
 

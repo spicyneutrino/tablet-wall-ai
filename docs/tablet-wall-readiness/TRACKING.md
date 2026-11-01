@@ -39,13 +39,17 @@ See [DECISIONS.tsv](DECISIONS.tsv) for integration decisions, and
 
 ## Final software acceptance
 
-The integrated application is at `0cc4cec` for the current acceptance pass.
+Production changes are integrated through `7806530` for the current acceptance pass.
 The full Python checkpoint is 1,782 tests; 18 Node suites pass. Actual isolated
 four-tablet journeys passed 106 checks from desktop and again from phone width.
 A fresh independent review passed `0529eaa`, including the 106-check journey,
-delayed-response and QR races. Later generated-pattern/entry-point corrections
-at `f2a8c5f` and the keyboard focus correction at `0cc4cec` have focused and
-actual-browser evidence; their final acceptance mapping remains open.
+delayed-response and QR races. The generated-pattern/entry-point corrections at `f2a8c5f`, ordering focus
+correction at `0cc4cec`, and inventory fence at `b8a07fa` have focused and
+actual-browser evidence. Fresh review passed `b8a07fa`. Portable accessibility
+acceptance then exposed two more focus losses; `7806530` corrects them and the
+same runner now passes 82/82. Fresh review passed the frozen `7806530` with
+82 checks and 23 supplemental browser edge cases. Detailed feature acceptance
+is the remaining software gate.
 
 The read-only acceptance audit found a real generated-pattern DTO defect at
 `0529eaa`, fixed at `f2a8c5f`, and identified missing explicit acceptance

@@ -14,8 +14,7 @@ failing focus checks, at
 console/network errors remained; private data was removed and owned processes
 stopped. Minimum sampled contrast remains 4.5174534575546:1. The run started at
 `a3ae097` with the two focus changes uncommitted; those exact source edits are
-recorded in the parent correction commit. Independent recheck of that commit
-remains required. Original failures and limits are retained below.
+recorded in the parent correction commit. Independent recheck passed `7806530` as recorded below. Original failures and limits are retained below.
 
 ## Original independent run at `b8a07fa`
 
@@ -138,3 +137,26 @@ each control; this is not a claim of an uninterrupted Tab-only full journey.
 Hardware accuracy, OS sleep, radios, optical synchronisation, assistive-technology
 speech output and full WCAG coverage remain unverified. Feature/upload/restore
 acceptance belongs to the separate feature runner.
+
+## Independent recheck at `7806530`
+
+A fresh Sol Medium review froze `7806530` with `git archive`. The unchanged
+portable runner passed 82/82. An additional actual-browser probe passed 23/23,
+checking fallback target identity, visibility and enabled state; empty and
+surviving layout rows; cancellation and errors; disabled Recall controls; and
+late replies preserving a different selected tablet, input or tab. The focus
+screenshots were inspected. No actionable finding remained in the two paths.
+
+The reviewer correctly noted that the original portable assertions only excluded
+BODY. The parent has strengthened them to require the selected usable tablet row
+and, after deleting the last saved layout, the usable name input. The 23-case
+supplemental probe already verified these target identities at the production
+revision above. This tightens the future regression gate without changing the UI.
+
+Independent evidence is retained in
+`readiness-program/final-qa/20261101-independent-7806530-review/` and
+`readiness-program/final-qa/20261101-independent-7806530-edge-verified/`.
+The latter contains `probe.py` and `results.json`. The review summary is
+`readiness-program/reviews/removal-focus-7806530.md`. All owned processes stopped
+and private data was removed. The verdict closes the scoped focus findings;
+feature acceptance and real hardware remain separate gates.

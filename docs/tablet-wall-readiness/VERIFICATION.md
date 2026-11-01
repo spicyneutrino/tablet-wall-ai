@@ -254,3 +254,14 @@ sample is 4.5174534575546:1. This is bounded accessibility evidence, not a full
 WCAG or assistive-technology speech certification. Private data removal is
 recorded true, and owned processes stopped. The source was tested before the
 focus-fix commit; the report retains that source-identity qualification.
+
+Fresh independent recheck **passed `7806530`** after freezing its source. The
+portable runner passed 82/82; supplemental actual-browser assertions passed
+23/23 for target identity/visibility/enabled state, empty and surviving rows,
+cancel/error paths and preserving another selected tablet/input/tab after late
+responses. Evidence is in `final-qa/20261101-independent-7806530-review/` and
+`final-qa/20261101-independent-7806530-edge-verified/` under readiness-program.
+The original portable focus assertions only excluded BODY; parent tightened them
+to the chosen usable target. Production behavior is unchanged by that test edit.
+The scoped review found no remaining correctness issue. Private data and owned
+processes were cleaned up. Summary `reviews/removal-focus-7806530.md`.
