@@ -217,3 +217,127 @@ hotspot.run(hotspot.Settings(**{hotspot.asdict(settings)!r}), "127.0.0.1", Path(
         for port in (backend_port, tablet_port):
             with socket.socket() as connection:
                 assert connection.connect_ex(("127.0.0.1", port)) != 0
+
+
+def test_hotspot_name_reads_the_active_access_point_ssid(monkeypatch):
+    def command(*argv):
+        if argv == ("nmcli", "-t", "-f", "UUID,DEVICE", "connection", "show", "--active"):
+            return "hotspot-uuid:ap0\nuplink-uuid:wlan0"
+        assert argv == ("nmcli", "-g", "802-11-wireless.ssid", "connection", "show",
+                        "hotspot-uuid")
+        return "Wall-Lab\n"
+
+    monkeypatch.setattr(hotspot, "command", command)
+    assert hotspot.hotspot_name("ap0") == "Wall-Lab"
+
+
+def test_hotspot_name_is_unknown_instead_of_failing_startup(monkeypatch):
+    def command(*_argv):
+        raise RuntimeError("NetworkManager is not answering")
+
+    monkeypatch.setattr(hotspot, "command", command)
+    assert hotspot.hotspot_name("ap0") is None
+
+
+def test_preflight_prints_the_actual_settings(tmp_path, capsys):
+    settings = hotspot.Settings("ap0", str(tmp_path / "wall"), 18000, 18080)
+    hotspot.preflight(settings, "10.42.0.1", "Wall-Lab")
+    output = capsys.readouterr().out
+    assert "http://10.42.0.1:18080/client/" in output
+    assert "http://127.0.0.1:18000/controller/" in output
+    assert "Wi-Fi network: Wall-Lab" in output
+    assert str(tmp_path / "wall") in output
+    assert "managed uploads disabled" in output
+    assert "unknown" not in output
+
+
+def test_preflight_says_unknown_when_the_ssid_was_not_discovered(tmp_path, capsys):
+    settings = hotspot.Settings("ap0", str(tmp_path / "wall"), 18000, 18080)
+    hotspot.preflight(settings, "10.42.0.1", None)
+    assert "Wi-Fi network: unknown" in capsys.readouterr().out
+
+
+def test_rotating_log_keeps_a_hard_retention_ceiling(tmp_path):
+    path = tmp_path / "backend.log"
+    log = hotspot.log_rotation.RotatingLog(path, max_bytes=1000, backups=2)
+    log.open()
+    try:
+        for index in range(100):
+            log.write(f"line-{index:04d}-".encode() * 20)
+        log.write(b"tail-marker")
+    finally:
+        log.close()
+    files = sorted(tmp_path.glob("backend.log*"))
+    assert {file.name for file in files} == {
+        "backend.log", "backend.log.1", "backend.log.2"
+    }
+    assert all(file.stat().st_size <= 1000 for file in files)
+    assert sum(file.stat().st_size for file in files) <= 3000
+    assert b"tail-marker" in path.read_bytes()
+
+
+def test_rotating_log_bounds_a_single_unterminated_line(tmp_path):
+    path = tmp_path / "caddy.log"
+    log = hotspot.log_rotation.RotatingLog(path, max_bytes=512, backups=1)
+    log.open()
+    try:
+        log.write(b"x" * 100_000)
+    finally:
+        log.close()
+    assert all(file.stat().st_size <= 512 for file in tmp_path.glob("caddy.log*"))
+    assert path.read_bytes().endswith(b"x")
+
+
+def test_rotating_log_archives_an_oversized_existing_file_at_startup(tmp_path):
+    path = tmp_path / "backend.log"
+    path.write_bytes(b"old\n" * 500)
+    log = hotspot.log_rotation.RotatingLog(path, max_bytes=1000, backups=1)
+    log.open()
+    try:
+        log.write(b"new\n")
+    finally:
+        log.close()
+    assert path.read_bytes() == b"new\n"
+    assert (tmp_path / "backend.log.1").stat().st_size == 2000
+
+
+def test_log_pump_follows_a_child_to_eof_and_joins_its_reader(tmp_path):
+    path = tmp_path / "backend.log"
+    pump = hotspot.log_rotation.LogPump(path)
+    with pump:
+        child = subprocess.Popen(
+            [sys.executable, "-c",
+             "import sys; sys.stdout.write('hello\\n'); sys.stderr.write('oops\\n')"],
+            stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
+        )
+        assert child.stdout is not None
+        pump.attach(child.stdout)
+        assert child.wait(timeout=10) == 0
+    content = b"".join(file.read_bytes() for file in tmp_path.glob("backend.log*"))
+    assert b"hello" in content and b"oops" in content
+    assert pump._thread is not None and not pump._thread.is_alive()
+
+
+def test_spawn_logged_captures_the_real_child(tmp_path):
+    path = tmp_path / "backend.log"
+    with hotspot.log_rotation.LogPump(path) as pump:
+        child = hotspot.spawn_logged(
+            [sys.executable, "-c", "print('spawned through the launcher')"],
+            dict(os.environ), pump,
+        )
+        assert child.wait(timeout=10) == 0
+    assert b"spawned through the launcher" in path.read_bytes()
+
+
+def test_readiness_summary_reads_the_mounted_projection(monkeypatch):
+    body = {"content": {"type": "color", "summary": "A solid colour is selected."}}
+    monkeypatch.setattr(
+        hotspot, "http_request",
+        lambda origin, path: (200, {}, json.dumps(body).encode()),
+    )
+    assert hotspot.readiness_summary("http://127.0.0.1:8000") == body
+
+
+def test_readiness_summary_is_unknown_before_the_route_is_mounted(monkeypatch):
+    monkeypatch.setattr(hotspot, "http_request", lambda *_args: (404, {}, b"{}"))
+    assert hotspot.readiness_summary("http://127.0.0.1:8000") is None

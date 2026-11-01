@@ -85,7 +85,8 @@ def test_tablet_ingress_strips_the_operator_credential():
         assert lines[index + 1].strip() == "header_up -X-Tablet-Wall-Operator"
     assert not re.search(r"header_up\s+X-Tablet-Wall-Operator", tablet)
     assert "header_up X-Tablet-Wall-Operator {env.WALL_OPERATOR_CREDENTIAL}" in operator
-    for path in ("/uploads", "/media", "/diagnostics", "/rebind"):
+    for path in ("/uploads", "/media", "/diagnostics", "/rebind",
+                 "/healthz", "/api/v3"):
         assert path not in tablet
     assert re.search(r"@asset_bytes\s*\{[^}]*method GET HEAD", tablet, re.S), \
         "the exact published-asset route accepts HEAD as well as GET"
