@@ -12,7 +12,7 @@ import os
 
 import pytest
 
-from tabletwall import operability, persist
+from tabletwall import assets, media, operability, persist
 
 
 @pytest.fixture(autouse=True)
@@ -259,3 +259,14 @@ def test_operator_data_paths_are_reported_only_for_the_operator_projection():
     }
     assert os.path.basename(body["storage"]["database"])
     assert "database" not in operability.health(snapshot())
+
+
+def test_managed_asset_requires_its_object_file(tmp_path, monkeypatch):
+    monkeypatch.setenv("TABLET_WALL_MEDIA_DIR", str(tmp_path))
+    monkeypatch.setattr(media, "find_object", lambda _asset: {"path": "objects/missing"})
+    monkeypatch.setattr(assets, "find", lambda _asset: None)
+    asset = "sha256:" + "a" * 64
+    assert operability.asset_available(asset) is False
+    (tmp_path / "objects").mkdir()
+    (tmp_path / "objects" / "missing").write_bytes(b"present")
+    assert operability.asset_available(asset) is True

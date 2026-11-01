@@ -199,12 +199,23 @@ def live_snapshot() -> WallSnapshot:
 
 
 def asset_available(asset_id: str) -> bool:
-    """True when this content ID still resolves to readable published bytes."""
+    """True when this content ID still resolves to bytes on this machine.
+
+    A managed lookup is a database row; its object file is checked too, so a
+    vanished upload reads as unavailable rather than as a successful scene.
+    Curated lookups re-scan and validate the directory. Neither path hashes
+    the bytes on every readiness read.
+    """
     try:
-        if media.find_object(asset_id) is not None:
-            return True
+        entry = media.find_object(asset_id)
     except (OSError, sqlite3.Error):
-        pass
+        entry = None
+    if entry is not None:
+        path = entry.get("path")
+        if isinstance(path, str) and os.path.isfile(
+            os.path.join(media.media_dir(), path)
+        ):
+            return True
     try:
         return assets.find(asset_id) is not None
     except (OSError, ValueError):
