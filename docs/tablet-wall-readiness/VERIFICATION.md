@@ -22,6 +22,26 @@ the roadmap acceptance criteria or establish real-tablet results.
 | Calibration trust and diagnostic image helpers | `7c2b3d0` | Root repeated 82 calibration/pattern cases; worker Ruff/mypy passed and inspected a generated grid | Helpers pass focused checks; publication, route wiring, and physical accuracy remain open. |
 | Complete foundation/helper/client checkpoint | `7c2b3d0` | Complete Python suite: 1,562 passed, three dependency deprecations, 78.80 s; JUnit `/tmp/tablet-wall-foundation-7c2b3d0.xml`. All Node suites passed; Ruff passed; mypy passed for 40 source files | Green software checkpoint before backend composition and unified-console integration. This does not close end-to-end acceptance. |
 
+## Integrated software checkpoint
+
+These checks supersede the earlier statements that route/socket composition
+was pending. They do not close the full-journey or hardware gates.
+
+| Unit | Revision | Executable evidence | Result and limits |
+| --- | --- | --- | --- |
+| Unified operator console and canonical evidence | `5b7c729`, `16ee0cd`, `50cc0b8` | All JavaScript suites; canonical state/token, independent monotonic age, cleared Identify, and offline VM fixture checks | Pass. Original worker browser evidence used fixtures for routes that were absent on its base. Those fixture checks are not integrated acceptance. |
+| Composed operator routes and sockets | `b791dfe` | 278 worker-focused tests, including 45 composition cases. Root later repeated 384 helper/composition tests | Pass. Layout, labels, Identify/retry/reconnect, grid, snapshots, rebind, test patterns, historical pins, and transaction rollback are wired. |
+| Operations and page protections | `705dbb3` through `ef06e87` | Root 52 readiness/health/CSP/offline checks. Worker backup drill, QR independently decoded, log retention/long-line/EOF checks | Pass for temporary HTTP loopback checks. Actual mounted routes are exercised in the operator composition tests. Readiness UI acceptance and deployed TLS remain separate. |
+| Independent helper review corrections | `8c3356a` | Regression checks failed before fixes; 384 focused cases afterward. Common layout validation replaces duplicated lifecycle geometry checks while retaining snapshot extensions | Model CSS scale cannot become measured through panel provenance; model hints cannot bypass manual fences; malformed reports and unrepresentable grid/ruler/pattern arithmetic are refused. Offline telemetry cannot size a new reservation. |
+| Complete integrated Python checkpoint | `8c3356a` | `.venv/bin/python -m pytest -q --junitxml=/tmp/tablet-wall-integrated-8c3356a.xml` | **1,684 passed**, three dependency deprecations, 85.21 s. All current Node suites, production Ruff, and mypy for 46 source files passed. |
+| Fresh server review corrections | `9d91591` | New managed-file availability and socket/legacy regressions failed before fixes; 232 server/image/render/recovery/protocol tests passed afterward | Metadata is assigned before handshake awaits; late legacy controllers cannot observe a fake physical wall; missing managed bytes report unavailable without changing durable ETags. Experimental loop failures now become a visible failed state with bounded logging; this does not establish working video. |
+| Actual browser image confirmation | `9d91591` | Private Uvicorn, temporary data, actual `client.js`, real WebSocket acknowledgements, desktop 1600×1000 and 390×844 / 800×600 views | Pass after fixing two remaining wall-clock callers. Header, stage, and roster agree on current display; no page errors or horizontal overflow. Artifacts at `/var/home/oak/.local/share/tablet-wall-ai/readiness-program/root-browser/`. Only one logical tablet was exercised here. |
+
+`ruff check .` was also tried and found 46 existing issues in simulator,
+test-fixture, and optical-tool files outside the production lint target. The
+repository's required `ruff check main.py tabletwall deploy` passes. Those
+unrelated files were not changed to make this feature's checks green.
+
 Outstanding evidence includes the consolidated desktop/mobile flows, complete
 integration and security checks, and real-tablet calibration, recovery, and soak
 acceptance. Experimental video tests are not evidence of usable tablet video.
