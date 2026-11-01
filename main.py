@@ -46,6 +46,8 @@ from starlette.datastructures import Headers
 # ``monkeypatch.setattr(main.hub, "HEARTBEAT_TIMEOUT_S", ...)``.
 from tabletwall import hub as hub
 from tabletwall.auth import AuthMiddleware
+from tabletwall.routes import health as health_routes
+from tabletwall.security_headers import SecurityHeadersMiddleware
 from tabletwall.hub import (
     _broadcast,
     _broadcast_offline,
@@ -613,6 +615,7 @@ app.include_router(assets_router)
 
 app.include_router(devices_router)
 app.include_router(diagnostics_router)
+app.include_router(health_routes.create_router())
 
 
 class RevalidatedStaticFiles(StaticFiles):
@@ -859,6 +862,7 @@ async def operator_origin_guard(request: Request, call_next):
 
 
 app.add_middleware(AuthMiddleware)
+app.add_middleware(SecurityHeadersMiddleware)
 
 
 @app.get("/operator-config")
