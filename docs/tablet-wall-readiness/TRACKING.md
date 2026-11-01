@@ -5,8 +5,9 @@ track delivery; this table links the two. An issue remains open until its
 acceptance checks have evidence. A passing software test does not close a
 real-tablet acceptance requirement.
 
-[Draft PR #21](https://github.com/spicyneutrino/tablet-wall-ai/pull/21) carries
-the implementation. It remains a draft while integration and acceptance are open.
+[PR #21](https://github.com/spicyneutrino/tablet-wall-ai/pull/21) carries
+the implementation. Software acceptance passed; hardware acceptance remains open.
+The branch has not been merged to main.
 
 | Issue | Work |
 | --- | --- |
@@ -39,33 +40,38 @@ See [DECISIONS.tsv](DECISIONS.tsv) for integration decisions, and
 
 ## Final software acceptance
 
-Production changes are integrated through `7806530` for the current acceptance pass.
-The full Python checkpoint is 1,782 tests; 18 Node suites pass. Actual isolated
-four-tablet journeys passed 106 checks from desktop and again from phone width.
-A fresh independent review passed `0529eaa`, including the 106-check journey,
-delayed-response and QR races. The generated-pattern/entry-point corrections at `f2a8c5f`, ordering focus
-correction at `0cc4cec`, and inventory fence at `b8a07fa` have focused and
-actual-browser evidence. Fresh review passed `b8a07fa`. Portable accessibility
-acceptance then exposed two more focus losses; `7806530` corrects them and the
-same runner now passes 82/82. Fresh review passed the frozen `7806530` with
-82 checks and 23 supplemental browser edge cases. Detailed feature acceptance
-is the remaining software gate.
+The final independent review **passed frozen `29148ec`**. TWR-01 through
+TWR-14 and TWR-16 are Software complete under ROADMAP §2.2. TWR-15 is explicitly
+deferred for trusted profile A. TWR-17 and programme issue #7 remain open for
+real-tablet acceptance. Software delivery issues close on their own recorded
+acceptance; those closures do not mean the branch is merged or hardware passed.
 
-The read-only acceptance audit found a real generated-pattern DTO defect at
-`0529eaa`, fixed at `f2a8c5f`, and identified missing explicit acceptance
-assertions. Portable feature and accessibility runners are being added for those
-assertions. This is evidence completion, not a change to the accepted feature
-scope. See the latest sections of [VERIFICATION.md](VERIFICATION.md).
+The full Python checkpoint passed 1,782 tests. All 18 Node suites, production
+Ruff and mypy for 47 files pass. The fresh independent feature run passed
+183 checks, zero failures and zero findings, plus 192 focused Python tests.
+Prior desktop-led and phone-led journeys each passed 106 checks. Strict
+accessibility acceptance passed 82/82; its independent review also passed
+23 supplemental browser edge cases. Original failures and their corrections
+remain in the records.
 
-The audit's suggestion that programme-level *software* completion needs TWR-17
-is rejected. The canonical two-finish-line definition in ROADMAP §2.2 keeps
-software acceptance separate from real-tablet milestone acceptance. TWR-17 and
-issue #19 remain open regardless of software checks; no hardware claim follows.
-Pairing remains explicitly deferred for profile A, with its residual trust risk.
+See [final independent review](reviews/FINAL-SOFTWARE-REVIEW.md),
+[feature acceptance](FEATURE-ACCEPTANCE.md),
+[accessibility acceptance](ACCESSIBILITY-ACCEPTANCE.md), and
+[VERIFICATION.md](VERIFICATION.md) for commands, source identities and limits.
+The efficiency baseline remains pinned to `8c3356a`; no optimisation was applied.
+The restart feature runner's network filter is broad, so it is not the clean
+network gate. The earlier clean browser and strict accessibility runs provide
+that separate evidence.
 
 Durable local evidence is under
-`/var/home/oak/.local/share/tablet-wall-ai/readiness-program/`. `final-evidence/`
-contains the full-suite JUnit/log, independent review report, QR probe/image,
-and `run-provenance.json` with application commits and driver SHA-256 hashes.
-`reviews/acceptance-audit-0529eaa.md` preserves the unedited audit. PR #21 stays
-draft until final software checks and review are resolved.
+`/var/home/oak/.local/share/tablet-wall-ai/readiness-program/`. The frozen final
+review is copied to `final-evidence/independent-29148ec/`. The original audit
+is retained in `reviews/acceptance-audit-0529eaa.md` there. Its proposed hardware
+prerequisite for *software* completion is rejected under ROADMAP §2.2.
+
+The overall milestone remains open. Follow [HARDWARE-ACCEPTANCE.md](HARDWARE-ACCEPTANCE.md)
+for measured 2×2/1×4, seams, rotation, OS sleep/Wi-Fi recovery, host restart and
+powered-soak evidence. No new measurement request is a prerequisite to that
+trial. Pairing is not implemented; shared/untrusted-network use is unsupported.
+Video remains experimental. The live wall, hotspot, firewall and service were
+untouched.

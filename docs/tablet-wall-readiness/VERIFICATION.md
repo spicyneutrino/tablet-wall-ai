@@ -312,3 +312,35 @@ Production Ruff plus both portable runners pass; mypy passes for **47** source
 files. This checkpoint includes the final model-suggestion and upload-picker
 production fixes. The final independent review is still pending; hardware is
 not part of this software test count.
+
+### Final independent acceptance and software completion
+
+Fresh read-only Sol High review **passed frozen application `29148ec`**. It
+repeated the portable feature driver: **183 checks, zero failures, zero findings**.
+Application SHA and driver hash match. All 376 tracked blobs matched the
+reviewed archive after execution. The reviewer ran all **18 Node suites**,
+**192 focused Python tests**, production Ruff with both portable runners, and
+mypy for **47 files**. It inspected the production-identical full-suite JUnit
+with **1,782 passing tests**, prior reviews, accessibility and efficiency evidence.
+It did not repeat the full Python suite, accessibility matrix or benchmark.
+
+[Final review](reviews/FINAL-SOFTWARE-REVIEW.md) records the verdict and limits.
+Complete durable evidence is copied to
+`/var/home/oak/.local/share/tablet-wall-ai/readiness-program/final-evidence/independent-29148ec/`.
+The original directory is `/tmp/tablet-wall-review-291-Obzr1U-evidence/`.
+The driver hash is
+`d016d76047d45213fd2822486c02e23c53fafdb55983fd436824c0d0ad9c48b0`.
+
+The driver's broad `ERR_ABORTED` and `ERR_CONNECTION_REFUSED` filtering is a
+known evidence limit. Raw results retain three loopback API refusals during
+the intentional-restart journey. This run is not used as a clean-network gate.
+The earlier clean 106-check journeys and strict 82-check accessibility run
+provide that evidence separately. No acceptance-blocking false pass was proven.
+Owned server PIDs were absent and owned ports closed after the run.
+
+**Software complete under ROADMAP §2.2:** TWR-01 through TWR-14 and TWR-16
+accepted, TWR-15 explicitly deferred for trusted profile A. No proven software
+review blocker remains. The subsequent closure commit changes documentation
+only, not the reviewed application. **Milestone complete remains open** for
+TWR-17. No measured-panel precision, Safari, installed TLS/proxy, host reboot,
+OS sleep, powered soak, hardware capacity or dependable-video claim follows.

@@ -1,5 +1,24 @@
 # Feature acceptance record: TWR-04/05/06/08/09/10/11/13
 
+## Final independent repeat at `29148ec`
+
+A fresh read-only reviewer froze application
+`29148ec48680dcb2ff399104fc89b33aff6d31ec` and repeated the portable driver.
+All **183 checks passed, zero failures and zero findings**. The driver SHA-256
+matches the parent repeat below. All 376 tracked blobs still matched after the
+run. Desktop and phone screenshots were inspected. The reviewer also passed
+192 focused Python tests, all 18 Node suites, production Ruff and mypy for
+47 files. [The final review](reviews/FINAL-SOFTWARE-REVIEW.md) accepts the software
+finish line under ROADMAP §2.2, with pairing deferred and hardware still open.
+
+Durable evidence is in
+`readiness-program/final-evidence/independent-29148ec/` under the local data root.
+It includes results, command transcript, screenshots, focused JUnit and review
+provenance. The runner's broad network-error exclusions mean this restart run
+is not the clean-network gate. Raw evidence retains three API connection
+refusals. Earlier clean 106-check journeys and the strict accessibility run
+provide that separate evidence. No hardware or installed-deployment claim follows.
+
 ## Parent correction and passing repeat
 
 The parent fixed both reported UI mismatches. Model suggestions now come from
