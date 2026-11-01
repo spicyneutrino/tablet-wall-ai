@@ -1185,7 +1185,7 @@
         el.btnRedo.disabled = state.busy || state.redo.length === 0;
         el.btnReload.disabled = state.busy;
         el.btnProfileSave.disabled = state.busy;
-        el.btnCalibrationSave.disabled = state.busy;
+        el.btnCalibrationSave.disabled = state.busy || rulerSaveBlocked();
         el.btnLayoutSave.disabled = state.busy || !state.etag;
         el.btnLayoutsRefresh.disabled = state.busy;
         el.btnConflictReload.disabled = state.busy;
@@ -1551,13 +1551,154 @@
         state.calDirty = false;
     }
 
+    const rulerReview = new window.PhysicalCalibration.RulerReview();
+
+    function rulerInputs() {
+        const measurements = {};
+        ["x", "y"].forEach(function (axis) {
+            measurements[axis] = {
+                mm: document.getElementById("cal-ruler-mm-" + axis).value,
+                px: document.getElementById("cal-ruler-span-" + axis).value,
+                error: document.getElementById("cal-ruler-error-" + axis).value
+            };
+        });
+        return measurements;
+    }
+
+    function rulerContext() {
+        const viewport = window.PhysicalCalibration.selectedViewport(state.roster, state.selectedId);
+        const revision = Number(el.calProfileRevision.value);
+        const profile = profileFor(state.selectedId, revision);
+        if (!profile) throw new Error("The selected profile revision is unavailable. Reload the tablet measurements.");
+        const bodies = window.PhysicalCalibration.rulerCheckBodies(state.selectedId, revision,
+            Number(el.calQuarterTurn.value), viewport, rulerInputs());
+        return { viewport: viewport, bodies: bodies, key: JSON.stringify({ bodies: bodies, viewport: viewport, profile: profile }) };
+    }
+
+    function rulerSaveBlocked() {
+        const measurements = rulerInputs();
+        if (rulerReview.status === "idle" && !measurements.x.mm && !measurements.y.mm
+            && el.calMethod.value.trim() !== "ruler-measured") return false;
+        try { return !rulerReview.canSave(rulerContext().key); }
+        catch (_) { return true; }
+    }
+
+    function invalidateRuler() {
+        rulerReview.invalidate();
+        document.getElementById("cal-ruler-decision").hidden = true;
+        if (rulerReview.status === "stale") {
+            const preview = document.getElementById("cal-ruler-preview");
+            preview.hidden = false;
+            preview.textContent = "Measurement or mapping changed. Check the current ruler measurements again before saving.";
+        }
+        el.btnCalibrationSave.disabled = state.busy || rulerSaveBlocked();
+    }
+
+    async function checkRuler() {
+        if (state.busy || rulerReview.status === "checking") return;
+        let context;
+        try {
+            context = rulerContext();
+            rulerReview.begin(context.key);
+            state.calDirty = true;
+            syncTabDots();
+            const preview = document.getElementById("cal-ruler-preview");
+            preview.hidden = false;
+            preview.textContent = "Checking both CSS axes. Nothing has been saved.";
+            document.getElementById("cal-ruler-decision").hidden = true;
+            renderCalibrationHelper();
+            const results = await Promise.all(context.bodies.map(function (body) {
+                return api("POST", "/api/v3/calibration-check", body);
+            }));
+            if (rulerContext().key !== context.key || !rulerReview.accept(context.key, results)) return;
+            preview.textContent = "";
+            results.forEach(function (result) {
+                const section = document.createElement("section");
+                const heading = document.createElement("h4");
+                heading.textContent = result.axis.toUpperCase() + " CSS axis maps to native panel "
+                    + result.profile.native_axis + " at quarter turn " + result.profile.quarter_turn;
+                section.appendChild(heading);
+                const derived = result.derived;
+                const comparison = result.comparison;
+                [
+                    "Full labelled span " + result.inputs.span_px + " CSS px. Measured "
+                        + result.inputs.span_mm + " ± " + result.inputs.span_error_mm + " mm.",
+                    "Derived " + formatNumber(derived.mm_per_css, 8) + " ± "
+                        + formatNumber(derived.mm_per_css_uncertainty, 8) + " mm/CSS. " + derived.quality_label + ".",
+                    "Supplied full panel " + result.profile.native_axis + " " + formatNumber(comparison.supplied_mm, 3)
+                        + " mm from profile r" + result.profile.revision + ". Ruler-implied usable panel extent "
+                        + formatNumber(comparison.implied_mm, 3) + " ± "
+                        + formatNumber(result.extrapolated_uncertainty.measured_mm, 3) + " mm.",
+                    result.decision.required ? "Disagreement. Choose explicitly below." : "Within the propagated comparison tolerance."
+                ].forEach(function (text) {
+                    const p = document.createElement("p");
+                    p.textContent = text;
+                    section.appendChild(p);
+                });
+                preview.appendChild(section);
+            });
+            const note = document.createElement("p");
+            note.textContent = "Both axes are measured separately. Browser insets can make the usable viewport smaller than the full panel, especially in tab or standalone mode. Review panel offsets below. No values were averaged or saved. Existing layout pins stay unchanged.";
+            preview.appendChild(note);
+            document.getElementById("cal-ruler-decision").hidden = false;
+            preview.focus();
+        } catch (error) {
+            if (context && rulerReview.key !== context.key) return;
+            invalidateRuler();
+            setMsg(el.calibrationMsg, errorDetail(error), "err");
+        } finally { renderCalibrationHelper(); }
+    }
+
+    function decideRuler(choice) {
+        if (state.busy) return;
+        try {
+            const context = rulerContext();
+            if (rulerReview.key !== context.key) throw new Error("The tablet or measurement changed. Check again.");
+            rulerReview.decide(choice);
+            document.getElementById("cal-ruler-decision").hidden = true;
+            if (choice === "use_ruler") {
+                fillViewport(context.viewport);
+                const results = rulerReview.results;
+                setInputValue(el.calMmCssX, results[0].derived.mm_per_css);
+                setInputValue(el.calMmCssY, results[1].derived.mm_per_css);
+                setInputValue(el.calUncertainty, Math.max(...results.map(function (result) {
+                    return result.extrapolated_uncertainty.measured_mm;
+                })));
+                setInputValue(el.calMethod, "ruler-measured");
+                state.calDirty = true;
+                setMsg(el.calibrationMsg, "Ruler chosen. Review offsets and Save calibration to create a new revision. Supplied profile and existing layout pins stay unchanged.", "info");
+                renderCalibrationHelper();
+                el.btnCalibrationSave.focus();
+            } else if (choice === "keep_supplied") {
+                setMsg(el.calibrationMsg, "Supplied measurements kept. Nothing was written; the profile and existing mapping stay unchanged. No ruler scale will be saved.", "ok");
+                document.getElementById("cal-use-ruler").focus();
+            } else {
+                document.getElementById("cal-ruler-mm-x").value = "";
+                document.getElementById("cal-ruler-mm-y").value = "";
+                invalidateRuler();
+                setMsg(el.calibrationMsg, "Measure each line again using its current labelled span, then check both axes.", "info");
+                document.getElementById("cal-ruler-mm-x").focus();
+            }
+            syncTabDots();
+        } catch (error) {
+            invalidateRuler();
+            setMsg(el.calibrationMsg, errorDetail(error), "err");
+        }
+        renderCalibrationHelper();
+    }
+
     function renderCalibrationHelper() {
         const v = window.PhysicalCalibration.selectedViewport(state.roster, state.selectedId);
         document.getElementById("cal-live-viewport").textContent = v
             ? "Selected tablet: " + v.width + " × " + v.height + " CSS px · DPR " + v.dpr + " · " + v.orientation + "° · " + v.mode
-            : "Waiting for the selected tablet’s online viewport. Advanced manual entry is available.";
+            : "Waiting for the selected tablet’s online viewport at 100% zoom. Advanced manual entry is available.";
         document.getElementById("cal-use-viewport").disabled = !v || state.busy;
-        document.getElementById("cal-use-ruler").disabled = !v || state.busy;
+        document.getElementById("cal-use-ruler").disabled = !v || state.busy || rulerReview.status === "checking";
+        if (rulerReview.key && ["checking", "review", "prepared"].includes(rulerReview.status)) {
+            try { if (rulerContext().key !== rulerReview.key) invalidateRuler(); }
+            catch (_) { invalidateRuler(); }
+        }
+        el.btnCalibrationSave.disabled = state.busy || rulerSaveBlocked();
     }
 
     async function loadRulerAddress() {
@@ -1640,7 +1781,12 @@
         const calibration = latestCalibration(id);
         const changed = state.formDeviceId !== id || force;
 
-        if (state.formDeviceId !== id) {
+        if (changed) {
+            rulerReview.reset();
+            document.getElementById("cal-ruler-preview").hidden = true;
+            document.getElementById("cal-ruler-decision").hidden = true;
+            document.getElementById("cal-ruler-error-x").value = "";
+            document.getElementById("cal-ruler-error-y").value = "";
             document.getElementById("cal-ruler-mm-x").value = "";
             document.getElementById("cal-ruler-mm-y").value = "";
             document.getElementById("cal-ruler-span-x").value = "200";
@@ -1736,6 +1882,7 @@
 
         let body;
         try {
+            if (rulerSaveBlocked()) throw new ValidationError("Check the current ruler measurements and choose Use ruler before saving. Keep supplied writes nothing.");
             body = buildCalibrationBody();
         } catch (error) {
             setMsg(el.calibrationMsg, errorDetail(error), "err");
@@ -2922,6 +3069,7 @@
             const v = window.PhysicalCalibration.selectedViewport(state.roster, state.selectedId);
             if (!v || state.busy) return;
             fillViewport(v);
+            invalidateRuler();
             state.calDirty = true;
             syncTabDots();
             setMsg(el.calibrationMsg, "Tablet viewport copied. Review measurements before saving.", "info");
@@ -2930,30 +3078,16 @@
             const copied = await copyText(document.getElementById("cal-ruler-link").href);
             setMsg(el.calibrationMsg, copied ? "Ruler address copied." : "Copy failed. Copy the visible address manually.", copied ? "ok" : "err");
         });
-        document.getElementById("cal-use-ruler").addEventListener("click", function () {
-            const v = window.PhysicalCalibration.selectedViewport(state.roster, state.selectedId);
-            if (!v || state.busy) return;
-            try {
-                const scale = window.PhysicalCalibration.rulerScale(
-                    document.getElementById("cal-ruler-mm-x").value,
-                    document.getElementById("cal-ruler-mm-y").value,
-                    document.getElementById("cal-ruler-span-x").value,
-                    document.getElementById("cal-ruler-span-y").value);
-                fillViewport(v);
-                setInputValue(el.calProfileRevision, latestProfile(state.selectedId)?.revision || "");
-                setInputValue(el.calMmCssX, scale[0]);
-                setInputValue(el.calMmCssY, scale[1]);
-                setInputValue(el.calMethod, "ruler-measured");
-                state.calDirty = true;
-                syncTabDots();
-                setMsg(el.calibrationMsg, "Measurements prepared. Review quarter turn, panel offsets and uncertainty, then Save calibration.", "info");
-            } catch (error) { setMsg(el.calibrationMsg, error.message, "err"); }
+        document.getElementById("cal-use-ruler").addEventListener("click", checkRuler);
+        [["cal-keep-supplied", "keep_supplied"], ["cal-accept-ruler", "use_ruler"], ["cal-measure-again", "remeasure"]].forEach(function (item) {
+            document.getElementById(item[0]).addEventListener("click", function () { decideRuler(item[1]); });
         });
         el.profileForm.addEventListener("input", function () {
             state.profileDirty = true;
             syncTabDots();
         });
         el.calibrationForm.addEventListener("input", function () {
+            invalidateRuler();
             state.calDirty = true;
             syncTabDots();
         });
@@ -2962,6 +3096,7 @@
             syncTabDots();
         });
         el.calibrationForm.addEventListener("change", function () {
+            invalidateRuler();
             state.calDirty = true;
             syncTabDots();
         });

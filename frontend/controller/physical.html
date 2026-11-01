@@ -470,24 +470,38 @@
                     <h3>Calibration</h3>
                     <p class="current" id="calibration-current"></p>
                     <fieldset>
-                        <legend>Measure with the tablet ruler</legend>
+                        <legend>Optional advanced ruler measurement</legend>
+                        <p>Confirmed known models can already use the physical wall. New measurements are optional. Keep supplied measurements unless you choose a new ruler calibration.</p>
                         <p id="cal-live-viewport" role="status" aria-live="polite">Waiting for tablet viewport.</p>
                         <button class="btn" id="cal-use-viewport" type="button">Use tablet viewport</button>
                         <p id="cal-ruler-address-note">Loading tablet address…</p>
                         <p><a id="cal-ruler-link" hidden></a></p>
                         <button class="btn" id="cal-copy-ruler" type="button" hidden>Copy ruler address</button>
-                        <p>On the selected tablet, measure each ruler line with a physical ruler. Enter the line’s labelled CSS span if it differs from 200.</p>
+                        <p>On the selected tablet, measure each ruler line with a physical ruler. Copy the full current labelled CSS span for each line. Long spans reduce extrapolation. The 200 px short-span option remains available on the tablet.</p>
                         <div class="form-grid">
                             <div class="field"><label class="label" for="cal-ruler-mm-x">Horizontal measured length (mm)</label><input class="inp" id="cal-ruler-mm-x" type="number" min="0" step="any" inputmode="decimal"></div>
                             <div class="field"><label class="label" for="cal-ruler-mm-y">Vertical measured length (mm)</label><input class="inp" id="cal-ruler-mm-y" type="number" min="0" step="any" inputmode="decimal"></div>
                             <div class="field"><label class="label" for="cal-ruler-span-x">Horizontal line span (CSS px)</label><input class="inp" id="cal-ruler-span-x" type="number" min="0" step="any" value="200" inputmode="decimal"></div>
                             <div class="field"><label class="label" for="cal-ruler-span-y">Vertical line span (CSS px)</label><input class="inp" id="cal-ruler-span-y" type="number" min="0" step="any" value="200" inputmode="decimal"></div>
                         </div>
-                        <button class="btn" id="cal-use-ruler" type="button">Prepare measured calibration</button>
-                        <p>Scales follow the browser’s horizontal and vertical axes before quarter turn. DPR does not change these measurements. Estimated panel profiles are not ruler verified; browser toolbars can inset the picture area.</p>
+                        <div class="form-grid">
+                            <div class="field"><label class="label" for="cal-ruler-error-x">Horizontal ruler error (± mm)</label><input class="inp" id="cal-ruler-error-x" type="number" min="0" step="any" inputmode="decimal" aria-describedby="cal-ruler-error-note"></div>
+                            <div class="field"><label class="label" for="cal-ruler-error-y">Vertical ruler error (± mm)</label><input class="inp" id="cal-ruler-error-y" type="number" min="0" step="any" inputmode="decimal" aria-describedby="cal-ruler-error-note"></div>
+                        </div>
+                        <p class="hint" id="cal-ruler-error-note">Estimate the reading error for each measured line. It is propagated across the usable panel before saving. This does not establish a 2 mm accuracy claim.</p>
+                        <button class="btn" id="cal-use-ruler" type="button">Check ruler measurements</button>
+                        <div id="cal-ruler-preview" role="status" aria-live="polite" tabindex="-1" hidden></div>
+                        <fieldset id="cal-ruler-decision" hidden>
+                            <legend>Choose which measurement to use</legend>
+                            <p>Keep supplied writes nothing and preserves the current profile and mapping. Use ruler prepares a new calibration revision with these scales and errors. The supplied profile, old revisions and layout pins stay unchanged. Measure again discards this check.</p>
+                            <button class="btn" id="cal-keep-supplied" type="button">Keep supplied</button>
+                            <button class="btn" id="cal-accept-ruler" type="button">Use ruler</button>
+                            <button class="btn" id="cal-measure-again" type="button">Measure again</button>
+                        </fieldset>
+                        <p>X is the browser’s horizontal axis; Y is vertical. Quarter turn maps these CSS axes into the native panel, and odd quarter turns exchange width and height. Each axis is measured independently. DPR does not change these measurements. Estimated panel profiles are not ruler verified; browser toolbars can inset the picture area.</p>
                     </fieldset>
                     <h4>Advanced calibration fields</h4>
-                    <p>Set quarter turn and uncertainty explicitly. Measure the browser picture area’s inset from the panel origin for panel offsets; use 0 only when the viewport starts at the panel origin. Review these fields, then Save calibration.</p>
+                    <p>Set quarter turn before checking the ruler. Review the propagated uncertainty. Measure the browser picture area’s inset from the panel origin for panel offsets; use 0 only when the viewport starts at the panel origin. Review these fields, then Save calibration.</p>
 
 
                     <div class="form-grid">
