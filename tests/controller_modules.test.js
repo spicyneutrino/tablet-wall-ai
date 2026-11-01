@@ -23,7 +23,15 @@ assert.equal(geometry.sceneContentType({ scene: { content: { type: " future " } 
 assert.equal(geometry.isSettableContent("image"), false);
 assert.equal(geometry.contentLabel("future"), "Unsupported content: future");
 assert.equal(geometry.deviceCaps({}).image, null);
-assert.equal(geometry.deviceCaps({ caps: [] }).image, false);
+assert.equal(geometry.deviceCaps({ caps: [] }).image, null);
+assert.equal(geometry.deviceCaps({ protocol: 1, caps: ["image"] }).image, false);
+assert.equal(geometry.deviceCaps({ protocol: 1 }).known, true);
+for (const protocol of [2, 3]) {
+    assert.equal(geometry.deviceCaps({ protocol, caps: ["image"] }).image, true);
+    assert.equal(geometry.deviceCaps({ protocol, caps: [] }).image, false);
+    assert.equal(geometry.deviceCaps({ protocol }).known, false);
+}
+assert.equal(geometry.deviceCaps({ protocol: 4, caps: ["image"] }).known, false);
 console.log("Controller module contracts passed");
 load("controller-snapshots.js");
 let savedWall = null;

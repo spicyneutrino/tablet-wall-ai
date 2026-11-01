@@ -57,15 +57,18 @@ window.ControllerGeometry = (function () {
         return aspectOf(device.width, device.height);
     }
 
-    /** Advertised render capabilities, with "not reported" kept distinct from
-     *  "reported and unsupported". */
+    /** Negotiated image support, with unknown protocols kept distinct from
+     *  known but unsupported clients. */
     function deviceCaps(device) {
-        const known = !!device && Array.isArray(device.caps);
-        const caps = known ? device.caps : [];
+        const capsReported = !!device && Array.isArray(device.caps);
+        const caps = capsReported ? device.caps : [];
+        const legacy = !!device && device.protocol === 1;
+        const supported = !!device && (device.protocol === 2 || device.protocol === 3);
+        const known = legacy || (supported && capsReported);
         return {
             known: known,
             caps: caps,
-            image: known ? caps.indexOf("image") !== -1 : null
+            image: legacy ? false : known ? caps.indexOf("image") !== -1 : null
         };
     }
 
