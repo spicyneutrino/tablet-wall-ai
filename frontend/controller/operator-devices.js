@@ -43,16 +43,19 @@ window.OperatorDevices = {
                 details.push("Pinned profile r" + slot.profile_revision + ", calibration r" + slot.calibration_revision + ".");
                 if (!profile || !calibration) details.push("Pinned records unavailable. Reload configuration; no substitute measurement is assumed.");
                 else {
-                    const approximate = /model|approximate/i.test(profile.provenance + " " + calibration.method);
-                    details.push((approximate ? "Approximate model" : "Measurement") + " · " + profile.provenance + " · " + calibration.method + " · ±" + calibration.uncertainty_mm + " mm.");
+                    details.push("Panel source “" + profile.provenance + "”; CSS scale method “" + calibration.method + "”, uncertainty ±" + calibration.uncertainty_mm + " mm.");
                     details.push("Calibrated " + calibration.viewport_width + " × " + calibration.viewport_height + " CSS px, DPR " + calibration.dpr + ", browser " + calibration.orientation + "°, " + calibration.mode + "; calibration quarter-turn " + calibration.quarter_turn + ", wall mount " + slot.mount_angle + "°.");
                 }
             } else details.push(state.layoutKind === "logical" ? "Logical units. No measured scale is claimed." : "Not in the measured arrangement.");
-            if (mapping.method) details.push("Active mapping method “" + mapping.method + "”.");
-            if (mapping.uncertainty_mm !== undefined) details.push("Active uncertainty ±" + mapping.uncertainty_mm + " mm.");
-            if (mapping.inset_assumptions || mapping.assumed_insets) details.push("Assumed browser insets " + JSON.stringify(mapping.inset_assumptions || mapping.assumed_insets) + ".");
-            else if (slot) details.push("Browser inset assumptions not reported. Tab chrome may shift an approximate mapping.");
-            if (mapping.model_confirmed === false) details.push("Model estimate is unconfirmed. Confirm the actual hardware in measurement details.");
+            const health = mapping.health;
+            if (health && slot) {
+                details.push(health.provenance.description + ". No physical accuracy is claimed.");
+                if (health.viewport.insets) details.push("Browser inset assumption: " + health.viewport.insets.source + ".");
+                if (health.comparison.discrepancy) details.push("Scale discrepancy: supplied lit panel "
+                    + health.comparison.lit_dimensions_mm.join(" × ") + " mm; predicted "
+                    + health.comparison.predicted_mm.join(" × ") + " mm. " + health.comparison.message);
+                if (health.actionable_warning) details.push(health.actionable_warning.message + " " + health.actionable_warning.action);
+            } else if (slot) details.push("Pinned calibration health is unavailable. Reload before relying on the mapping.");
             if (mapping.reason) details.push(mapping.reason + ". Return to the calibrated rotation, zoom and launch mode, or recalibrate.");
             if (device && device.viewport) details.push("Live viewport " + device.viewport.width + " × " + device.viewport.height + ", " + device.viewport.orientation + "°, " + device.viewport.mode + ", zoom " + (device.viewport.visual_scale === undefined ? "not reported" : device.viewport.visual_scale) + ".");
             $("tablet-provenance").textContent = details.join(" ");

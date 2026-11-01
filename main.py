@@ -48,7 +48,7 @@ from starlette.datastructures import Headers
 from tabletwall import hub as hub
 from tabletwall.auth import AuthMiddleware
 from tabletwall import operability
-from tabletwall.routes import health as health_routes
+from tabletwall.routes import calibration_check, health as health_routes
 from tabletwall.security_headers import SecurityHeadersMiddleware
 from tabletwall.hub import (
     _broadcast,
@@ -619,6 +619,7 @@ app.include_router(assets_router)
 app.include_router(devices_router)
 app.include_router(diagnostics_router)
 app.include_router(health_routes.create_router())
+app.include_router(calibration_check.create_router())
 
 
 class RevalidatedStaticFiles(StaticFiles):

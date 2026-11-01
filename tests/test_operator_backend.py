@@ -52,6 +52,29 @@ def test_new_legacy_controller_cannot_observe_a_fake_physical_wall(client, proto
     assert caught.value.code == 4426
 
 
+def test_mounted_ruler_review_is_admitted_origin_guarded_and_nonmutating(client, monkeypatch):
+    from tabletwall import media
+    monkeypatch.setattr(media, "_loopback_peer", lambda _request: True)
+    monkeypatch.delenv(media.OPERATOR_CREDENTIAL_ENV, raising=False)
+    register(client)
+    profile, _ = measurements()
+    body = {"device_id": A, "profile_revision": profile["revision"], "quarter_turn": 0,
+        "axis": "x", "span_px": 500, "span_mm": 100, "span_error_mm": 1,
+        "usable_width_px": 600, "usable_height_px": 800}
+    before = config(client)
+    response = client.post("/api/v3/calibration-check", json=body)
+    assert response.status_code == 200
+    assert response.json()["derived"]["mm_per_css"] == .2
+    assert config(client) == before
+    monkeypatch.setenv("TABLET_WALL_OPERATOR_ORIGIN", "http://operator.test")
+    assert client.post("/api/v3/calibration-check", json=body).status_code == 403
+    assert client.post("/api/v3/calibration-check", json=body,
+        headers={"Origin": "http://operator.test"}).status_code == 200
+    monkeypatch.setattr(media, "_loopback_peer", lambda _request: False)
+    assert client.post("/api/v3/calibration-check", json=body,
+        headers={"Origin": "http://operator.test"}).status_code == 403
+
+
 def test_number_release_broadcast_cannot_overwrite_a_new_socket_owner(client, monkeypatch):
     import asyncio
     register(client)
