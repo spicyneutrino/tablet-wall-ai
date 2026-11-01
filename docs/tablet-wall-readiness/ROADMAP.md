@@ -1147,7 +1147,7 @@ for its own sake; phone-over-hotspot access.
 
 #### TWR-15 — Approved joining and revocation · Issue [#16](https://github.com/spicyneutrino/tablet-wall-ai/issues/16)
 
-**Status:** Open — conditional. Remains `Deferred` unless a §7.3 trigger applies.
+**Status:** Deferred for the current private-hotspot/direct-loopback delivery profile. Reopen when a §7.3 trigger applies; pairing and revocation are not implemented.
 **Depends:** TWR-08, TWR-09.
 **Purpose:** Prevent a peer that knows a UUID from claiming an installed tablet
 when the network is not fully trusted.
@@ -1224,19 +1224,19 @@ acceptance.
 | — | [#7](https://github.com/spicyneutrino/tablet-wall-ai/issues/7) | Programme epic | Open | — | — |
 | TWR-01 | [#8](https://github.com/spicyneutrino/tablet-wall-ai/issues/8) | Protocol 3 capability truth | Open — merged, acceptance pending | Partial (rendered case open; §4.4 regression resolved at `3f9beee`) | Not applicable |
 | TWR-02 | [#9](https://github.com/spicyneutrino/tablet-wall-ai/issues/9) | Diagnostics and sign-in routes | Open — merged, acceptance pending | Partial (browser case open) | Auth expiry in TWR-17 |
-| TWR-03 | [#10](https://github.com/spicyneutrino/tablet-wall-ai/issues/10) | Authoritative operator state | Open | No | Not applicable |
-| TWR-04 | [#10](https://github.com/spicyneutrino/tablet-wall-ai/issues/10) | Still control, library, legacy fence | Open | No | Not applicable |
-| TWR-05 | [#11](https://github.com/spicyneutrino/tablet-wall-ai/issues/11) | Whole-image fit and crop preview | Open | No | Fit appearance in TWR-17 |
-| TWR-06 | [#12](https://github.com/spicyneutrino/tablet-wall-ai/issues/12) | Render evidence and retry | Open | No | Paint truth in TWR-17 |
-| TWR-07 | [#12](https://github.com/spicyneutrino/tablet-wall-ai/issues/12) | Recovery watchdog and auth expiry | Open | No | Sleep/Wi-Fi in TWR-17 |
-| TWR-08 | [#13](https://github.com/spicyneutrino/tablet-wall-ai/issues/13) | Labels, Identify, Remove, Forget | Open | No | Identify/forget in TWR-17 |
-| TWR-09 | [#13](https://github.com/spicyneutrino/tablet-wall-ai/issues/13) | Rebind repair and cross-kind safety | Open | No | Rebind/restore in TWR-17 |
-| TWR-10 | [#14](https://github.com/spicyneutrino/tablet-wall-ai/issues/14) | Atomic 2×2 and 1×4 presets | Open | No | Physical 2×2/1×4 in TWR-17 |
-| TWR-11 | [#15](https://github.com/spicyneutrino/tablet-wall-ai/issues/15) | Calibration trust and test grid | Open | No | Seam/scale in TWR-17 |
-| TWR-12 | [#15](https://github.com/spicyneutrino/tablet-wall-ai/issues/15) | Longer ruler and consistency | Open | No | Ruler work in TWR-17 |
+| TWR-03 | [#10](https://github.com/spicyneutrino/tablet-wall-ai/issues/10) | Authoritative operator state | Open — merged, acceptance pending | Partial (scene and CAS APIs pass; runtime read model in integration) | Not applicable |
+| TWR-04 | [#10](https://github.com/spicyneutrino/tablet-wall-ai/issues/10) | Still control, library, legacy fence | Open — merged, acceptance pending | Partial (merged image inventory and scene APIs; primary console in integration) | Not applicable |
+| TWR-05 | [#11](https://github.com/spicyneutrino/tablet-wall-ai/issues/11) | Whole-image fit and crop preview | Open — merged, acceptance pending | Partial (global fit/client checks pass; preview agreement pending) | Fit appearance in TWR-17 |
+| TWR-06 | [#12](https://github.com/spicyneutrino/tablet-wall-ai/issues/12) | Render evidence and retry | Open — merged, acceptance pending | Partial (registry and client checks pass; server transport pending) | Paint truth in TWR-17 |
+| TWR-07 | [#12](https://github.com/spicyneutrino/tablet-wall-ai/issues/12) | Recovery watchdog and auth expiry | Open — merged, acceptance pending | Partial (client watchdog/auth fixture checks pass; integrated recovery pending) | Sleep/Wi-Fi in TWR-17 |
+| TWR-08 | [#13](https://github.com/spicyneutrino/tablet-wall-ai/issues/13) | Labels, Identify, Remove, Forget | Open — merged, acceptance pending | Partial (lifecycle plans and Identify client pass; routes pending) | Identify/forget in TWR-17 |
+| TWR-09 | [#13](https://github.com/spicyneutrino/tablet-wall-ai/issues/13) | Rebind repair and cross-kind safety | Open — merged, acceptance pending | Partial (cross-kind safety copies pass; saved-layout repair wiring pending) | Rebind/restore in TWR-17 |
+| TWR-10 | [#14](https://github.com/spicyneutrino/tablet-wall-ai/issues/14) | Atomic 2×2 and 1×4 presets | Open — merged, acceptance pending | Partial (ordered grid helper passes; atomic route wiring pending) | Physical 2×2/1×4 in TWR-17 |
+| TWR-11 | [#15](https://github.com/spicyneutrino/tablet-wall-ai/issues/15) | Calibration trust and test grid | Open — merged, acceptance pending | Partial (pinned trust/grid-image helpers pass; publication/UI pending) | Seam/scale in TWR-17 |
+| TWR-12 | [#15](https://github.com/spicyneutrino/tablet-wall-ai/issues/15) | Longer ruler and consistency | Open — merged, acceptance pending | Partial (long ruler passes browser checks; save consistency UI pending) | Ruler work in TWR-17 |
 | TWR-13 | [#17](https://github.com/spicyneutrino/tablet-wall-ai/issues/17) | Readiness, health, backup, runbook | Open | No | Reboot/restore in TWR-17 |
 | TWR-14 | [#18](https://github.com/spicyneutrino/tablet-wall-ai/issues/18) | Unified console and browser acceptance | Open | No | Phone/keyboard real device optional |
-| TWR-15 | [#16](https://github.com/spicyneutrino/tablet-wall-ai/issues/16) | Approved joining and revocation | Open — conditional | No | Only if triggered |
+| TWR-15 | [#16](https://github.com/spicyneutrino/tablet-wall-ai/issues/16) | Approved joining and revocation | Deferred — current profile A | Not implemented; required before untrusted-network use | Only if triggered |
 | TWR-16 | [#20](https://github.com/spicyneutrino/tablet-wall-ai/issues/20) | Measured efficiency baseline | Open | No | No |
 | TWR-17 | [#19](https://github.com/spicyneutrino/tablet-wall-ai/issues/19) | Real-tablet acceptance | Open | — | **Required** |
 
@@ -1244,6 +1244,7 @@ acceptance.
 Everything else has no accepted implementation.
 
 ---
+
 
 ## 11. Disposition register — every recommendation
 

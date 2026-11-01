@@ -807,10 +807,35 @@ active wall row refuses startup.
 
 | Route | Meaning |
 | --- | --- |
-| `GET /api/v3/config` | schema, revision, generation, layout, displays, calibrations and an `ETag` |
+| `GET /api/v3/config` | schema, revision, generation, tagged layout, actual projected scene, displays, calibrations, model assignments and an `ETag` |
+| `GET /api/v3/images` | operator-admitted merged curated/managed still-image inventory, including with uploads disabled |
+| `PUT /api/v3/scene` | change static content with `If-Match`, stop an experimental presentation, return actual config and ETag |
 | `PUT /api/v3/displays/{device_id}` | append a display profile revision |
 | `PUT /api/v3/calibrations/{device_id}` | append a calibration for an existing profile revision |
-| `PUT /api/v3/layout` | atomically replace the active arrangement with a physical one |
+| `PUT /api/v3/layout` | atomically replace the active arrangement with a measured physical layout |
+| `PUT /api/v3/logical-layout` | atomically replace a complete logical arrangement: width, height, placements and optional sizing |
+| `POST /api/v3/layout/clear` | explicitly clear active entries in the current layout kind; requires `{"confirm":true}` and `If-Match` |
+
+The image inventory response is `{"images":[...]}`. Each row has `id`, `name`,
+`width`, `height`, `url`, `thumbnail_url`, and `source` (`curated` or `managed`).
+Duplicate content IDs appear once, with managed metadata preferred. Videos and
+their poster objects are excluded. Reading this operator inventory does not
+enable uploads or expose the inventory on the tablet listener.
+
+For v3 scene writes, send only `{"content":{"type":"image","asset":"sha256:...",
+"fit":"cover"}}` (or `contain`). The projected config scene contains derived
+`url`, `intrinsicWidth`, and `intrinsicHeight`; these are read-only and must be
+removed before constructing an input command. Echoing the projected descriptor
+is rejected with `422`. Image resolution can yield to other requests, so the
+ETag is checked again immediately before commit. Physical scene readback uses
+the actual v3 layout and content, never a synthetic logical colour wall.
+
+Every cross-kind v3 Apply or recall saves the previous complete layout in the
+same transaction and returns its name as `previous_layout_saved`. A failed
+copy or wall write leaves disk, memory, revision and notifications unchanged.
+Default empty Apply refuses to erase a populated wall; the explicit clear
+command retains its current kind, bounds and content. Named recall is an
+explicit replacement and may restore a saved empty arrangement.
 
 Calibration writes may include `viewport_guard: true`. Guided ruler saves use
 this flag to require an online device with matching live CSS dimensions, DPR,

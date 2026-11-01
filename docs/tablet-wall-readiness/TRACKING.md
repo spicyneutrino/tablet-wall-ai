@@ -5,6 +5,9 @@ track delivery; this table links the two. An issue remains open until its
 acceptance checks have evidence. A passing software test does not close a
 real-tablet acceptance requirement.
 
+[Draft PR #21](https://github.com/spicyneutrino/tablet-wall-ai/pull/21) carries
+the implementation. It remains a draft while integration and acceptance are open.
+
 | Issue | Work |
 | --- | --- |
 | [#7](https://github.com/spicyneutrino/tablet-wall-ai/issues/7) | Programme and integrated acceptance |
