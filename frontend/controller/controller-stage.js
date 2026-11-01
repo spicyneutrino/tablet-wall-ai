@@ -753,6 +753,8 @@ window.ControllerStage = {
 
         function buildTilePlan() {
             const plan = {
+                baseRevision: runtime.wall && runtime.wall.revision,
+                baseGeneration: runtime.wall && runtime.wall.generation,
                 ids: [],
                 cells: [],
                 placements: {},
@@ -976,53 +978,37 @@ window.ControllerStage = {
                 (plan.mismatches === 1 ? " screen shape differs." : " screen shapes differ.");
         }
 
-        async function putPlacement(deviceId, placement) {
-            await requestJson(
-                "PUT",
-                "/devices/" + encodeURIComponent(deviceId) + "/placement",
-                placement
-            );
-        }
-
         async function applyTilePreview() {
             if (isTabletsMode() || !editor.tilePreviewPlan || editor.tilePreviewPlan.errors.length || editor.tileApplying) return;
             const plan = editor.tilePreviewPlan;
             const before = clonePlacements();
             editor.tileApplying = true;
             stage.tileApply.disabled = true;
-            stage.tileApply.textContent = "Applying tiling";
-            let applied = 0;
-            let failure = null;
-            for (const cell of plan.cells) {
-                try {
-                    await putPlacement(cell.id, cell.placement);
-                    if (runtime.wall) runtime.wall.placements[cell.id] = clonePlacement(cell.placement);
-                    applied += 1;
-                    stage.tileResult.textContent =
-                        "Applying tiling: " + applied + " of " + plan.cells.length + ".";
-                } catch (err) {
-                    failure = err;
-                    break;
+            stage.tileApply.textContent = "Applying arrangement";
+            try {
+                const config = await requestJson("GET", "/api/v3/config");
+                if (!config.layout || config.layout.kind === "physical"
+                        || config.revision !== plan.baseRevision || config.generation !== plan.baseGeneration) {
+                    throw new Error("The wall changed. Cancel this preview and review it in the Wall console.");
                 }
-            }
-            editor.tileApplying = false;
-            if (applied > 0) {
-                pushStageHistory(before, clonePlacements(), "Tiled " + applied + (applied === 1 ? " tablet" : " tablets"));
-            }
-            cancelTilePreview();
-            renderWall();
-            if (failure) {
-                logStatus(
-                    "Tiling stopped after " + applied + " of " + plan.cells.length +
-                    " tablets: " + failure.message + ". Completed changes can be undone.",
-                    "err"
-                );
+                const placements = Object.assign({}, config.layout.placements);
+                plan.cells.forEach(cell => { placements[cell.id] = Object.assign({ device_id: cell.id }, cell.placement); });
+                const result = await requestJson("PUT", "/api/v3/logical-layout", {
+                    width: config.layout.width, height: config.layout.height, placements,
+                    sizing: config.layout.sizing || { mode: "fixed", padding: 0 }
+                }, config.etag);
+                Object.assign(runtime.wall, result.layout, { revision: result.revision, generation: result.generation });
+                pushStageHistory(before, clonePlacements(), "Applied arrangement atomically");
+                cancelTilePreview(); renderWall();
+                logStatus("Arrangement applied in one write. Use Wall console for numbered grid previews.", "ok");
+            } catch (error) {
                 stage.tileResult.classList.add("blocked");
-                stage.tileResult.textContent =
-                    "Applied " + applied + " of " + plan.cells.length +
-                    ". " + failure.message + ". Completed changes can be undone.";
-            } else {
-                logStatus("Tiled " + applied + (applied === 1 ? " tablet." : " tablets."), "ok");
+                stage.tileResult.textContent = "Arrangement was not applied. " + error.message;
+                logStatus(stage.tileResult.textContent, "err");
+            } finally {
+                editor.tileApplying = false;
+                stage.tileApply.disabled = false;
+                stage.tileApply.textContent = "Apply arrangement";
             }
             if (isMobile()) setMobileTask("wall");
             renderStageHistory();

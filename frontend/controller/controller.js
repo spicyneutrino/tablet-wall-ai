@@ -589,10 +589,10 @@
             /* "close" always follows; let that drive the retry. */
         });
 
-        socket.addEventListener("close", function () {
+        socket.addEventListener("close", async function () {
             if (ws !== socket) return;
             ws = null;
-            scheduleReconnect();
+            if (await compatibilityAllowed()) scheduleReconnect();
         });
     }
 
@@ -2279,8 +2279,9 @@
      * HTTP commands
      * ------------------------------------------------------------------ */
 
-    async function requestJson(method, path, body) {
+    async function requestJson(method, path, body, ifMatch) {
         const options = { method: method, headers: {} };
+        if (ifMatch) options.headers["If-Match"] = ifMatch;
         if (body !== undefined) {
             options.headers["Content-Type"] = "application/json";
             options.body = JSON.stringify(body);
@@ -3389,7 +3390,25 @@
         runtime: { get wall() { return wall; }, get tileOrder() { return tileOrder; } }
     });
 
-    function init() {
+    async function compatibilityAllowed() {
+        const guard = document.getElementById("compatibility-guard");
+        const app = document.getElementById("app");
+        try {
+            const config = await requestJson("GET", "/api/v3/config");
+            if (config.layout && ["logical", undefined].includes(config.layout.kind)
+                    && (config.operator_state_version === undefined || config.operator_state_version === 1)) { guard.hidden = true; app.hidden = false; return true; }
+            document.getElementById("compatibility-guard-text").textContent = "This wall uses a measured layout. This compatibility editor is read-only. Open the Wall console to see the real arrangement and active content.";
+        } catch (error) {
+            document.getElementById("compatibility-guard-text").textContent = "The active layout could not be checked. " + error.message + ". Reload to retry, or open the Wall console. Editing is blocked until the layout kind is known.";
+        }
+        wall = null;
+        app.hidden = true; guard.hidden = false;
+        if (reconnectTimer) { clearTimeout(reconnectTimer); reconnectTimer = null; }
+        return false;
+    }
+
+    async function init() {
+        if (!await compatibilityAllowed()) return;
         buildGlobalPalette();
         bindEvents();
         initStage();

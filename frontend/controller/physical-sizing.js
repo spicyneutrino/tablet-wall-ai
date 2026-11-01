@@ -110,7 +110,32 @@
         return { slots: packed, bounds: { x: 0, y: 0, width: totalWidth, height: totalHeight } };
     }
 
-    const api = { fitBounds: fitBounds, packSlots: packSlots };
+    function nextPosition(slots, profileFor, profile, bounds) {
+        const resolved = resolve(slots, profileFor);
+        if (resolved.error) return resolved;
+        const size = footprint({ mount_angle: 0 }, profile);
+        if (!size) return { error: "An exact profile is required before adding a tablet." };
+        const occupied = resolved.items.map(item => ({
+            x: item.slot.center_x_mm + item.size.nudgeX - item.size.width / 2,
+            y: item.slot.center_y_mm + item.size.nudgeY - item.size.height / 2,
+            width: item.size.width, height: item.size.height
+        }));
+        const cellW = Math.max(size.width, ...occupied.map(item => item.width));
+        const cellH = Math.max(size.height, ...occupied.map(item => item.height));
+        const originX = occupied.length ? Math.min(...occupied.map(item => item.x)) : bounds.x;
+        const originY = occupied.length ? Math.min(...occupied.map(item => item.y)) : bounds.y;
+        for (let index = 0; index < (occupied.length + 1) * 4; index += 1) {
+            const x = originX + (index % 2) * cellW;
+            const y = originY + Math.floor(index / 2) * cellH;
+            if (occupied.every(item => x + size.width <= item.x + 1e-8 || x >= item.x + item.width - 1e-8
+                    || y + size.height <= item.y + 1e-8 || y >= item.y + item.height - 1e-8)) {
+                return { x: x + size.width / 2, y: y + size.height / 2 };
+            }
+        }
+        return { error: "No non-overlapping Add position could be suggested. Use a grid preview." };
+    }
+
+    const api = { fitBounds: fitBounds, packSlots: packSlots, nextPosition: nextPosition };
     root.PhysicalSizing = api;
     if (typeof module !== "undefined" && module.exports) module.exports = api;
 }(typeof window !== "undefined" ? window : globalThis));

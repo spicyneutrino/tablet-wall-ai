@@ -5,19 +5,24 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <meta name="color-scheme" content="light">
     <meta name="description" content="Control panel for a wall of tablets: choose what the wall shows and where each tablet sits.">
-    <title>Wall control · tablet-wall-ai</title>
+    <title>Logical editor (compatibility) · tablet-wall-ai</title>
     <link rel="icon" href="favicon.svg" type="image/svg+xml">
     <link rel="stylesheet" href="controller.css?v=16">
 </head>
 <body>
 <a class="skip" href="#workspace">Skip to wall</a>
+<section id="compatibility-guard" role="alert">
+    <h1>Open the Wall console</h1>
+    <p id="compatibility-guard-text">Checking the active layout.</p>
+    <p><a href="physical.html">Open Wall console</a></p>
+</section>
 
-<div class="app" id="app" data-task="wall">
+<div class="app" id="app" data-task="wall" hidden>
 
     <header class="topbar">
         <div class="brand">
             <span class="brand-mark" aria-hidden="true"><i></i><i></i><i></i><i></i></span>
-            <h1>Tablet wall</h1>
+            <h1>Logical editor (compatibility)</h1>
         </div>
 
         <div class="connection">
@@ -35,7 +40,7 @@
             <button type="button" id="btn-copy-url" aria-label="Copy the tablet URL" aria-describedby="client-url" disabled>Copy</button>
         </div>
 
-        <a class="quiet physical" href="physical.html">Physical setup</a>
+        <a class="quiet physical" href="physical.html">Wall console</a>
     </header>
 
     <nav class="mobile-nav" aria-label="Controller tasks">
@@ -640,8 +645,8 @@
 <script src="controller-geometry.js?v=2"></script>
 <script src="controller-snapshots.js?v=1"></script>
 <script src="controller-url.js?v=1"></script>
-<script src="controller-stage.js?v=2"></script>
+<script src="controller-stage.js?v=3"></script>
 <script src="controller-inventory.js?v=1"></script>
-<script src="controller.js?v=24"></script>
+<script src="controller.js?v=25"></script>
 </body>
 </html>
