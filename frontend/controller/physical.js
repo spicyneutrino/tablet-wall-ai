@@ -977,7 +977,11 @@
         state.operatorConfig = config;
         state.scene = config.scene || null;
         state.capabilities = config.capabilities || {};
-        state.readiness = config.readiness || config.runtime && config.runtime.readiness || {};
+        // Readiness comes from GET /api/v3/readiness, not this config snapshot.
+        // A config seed only fills the gap until the first real read succeeds.
+        if (!state.readinessFetchedAt) {
+            state.readiness = config.readiness || config.runtime && config.runtime.readiness || {};
+        }
         state.deviceLabels = config.device_labels || {};
         state.snapshots = config.snapshots || {};
         if (config.runtime && config.runtime.devices) state.roster = config.runtime.devices;
