@@ -333,14 +333,23 @@ Use four workers at most. They are not alone in the codebase and must not revert
 
 | Worker | Exclusive writable responsibility | Integration contract |
 | --- | --- | --- |
-| A. Domain/session and workflows | `physical.js`, new `operator-session.js`, `operator-sync.js`, `operator-state.js`, `operator-grid.js`, `operator-devices.js`, `operator-content.js`, `physical-stage.js`, `physical-sizing.js`, `physical-calibration.js`, reused logical geometry helpers, related `tests/*.test.js`. Snapshot behavior stays here. | Exposes readonly view data and methods above. Owns all primary writes/drafts, including removal/model fixes. Publishes required markup hooks before shell wiring. Does not edit HTML/CSS or stage presentation. |
-| B. Workspace and visual presentation | `physical.html`, new `operator-workspace.js`, `operator-stage.js`, new three CSS files, primary obsolete CSS removal, local fonts/licence, eventual compatibility `index.html` forwarding, client recovery CSS only if inspection reproduces a layout defect. | Receives A's domain objects and renders stable keyed controls. Emits explicit task intents. Owns all task markup including currently injected markup. No HTTP or session mutations. |
+| A. Functional workspace and domain/session | All primary controller HTML/JS, compatibility entry forwarding after parity, reused logical helpers, related `tests/*.test.js`. Includes the domain/session paths above, `physical.html`, `operator-workspace.js` and `operator-stage.js`. No CSS or font files. | One writer owns DOM structure and its behavior, eliminating a temporary split between injected forms and the new renderer. Publishes stable task/state/control classes for B after a working vertical slice. Owns primary commands/drafts and parity. |
+| B. Visual system and responsive styling | Three new controller CSS files, obsolete primary CSS removal, local fonts/licence and client recovery CSS only if reproduced. No HTML or JS edits; request markup changes through root/A. | Starts from A's integrated working markup and task classes. Creates the warm technical visual treatment and verifies the real route at desktop/phone/zoom. Root/A changes stylesheet imports after B publishes the assets. |
 | C. Operator upload/deploy | `deploy/hotspot.py`, relevant launcher script/Makefile help if necessary, `deploy/IMAGE-WALL-RUNBOOK.md`, `tests/test_hotspot.py`, `tests/test_ingress.py`, admission-focused tests. Any necessary `main.py`/`tabletwall/*` change belongs exclusively here. | Default disabled, per-launch loopback flag, exact configured origin, generated tablet ingress still denied. No new HTTP schema planned. Notify root if that contract cannot be met. Only main.py writer if one is needed. |
 | D. Portable browser QA | New `simulator/browser/redesign_acceptance.py`, `simulator/browser/operator_accessibility.py` updates, focused fixture helpers and driver tests. No application edits. | Uses semantic UI actions and four independent shipped clients. Distinguishes UI proof from fixture injection. Produces screenshots, traces, console/network, identities, failures and cleanup. |
 
 Worker A's scope is intentionally sequential across domain tasks. Do not split it into several workers who all edit `physical.js`. Worker B can prepare the shell and visual baseline while A establishes the contract. Worker C can run in parallel immediately because its boundary is fixed. Worker D starts fixture/driver work against the agreed names and completes after integrated flows exist. Root reassigns ownership explicitly before moving work; no two workers write the same file concurrently.
 
 ## Implementation reconciliation
+
+Root accepted the synthesis before implementation. On 2026-11-02, root reassigned
+HTML, task markup and stage rendering from B to A, while B owns styles/fonts only.
+The reason is concrete: existing domain factories inject the very form nodes being
+migrated. One vertical-slice owner can remove those competing writers together,
+then a styling owner can work against stable actual markup. C starts in parallel
+with A; B and D start after A's working contract is integrated. No public state or
+backend behavior contract changes. This replaces the original simultaneous A/B
+DOM handoff and avoids asking separate writers to coordinate transient selectors.
 
 No application implementation exists in this planning commit. The synthesized contracts are accepted for root's next step under the default architect agreement. No runtime acceptance or independent implementation review is claimed.
 
