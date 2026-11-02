@@ -26,16 +26,39 @@ window.PhysicalStage = {
             const config = state.operatorConfig || { layout: state.base, scene: state.scene, runtime: { devices: state.roster }, revision: state.revision, generation: state.generation };
             let content = !state.viewLive && state.previewContent || state.scene && state.scene.content;
             if (content && content.asset && content.asset === state.activeImageUnavailableId) content = Object.assign({}, content, { available: false });
-            state.stage = window.OperatorStage.draw({ svg: el.stageSvg, layout,
+            const presentation = { content: "images", tablet: "tablets", show: "arrange" }[state.tabName] || "context";
+            state.stage = window.OperatorStage.draw({ svg: el.stageSvg, layout, presentation,
+                viewport: state.drag && state.drag.viewport,
                 content, profileFor,
                 labelFor: id => numberedLabel(id, latestProfile(id)),
                 statusFor: id => state.rosterError ? { status: "stale", text: "Status stale · refresh the operator connection" } : window.OperatorState.tabletState(config, id, performance.now()),
                 selectedId: state.selectedId, runtime: config.runtime, preview, editable: !state.gridPreview && !state.viewLive && !state.previewContent,
                 resolutionNode: document.getElementById("stage-resolution") });
+            const summary = document.getElementById("stage-identities") || document.createElement("details");
+            if (!summary.id) {
+                summary.id = "stage-identities";
+                summary.className = "stage-identities";
+                summary.innerHTML = "<summary>Tablet identities and status</summary><ul></ul>";
+                el.stageSvg.parentElement.insertAdjacentElement("afterend", summary);
+            }
+            if (summary.dataset.presentation !== presentation) {
+                summary.open = presentation === "tablets" || presentation === "arrange";
+                summary.dataset.presentation = presentation;
+            }
+            const identities = summary.querySelector("ul");
+            const rows = window.OperatorStage.panels(layout, profileFor).map(panel => {
+                const status = preview ? "Local preview · not tablet output" : state.rosterError
+                    ? "Status stale · refresh the operator connection" : window.OperatorState.tabletState(config, panel.id, performance.now()).text;
+                return numberedLabel(panel.id, latestProfile(panel.id)) + (panel.id === state.selectedId ? " · selected" : "") + " · " + status + (panel.missing ? " · pinned profile missing" : "");
+            });
+            if (identities.textContent !== rows.join("")) {
+                identities.replaceChildren(...rows.map(text => { const item = document.createElement("li"); item.textContent = text; return item; }));
+            }
+            summary.hidden = !rows.length;
             const bounds = window.OperatorState.bounds(layout);
             el.stageScale.textContent = (!preview ? "Live wall · " : arrangementPreview ? "Arrangement preview · " : "Image preview · ")
                 + formatNumber(bounds.width, 1) + " × " + formatNumber(bounds.height, 1)
-                + (layout.kind === "physical" ? " mm" : " logical units") + ". Preview is not tablet output confirmation.";
+                + (layout.kind === "physical" ? " mm" : " logical units") + (preview ? ". Preview is not tablet output confirmation." : ".");
         }
 
         function pointerToStage(event) {
@@ -71,6 +94,7 @@ window.PhysicalStage = {
                 startStageX: point.x,
                 startStageY: point.y,
                 scale: state.stage.scale,
+                viewport: state.stage,
                 moved: false,
                 preDraft: clone(state.draft)
             };
@@ -395,6 +419,7 @@ window.PhysicalStage = {
         }
 
         function nudgeSelected(deltaX, deltaY) {
+            if (state.viewLive || state.previewContent || state.gridPreview || state.busy) return;
             if (state.draft && state.draft.kind === "logical") {
                 const id = state.selectedId;
                 if (!state.draft.placements[id]) return;

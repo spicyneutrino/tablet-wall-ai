@@ -1,7 +1,6 @@
 "use strict";
 (function (root) {
     const model = typeof module !== "undefined" && module.exports ? require("./operator-state.js") : root.OperatorState;
-    let labelMeasure = null;
     function panels(layout, profileFor) {
         return Object.entries(model.entries(layout)).map(([id, slot]) => {
             if (layout.kind !== "physical") {
@@ -44,7 +43,7 @@
         }
         remaining.forEach(item => item.remove());
     }
-    function draw({ svg, layout, content, profileFor, labelFor, statusFor, selectedId, runtime, resolutionNode, preview = false, editable = true }) {
+    function draw({ svg, layout, content, profileFor, labelFor, statusFor, selectedId, runtime, resolutionNode, preview = false, editable = true, presentation = "context", viewport = null }) {
         const ns = "http://www.w3.org/2000/svg";
         const node = (tag, attrs, text) => {
             const item = document.createElementNS(ns, tag);
@@ -53,9 +52,18 @@
             return item;
         };
         const b = model.bounds(layout);
-        const scale = Math.min(664 / b.width, 424 / b.height);
-        const offX = 360 - (b.x + b.width / 2) * scale, offY = 240 - (b.y + b.height / 2) * scale;
-        const stage = { scale, offX, offY, step: 50 };
+        const width = 720;
+        const height = viewport ? viewport.height : Math.max(160, Math.min(720, 56 + 664 * b.height / b.width));
+        const scale = viewport ? viewport.scale : Math.min(664 / b.width, (height - 56) / b.height);
+        const offX = viewport ? viewport.offX : width / 2 - (b.x + b.width / 2) * scale;
+        const offY = viewport ? viewport.offY : height / 2 - (b.y + b.height / 2) * scale;
+        const stage = { scale, offX, offY, width, height, step: 50 };
+        svg.setAttribute("viewBox", "0 0 " + width + " " + height);
+        svg.style.setProperty("--stage-aspect", width / height);
+        svg.dataset.presentation = presentation;
+        svg.setAttribute("aria-label", editable
+            ? "Wall. Select a tablet and drag it, or use the arrow keys to nudge the selected tablet."
+            : "Wall preview. Select a tablet to inspect its identity and status.");
         const focused = document.activeElement;
         const focusedId = focused && focused.closest && focused.closest(".slot") && focused.closest(".slot").dataset.deviceId;
         const view = node("svg");
@@ -78,27 +86,13 @@
         const image = opacity => node("image", { href: content.url, x: transform.x, y: transform.y,
             width: transform.width, height: transform.height, preserveAspectRatio: "none", opacity });
         world.append(rect(b, { fill: content && content.background || "#0b1120", stroke: "#778793", "stroke-width": 1 / scale }));
-        if (transform && content.url && content.available !== false && content.availability !== "unavailable") world.append(image(0.22));
+        if ((presentation === "arrange" || presentation === "context") && transform && content.url && content.available !== false && content.availability !== "unavailable") world.append(image(0.22));
         const wall = node("g", { "clip-path": "url(#operator-wall-clip)" }); world.append(wall);
         wall.append(rect(b, { fill: "url(#operator-occlusion)" }));
         const visible = node("g", { "clip-path": "url(#operator-panel-clip)" }); wall.append(visible);
         visible.append(rect(b, { fill: content && content.background || "#0b1120" }));
         if (transform && content.url && content.available !== false && content.availability !== "unavailable") visible.append(image(1));
         const estimates = [], upscaleFactors = [];
-        const cssRatio = 720 / (svg.getBoundingClientRect().width || 720);
-        if (!labelMeasure) labelMeasure = document.createElement("canvas").getContext("2d");
-        const fontFamily = getComputedStyle(svg).fontFamily;
-        const measure = (value, size) => {
-            if (!labelMeasure) return Array.from(value).length * size;
-            labelMeasure.font = "500 " + size + "px " + fontFamily;
-            return labelMeasure.measureText(value).width;
-        };
-        const fitText = (value, size, width) => {
-            if (measure(value, size) <= width) return value;
-            const letters = Array.from(value);
-            while (letters.length && measure(letters.join("") + "…", size) > width) letters.pop();
-            return measure("…", size) <= width ? letters.join("") + "…" : "";
-        };
         list.sort((a, z) => Number(a.id === selectedId) - Number(z.id === selectedId)).forEach(panel => {
             const status = preview ? { status: "preview", text: "Local preview · not tablet output" } : statusFor(panel.id);
             const group = node("g", { class: "slot operator-slot", role: "button", tabindex: 0,
@@ -122,27 +116,8 @@
                 group.append(rect({ x: panel.body.x + panel.body.width - 10 / scale, y: panel.body.y + panel.body.height - 10 / scale, width: 10 / scale, height: 10 / scale },
                     { class: "logical-resize", fill: "#e5edf2", "aria-hidden": "true" }));
             }
-            const center = panel.missing ? { x: panel.cx, y: panel.cy } : { x: panel.body.x + panel.body.width / 2, y: panel.body.y + panel.body.height / 2 };
-            const radians = (panel.angle || 0) * Math.PI / 180;
-            const available = panel.missing ? 160 : (Math.abs(Math.cos(radians)) * panel.body.width
-                + Math.abs(Math.sin(radians)) * panel.body.height) * scale / cssRatio;
-            const backingLimit = Math.max(1, available - 4), textLimit = Math.max(0, backingLimit - 8);
-            const fullLabel = labelFor(panel.id), device = runtime && runtime.devices && runtime.devices[panel.id];
-            const compact = available < 100;
-            const label = fitText(compact && device && device.number ? "#" + device.number : fullLabel, 14, textLimit);
-            const statusLabels = { preview: "Preview · not applied", displayed: "Showing", loading: "Loading", offline: "Offline reserved", unknown: "Unconfirmed", identifying: "Identifying", failed: "Image failed", excluded: "Excluded" };
-            const shortStatus = { preview: "Preview", displayed: "Shown", loading: "Loading", offline: "Offline", unknown: "Pending", identifying: "Identify", failed: "Failed", excluded: "Excluded", stale: "Stale" };
-            const statusText = fitText(compact ? shortStatus[status.status] || "Check" : statusLabels[status.status] || status.status.replaceAll("_", " "), 12, textLimit);
-            const backingWidth = Math.min(backingLimit, Math.max(measure(label, 14), measure(statusText, 12)) + 8);
-            group.append(rect({ x: center.x - backingWidth / 2 * cssRatio / scale,
-                y: center.y - (statusText ? 17 : 12) * cssRatio / scale, width: backingWidth * cssRatio / scale,
-                height: (statusText ? 40 : 24) * cssRatio / scale }, { class: "operator-slot-backing", fill: "#171b20", rx: 2 * cssRatio / scale, "pointer-events": "none" }));
-            const text = node("text", { x: center.x, y: center.y, class: "operator-slot-label", "font-size": 14 * cssRatio / scale, "text-anchor": "middle", "pointer-events": "none" });
-            text.append(node("tspan", { x: center.x, dy: (statusText ? -3 : 5) * cssRatio / scale }, label));
-            if (statusText) text.append(node("tspan", { x: center.x, dy: 17 * cssRatio / scale, "font-size": 12 * cssRatio / scale }, statusText));
-            group.append(text); world.append(group);
+            world.append(group);
         });
-        if (!list.length) view.append(node("text", { x: 360, y: 240, "text-anchor": "middle", class: "stage-note" }, "No tablets on the wall. Open Tablets to join, then Arrange."));
         syncChildren(svg, view);
         if (resolutionNode) resolutionNode.textContent = estimates.length ? "Estimated sampling. " + estimates.join("; ") + ". Rotation, clipping and gaps may reduce visible detail." : "Resolution estimate needs an image and panel dimensions. Preview does not confirm tablet output.";
         const quality = document.getElementById("stage-quality-summary");
