@@ -710,7 +710,24 @@ def responsive(rig):
         p.wait_for_timeout,
     )
     rig.click(f'.dev-pick[data-device-id="{ids[3]}"]')
-    rig.click("#tablet-forget-preview")
+    for attempt in range(3):
+        with p.expect_response(f"**/api/v3/devices/{ids[3]}/impact"):
+            rig.click("#tablet-forget-preview")
+        expect(p.locator("#tablet-forget-preview")).to_be_enabled()
+        if p.locator("#tablet-forget-impact").is_visible():
+            break
+        message = p.locator("#tablet-action-message").inner_text()
+        if "A newer update arrived" not in message:
+            raise AssertionError("Forget impact did not open: " + message)
+        rig.events.append(
+            {
+                "safe_read_retry": "Forget impact was fenced by newer runtime",
+                "attempt": attempt + 1,
+                "message": message,
+            }
+        )
+        with p.expect_response("**/api/v3/config"):
+            rig.click("#btn-roster-refresh")
     expect(p.locator("#tablet-forget-impact")).to_be_visible()
     rig.shot(p, "keyboard-forget-review")
     rig.click("#tablet-forget-cancel")
