@@ -67,13 +67,30 @@ application `295cb61`. Its nine failures are retained in
 icon findings in `37d1edc`, then validation focus and narrow navigation in
 `3994d21`; the complete combined matrix above passes those paths.
 
-A final independent reviewer produced passing focused evidence and a local
-report for `3994d21` at `/tmp/tablet-wall-review-3994d21-dwisq7sx/REPORT.md`, but
-hit a provider usage limit before its final handoff. That agent also began
-repeating reused probes after discovering that Chromium had inherited session
-XDG settings. Its unfinished report is not substituted for terminal independent
-approval. Final independent approval remains open until a fresh review settles
-the candidate and evidence. The application is not merged or deployed.
+A reviewer produced a local report for `3994d21` but hit a provider usage
+limit before its final handoff. It repeated reused probes after discovering that
+Chromium had inherited session XDG settings. That unfinished report at
+`/tmp/tablet-wall-review-3994d21-dwisq7sx/REPORT.md` is not substituted for terminal
+approval, and its older counts are not promoted to isolated current evidence.
+
+A fresh independent Codex Work Sol High review completed with **PASS for the
+FINAL SCOPED SOFTWARE GATE** at exact
+`819141e0b7f78c70ba6b460b579658166de448ef`. It found no new proven product issue.
+Its fresh verification passed **312 Python tests, all 27 Node files and 217
+rendered assertion rows across 11 scenarios**. Separately, it audited every run
+of the complete 38-scenario matrix, exact application/loaded-driver identity,
+206 trace archives, failure classification and cleanup. These fresh review
+counts overlap the full matrix's feature coverage; they are not additive unique
+requirements. The review confirmed the candidate differs from executed
+`3994d21` only in four documentation files and two report-description strings.
+
+The terminal report is
+`/tmp/tablet-wall-final-review-819141e-8fff4omp/REPORT.md`, with source, aggregate
+and cleanup audits beside it. All owned reviewer resources closed. The final
+follow-up commit records this approval only; it changes no application, driver,
+scenario or assertion. Approval covers the images-only workspace for a supervised
+trial. Native/hardware gates remain open. PR #29 is stacked on #21, unmerged and
+undeployed; no GitHub human approval is implied by the agent review.
 
 ## Reproduce safely
 

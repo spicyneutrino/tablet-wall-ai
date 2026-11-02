@@ -334,3 +334,29 @@ not include unrun native IME/AT or browser zoom. Original results and executed
 driver copies remain untouched; `coverage-label-clarification.json` records
 identical scenario membership/statuses and retained environment limits. Three
 focused proof/report tests and Ruff pass after that reporting-only change.
+
+
+## Final independent software approval
+
+The fresh Codex Work Sol High reviewer completed its terminal review at exact
+`819141e0b7f78c70ba6b460b579658166de448ef` with **PASS for the FINAL SCOPED
+SOFTWARE GATE**, no new proven product findings. It independently audited root's
+38-scenario/853-row aggregate, application and loaded-driver identity, all 206
+trace archives, scoped fault classification and cleanup. Fresh reviewer checks
+passed **312 Python tests, all 27 Node files and 217 rendered rows across 11
+scenarios**. These counts repeat feature coverage rather than adding distinct
+requirements to the complete matrix.
+
+The report and cleanup evidence are at
+`/tmp/tablet-wall-final-review-819141e-8fff4omp/REPORT.md` and
+`cleanup-audit.json`. The reviewer verified that the approved candidate's only
+differences from fully executed `3994d21` are documentation and two reporting
+labels; application, scenarios and assertions are unchanged. All owned reviewer
+resources are closed and its checkout remains unchanged.
+
+This final documentation follow-up records the verdict without changing any
+code or test. PR #29 is stacked on readiness PR #21. Software is approved for a
+supervised images-only trial; native zoom/IME/AT and real-device/deployment/soak
+gates remain unrun. Nothing is merged or deployed by this work. The earlier
+quota-interrupted local PASS is retained as partial history, not the basis of
+this terminal approval.
