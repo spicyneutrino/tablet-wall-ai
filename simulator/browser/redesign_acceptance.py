@@ -1012,16 +1012,23 @@ def first_wall(rig):
     before = rig.config()
     rig.click("#grid-preview", "Preview arrangement")
     expect(p.locator("#grid-message")).to_contain_text("Preview only")
-    labels = p.locator(
-        "#stage-svg .operator-slot-label > tspan:first-child"
-    ).evaluate_all(
-        "es=>es.map(e=>({text:e.textContent,pixels:parseFloat(getComputedStyle(e).fontSize)*e.getScreenCTM().a}))"
+    labels = p.locator("#stage-identities li").evaluate_all(
+        "es=>es.map(e=>({text:e.textContent,pixels:parseFloat(getComputedStyle(e).fontSize)}))"
+    )
+    names = p.locator('#stage-svg [role="button"]').evaluate_all(
+        "es=>es.map(e=>e.getAttribute('aria-label'))"
     )
     rig.check(
-        len(labels) == 4 and all(abs(row["pixels"] - 14) < 0.15 for row in labels),
-        "Immediate first preview has four effective 14px stage labels before any viewport resize",
-        labels,
-        "4 visible labels at 14 CSS pixels",
+        len(labels) == len(names) == 4
+        and all(row["pixels"] >= 14 for row in labels)
+        and all(
+            any(f"Tablet {i}" in row["text"] for row in labels)
+            and any(f"Tablet {i}" in name for name in names)
+            for i in range(1, 5)
+        ),
+        "Immediate first preview retains exact accessible identities and readable external labels",
+        {"labels": labels, "names": names},
+        "4 named SVG buttons and matching external identity labels at least 14 CSS pixels",
     )
     rig.check(
         rig.config()["layout"] == before["layout"],

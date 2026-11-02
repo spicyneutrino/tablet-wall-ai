@@ -42,7 +42,7 @@ window.PhysicalStage = {
                 el.stageSvg.parentElement.insertAdjacentElement("afterend", summary);
             }
             if (summary.dataset.presentation !== presentation) {
-                summary.open = presentation === "tablets" || presentation === "arrange";
+                summary.open = presentation === "tablets";
                 summary.dataset.presentation = presentation;
             }
             const identities = summary.querySelector("ul");
@@ -243,7 +243,7 @@ window.PhysicalStage = {
                 const online = Object.values(state.roster).filter(device => device.online).length;
                 el.deviceCount.textContent = online + " online · " + Object.keys(state.roster).length + " registered";
                 el.rosterStatus.textContent = stale ? "Status stale. " + state.rosterError + ". Refresh status to retry."
-                    : "Live status and slow reconciliation. Last checked " + new Date(state.rosterCheckedAt).toLocaleTimeString() + ".";
+                    : "Status checked " + new Date(state.rosterCheckedAt).toLocaleTimeString() + ".";
                 return;
             }
             let online = 0;

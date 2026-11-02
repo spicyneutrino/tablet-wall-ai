@@ -15,8 +15,8 @@ from _redesign_edge_cases import HeldResponse, quick_wall, show_supplied
 VIEWPORTS = ((1440, 900), (390, 844), (320, 844), (820, 1180))
 TARGETS = {
     "Images": ("#image-gallery button", "#show-image"),
-    "Tablets": ("#device-list .dev-pick", "#tablet-identify"),
-    "Arrange": ("#grid-1x4", "#grid-preview"),
+    "Tablets": ("#device-list .dev-pick", "#device-list .roster-identify"),
+    "Arrange": ("#grid-1x4", "#grid-preview, #btn-apply:not([disabled])"),
 }
 MEASURE = """selectors => {
  const visible=e=>!!(e.getClientRects().length && getComputedStyle(e).visibility!=="hidden");

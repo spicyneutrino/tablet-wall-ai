@@ -39,8 +39,10 @@ body[data-stage-mode="image-preview"] .stage-mode > strong { color: var(--accent
 body[data-connection="stale"] .wall-health { border-style: dashed; }
 @media (max-width: 36rem) {
     .wall-stage { gap: .75rem; }
-    .wall-head { align-items: start; }
+    .wall-head { align-items: center; }
+    .wall-head h2 { flex: 0 0 auto; font-size: 1rem; }
     .stage-mode { flex: 1 1 10rem; justify-content: flex-end; }
+    .stage-mode > strong { flex: 1 1 8rem; font-size: .875rem; }
     .physical-meta { display: grid; }
 }
 

@@ -126,8 +126,8 @@
             });
             if ($("grid-1x4")) $("grid-1x4").textContent = "Row of " + selected.size;
             if ($("grid-2x2")) $("grid-2x2").textContent = selected.size > 1 ? "Two rows · " + Math.ceil(selected.size / 2) + " columns" + (selected.size % 2 ? " · one empty cell" : "") : "One tablet";
-            $("grid-kind-note").textContent = $("grid-kind").value === "logical" ? "Quick arrangement uses relative screen shapes. It does not claim measured continuity."
-                : "Match real sizes uses pinned measurements. Confirm the hardware and mounted top edge. Model dimensions remain approximate.";
+            $("grid-kind-note").textContent = $("grid-kind").value === "logical" ? "Relative screen shapes, without physical calibration."
+                : "Pinned measurements. Model dimensions remain approximate.";
             const stale = !!baseEtag && baseEtag !== state.etag;
             $("grid-preview").disabled = busy || !!state.gridPreview && !stale;
             $("grid-preview").hidden = !!state.gridPreview && !stale;
