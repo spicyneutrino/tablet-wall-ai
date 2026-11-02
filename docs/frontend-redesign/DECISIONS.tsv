@@ -1,0 +1,3 @@
+time	decision	reason	evidence	status
+2026-11-02	Separate frontend redesign from readiness delivery	User requests complete operator UX and explicit multi-model review/plan sequence	Base89a2c31;brief1288dd1;issue22	OpusMedium and CodexWorkSolHigh independent reviews dispatched
+2026-11-02	Retain one wall context and distinct live/preview truth for synthesis	Sol review observes discovery friction and two reproduced functional defects	Solreport1288dd1,rootdesktop/phone screenshot inspection;issue23	Provisional;wait for Opus and SolXHigh synthesis before implementation
