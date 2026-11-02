@@ -183,3 +183,31 @@ predates it and is not presented as a new run on the corrected tree.
 The upload package alone does not establish those results. No live
 deployment, real tablet, hotspot/firewall, optical continuity, sleep, TLS or video
 acceptance is claimed.
+
+## Portable acceptance integration
+
+The QA driver's commits `8d5bfa2` and `4676c12` are integrated as `de4311c` and
+`68d6347`. They preserve actual shipped-client journeys, source/driver hashes,
+failure artifacts and cleanup. The worker's full run on its older unstyled
+application recorded 443 result rows with 63 failures. Corrected-driver recovery
+and parity reruns reached their end with four remaining favicon failures across
+130 rows. These are retained failing results, not acceptance of the current app.
+The detailed handoff is `/tmp/tablet-wall-D-HANDOFF.md`.
+
+Root fixed the client favicon request with an explicit same-origin SVG and one
+exact GET/HEAD static path in the tablet allowlist. CSP and operator-route denial
+are unchanged. The composed-Caddy proof passed on the updated allowlist; its
+copied manifest is at
+`/tmp/tablet-wall-favicon-ingress-tys6crky/ingress-manifest.json`. The icon returned
+200, all 135 denial responses remained 403, denied requests left database/media
+hashes unchanged, and both proof ports closed. Source and allowlist hashes match
+the correction. The combined deployment/ingress/driver selection passed
+**66 Python tests**, including all nine driver safety/action-count tests.
+
+The current portable first-wall run at
+`/tmp/tablet-wall-combined-first-20261102` passed **15 checks** with no page
+exceptions, unexpected HTTP failures or console warnings/errors. The driver
+still records uncovered mandatory cases and refuses to label its aggregate
+acceptance complete. Root is assigning the remaining software variants and a
+fresh independent review; native assistive technology, native zoom and hardware
+limits remain explicit. No aggregate redesign PASS is claimed here.

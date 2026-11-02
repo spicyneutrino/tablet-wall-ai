@@ -13,7 +13,7 @@
 	# credential, so a forged header from a tablet never reaches the backend.
 	@client {
 		method GET
-		path /client/ /client/index.html /client/client.js /client/client.css /client/view.js /client/ruler.js
+		path /client/ /client/index.html /client/client.js /client/client.css /client/view.js /client/ruler.js /client/favicon.svg
 	}
 	handle @client {
 		reverse_proxy 127.0.0.1:{$WALL_BACKEND_PORT:8000} {
