@@ -26,5 +26,27 @@ const config = (etag, paint = "loading") => ({ etag, revision: 1, generation: "s
     await assert.rejects(() => session.request("PATCH", "/api/v3/devices/a", { label: "A" }, { etag: true }), /may have completed/);
     await session.refresh(); assert.equal(session.view().uncertain, false, "explicit refresh clears uncertainty only after reconciliation");
     session.destroy();
+    for (const status of [500, 502, 503]) {
+        let writes = 0;
+        const failing = create({ syncFactory: { create({ ingestConfig }) { return {
+            start() {}, destroy() {}, async reconcile() { ingestConfig(config("after-reconciliation")); }
+        }; } }, transport: async (_path, options) => {
+            if (options.method === "GET") return { ok: true, json: async () => config("read") };
+            writes += 1;
+            return { ok: false, status, json: async () => ({ detail: "Server failed after processing the command" }) };
+        } });
+        failing.ingest(config("before-command"));
+        await assert.rejects(() => failing.request("PATCH", "/api/v3/devices/a", { label: "Saved name" }, { etag: true }),
+            error => error.status === status && error.uncertain && /uncertain/i.test(error.message));
+        assert.equal(failing.view().uncertain, true, "server errors cannot establish that a command did not commit");
+        await assert.rejects(() => failing.request("PATCH", "/api/v3/devices/a", { label: "Retry" }, { etag: true }), /may have completed/);
+        assert.equal(writes, 1, "another write is refused before transport until the operator reconciles");
+        await failing.request("GET", "/api/v3/config");
+        failing.ingest(config("socket-update"));
+        assert.equal(failing.view().uncertain, true, "an incidental snapshot does not acknowledge an uncertain command");
+        await failing.refresh();
+        assert.equal(failing.view().uncertain, false);
+        failing.destroy();
+    }
     console.log("Readonly session, command serialization, late response adoption and uncertainty fences passed");
 })().catch(error => { console.error(error); process.exitCode = 1; });

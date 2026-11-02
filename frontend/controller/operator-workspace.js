@@ -3,30 +3,37 @@ window.OperatorWorkspace = {
     create({ state, arrangementDirty, arrangementPreview, imageDirty, applyArrangement, showImage, discardArrangement, discardImage,
         commitTask, renderStage, refreshReadiness, refreshStatus, selectTablet, canCommit }) {
         const $ = id => document.getElementById(id);
-        let pending = null;
+        let pending = null, resolving = false;
         const issues = new Map();
         async function resolve(reason, except) {
-            const kind = arrangementDirty() && except !== "arrangement" ? "arrangement"
+            const nextKind = () => arrangementDirty() && except !== "arrangement" ? "arrangement"
                 : imageDirty() && except !== "image" ? "image" : null;
-            if (!kind) return true;
-            if (pending) return false;
+            if (!nextKind()) return true;
+            if (resolving) return false;
+            resolving = true;
             const dialog = $("draft-resolution"), trigger = document.activeElement;
-            $("draft-resolution-text").textContent = reason + ". " + (kind === "arrangement"
-                ? "Your arrangement preview has not been applied. Applying changes geometry only."
-                : "Your image preview has not been shown. Showing changes content only.");
-            $("resolve-commit").textContent = kind === "arrangement" ? "Apply arrangement" : "Show image";
-            $("resolve-commit").disabled = !canCommit(kind);
-            dialog.showModal();
-            const choice = await new Promise(done => { pending = done; });
-            pending = null; dialog.close();
-            if (trigger && trigger.isConnected && !trigger.disabled) trigger.focus({ preventScroll: true });
-            if (choice === "stay") return false;
-            if (choice === "discard") {
-                if (kind === "arrangement") discardArrangement(); else discardImage();
-                renderStage(); return true;
+            try {
+                for (let kind = nextKind(); kind; kind = nextKind()) {
+                    $("draft-resolution-text").textContent = reason + ". " + (kind === "arrangement"
+                        ? "Your arrangement preview has not been applied. Applying changes geometry only."
+                        : "Your image preview has not been shown. Showing changes content only.");
+                    $("resolve-commit").textContent = kind === "arrangement" ? "Apply arrangement" : "Show image";
+                    $("resolve-commit").disabled = !canCommit(kind);
+                    dialog.showModal();
+                    const choice = await new Promise(done => { pending = done; });
+                    pending = null; dialog.close();
+                    if (choice === "stay") return false;
+                    if (choice === "discard") {
+                        if (kind === "arrangement") discardArrangement(); else discardImage();
+                        renderStage();
+                    } else if (kind === "arrangement") await applyArrangement(); else await showImage();
+                    if (kind === "arrangement" ? arrangementDirty() : imageDirty()) return false;
+                }
+                return true;
+            } finally {
+                resolving = false; pending = null; dialog.close();
+                if (trigger && trigger.isConnected && !trigger.disabled) trigger.focus({ preventScroll: true });
             }
-            if (kind === "arrangement") await applyArrangement(); else await showImage();
-            return !(kind === "arrangement" ? arrangementDirty() : imageDirty());
         }
         for (const choice of ["commit", "discard", "stay"]) $("resolve-" + choice).addEventListener("click", () => { if (pending) pending(choice); });
         $("draft-resolution").addEventListener("cancel", event => { event.preventDefault(); if (pending) pending("stay"); });

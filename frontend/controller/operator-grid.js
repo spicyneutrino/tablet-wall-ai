@@ -224,10 +224,10 @@
         }
         async function preview() {
             if (busy || !state.base) return;
+            if (!state.gridPreview && isDirty()) { text("Apply or cancel the manual draft before building a grid."); return; }
             members.freeze();
             if (baseEtag && baseEtag !== state.etag) { text("The wall changed while these inputs were being edited. Rebuild preview explicitly to use the current wall, or discard."); return; }
             invalidate();
-            if (isDirty()) { text("Apply or cancel the manual draft before building a grid."); return; }
             const released = releases();
             if (released.some(id => !Array.from($("grid-releases").querySelectorAll("input")).some(input => input.dataset.release === id && input.checked))) {
                 text("Explicitly acknowledge every released active tablet, including offline reservations."); return;

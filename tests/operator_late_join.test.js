@@ -28,7 +28,18 @@ state.etag = "original";
 nodes.get("grid-kind").listeners.change();
 state.etag = "unrelated";
 owner.modelSetupComplete("own-returned");
-nodes.get("grid-preview").listeners.click().then(() => {
+nodes.get("grid-preview").listeners.click().then(async () => {
     assert.match(nodes.get("grid-message").textContent, /Rebuild preview explicitly/, "a refreshed unrelated guard cannot authorize the retained grid after model setup");
+    nodes.clear();
+    const manualState = { base: { kind: "logical", placements: {} }, layoutKind: "logical", roster: {}, etag: "manual-base" };
+    let previewRequests = 0;
+    const manualOwner = grid.create({ state: manualState, api: async () => { previewRequests += 1; },
+        labelFor: id => id, validPair: () => null, profileFor: () => null, calibrationFor: () => null,
+        ingestConfig() {}, renderStage() {}, syncDraftUi() {}, isDirty: () => true, announce() {}, showConflict() {} });
+    manualOwner.render();
+    await nodes.get("grid-preview").listeners.click();
+    assert.match(nodes.get("grid-message").textContent, /manual draft/);
+    assert.equal(manualOwner.dirty(), false, "refusing a grid preview cannot create a competing grid draft");
+    assert.equal(previewRequests, 0, "refusing the ownership transition does not send a preview request");
     console.log("Actual grid row follows late online viewport and retains its conflict guard");
 }).catch(error => { console.error(error); process.exitCode = 1; });

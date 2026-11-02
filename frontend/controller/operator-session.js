@@ -9,7 +9,7 @@
         return value;
     }
     class ApiError extends Error {
-        constructor(status, detail) { super(detail); this.status = status; this.uncertain = status === 0; }
+        constructor(status, detail, uncertain = status === 0) { super(detail); this.status = status; this.uncertain = uncertain; }
     }
     function create({ transport = (...args) => fetch(...args), clock = () => performance.now(), syncFactory = root.OperatorSync,
         onConflict = () => {}, isDirty = () => false } = {}) {
@@ -71,6 +71,10 @@
                         const device = state.roster[id] || {};
                         return state.operatorConfig?.device_labels?.[id] || device.label || (device.number ? "Tablet " + device.number : "Unregistered tablet");
                     });
+                    if (durable && response.status >= 500) {
+                        uncertain = true;
+                        throw new ApiError(response.status, friendly + ". Completion is uncertain. Refresh status and inspect the result before retrying.", true);
+                    }
                     throw new ApiError(response.status, friendly);
                 }
                 if (durable) {

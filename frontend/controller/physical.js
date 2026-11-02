@@ -1146,7 +1146,7 @@
     }
 
     function undoDraft() {
-        if (state.busy || state.drag || state.undo.length === 0) return;
+        if (state.busy || state.drag || state.undo.length === 0 || !canManualEdit()) return;
         const current = clone(state.draft);
         state.draft = state.undo.pop();
         state.redo.push(current);
@@ -1155,7 +1155,7 @@
     }
 
     function redoDraft() {
-        if (state.busy || state.drag || state.redo.length === 0) return;
+        if (state.busy || state.drag || state.redo.length === 0 || !canManualEdit()) return;
         const current = clone(state.draft);
         state.draft = state.redo.pop();
         state.undo.push(current);
@@ -2939,7 +2939,7 @@
         if (state.drag) return;
 
         if (modified && (key === "z" || key === "Z")) {
-            if (isEditableTarget(event.target)) return;
+            if (state.tabName !== "show" || isEditableTarget(event.target)) return;
             event.preventDefault();
             if (event.shiftKey) redoDraft();
             else undoDraft();
@@ -2947,7 +2947,7 @@
         }
 
         if (modified && (key === "y" || key === "Y")) {
-            if (isEditableTarget(event.target)) return;
+            if (state.tabName !== "show" || isEditableTarget(event.target)) return;
             event.preventDefault();
             redoDraft();
             return;

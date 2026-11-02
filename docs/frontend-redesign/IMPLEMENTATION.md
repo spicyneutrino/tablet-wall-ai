@@ -82,6 +82,33 @@ redesign verdict.
 
 ## Acceptance still pending
 
+The independent functional review of `9fc7d6a` found three P2 defects, tracked in
+[issue 25](https://github.com/spicyneutrino/tablet-wall-ai/issues/25): durable HTTP
+5xx responses did not engage the uncertainty lock; history actions could bypass
+image-draft ownership and resolution handled only one incompatible draft; a
+refused grid preview still created grid state that blocked manual editing.
+The report is `/tmp/tablet-wall-independent-review-vL9MSs/REPORT.md`. Its verdict
+is **ISSUES**, with no architectural objection to the reconciled ownership.
+
+Root corrected these paths and verified the corrections with **25 Node test
+files** and two private actual-client browser runs, passing **22** and **12**
+checks respectively. The browser checks forward a real committed name save before
+injecting a 500, prove that a second write cannot reach transport until refresh,
+keep image intent through a Ctrl+Y attempt outside Arrange, and verify that a
+refused grid preview leaves later manual geometry edits matching the stage.
+Both runs also cover normal image/lifecycle behavior and report no page errors;
+the injected 500 remains a labelled expected network error. Their manifests
+record closed browsers, absent server processes and closed ports.
+
+Evidence is under `/tmp/tablet-wall-root-fixes-ykmb5uck/`, specifically
+`browser-1793618572275231565` and `browser-1793618516884081586`. An earlier root
+assertion incorrectly treated image-preview tiles as arrangement-preview tiles;
+that failed probe is retained and excluded from the passing totals. A separate
+select-key probe initially attempted focus while the model field was hidden.
+Waiting for visibility kept Home in the native select, so that observation did
+not justify a product keyboard change. Root's correction checks do not substitute
+for independent final review of the corrected, styled application.
+
 Visual styling, compatibility entry retirement, combined in-app upload checks, the portable four-client journey,
 responsive and accessibility verification, and independent final review remain
 open. The upload package alone does not establish any of those results. No live

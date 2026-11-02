@@ -153,7 +153,7 @@
             const focused = document.activeElement;
             busy = true; render();
             try { await work(); }
-            catch (error) { if (error.status === 412) showConflict("Tablet action inputs changed. Review and preview again."); const text = "Action for " + labelFor(id) + " failed. " + error.message + (error.uncertain ? " Refresh status and inspect the result before retrying." : " Review the problem, then retry.");
+            catch (error) { if (error.status === 412) showConflict("Tablet action inputs changed. Review and preview again."); const text = "Action for " + labelFor(id) + (error.uncertain ? " may have completed. " : " failed. ") + error.message + (error.uncertain ? "" : " Review the problem, then retry.");
                 results.set(id, text); if (id === selectedId) message(text); }
             finally {
                 busy = false; render();
