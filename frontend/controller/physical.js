@@ -1288,7 +1288,7 @@
         });
     }
 
-    function renderStage() { drawStage(); if (workspace) workspace.render(); }
+    function renderStage() { if (workspace) workspace.render(); drawStage(); }
 
     function bindNumberInput(input, write, validate) {
         let before = null;

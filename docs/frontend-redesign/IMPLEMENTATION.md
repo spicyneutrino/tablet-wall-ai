@@ -165,6 +165,21 @@ counted as passing checks.
 
 The portable four-client journey, final combined responsive/accessibility
 verification, and independent final review remain open.
+
+At clean `508aecc`, the isolated broad check passed **1,814 Python tests**, all
+**26 Node test files**, production Ruff and mypy across **47 source files**.
+The Python run reported three existing deprecation warnings. Logs, JUnit and
+command outcomes are at `/tmp/tablet-wall-final-checks-9atz56sk`. The entire run
+used private XDG directories and removed inherited wall storage settings.
+
+A later first-preview probe found that the newly hidden empty diagram was
+measured before its preview visibility changed, briefly shrinking labels to
+11.55px. Root moved the workspace projection before stage measurement. The fresh
+run `/tmp/tablet-wall-first-preview-depdf7ef/render-e8vyktsv` passed seven checks,
+including immediate 14px labels and four current image reports. The failed
+pre-fix run is retained in the same parent directory. Controller module checks
+passed after this one-line JavaScript correction; the broad Python result above
+predates it and is not presented as a new run on the corrected tree.
 The upload package alone does not establish those results. No live
 deployment, real tablet, hotspot/firewall, optical continuity, sleep, TLS or video
 acceptance is claimed.
