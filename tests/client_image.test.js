@@ -414,6 +414,8 @@ function createHarness(opts = {}) {
     const identifyNumber = makeElement("span"); identifyNumber.setAttribute("id", "identify-number");
     const identifyLabel = makeElement("span"); identifyLabel.setAttribute("id", "identify-label");
     const authLogin = makeElement("a"); authLogin.setAttribute("id", "auth-login"); authLogin.hidden = true;
+    const calibrationRecovery = makeElement("section"); calibrationRecovery.setAttribute("id", "calibration-recovery"); calibrationRecovery.hidden = true;
+    const calibrationRecoveryReason = makeElement("p"); calibrationRecoveryReason.setAttribute("id", "calibration-recovery-reason");
     const documentMock = {
         getElementById(id) {
             if (id === "surface") return canvas;
@@ -5395,8 +5397,8 @@ test("client shell: cache versions, HUD markup and the 56 px CSS pill", () => {
     const html = fs.readFileSync(CLIENT_HTML, "utf8");
     const css = fs.readFileSync(CLIENT_CSS, "utf8");
 
-    assert.match(html, /client\.css\?v=5/, "the stylesheet version was bumped");
-    assert.match(html, /client\.js\?v=13/, "the script version was bumped");
+    assert.ok(Number(html.match(/client\.css\?v=(\d+)/)[1]) >= 6, "the stylesheet cache version includes the recovery panel");
+    assert.ok(Number(html.match(/client\.js\?v=(\d+)/)[1]) >= 14, "the script cache version includes the recovery panel");
     assert.match(html, /id="hud"/, "the HUD has static markup");
     assert.match(html, /id="video-unavailable"/, "the failure notice has static markup");
 
@@ -5482,7 +5484,10 @@ test("visual viewport zoom fences the physical picture and reports the new viewp
     h.reset();
     visual.width = 400; visual.height = 300; visual.scale = 2;
     resize();
-    assert.ok(h.texts().includes("NEEDS CALIBRATION"));
+    const recovery = h.elements.find(el => el.attributes.id === "calibration-recovery");
+    assert.equal(recovery.hidden, false, "the mapping refusal has a readable DOM recovery panel");
+    assert.equal(recovery.style.width, "400px", "recovery fits the zoomed visual viewport");
+    assert.equal(recovery.style.height, "300px");
     assert.strictEqual(h.named("drawImage").length, 0);
     const report = h.sent("viewport").pop().viewport;
     assert.strictEqual(report.width, 400);
@@ -5510,12 +5515,14 @@ test("queued physical frames cannot revive a picture after its viewport changes"
     h.emit(Object.assign({}, frame, { render_seq: 2 }));
     await drain();
     assert.strictEqual(h.named("drawImage").length, 0);
-    assert.ok(h.texts().includes("NEEDS CALIBRATION"));
+    assert.equal(h.elements.find(el => el.attributes.id === "calibration-recovery").hidden, false);
     h.emit(Object.assign({}, frame, { render_seq: 3, calibration: Object.assign({}, VIDEO_CALIBRATION, {
         viewport_width: 600, viewport_height: 800,
     }) }));
     await drain();
     assert.ok(h.named("drawImage").length > 0);
+    assert.equal(h.elements.find(el => el.attributes.id === "calibration-recovery").hidden, true,
+        "a valid current mapping removes the recovery panel before showing the image");
 });
 
 /* ------------------------------------------------------------------ */

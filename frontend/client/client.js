@@ -959,7 +959,26 @@
         updateRenderEvidence(instruction, paint);
     }
 
+    function syncCalibrationRecovery() {
+        var panel = document.getElementById("calibration-recovery");
+        if (!panel) return;
+        var needed = !!(wallState && wallState.contentType === "image"
+            && wallState.physical && !wallState.physical.plan);
+        panel.hidden = !needed;
+        if (!needed) return;
+        var calibration = wallState.physical.calibration;
+        var reason = calibration && calibration.reason || "Screen measurements do not match this browser viewport.";
+        var reasonNode = document.getElementById("calibration-recovery-reason");
+        if (reasonNode && reasonNode.textContent !== reason) reasonNode.textContent = reason;
+        var visual = window.visualViewport;
+        panel.style.left = (visual && visual.offsetLeft || 0) + "px";
+        panel.style.top = (visual && visual.offsetTop || 0) + "px";
+        panel.style.width = (visual && visual.width || window.innerWidth) + "px";
+        panel.style.height = (visual && visual.height || window.innerHeight) + "px";
+    }
+
     function renderScene() {
+        syncCalibrationRecovery();
         if (!wallState) return; /* no wall frame yet: colour-only surface */
 
         if (wallState.contentType === "color") {
@@ -1987,20 +2006,6 @@
         ctx.setTransform(view.dpr, 0, 0, view.dprY, 0, 0);
         ctx.fillStyle = PATTERN.background;
         ctx.fillRect(0, 0, vp.w, vp.h);
-        var unit = Math.min(vp.w, vp.h);
-        var size = Math.max(24, unit * 0.12);
-        var note = Math.max(14, unit * 0.045);
-        ctx.textAlign = "center";
-        ctx.textBaseline = "middle";
-        ctx.fillStyle = PATTERN.unplacedNote;
-        ctx.font = "700 " + size + "px " + FONT_STACK;
-        ctx.fillText("NEEDS CALIBRATION", vp.w / 2, vp.h / 2 - size * 0.3);
-        ctx.fillStyle = PATTERN.unplacedHint;
-        ctx.font = note + "px " + FONT_STACK;
-        var reason = wallState.physical && wallState.physical.calibration
-            ? wallState.physical.calibration.reason || ""
-            : "";
-        ctx.fillText(reason, vp.w / 2, vp.h / 2 + size * 0.55);
         drawDeviceBadge(ctx, vp, view.dpr, view.dprY);
     }
 

@@ -82,6 +82,32 @@ redesign verdict.
 
 ## Acceptance still pending
 
+The styling package `12dc9872b76815b2c5edf7cf0f0f713f19f46fbb` is integrated as
+`f64d89a`. Three coherent stylesheets and a licensed local Schibsted Grotesk font
+replace the old primary stylesheet pair. Root inspected the desktop/phone
+screenshots and the stylesheet diff. The style worker's frozen-base evidence is
+at `/tmp/tablet-wall-style-sc14k38j/HANDOFF.md`; its 113 visual, 60 journey, 24
+contrast/recovery and 32 keyboard-flow assertions precede root's command fixes.
+These counts include repeated setup checks and are not a completeness score.
+
+Root then addressed the style handoff's two readability findings, tracked in
+[issue 26](https://github.com/spicyneutrino/tablet-wall-ai/issues/26). Calibration
+recovery now uses accessible, reflowing DOM text fitted to the visual viewport;
+valid mapping removes the panel. Stage labels use 14px names and 12px status text,
+actual font measurements and backings bounded to their tablet width, including
+quarter-turn geometry. Compact labels retain full accessible names and statuses.
+
+The combined private proof at
+`/tmp/tablet-wall-root-visual-hq4gye7b/render-w0rpplhb` passed **40 checks** for
+contrast, 1440/390/320 label geometry, both tablet recovery orientations, 200%
+text emulation and restoration to four current image reports. A separate run at
+`render-1v_qc1c7` passed the complete **60-check** image/custom-geometry/Saved/
+lifecycle parity journey against the integrated styles and root fixes. Both
+record no page errors and stopped browsers/servers. The deliberate invalid Saved
+name in the contrast proof remains a labelled expected 422. Root inspected the
+new recovery screenshots and the combined desktop wall. Native operator zoom,
+assistive technology and real hardware remain unrun.
+
 The independent functional review of `9fc7d6a` found three P2 defects, tracked in
 [issue 25](https://github.com/spicyneutrino/tablet-wall-ai/issues/25): durable HTTP
 5xx responses did not engage the uncertainty lock; history actions could bypass
@@ -109,8 +135,8 @@ Waiting for visibility kept Home in the native select, so that observation did
 not justify a product keyboard change. Root's correction checks do not substitute
 for independent final review of the corrected, styled application.
 
-Visual styling, compatibility entry retirement, combined in-app upload checks, the portable four-client journey,
-responsive and accessibility verification, and independent final review remain
-open. The upload package alone does not establish any of those results. No live
+Compatibility entry retirement, the portable four-client journey, final combined
+responsive/accessibility verification, and independent final review remain open.
+The upload package alone does not establish those results. No live
 deployment, real tablet, hotspot/firewall, optical continuity, sleep, TLS or video
 acceptance is claimed.

@@ -47,6 +47,28 @@ body {
     pointer-events: none;
 }
 
+#calibration-recovery {
+    position: fixed;
+    z-index: 5;
+    inset: 0;
+    box-sizing: border-box;
+    display: flex;
+    flex-direction: column;
+    overflow: auto;
+    padding: max(5rem, env(safe-area-inset-top)) max(1.5rem, env(safe-area-inset-right)) max(2rem, env(safe-area-inset-bottom)) max(1.5rem, env(safe-area-inset-left));
+    background: #0b1120;
+    color: #e2e8f0;
+    text-align: center;
+    overflow-wrap: anywhere;
+    -webkit-user-select: text;
+    user-select: text;
+}
+
+#calibration-recovery[hidden] { display: none; }
+.recovery-copy { flex: none; width: 100%; max-width: 40rem; margin: auto; }
+.recovery-copy h1 { margin: 0 0 1rem; font-size: clamp(1.5rem, 6vw, 3rem); line-height: 1.2; color: #fbbf24; }
+.recovery-copy p { margin: 1rem 0 0; font-size: 1.125rem; line-height: 1.5; }
+
 /*
  * Full-screen toggle (client.js). Shown for a few seconds after any touch,
  * then hidden; while hidden it ignores the pointer so the touch that brings

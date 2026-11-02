@@ -102,9 +102,11 @@ deploy/                     hotspot proxy reference, service unit template,
 frontend/
   client/                   runs on each tablet; paints its wall slice
     index.html  client.js  client.css  view.js
-  controller/               operator dashboard; roster, wall and content control
-    index.html  controller.js  controller.css
-    physical.html physical.js physical.css
+  controller/               one operator workspace for tablets, arrangement,
+                            images, saved records and settings
+    physical.html physical.js operator-*.js
+    operator-tokens.css operator-workspace.css operator-stage.css fonts/
+    index.html controller.js controller.css (compatibility entry during migration)
 tests/                      pytest contract tests (HTTP + WebSocket)
 pyproject.toml              deps, dev deps, pytest config
 ```
