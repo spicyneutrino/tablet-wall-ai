@@ -32,7 +32,7 @@ window.PhysicalStage = {
                 content, profileFor,
                 labelFor: id => numberedLabel(id, latestProfile(id)),
                 statusFor: id => state.rosterError ? { status: "stale", text: "Status stale · refresh the operator connection" } : window.OperatorState.tabletState(config, id, performance.now()),
-                selectedId: state.selectedId, runtime: config.runtime, preview, editable: !state.gridPreview && !state.viewLive && !state.previewContent,
+                selectedId: state.selectedId, runtime: config.runtime, preview, editable: state.tabName === "show" && !state.gridPreview && !state.viewLive && !state.previewContent,
                 resolutionNode: document.getElementById("stage-resolution") });
             const summary = document.getElementById("stage-identities") || document.createElement("details");
             if (!summary.id) {
@@ -80,7 +80,7 @@ window.PhysicalStage = {
             if (!window.OperatorState.entries(state.draft)[id]) return;
 
             selectDevice(id, { reveal: false });
-            if (state.busy || state.gridPreview || state.viewLive || state.previewContent) { revealInspector(); return; }
+            if (state.tabName !== "show" || state.busy || state.gridPreview || state.viewLive || state.previewContent) { revealInspector(); return; }
             if (!canManualEdit()) return;
             const point = pointerToStage(event);
             if (!point) return;
@@ -419,7 +419,7 @@ window.PhysicalStage = {
         }
 
         function nudgeSelected(deltaX, deltaY) {
-            if (state.viewLive || state.previewContent || state.gridPreview || state.busy) return;
+            if (state.tabName !== "show" || state.viewLive || state.previewContent || state.gridPreview || state.busy) return;
             if (state.draft && state.draft.kind === "logical") {
                 const id = state.selectedId;
                 if (!state.draft.placements[id]) return;
