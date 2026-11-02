@@ -255,3 +255,48 @@ Evidence is at `/tmp/tablet-wall-upload-fix-6eadvom6/`, including `node.json`,
 hashes, its driver hash, stopped browser/server and closed port. These are
 root correction checks, not an independent approval of the correction or a
 complete portable acceptance pass. The separate matrix expansion remains open.
+
+
+## Expanded portable acceptance integration
+
+The QA worker kept application bytes frozen at `295cb61`, then committed
+`7a37975`, `6470f24` and `f93f99b`. Root integrated those driver-only changes as
+`492fa75`, `4325679` and `da643b3`. They add isolated pointer/snap, model-batch,
+authority/paint, upload, lifecycle, keyboard, visual-state and entry/recovery
+cases. Source-matched external ingress proof is read-only. Native browser zoom,
+operating-system IME, screen-reader and hardware limits remain explicit.
+
+The worker's completed frozen run reached all 38 scenarios without interruption.
+It recorded **844 of 853 assertion rows passing**, with eight failed upload
+uncertainty assertions and one invalid-scene focus failure. Repeated startup
+and health rows are included in these counts. No page exceptions or unexpected
+console/network errors were recorded. This is a retained failing baseline,
+not acceptance of root's newer application. Report and cleanup evidence are at
+`/tmp/tablet-wall-acceptance-6470f24-all/REPORT.md` and `cleanup-audit.json`.
+The final worker driver passed 16 focused tests and Ruff.
+
+After integration, root reproduced the empty-scene keyboard failure with the
+portable `native-keyboard` scenario. The existing validation now focuses Scene
+name after refusing an empty submission, matching arrangement validation. The
+fresh rerun passed **18 checks**, including sequential native Tab, both reorder
+boundaries, modal containment and Escape return. The original failure remains at
+`/tmp/tablet-wall-root-scene-focus-before-20261102`; correction evidence is at
+`/tmp/tablet-wall-root-scene-focus-after-20261102`. Issue #28 tracks the defect.
+
+The narrow task navigation now sizes buttons by their labels and wraps whole
+buttons when space requires it. This removes the isolated final-letter wrap in
+Settings at 320px while preserving enlarged-text reflow. Root's responsive
+verification and combined all-scenario acceptance are recorded separately after
+completion. All 27 Node test files still pass. Full aggregate acceptance is
+intentionally false while the documented native/hardware gates remain unrun;
+software completion is reported independently from those limits.
+
+
+The focused root responsive rerun passed **279 checks**, including normal 320px,
+200% text/CSS-zoom emulation, desktop/phone boundaries, contrast and font fallback.
+Root inspected the 320px viewport and confirmed Settings stays on one line.
+Evidence is at `/tmp/tablet-wall-root-nav-responsive-20261102`. The integrated
+portable driver safety selection passes **16 Python tests** with one existing
+deprecation warning; Ruff passes on all seven driver/test files. These focused
+runs record the modified source hashes. The following complete run uses a clean
+committed application and is the final software acceptance candidate.

@@ -208,8 +208,8 @@ details > :where(p, div, form, fieldset, section, button, dl) + :where(p, div, f
     .topbar { padding-block: .75rem; gap: .25rem; }
     .topbar-note { flex-basis: 100%; }
     .topbar-transport { margin: .5rem 0 0; }
-    .workspace-nav { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 3.5rem), 1fr)); gap: .125rem; padding: .5rem .25rem; }
-    .rail-tab { min-inline-size: 0; padding: .5rem .125rem; font-size: .875rem; }
+    .workspace-nav { display: flex; flex-wrap: wrap; gap: .125rem; padding: .5rem .25rem; }
+    .rail-tab { flex: 1 1 auto; min-inline-size: 0; padding: .5rem .125rem; font-size: .875rem; }
     .tab-dot { margin-inline-start: .25rem; inline-size: .375rem; block-size: .375rem; }
     .operator-workspace { padding-block-start: 1rem; }
     .operator-fields, .form-grid, .slot-fields, .bounds-grid, .pack-row { grid-template-columns: minmax(0, 1fr); }

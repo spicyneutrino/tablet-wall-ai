@@ -2904,7 +2904,7 @@
         document.getElementById("scene-save-form").addEventListener("submit", async event => {
             event.preventDefault();
             const name = document.getElementById("scene-name").value.trim(), message = document.getElementById("scene-message");
-            if (!name) { message.textContent = "Enter a scene name."; return; }
+            if (!name) { message.textContent = "Enter a scene name."; document.getElementById("scene-name").focus(); return; }
             if (!await resolveOutput("Save the applied scene")) return;
             const existing = savedScenes.find(entry => entry.name === name);
             if (existing && !window.confirm("Overwrite saved scene “" + name + "” with the applied content? Geometry is excluded.")) return;
