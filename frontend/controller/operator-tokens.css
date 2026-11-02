@@ -1,0 +1,28 @@
+@font-face {
+    font-family: "Schibsted Grotesk";
+    src: url("fonts/SchibstedGrotesk-wght.ttf") format("truetype");
+    font-style: normal;
+    font-weight: 400 900;
+    font-display: swap;
+}
+
+:root {
+    color-scheme: light;
+    --bg: #f8f3e9;
+    --surface: #fffcf6;
+    --text: #1e1a15;
+    --muted: #5e574f;
+    --border: #dcd7cd;
+    --control: #74695c;
+    --accent: #9d4616;
+    --selected: #f5e5d7;
+    --success: #246344;
+    --attention: #795500;
+    --error: #a12a24;
+    --stage: #1e1a15;
+    --stage-text: #f8f3e9;
+    --stage-selected: #ffc084;
+    --font: "Schibsted Grotesk", system-ui, -apple-system, sans-serif;
+    --radius: 6px;
+    --page-pad: clamp(1rem, 2vw, 2rem);
+}
