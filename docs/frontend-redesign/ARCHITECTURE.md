@@ -334,7 +334,7 @@ Use four workers at most. They are not alone in the codebase and must not revert
 | Worker | Exclusive writable responsibility | Integration contract |
 | --- | --- | --- |
 | A. Functional workspace and domain/session | All primary controller HTML/JS, compatibility entry forwarding after parity, reused logical helpers, related `tests/*.test.js`. Includes the domain/session paths above, `physical.html`, `operator-workspace.js` and `operator-stage.js`. No CSS or font files. | One writer owns DOM structure and its behavior, eliminating a temporary split between injected forms and the new renderer. Publishes stable task/state/control classes for B after a working vertical slice. Owns primary commands/drafts and parity. |
-| B. Visual system and responsive styling | Three new controller CSS files, obsolete primary CSS removal, local fonts/licence and client recovery CSS only if reproduced. No HTML or JS edits; request markup changes through root/A. | Starts from A's integrated working markup and task classes. Creates the warm technical visual treatment and verifies the real route at desktop/phone/zoom. Root/A changes stylesheet imports after B publishes the assets. |
+| B. Visual system and responsive styling | Three new controller CSS files, obsolete primary CSS removal, local fonts/licence and client recovery CSS only if reproduced. In `physical.html`, only replace the two existing stylesheet links with the new stylesheet imports. No other HTML or JS edits; request markup changes through root. | Starts from A's integrated working markup and task classes. Creates the warm technical visual treatment and verifies the actual imported styles at desktop/phone/zoom. Root does not edit the primary HTML until B returns. |
 | C. Operator upload/deploy | `deploy/hotspot.py`, relevant launcher script/Makefile help if necessary, `deploy/IMAGE-WALL-RUNBOOK.md`, `tests/test_hotspot.py`, `tests/test_ingress.py`, admission-focused tests. Any necessary `main.py`/`tabletwall/*` change belongs exclusively here. | Default disabled, per-launch loopback flag, exact configured origin, generated tablet ingress still denied. No new HTTP schema planned. Notify root if that contract cannot be met. Only main.py writer if one is needed. |
 | D. Portable browser QA | New `simulator/browser/redesign_acceptance.py`, `simulator/browser/operator_accessibility.py` updates, focused fixture helpers and driver tests. No application edits. | Uses semantic UI actions and four independent shipped clients. Distinguishes UI proof from fixture injection. Produces screenshots, traces, console/network, identities, failures and cleanup. |
 
@@ -350,6 +350,22 @@ then a styling owner can work against stable actual markup. C starts in parallel
 with A; B and D start after A's working contract is integrated. No public state or
 backend behavior contract changes. This replaces the original simultaneous A/B
 DOM handoff and avoids asking separate writers to coordinate transient selectors.
+
+Root integrated A's functional implementation as `5f3e415`, retaining proven
+grid/stage/sizing helpers and the advanced measurement/Saved/Experimental wiring
+in `physical.js`. A separate ArrangementEditor class is unnecessary: the private
+session owns authority and transport, the forms map owns keyed field drafts,
+the image task owns image choice, and the existing composition owns one manual
+or grid arrangement draft. This boundary choice preserves the accepted command
+and state contracts without adding a wrapper per endpoint. Independent review
+must still check those boundaries against races and retained intent.
+
+For B's next unit, root assigns only the stylesheet-import lines in
+`physical.html` to B alongside CSS/font ownership. Functional HTML/JS work is
+finished for this unit and root will not edit that file concurrently. This small
+ownership extension lets B verify real imports rather than browser-injected
+styles. Other markup changes remain root-owned. D owns only the portable QA
+driver and accessibility probes, and the independent reviewer is read-only.
 
 No application implementation exists in this planning commit. The synthesized contracts are accepted for root's next step under the default architect agreement. No runtime acceptance or independent implementation review is claimed.
 

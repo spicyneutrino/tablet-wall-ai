@@ -53,15 +53,36 @@ directories were isolated. The worker reported that side effect and did not
 attempt to restore an unknown prior value. The corrected rerun used private XDG
 directories and left the shared file timestamp unchanged.
 
-## Frontend and acceptance still pending
+## Integrated functional workspace
 
-The functional HTML/JavaScript worker stopped at a provider usage limit before
-committing or completing browser acceptance. Its tracked and untracked work was
-preserved at `/tmp/tablet-frontend-recovery-2pnsjo1s` and the same worker was
-resumed in its existing checkout on the user's instruction. These unfinished
-changes are not integrated or accepted.
+The functional HTML/JavaScript worker resumed its preserved checkout after a
+provider usage limit and committed `bc2e888518ebc4a1f610c7c7511315ae33c002a9`.
+Root integrated it as `5f3e415`. One session now owns configuration and transport;
+keyed tablet forms retain edits; Tablets, Arrange, Images, Saved and Settings
+share one stage. Apply arrangement and Show image remain separate commands.
+The worker also migrated custom logical editing, saved scenes, colours and
+lifecycle controls into the primary workspace.
 
-Visual styling, combined in-app upload checks, the portable four-client journey,
+Root reran all **24 Node test files** successfully, then ran the private
+four-client first-wall script against the integrated application. Its six checks
+passed, including registration before socket readiness, automatic inclusion of
+all four late joins without a console reload, and four current image reports.
+Evidence is `/tmp/tablet-wall-functional-M8ZZSj/render-cm9zz4pu`. The script uses
+the shipped client and console, synthetic images and private loopback storage.
+Its 16 scripted console actions include one fixture-only status refresh and do
+not establish a human usability benchmark.
+
+The worker's source-matched five browser runs passed 103 assertions across
+journey, conflict/lifecycle, model-batch, first-wall and disabled-upload scenarios.
+Repeated startup checks are included in that count. The full handoff, limits,
+styling hooks and evidence locations are at
+`/tmp/tablet-wall-functional-M8ZZSj/HANDOFF.md`. Those runs precede integration
+of the separate upload launcher package. They are partial acceptance, not a final
+redesign verdict.
+
+## Acceptance still pending
+
+Visual styling, compatibility entry retirement, combined in-app upload checks, the portable four-client journey,
 responsive and accessibility verification, and independent final review remain
 open. The upload package alone does not establish any of those results. No live
 deployment, real tablet, hotspot/firewall, optical continuity, sleep, TLS or video
