@@ -35,6 +35,7 @@
         function render() {
             const id = state.selectedId;
             const device = state.roster[id];
+            $("operator-device-actions").hidden = !id;
             if (impact && (impact.etag !== state.etag || state.roster[impact.id]?.online)) {
                 impact = null; $("tablet-forget-confirm").disabled = true;
                 $("tablet-forget-text").textContent = "This Forget review is stale or the tablet reconnected. Review fresh offline impact before confirming.";

@@ -367,6 +367,13 @@ ownership extension lets B verify real imports rather than browser-injected
 styles. Other markup changes remain root-owned. D owns only the portable QA
 driver and accessibility probes, and the independent reviewer is read-only.
 
+After integrating B and passing the combined 60-check parity journey, root
+replaced the default compatibility entry with a forwarding page and styled manual
+fallback. The unchanged legacy functionality remains an explicit Experimental
+consumer at `experimental.html`, so its scripts/styles are retained. Primary
+navigation uses one session and one stylesheet set. Backend compatibility routes
+and saved-record meanings are unchanged.
+
 No application implementation exists in this planning commit. The synthesized contracts are accepted for root's next step under the default architect agreement. No runtime acceptance or independent implementation review is claimed.
 
 Before closing each implementation unit, root records any accepted deviation here, with the accepting owner/review and updated affected signatures, outcomes and ownership. Do not update the plan merely to excuse an implementation that violated it. Local naming changes do not need a new architecture. Repeated workarounds across unrelated tasks, duplicated draft writers, or two incompatible command outcomes require re-grounding the shape before proceeding.

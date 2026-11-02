@@ -135,8 +135,36 @@ Waiting for visibility kept Home in the native select, so that observation did
 not justify a product keyboard change. Root's correction checks do not substitute
 for independent final review of the corrected, styled application.
 
-Compatibility entry retirement, the portable four-client journey, final combined
-responsive/accessibility verification, and independent final review remain open.
+The default compatibility entry is now retired after the combined 60-check
+parity journey. `/controller/` and `/controller/index.html` open the same primary
+workspace as `/controller/physical.html`, preserving query and fragment state.
+The entry retains a styled manual link when automatic navigation is blocked or
+JavaScript is off. The former editor and its guarded behavior remain at
+`experimental.html`, linked only inside the explicit Experimental controls.
+Its scripts and stylesheet remain because that limited consumer still exists;
+no normal navigation offers a second editor.
+
+Empty-wall onboarding now waits for authoritative configuration, replaces the
+empty diagram with readable joining guidance, and hides tablet actions until a
+tablet is selected. Its next action changes to Arrange when connected tablets
+are available. Entry proof at `/tmp/tablet-wall-entry-final-8yc2lnva` passed
+**34 checks** across the three URLs at desktop/phone sizes, one controller socket
+per page, empty-state presentation, and a 320px JavaScript-disabled fallback.
+Source identity is recorded after the run and before commit. The fresh four-client
+first-wall rerun at `/tmp/tablet-wall-functional-M8ZZSj/render-a53vwsex` passed all
+six checks after these changes. Root inspected the phone and fallback screenshots.
+
+Static/API and WAN-isolated offline checks passed **37 Python tests**. The
+offline crawler follows the local font and both supported operator entries; it
+does not mistake embedded URLs in binary font metadata for executable network
+dependencies. Ruff passed for the three affected Python test/probe files. Both
+entry runs closed their browsers and servers; the final run records a closed
+port. Earlier mistyped temporary script paths started no server, and a rerun
+against an existing artifact directory was refused before startup. They are not
+counted as passing checks.
+
+The portable four-client journey, final combined responsive/accessibility
+verification, and independent final review remain open.
 The upload package alone does not establish those results. No live
 deployment, real tablet, hotspot/firewall, optical continuity, sleep, TLS or video
 acceptance is claimed.

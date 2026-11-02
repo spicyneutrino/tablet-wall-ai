@@ -11,6 +11,7 @@
 .stage-scroll { overflow: auto; min-inline-size: 0; background: var(--stage); border: 1px solid var(--control); border-radius: var(--radius); }
 .stage-svg { display: block; inline-size: min(100%, 66vh); block-size: auto; aspect-ratio: 3 / 2; margin-inline: auto; background: var(--stage); touch-action: none; }
 .wall-stage:has(.wall-empty:not([hidden])) .stage-svg { inline-size: min(100%, 28rem); }
+body[data-stage-mode="live"] .wall-stage:has(.wall-empty:not([hidden])) :is(.stage-scroll, .stage-details, #stage-preview-note, #stage-quality-summary) { display: none; }
 .operator-slot { cursor: pointer; }
 .stage-svg.is-dragging, .stage-svg.is-dragging .operator-slot { cursor: grabbing; }
 .operator-slot-label { font-family: var(--font); font-weight: 500; fill: var(--stage-text); }

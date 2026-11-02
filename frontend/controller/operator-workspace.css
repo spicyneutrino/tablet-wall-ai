@@ -167,6 +167,9 @@ details > :where(p, div, form, fieldset, section, button, dl) + :where(p, div, f
 .draft-resolution::backdrop { background: rgb(30 26 21 / 60%); }
 .statusbar { display: flex; flex-wrap: wrap; gap: .5rem 1rem; padding: 1rem var(--page-pad); border-block-start: 1px solid var(--border); color: var(--muted); font-size: .875rem; }
 .noscript { padding: 1rem; color: var(--error); }
+.entry-page { display: grid; place-content: center; min-block-size: 100svh; padding: var(--page-pad); }
+.entry-copy { display: grid; gap: 1.5rem; max-inline-size: 38rem; }
+.entry-copy .btn { justify-self: start; }
 
 .playback-card, .playback-extra, .playback-section, .playlist-card { display: grid; gap: 1rem; }
 .playback-countdown:empty { display: none; }

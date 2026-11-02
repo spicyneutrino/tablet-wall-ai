@@ -92,7 +92,7 @@ assert.equal(stageNodes.statusUndo.hidden, false);
 
 // Execute each page's classic scripts in markup order before DOMContentLoaded.
 // This catches missing dependencies and initialization cycles in the VM path.
-for (const page of ["index.html", "physical.html"]) {
+for (const page of ["index.html", "physical.html", "experimental.html"]) {
     const boot = vm.createContext({ window: {}, document: {
         readyState: "loading", getElementById: () => null,
         querySelector: () => null, querySelectorAll: () => [], addEventListener: () => {}

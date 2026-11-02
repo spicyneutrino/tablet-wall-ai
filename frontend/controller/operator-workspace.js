@@ -59,7 +59,8 @@ window.OperatorWorkspace = {
                 + " proposed tablet positions. Apply arrangement changes geometry only; the applied image stays unchanged."
                 : arrangement ? "Grid choices are local. Preview arrangement before applying. The diagram still shows the live wall."
                 : "No arrangement changes are pending. Adjust positions or preview a grid to begin.";
-            $("wall-empty").hidden = !!state.base && Object.keys(window.OperatorState.entries(state.base)).length > 0;
+            $("wall-empty").hidden = !state.configLoaded || hasPreview || !!state.base && Object.keys(window.OperatorState.entries(state.base)).length > 0;
+            $("empty-add-tablets").textContent = !state.rosterError && Object.values(state.roster).some(device => device.online) ? "Arrange tablets" : "Add tablets";
             const config = state.operatorConfig;
             if (config) {
                 const ids = Object.keys(window.OperatorState.entries(config.layout));
@@ -92,7 +93,7 @@ window.OperatorWorkspace = {
         }
         $("view-live").addEventListener("click", () => { state.viewLive = true; render(); renderStage(); });
         $("view-preview").addEventListener("click", () => { state.viewLive = false; render(); renderStage(); });
-        $("empty-add-tablets").addEventListener("click", () => open("tablet", { focus: true, persist: true }));
+        $("empty-add-tablets").addEventListener("click", () => open(!state.rosterError && Object.values(state.roster).some(device => device.online) ? "show" : "tablet", { focus: true, persist: true }));
         $("join-arrange").addEventListener("click", () => open("show", { focus: true, persist: true }));
         $("join-refresh").addEventListener("click", async () => { await Promise.all([refreshReadiness(), refreshStatus()]); render(); });
         return { open, resolve, render, destroy() { if (pending) pending("stay"); $("draft-resolution").close(); } };

@@ -8,7 +8,7 @@
     <title>Tablet wall · tablet-wall-ai</title>
     <link rel="icon" href="favicon.svg" type="image/svg+xml">
     <link rel="stylesheet" href="operator-tokens.css?v=1">
-    <link rel="stylesheet" href="operator-workspace.css?v=1">
+    <link rel="stylesheet" href="operator-workspace.css?v=2">
     <link rel="stylesheet" href="operator-stage.css?v=1">
 </head>
 <body class="physical">
@@ -76,7 +76,7 @@
             <p class="hint" id="stage-resolution"></p>
             <p class="hint">Drag a measured tablet to move it on the wall. A drag starts after 3 px, so a tap only selects. Escape cancels a drag in progress.</p>
             </details>
-        <section class="wall-empty task-section" id="wall-empty" aria-labelledby="empty-title"><h3 id="empty-title">Build your first wall</h3><p>Connect tablets, arrange their screens, then choose an image to span them.</p><button type="button" class="btn btn-primary" id="empty-add-tablets" data-action="empty-add-tablets">Add tablets</button></section></section>
+        <section class="wall-empty task-section" id="wall-empty" aria-labelledby="empty-title" hidden><h3 id="empty-title">Build your first wall</h3><p>Connect tablets, arrange their screens, then choose an image to span them.</p><button type="button" class="btn btn-primary" id="empty-add-tablets" data-action="empty-add-tablets">Add tablets</button></section></section>
     </main>
 
     <aside class="side rail task-workspace" id="rail" aria-label="Console controls">
@@ -252,7 +252,7 @@
             <ul class="dev-list" id="device-list" aria-label="Tablets known to this server"></ul>
             <p class="empty-note" id="device-empty" hidden>No tablets are registered yet. Open <a href="/client/">/client/</a> on a tablet on the same LAN, they appear here automatically.</p>
         </section>
-        <div id="operator-device-actions"><section class="tablet-actions task-section" aria-labelledby="tablet-actions-title">
+        <div id="operator-device-actions" hidden><section class="tablet-actions task-section" aria-labelledby="tablet-actions-title">
             <h2 id="tablet-actions-title">Tablet actions</h2><h3 id="tablet-action-name" tabindex="-1">Select a tablet.</h3><p id="tablet-evidence"></p><details class="technical-details"><summary>Measurement and browser details</summary><p class="hint" id="tablet-provenance"></p></details><button class="btn" id="open-tablet-measurements" type="button" data-action="open-tablet-measurements">Review measurements / confirm model</button>
             <form id="tablet-label-form" data-form="tablet-label-form"><label class="field" for="tablet-label">Tablet name<input class="inp" id="tablet-label" maxlength="80" autocomplete="off" data-field="tablet-label"></label><button class="btn" id="tablet-label-save" data-action="tablet-label-save">Save name</button><button type="button" class="btn" id="tablet-label-review" data-action="tablet-label-review">Compare current saved name</button><button type="button" class="btn" id="tablet-label-discard" data-action="tablet-label-discard">Discard name</button></form><section class="field-review" id="tablet-name-review" hidden><p id="tablet-name-comparison"></p><button class="btn" type="button" id="tablet-name-keep" data-action="tablet-name-keep">Keep my name against this saved value</button></section>
             <div class="operator-actions"><button class="btn" id="tablet-identify" type="button" data-action="tablet-identify">Identify for 5 seconds</button><button class="btn" id="tablet-retry-image" type="button" data-action="tablet-retry-image">Retry image</button><button class="btn" id="tablet-reconnect" type="button" data-action="tablet-reconnect">Reconnect</button></div>
@@ -602,7 +602,7 @@
             </div>
             <p class="hint">
                 Build the hard-cut order from uploaded files. A still keeps your dwell; a video's
-                dwell is its clip length. Add files on <a href="index.html">Wall control</a>.
+                dwell is its clip length. Additional media tools remain in the <a href="experimental.html">experimental compatibility tools</a>.
             </p>
 
             <div class="playlist-add">
@@ -681,18 +681,18 @@
 
 <script src="operator-state.js?v=2"></script>
 <script src="operator-forms.js?v=1"></script>
-<script src="operator-stage.js?v=2"></script>
+<script src="operator-stage.js?v=3"></script>
 <script src="operator-content.js?v=2"></script>
-<script src="operator-grid.js?v=2"></script>
-<script src="operator-devices.js?v=2"></script>
+<script src="operator-grid.js?v=3"></script>
+<script src="operator-devices.js?v=3"></script>
 <script src="operator-readiness.js?v=2"></script>
 <script src="operator-sync.js?v=2"></script>
-<script src="operator-session.js?v=1"></script>
-<script src="operator-workspace.js?v=1"></script>
+<script src="operator-session.js?v=2"></script>
+<script src="operator-workspace.js?v=2"></script>
 <script src="physical-playback.js?v=1"></script>
 <script src="physical-sizing.js?v=1"></script>
 <script src="physical-stage.js?v=5"></script>
 <script src="physical-calibration.js?v=1"></script>
-<script src="physical.js?v=18"></script>
+<script src="physical.js?v=19"></script>
 <dialog class="draft-resolution" id="draft-resolution" aria-labelledby="draft-resolution-title"><h2 id="draft-resolution-title">Resolve your preview</h2><p id="draft-resolution-text"></p><div class="operator-actions"><button type="button" class="btn btn-primary" id="resolve-commit" data-action="resolve-commit">Apply arrangement</button><button type="button" class="btn" id="resolve-discard" data-action="resolve-discard">Discard preview</button><button type="button" class="btn" id="resolve-stay" data-action="resolve-stay">Stay</button></div></dialog></body>
 </html>

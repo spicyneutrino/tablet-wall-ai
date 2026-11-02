@@ -106,7 +106,8 @@ frontend/
                             images, saved records and settings
     physical.html physical.js operator-*.js
     operator-tokens.css operator-workspace.css operator-stage.css fonts/
-    index.html controller.js controller.css (compatibility entry during migration)
+    index.html operator-entry.js (forwards to the workspace)
+    experimental.html controller*.js controller.css (opt-in compatibility tools)
 tests/                      pytest contract tests (HTTP + WebSocket)
 pyproject.toml              deps, dev deps, pytest config
 ```

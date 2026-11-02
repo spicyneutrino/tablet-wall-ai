@@ -54,7 +54,9 @@ class TestRootAndStaticMounts:
         ("route", "assets"),
         [
             ("/client/", ["client.css", "client.js"]),
-            ("/controller/", ["controller.css", "controller.js"]),
+            ("/controller/", ["operator-workspace.css", "operator-entry.js"]),
+            ("/controller/physical.html", ["operator-workspace.css", "physical.js"]),
+            ("/controller/experimental.html", ["controller.css", "controller.js"]),
         ],
     )
     def test_app_pages_are_served(self, client, route, assets):
