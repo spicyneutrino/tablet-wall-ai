@@ -75,6 +75,14 @@ def test_launch_profile_is_private_and_does_not_inherit_admission(
         assert env["TABLET_WALL_OPERATOR_ORIGIN"] == "http://127.0.0.1:35719"
         assert env["TABLET_WALL_UPLOAD_MODE"] == ("loopback" if enabled else "disabled")
         assert "TABLET_WALL_AUTH_TOKEN" not in env
+        for key in (
+            "XDG_CONFIG_HOME",
+            "XDG_CACHE_HOME",
+            "XDG_DATA_HOME",
+            "XDG_RUNTIME_DIR",
+        ):
+            assert Path(env[key]).is_relative_to(tmp_path)
+            assert Path(env[key]).is_dir()
     assert dict(os.environ) == before
 
 
@@ -160,6 +168,11 @@ def test_real_failure_captured_before_actual_cleanup(tmp_path):
     )
     assert not cleanup["remaining_owned_browser_pids"]
     identity = json.loads((tmp_path / "run/identity.json").read_text())
+    assert (
+        identity["application_sha256"] == driver.source_identity()["application_sha256"]
+    )
+    for name, value in identity["loaded_driver_hashes"].items():
+        assert driver.digest(tmp_path / "run/driver" / name) == value
     assert all(
         not server["alive"] and server["exit"] in (0, -signal.SIGTERM)
         for server in identity["servers"]

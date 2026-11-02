@@ -26,7 +26,8 @@ ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(ROOT))
 from deploy.hotspot import Settings, backend_environment  # noqa: E402
 
-SCENARIOS = ("first-wall", "races", "recovery", "parity", "responsive")
+SCENARIOS = ("first-wall", "races", "recovery", "parity", "responsive", "edge-cases")
+APPLICATION_BASE = "295cb61220677a3a42dbcc7812c3a267c810864b"
 MANDATORY_OPEN = [
     "Physical pointer drag, explicit snap-step behavior, Clear cancellation, and complete offline/reconnect command variants.",
     "Batch uncertain completion, selection changes during delayed batch, and incompatible/mixed model groups.",
@@ -36,6 +37,39 @@ MANDATORY_OPEN = [
     "Full native Tab-order/dialog containment, invalid-submit field focus, reorder-boundary focus, and native IME/screen reader.",
     "Native 200%/400% browser zoom, full hover/focus/SVG/non-text contrast, missing-thumbnail fallback, and all error-state viewport permutations.",
     "Generated Caddy/direct admission proof is owned by C/root; this driver composes environment only and does not repeat that proof.",
+    "Controller query/hash forwarding, readable DOM recovery, and immediate first-preview labels.",
+    "Integrated durable500, image/history ownership, all incompatible resolver intents, and refused-grid manual editing regressions.",
+]
+SOFTWARE_GROUPS = (
+    ("physical-pointer", "snap-spacing", "command-variants", "parity"),
+    ("batch-uncertain", "batch-selection", "mixed-models", "model-batch"),
+    ("races", "stale-reads", "late-mutation", "old-paint"),
+    (
+        "upload-timeout",
+        "inventory-order",
+        "stale-scene",
+        "missing-live",
+        "image-negatives",
+        "upload-postpublication",
+        "upload-unreadable",
+    ),
+    (
+        "different-hardware",
+        "replacement-digest",
+        "replacement-connection",
+        "forget-reconnect",
+        "conflict-lifecycle",
+    ),
+    ("native-keyboard", "responsive"),
+    ("visual-states", "loading-workspace", "interaction-contrast", "responsive"),
+    (),
+    ("entry-recovery", "first-wall"),
+    ("durable-uncertainty", "history-ownership", "refused-grid"),
+)
+ENVIRONMENT_OPEN = [
+    "Native operating-system IME and screen-reader smoke were not driven.",
+    "Native 200%/400% browser zoom was not demonstrated; CSS zoom/text enlargement is separately labelled emulation.",
+    "Real hardware, optical alignment/bezel accuracy, sleep, TLS/live ingress, video and prolonged soak remain unverified.",
 ]
 BROWSER_LIMIT = {
     "chrome_devtools": "Could not find Google Chrome executable for channel stable at /opt/google/chrome/chrome.",
@@ -49,6 +83,16 @@ BROWSER_LIMIT = {
 
 def digest(path):
     return hashlib.sha256(path.read_bytes()).hexdigest()
+
+
+DRIVER_BYTES = {
+    str(path.relative_to(ROOT)): path.read_bytes()
+    for path in [
+        *Path(__file__).parent.glob("*redesign*.py"),
+        Path(__file__).with_name("operator_accessibility.py"),
+        *ROOT.glob("tests/test_redesign*.py"),
+    ]
+}
 
 
 def request_body(request):
@@ -94,11 +138,21 @@ def source_identity(root=ROOT):
         if name and (root / name).is_file()
     }
     combined = hashlib.sha256(json.dumps(hashes, sort_keys=True).encode()).hexdigest()
+    app_hashes = {
+        name: value
+        for name, value in hashes.items()
+        if name.startswith(("frontend/", "tabletwall/", "deploy/")) or name == "main.py"
+    }
     return {
         "head": git("rev-parse", "HEAD", root=root),
+        "branch": git("rev-parse", "--abbrev-ref", "HEAD", root=root),
         "dirty_status": git("status", "--porcelain=v1", root=root),
         "source_sha256": combined,
         "source_hashes": hashes,
+        "application_hashes": app_hashes,
+        "application_sha256": hashlib.sha256(
+            json.dumps(app_hashes, sort_keys=True).encode()
+        ).hexdigest(),
         "driver_hashes": {
             str(p.relative_to(ROOT)): digest(p)
             for p in [
@@ -107,6 +161,103 @@ def source_identity(root=ROOT):
             ]
         },
     }
+
+
+def external_ingress_proof(path=None):
+    path = Path(
+        path or "/tmp/tablet-wall-favicon-ingress-tys6crky/ingress-manifest.json"
+    )
+    result = {
+        "classification": "external_root_evidence",
+        "path": str(path),
+        "verified": False,
+    }
+    try:
+        manifest = json.loads(path.read_text())
+        matching = {
+            name: (ROOT / name).is_file() and digest(ROOT / name) == value
+            for name, value in manifest["source_sha256"].items()
+        }
+        allowlist = (
+            digest(ROOT / "deploy/tablet-routes.caddy") == manifest["allowlist_sha256"]
+        )
+        requests = manifest["requests"]
+        tablet_origin = f"http://127.0.0.1:{manifest['tablet_port']}"
+        denials = sum(
+            row["origin"] == tablet_origin and row["status"] == 403 for row in requests
+        )
+        favicon = [
+            row
+            for row in requests
+            if row["path"].endswith("favicon.svg") and row["status"] == 200
+        ]
+        favicon_head = [row for row in favicon if row["method"] == "HEAD"]
+        uploads = [
+            row
+            for row in requests
+            if row["path"].startswith("/uploads") and row["status"] == 201
+        ]
+        result.update(
+            manifest_sha256=digest(path),
+            source_matches=matching,
+            allowlist_matches=allowlist,
+            tablet_denials=denials,
+            favicon_200=favicon,
+            favicon_head_200=favicon_head,
+            exact_favicon_head_proven=bool(favicon_head),
+            upload_201=uploads,
+            cleanup=manifest["cleanup"],
+            caddy_version=manifest["caddy_version"],
+        )
+        result["verified"] = (
+            bool(matching)
+            and all(matching.values())
+            and allowlist
+            and manifest.get("passed") is True
+            and denials == 124
+            and bool(favicon)
+            and bool(uploads)
+            and all(manifest["cleanup"].values())
+            and manifest["state_before_denials"] == manifest["state_after_denials"]
+        )
+    except (OSError, KeyError, ValueError) as error:
+        result["error"] = repr(error)
+    return result
+
+
+def coverage_report(reports, ingress):
+    by_name = {row["scenario"]: row for row in reports}
+    groups = []
+    for description, required in zip(MANDATORY_OPEN, SOFTWARE_GROUPS):
+        unrun = [name for name in required if name not in by_name]
+        issues = [
+            name for name in required if name in by_name and not by_name[name]["pass"]
+        ]
+        passed = (
+            not unrun
+            and not issues
+            and (
+                bool(required)
+                or ingress["verified"]
+                and ingress.get("exact_favicon_head_proven", False)
+            )
+        )
+        groups.append(
+            {
+                "requirement": description,
+                "required_scenarios": required,
+                "status": "PASS" if passed else "ISSUES" if issues else "BLOCKED",
+                "unrun": unrun,
+                "issues": issues,
+                "evidence": {
+                    name: by_name[name]["artifacts"]
+                    for name in required
+                    if name in by_name
+                },
+                **({"external_evidence": ingress} if not required else {}),
+            }
+        )
+    return groups
 
 
 def new_artifacts(path):
@@ -138,6 +289,15 @@ def child_environment(private, port, uploads):
     finally:
         os.environ.update(inherited)
     env["TABLET_WALL_BACKUP_DIR"] = str(private / "backups")
+    for key, name in (
+        ("XDG_CONFIG_HOME", "config"),
+        ("XDG_CACHE_HOME", "cache"),
+        ("XDG_DATA_HOME", "data"),
+        ("XDG_RUNTIME_DIR", "run"),
+    ):
+        directory = private / "xdg" / name
+        directory.mkdir(parents=True, exist_ok=True, mode=0o700)
+        env[key] = str(directory)
     return env
 
 
@@ -219,6 +379,16 @@ class Rig:
         self.dialog_accept = True
         self.manifest = {
             **source_identity(),
+            "baseline_application_commit": APPLICATION_BASE,
+            "application_matches_baseline": not git(
+                "diff",
+                APPLICATION_BASE,
+                "--",
+                "frontend",
+                "tabletwall",
+                "deploy",
+                "main.py",
+            ),
             "command": [sys.executable, *sys.argv],
             "cwd": str(ROOT),
             "timestamp": datetime.now(timezone.utc).isoformat(),
@@ -229,7 +399,17 @@ class Rig:
             "clients": [],
             "render_modes": [],
             "limits": [],
+            "loaded_driver_hashes": {
+                name: hashlib.sha256(value).hexdigest()
+                for name, value in DRIVER_BYTES.items()
+            },
         }
+        driver_copy = self.out / "driver"
+        driver_copy.mkdir(exist_ok=True)
+        for name, value in DRIVER_BYTES.items():
+            target = driver_copy / name
+            target.parent.mkdir(parents=True, exist_ok=True)
+            target.write_bytes(value)
 
     def write(self, name, value):
         (self.out / name).write_text(
@@ -288,6 +468,9 @@ class Rig:
                 "expected": expected,
                 "actual": bool(ok) if actual is None else deepcopy(actual),
                 "artifact": artifact,
+                "classification": "software_completed"
+                if ok
+                else "acceptance_assertion_failed_needs_triage",
             }
         )
         print(("PASS " if ok else "FAIL ") + self.scenario + " " + name, flush=True)
@@ -347,6 +530,9 @@ class Rig:
           const n=e.target.closest('button,a,input,select,summary,[role=button]');
           if(n) window.recordAcceptanceAction({type:'click',id:n.id,text:n.innerText?.slice(0,100),trusted:e.isTrusted});
         },true);document.addEventListener('change',e=>window.recordAcceptanceAction({type:'change',id:e.target.id,value:e.target.type==='file'?'synthetic file':e.target.value}),true);""")
+        context.add_init_script("""document.addEventListener('keydown',e=>{
+          if(e.key==='Tab') window.recordAcceptanceAction({type:'native-tab',shift:e.shiftKey,trusted:e.isTrusted});
+        },true);""")
         context.on("page", lambda page: self.observe_page(page, label))
 
     def observe_page(self, page, label):
@@ -487,6 +673,8 @@ class Rig:
             for pattern, statuses in item["failures"]:
                 if re.search(pattern, url) and (
                     status in statuses
+                    or failure is not None
+                    and failure in statuses
                     or (failure is not None and "network" in statuses)
                     or (
                         message is not None
@@ -608,7 +796,9 @@ class Rig:
         )
         self.start_server()
         self.browser = playwright.chromium.launch(
-            headless=True, executable_path=playwright.chromium.executable_path
+            headless=True,
+            executable_path=playwright.chromium.executable_path,
+            env=self.env,
         )
         self.manifest.update(
             browser_version=self.browser.version,
@@ -822,6 +1012,17 @@ def first_wall(rig):
     before = rig.config()
     rig.click("#grid-preview", "Preview arrangement")
     expect(p.locator("#grid-message")).to_contain_text("Preview only")
+    labels = p.locator(
+        "#stage-svg .operator-slot-label > tspan:first-child"
+    ).evaluate_all(
+        "es=>es.map(e=>({text:e.textContent,pixels:parseFloat(getComputedStyle(e).fontSize)*e.getScreenCTM().a}))"
+    )
+    rig.check(
+        len(labels) == 4 and all(abs(row["pixels"] - 14) < 0.15 for row in labels),
+        "Immediate first preview has four effective 14px stage labels before any viewport resize",
+        labels,
+        "4 visible labels at 14 CSS pixels",
+    )
     rig.check(
         rig.config()["layout"] == before["layout"],
         "Arrangement preview makes no early durable write",
@@ -931,6 +1132,7 @@ def run_scenario(out, name, body, uploads=True, keyboard=False):
                 "actual": repr(error),
                 "traceback": traceback.format_exc(),
                 "artifact": "failure.json",
+                "classification": "driver_or_product_interruption_unresolved",
             }
             rig.results.append(failure)
             rig.write("failure.json", failure)
@@ -1014,10 +1216,25 @@ def image_negatives(rig):
                 {"name": "refused.png", "mimeType": "image/png", "buffer": source}
             )
             rig.click("#upload-submit")
-            expect(p.locator("#upload-message")).to_contain_text(
-                f"Synthetic QA refusal {status}"
-            )
-            expect(p.locator("#upload-submit")).to_be_enabled()
+            if status >= 500:
+                expect(p.locator("#upload-progress")).to_be_hidden()
+                rig.check(
+                    "uncertain" in p.locator("#upload-message").inner_text()
+                    and p.locator("#upload-submit").is_disabled(),
+                    f"Ambiguous upload HTTP {status} requires explicit inventory reconciliation before retry",
+                    {
+                        "message": p.locator("#upload-message").inner_text(),
+                        "retry_disabled": p.locator("#upload-submit").is_disabled(),
+                    },
+                    fatal=False,
+                )
+                rig.click("#refresh-images")
+                expect(p.locator("#upload-submit")).to_be_enabled()
+            else:
+                expect(p.locator("#upload-message")).to_contain_text(
+                    f"Synthetic QA refusal {status}"
+                )
+                expect(p.locator("#upload-submit")).to_be_enabled()
             rig.check(
                 rig.config()["scene"] == original["scene"],
                 f"UI explains induced {status} and preserves live scene",
@@ -1091,7 +1308,7 @@ def image_negatives(rig):
             "Targeted retry requires fresh actual client paint and keeps geometry",
         )
     rig.manifest["limits"].append(
-        "Network-abort uncertainty is covered; the production 120-second XHR timeout and inventory refresh ordering remain unrun."
+        "This scenario covers network-abort uncertainty; native deadline and inventory ordering run in separate private edge cases."
     )
 
 
@@ -1196,7 +1413,7 @@ def race_suite(rig):
     )
     rig.manifest["limits"].extend(
         [
-            "Stale diagnostic roster, old paint acknowledgement and late assignment timeout ordering are not yet covered by this portable scenario.",
+            "Stale roster/diagnostics, old paint and uncertain batch writes run in separate private edge cases.",
             "Batch conflict and retained preview/action-subject races run in separate fresh private rigs.",
         ]
     )
@@ -1288,14 +1505,23 @@ def recovery(rig):
         [durable.get("generation"), fresh.get("generation")],
     )
     rig.manifest["limits"].append(
-        "One-client byte failure/retry and replacement different-hardware/reconnect guard variants remain open."
+        "Byte failure and lifecycle guard variants run in separate private edge cases; this scenario covers offline storage and private restart."
     )
 
 
 def main(argv=None):
+    from _redesign_edge_cases import EDGE_CASES
+
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--artifacts", required=True, type=Path)
-    parser.add_argument("--scenario", choices=("all", *SCENARIOS), default="all")
+    parser.add_argument(
+        "--ingress-proof",
+        type=Path,
+        help="Read-only external generated-ingress manifest; source hashes must match",
+    )
+    parser.add_argument(
+        "--scenario", choices=("all", *SCENARIOS, *EDGE_CASES), default="all"
+    )
     args = parser.parse_args(argv)
     out = new_artifacts(args.artifacts)
     from _redesign_scenarios import parity, edges, batch
@@ -1307,9 +1533,14 @@ def main(argv=None):
         "recovery": recovery,
         "parity": parity,
         "responsive": responsive,
+        **EDGE_CASES,
     }
     reports = []
     for name in SCENARIOS if args.scenario == "all" else (args.scenario,):
+        if name == "edge-cases":
+            for edge_name, body in EDGE_CASES.items():
+                reports.append(run_scenario(out / edge_name, edge_name, body))
+            continue
         reports.append(
             run_scenario(out / name, name, jobs[name], keyboard=name == "responsive")
         )
@@ -1342,16 +1573,21 @@ def main(argv=None):
                 out / "uploads-disabled", "uploads-disabled", disabled, uploads=False
             )
         )
+    ingress = external_ingress_proof(args.ingress_proof)
+    coverage = coverage_report(reports, ingress)
     result = {
         "source": source_identity(),
         "runs": reports,
         "pass": all(r["pass"] for r in reports),
         "acceptance_complete": False,
-        "mandatory_uncovered": MANDATORY_OPEN,
-        "limits": [
-            "Hardware, optical accuracy, sleep, TLS, live hotspot, video and soak remain unverified.",
-            "Native browser zoom and screen-reader smoke require manual verification; CSS zoom is labelled emulation.",
-        ],
+        "software_complete": all(row["status"] == "PASS" for row in coverage),
+        "coverage": coverage,
+        "external_ingress": ingress,
+        "mandatory_uncovered": [
+            row["requirement"] for row in coverage if row["status"] != "PASS"
+        ]
+        + ENVIRONMENT_OPEN,
+        "limits": ENVIRONMENT_OPEN,
     }
     (out / "results.json").write_text(json.dumps(result, indent=2) + "\n")
     return 0 if result["pass"] and args.scenario != "all" else 1
