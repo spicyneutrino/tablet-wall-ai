@@ -161,3 +161,33 @@ def test_a_rejected_image_leaves_no_ready_asset(operator):
     assert "detail" in response.json()
     assert library.status_code == 200
     assert library.json()["assets"] == []
+
+
+@pytest.mark.parametrize("origin,status", [(None, 503), ("", 503), ("null", 403),
+                                          ("not-an-origin", 403), ("http://127.0.0.1/path", 403),
+                                          ("http://127.0.0.1, http://127.0.0.1", 403)])
+def test_loopback_upload_without_a_valid_configured_origin_fails_closed(monkeypatch, tmp_path, origin, status):
+    monkeypatch.setenv("TABLET_WALL_UPLOAD_MODE", "loopback")
+    if origin is not None:
+        monkeypatch.setenv("TABLET_WALL_OPERATOR_ORIGIN", origin)
+    with TestClient(main.app, base_url="http://127.0.0.1", client=("127.0.0.1", 50000)) as client:
+        before = client.get("/api/v3/config").json()
+        response = client.post("/uploads", content=jpeg(), headers=headers())
+        assert response.status_code == status, response.text
+        after = client.get("/api/v3/config").json()
+        assert after["etag"] == before["etag"]
+    assert not [path for path in (tmp_path / "media" / "objects").rglob("*") if path.is_file()]
+
+
+def test_real_transport_fixture_refuses_remote_peer_despite_operator_credential(monkeypatch, tmp_path):
+    monkeypatch.setenv("TABLET_WALL_UPLOAD_MODE", "loopback")
+    monkeypatch.setenv("TABLET_WALL_OPERATOR_ORIGIN", ORIGIN)
+    monkeypatch.setenv("TABLET_WALL_OPERATOR_CREDENTIAL", "test-operator-credential-0123456789")
+    with TestClient(main.app, base_url="http://127.0.0.1", client=("10.0.0.7", 50000)) as client:
+        before = client.get("/api/v3/config").json()
+        response = client.post("/uploads", content=jpeg(), headers=headers(
+            **{"X-Tablet-Wall-Operator": "test-operator-credential-0123456789"}))
+        assert response.status_code == 403, response.text
+        assert "local transport peer" in response.json()["detail"]
+        assert client.get("/api/v3/config").json()["etag"] == before["etag"]
+    assert not [path for path in (tmp_path / "media" / "objects").rglob("*") if path.is_file()]

@@ -7,9 +7,12 @@ must strip the internal credential) and the authenticated operator listener
 mode). Skipped only when Caddy is not installed.
 """
 
+import hashlib
+import json
 import os
 import shutil
 import socket
+import sqlite3
 import subprocess
 import sys
 import time
@@ -18,6 +21,9 @@ from pathlib import Path
 
 import httpx
 import pytest
+from websockets.sync.client import connect
+
+from deploy import hotspot
 
 from video_fixtures import HAVE_FFMPEG, _ensure as build_fixture
 
@@ -25,6 +31,12 @@ CWD = Path(__file__).resolve().parents[1]
 CADDY = shutil.which("caddy")
 CREDENTIAL = "test-ingress-credential-0123456789"
 PASSWORD = "operator-test-password"
+
+
+@pytest.fixture(autouse=True)
+def private_caddy_directories(tmp_path, monkeypatch):
+    monkeypatch.setenv("XDG_CONFIG_HOME", str(tmp_path / "caddy-config"))
+    monkeypatch.setenv("XDG_DATA_HOME", str(tmp_path / "caddy-data"))
 
 
 def free_port() -> int:
@@ -449,3 +461,169 @@ def test_uploads_disabled_diagnostics_needs_operator_proof(tmp_path):
         assert verified.json()["media"]["integrity"] == {"ok": True, "problems": []}
         local = httpx.get(f"http://127.0.0.1:{app_port}/diagnostics")
         assert local.status_code == 200, local.text
+
+
+def stored_state(data):
+    with sqlite3.connect(f"file:{data / 'wall.db'}?mode=ro", uri=True) as db:
+        dump = "\n".join(db.iterdump()).encode()
+    return {
+        "database_sha256": hashlib.sha256(dump).hexdigest(),
+        "media_files": {
+            str(path.relative_to(data)): hashlib.sha256(path.read_bytes()).hexdigest()
+            for path in sorted((data / "media").rglob("*")) if path.is_file()
+        },
+    }
+
+
+@pytest.mark.skipif(CADDY is None, reason="Caddy is not installed; composed ingress remains unverified")
+@pytest.mark.timeout(60)
+def test_generated_hotspot_ingress_keeps_loopback_uploads_operator_only(tmp_path):
+    app_port, tablet_port = free_port(), free_port()
+    data = tmp_path / "data"
+    settings = hotspot.Settings("unused-test-interface", str(data), app_port, tablet_port)
+    env = app_env(tmp_path)
+    env.update(hotspot.backend_environment(settings, "127.0.0.1", data, None, True))
+    env.update({"XDG_CONFIG_HOME": str(tmp_path / "caddy-config"),
+                "XDG_DATA_HOME": str(tmp_path / "caddy-data")})
+    operator = f"http://127.0.0.1:{app_port}"
+    tablet = f"http://127.0.0.1:{tablet_port}"
+    config = tmp_path / "generated.Caddyfile"
+    config.write_text(hotspot.proxy_config("127.0.0.1", tablet_port))
+    manifest = {
+        "caddy_version": subprocess.check_output([CADDY, "version"], text=True).strip(),
+        "config_sha256": hashlib.sha256(config.read_bytes()).hexdigest(),
+        "allowlist_sha256": hashlib.sha256((CWD / "deploy/tablet-routes.caddy").read_bytes()).hexdigest(),
+        "backend_port": app_port, "tablet_port": tablet_port,
+        "operator_origin": operator, "upload_mode": env["TABLET_WALL_UPLOAD_MODE"],
+        "backend_bind": "127.0.0.1", "requests": [],
+        "source_sha256": {
+            path: hashlib.sha256((CWD / path).read_bytes()).hexdigest()
+            for path in ("main.py", "tabletwall/media.py", "deploy/hotspot.py", "tests/test_ingress.py")
+        },
+    }
+
+    def recorded(client, method, path, **kwargs):
+        response = client.request(method, path, **kwargs)
+        manifest["requests"].append({
+            "origin": str(client.base_url).rstrip("/"), "method": method, "path": path,
+            "headers": list(kwargs.get("headers", {}).items())
+                if isinstance(kwargs.get("headers", {}), dict) else kwargs["headers"],
+            "status": response.status_code,
+        })
+        return response
+
+    processes = ()
+    try:
+        with start_processes(config, env, app_port, f"{tablet}/client/") as (app, caddy), \
+                httpx.Client(base_url=operator, timeout=15) as local, \
+                httpx.Client(base_url=tablet, timeout=15) as public:
+            processes = (app, caddy)
+            assert app.poll() is None and caddy.poll() is None
+            before = recorded(local, "GET", "/api/v3/config").json()
+            assert before["capabilities"]["uploads"] is True
+            body = jpeg()
+            upload_headers = {"Origin": operator, "Content-Type": "image/jpeg"}
+            uploaded = recorded(local, "POST", "/uploads?name=operator.jpg",
+                                content=body, headers=upload_headers)
+            assert uploaded.status_code == 201, uploaded.text
+            descriptor = uploaded.json()["asset"]
+            manifest["published_asset"] = descriptor
+            after = recorded(local, "GET", "/api/v3/config").json()
+            assert (after["etag"], after["scene"], after["layout"]) == (
+                before["etag"], before["scene"], before["layout"])
+            baseline = stored_state(data)
+            manifest["state_before_denials"] = baseline
+
+            bad_origins = [[], [("Origin", "http://wrong.invalid")], [("Origin", "null")],
+                           [("Origin", operator), ("Origin", operator)],
+                           [("Origin", f"{operator}, {operator}")]]
+            for origins in bad_origins:
+                refused = recorded(local, "POST", "/uploads?name=refused.jpg", content=body,
+                                   headers=[("Content-Type", "image/jpeg"), *origins])
+                assert refused.status_code == 403, refused.text
+            for header in ("Forwarded", "X-Forwarded-For", "X-Forwarded-Host",
+                           "X-Forwarded-Proto", "X-Forwarded-Port", "X-Forwarded-Anything"):
+                refused = recorded(local, "POST", "/uploads?name=forwarded.jpg", content=body,
+                                   headers={**upload_headers, header: "127.0.0.1",
+                                            "X-Tablet-Wall-Operator": CREDENTIAL})
+                assert refused.status_code == 403, refused.text
+
+            device_id = "00000000-0000-4000-8000-000000000001"
+            read_paths = ["/uploads", "/media", "/api/v3/images", "/assets", "/devices",
+                          "/controller/", "/controller/physical.html", "/controller/physical.js",
+                          "/ws/controller", "/diagnostics", "/healthz", "/operator-config",
+                          "/api/v3/config", "/api/v3/readiness", "/api/v3/join-qr",
+                          f"/api/v3/devices/{device_id}/impact", "/wall", "/scene", "/docs"]
+            mutations = [("POST", "/uploads"), ("POST", "/media/verify"),
+                         ("PUT", "/wall"), ("PUT", "/scene"), ("POST", "/wall/pack"),
+                         ("POST", "/wall/auto"), ("PUT", "/api/v3/scene"),
+                         ("PUT", "/api/v3/layout"), ("PUT", "/api/v3/logical-layout"),
+                         ("POST", "/api/v3/layout/clear"), ("POST", "/api/v3/grid"),
+                         ("POST", "/api/v3/grid/preview"), ("PUT", "/api/v3/config"),
+                         ("PATCH", "/api/v3/config"), ("DELETE", "/api/v3/config"),
+                         ("DELETE", f"/devices/{device_id}"),
+                         ("POST", f"/devices/{device_id}/rebind"),
+                         ("POST", f"/api/v3/devices/{device_id}/remove"),
+                         ("DELETE", f"/api/v3/devices/{device_id}"),
+                         ("POST", f"/api/v3/devices/{device_id}/rebind/preview"),
+                         ("POST", f"/api/v3/devices/{device_id}/rebind"),
+                         ("PUT", "/api/v3/scenes/denied"),
+                         ("PUT", "/api/v3/logical-layouts/denied")]
+            for forged in ({}, {"Origin": operator, "X-Tablet-Wall-Operator": CREDENTIAL,
+                                "Forwarded": "for=127.0.0.1;proto=http",
+                                "X-Forwarded-For": "127.0.0.1",
+                                "X-Forwarded-Host": f"127.0.0.1:{app_port}",
+                                "X-Forwarded-Proto": "http"}):
+                for method, path in [(method, path) for path in read_paths
+                                     for method in ("GET", "HEAD")] + mutations:
+                    if path == "/uploads" and method == "POST":
+                        kwargs = {"content": body, "headers": {**upload_headers, **forged}}
+                    else:
+                        kwargs = {"headers": {"Origin": operator, "If-Match": before["etag"], **forged}}
+                        if method not in ("GET", "HEAD"):
+                            kwargs["json"] = {"confirm": True, "width": 900, "height": 700}
+                    refused = recorded(public, method, path, **kwargs)
+                    assert refused.status_code == 403, (method, path, refused.text)
+                refused = recorded(public, "GET", "/ws/controller?protocol=3", headers={
+                    **forged, "Origin": operator, "Connection": "Upgrade", "Upgrade": "websocket",
+                    "Sec-WebSocket-Version": "13", "Sec-WebSocket-Key": "dGhlIHNhbXBsZSBub25jZQ=="})
+                assert refused.status_code == 403
+
+            final = stored_state(data)
+            manifest["state_after_denials"] = final
+            assert final == baseline
+            assert recorded(local, "GET", "/api/v3/config").json()["etag"] == before["etag"]
+            assert len(recorded(local, "GET", "/media").json()["assets"]) == 1
+            for path in ("/client/", "/client/client.js", "/client/client.css", "/client/view.js"):
+                assert recorded(public, "GET", path).status_code == 200
+            redirect = recorded(public, "GET", "/client")
+            assert redirect.status_code == 308 and redirect.headers["location"] == "/client/"
+            published = recorded(public, "GET", descriptor["url"])
+            assert published.status_code == 200
+            assert "immutable" in published.headers["cache-control"]
+            assert "sha256:" + hashlib.sha256(published.content).hexdigest() == descriptor["id"]
+            assert published.content == recorded(local, "GET", descriptor["url"]).content
+            head = recorded(public, "HEAD", descriptor["url"])
+            assert head.status_code == 200 and head.content == b""
+            assert int(head.headers["content-length"]) == len(published.content)
+            registered = recorded(public, "POST", "/devices/register", json={
+                "device_id": device_id, "width": 1024, "height": 768, "device_type": "test"},
+                headers={"Origin": tablet, "X-Tablet-Wall-Operator": CREDENTIAL})
+            assert registered.status_code == 200, registered.text
+            with connect(f"ws://127.0.0.1:{tablet_port}/ws/device?device_id={device_id}&protocol=3",
+                         origin=tablet, open_timeout=5, close_timeout=2) as ws:
+                welcome = json.loads(ws.recv(timeout=5))
+                assert welcome["type"] == "welcome" and welcome["device_id"] == device_id
+                assert welcome["protocol"] == 3
+                manifest["device_websocket"] = {"status": 101, "welcome": welcome}
+            manifest["passed"] = True
+    finally:
+        manifest["cleanup"] = {}
+        for name, port in (("backend", app_port), ("tablet", tablet_port)):
+            with socket.socket() as probe:
+                manifest["cleanup"][f"{name}_port_closed"] = probe.connect_ex(("127.0.0.1", port)) != 0
+        manifest["process_exit_codes"] = {
+            name: process.poll() for name, process in zip(("backend", "caddy"), processes)
+        }
+        (tmp_path / "ingress-manifest.json").write_text(json.dumps(manifest, indent=2) + "\n")
+    assert all(manifest["cleanup"].values())

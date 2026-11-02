@@ -51,6 +51,8 @@ def test_startup_reports_a_log_failure_before_trying_http(tmp_path, monkeypatch)
 @pytest.fixture(autouse=True)
 def isolated_runtime_directory(tmp_path, monkeypatch):
     monkeypatch.setenv("XDG_RUNTIME_DIR", str(tmp_path))
+    monkeypatch.setenv("XDG_CONFIG_HOME", str(tmp_path / "config"))
+    monkeypatch.setenv("XDG_DATA_HOME", str(tmp_path / "data-home"))
 
 
 def args(**values):
@@ -137,12 +139,14 @@ def test_interrupted_firewall_change_is_recovered_before_reuse(tmp_path, monkeyp
     assert not ownership.exists()
 
 
-def test_occupied_port_does_not_touch_data_or_existing_server(tmp_path):
+@pytest.mark.parametrize("operator_uploads", [False, True])
+def test_occupied_port_does_not_touch_data_or_existing_server(tmp_path, operator_uploads):
     with socket.socket() as server:
         server.bind(("127.0.0.1", 0))
         settings = hotspot.Settings("ap0", str(tmp_path / "data"), server.getsockname()[1], 18080)
         with pytest.raises(RuntimeError, match="already in use"):
-            hotspot.run(settings, "127.0.0.1", tmp_path / "hotspot.json")
+            hotspot.run(settings, "127.0.0.1", tmp_path / "hotspot.json",
+                        operator_uploads=operator_uploads)
         assert not (tmp_path / "data").exists()
         assert server.getsockname()[1] == settings.backend_port
 
@@ -201,7 +205,8 @@ def free_port():
 
 
 @pytest.mark.skipif(shutil.which("caddy") is None, reason="Caddy is not installed")
-def test_real_launcher_checks_persists_restarts_and_cleans_up(tmp_path):
+@pytest.mark.parametrize("operator_uploads", [False, True])
+def test_real_launcher_checks_persists_restarts_and_cleans_up(tmp_path, operator_uploads):
     backend_port, tablet_port = free_port(), free_port()
     data = tmp_path / "data"
     config = tmp_path / "hotspot.json"
@@ -212,7 +217,7 @@ from pathlib import Path
 from deploy import hotspot
 hotspot.firewall_open = lambda interface, port, ownership: ownership.write_text('{{"zone":"test-zone","port":' + str(port) + '}}')
 hotspot.command = lambda *args: Path({str(removed)!r}).write_text(" ".join(args))
-hotspot.run(hotspot.Settings(**{hotspot.asdict(settings)!r}), "127.0.0.1", Path({str(config)!r}))
+hotspot.run(hotspot.Settings(**{hotspot.asdict(settings)!r}), "127.0.0.1", Path({str(config)!r}), operator_uploads={operator_uploads!r})
 '''
     env = {key: value for key, value in os.environ.items()
            if not key.startswith(("TABLET_WALL_", "WALL_"))}
@@ -230,6 +235,10 @@ hotspot.run(hotspot.Settings(**{hotspot.asdict(settings)!r}), "127.0.0.1", Path(
                 assert config.exists(), (tmp_path / "launcher.log").read_text() + (data / "caddy.log").read_text()
                 assert json.loads(config.read_text()) == hotspot.asdict(settings)
                 assert "Ready." in (tmp_path / "launcher.log").read_text()
+                with socket.socket() as probe:
+                    assert probe.connect_ex(("127.0.0.2", backend_port)) != 0
+                assert httpx.get(operator + "/api/v3/config").json()["capabilities"]["uploads"] is operator_uploads
+                assert httpx.put(operator + "/wall", json={"width": 999, "height": 999}).status_code == 403
                 redirect = httpx.get(tablet + "/client", follow_redirects=False)
                 assert redirect.status_code == 308
                 assert redirect.headers["location"] == "/client/"
@@ -281,7 +290,7 @@ def test_preflight_prints_the_actual_settings(tmp_path, capsys):
     assert "http://127.0.0.1:18000/controller/physical.html" in output
     assert "Wi-Fi network: Wall-Lab" in output
     assert str(tmp_path / "wall") in output
-    assert "managed uploads disabled" in output
+    assert "Image uploads: disabled (use --operator-uploads for this launch)" in output
     assert "unknown" not in output
 
 
@@ -289,6 +298,65 @@ def test_preflight_says_unknown_when_the_ssid_was_not_discovered(tmp_path, capsy
     settings = hotspot.Settings("ap0", str(tmp_path / "wall"), 18000, 18080)
     hotspot.preflight(settings, "10.42.0.1", None)
     assert "Wi-Fi network: unknown" in capsys.readouterr().out
+
+
+def test_preflight_names_local_only_upload_opt_in(tmp_path, capsys):
+    settings = hotspot.Settings("ap0", str(tmp_path / "wall"), 18000, 18080)
+    hotspot.preflight(settings, "10.42.0.1", "Wall-Lab", operator_uploads=True)
+    assert "Image uploads: this computer only" in capsys.readouterr().out
+
+
+@pytest.mark.parametrize("mode", ["proxy", "loopback", "unknown", ""])
+@pytest.mark.parametrize("flag", [[], ["--operator-uploads"]])
+def test_inherited_upload_modes_are_refused_even_with_flag(tmp_path, monkeypatch, capsys, mode, flag):
+    monkeypatch.setenv("TABLET_WALL_UPLOAD_MODE", mode)
+    monkeypatch.setattr(hotspot.shutil, "which", lambda _: "/bin/tool")
+    config = tmp_path / "config" / "hotspot.json"
+    monkeypatch.setattr(sys, "argv", ["hotspot", "--config", str(config), *flag])
+    monkeypatch.setattr(hotspot, "hotspot_address", lambda _: pytest.fail("must refuse before discovery"))
+    assert hotspot.main() == 1
+    assert "does not inherit TABLET_WALL_UPLOAD_MODE" in capsys.readouterr().err
+    assert not config.parent.exists()
+
+
+@pytest.mark.parametrize("flag", [[], ["--operator-uploads"]])
+def test_authentication_is_still_refused_before_discovery(tmp_path, monkeypatch, capsys, flag):
+    monkeypatch.setenv("TABLET_WALL_AUTH_TOKEN", "test-token")
+    monkeypatch.setattr(hotspot.shutil, "which", lambda _: "/bin/tool")
+    config = tmp_path / "config" / "hotspot.json"
+    monkeypatch.setattr(sys, "argv", ["hotspot", "--config", str(config), *flag])
+    monkeypatch.setattr(hotspot, "hotspot_address", lambda _: pytest.fail("must refuse before discovery"))
+    assert hotspot.main() == 1
+    assert "authentication unset" in capsys.readouterr().err
+    assert not config.parent.exists()
+
+
+@pytest.mark.parametrize("enabled", [False, True])
+def test_main_passes_only_the_launch_flag_and_never_saved_authorization(tmp_path, monkeypatch, enabled):
+    settings = hotspot.Settings("ap0", str(tmp_path / "wall"), 18000, 18080)
+    config = tmp_path / "hotspot.json"
+    config.write_text(json.dumps({**hotspot.asdict(settings), "operator_uploads": True}))
+    monkeypatch.setenv("TABLET_WALL_UPLOAD_MODE", "disabled")
+    monkeypatch.setattr(hotspot.shutil, "which", lambda _: "/bin/tool")
+    monkeypatch.setattr(hotspot, "hotspot_address", lambda _: ("ap0", "10.42.0.1"))
+    monkeypatch.setattr(hotspot, "hotspot_name", lambda _: "Wall-Lab")
+    monkeypatch.setattr(sys, "argv", ["hotspot", "--config", str(config)] +
+                        (["--operator-uploads"] if enabled else []))
+    launches = []
+    monkeypatch.setattr(hotspot, "run", lambda *args: launches.append(args))
+    assert hotspot.main() == 0
+    assert launches == [(settings, "10.42.0.1", config, "Wall-Lab", enabled)]
+
+
+@pytest.mark.parametrize("enabled", [False, True])
+def test_backend_environment_sets_only_the_selected_upload_profile(monkeypatch, tmp_path, enabled):
+    monkeypatch.setenv("TABLET_WALL_UPLOAD_MODE", "disabled")
+    monkeypatch.setenv("TABLET_WALL_OPERATOR_ORIGIN", "http://inherited.invalid")
+    settings = hotspot.Settings("ap0", str(tmp_path), 18000, 18080)
+    env = hotspot.backend_environment(settings, "10.42.0.1", tmp_path, None, enabled)
+    assert env["TABLET_WALL_UPLOAD_MODE"] == ("loopback" if enabled else "disabled")
+    assert env["TABLET_WALL_OPERATOR_ORIGIN"] == "http://127.0.0.1:18000"
+    assert env["TABLET_WALL_TABLET_ORIGIN"] == "http://10.42.0.1:18080"
 
 
 def test_rotating_log_keeps_a_hard_retention_ceiling(tmp_path):

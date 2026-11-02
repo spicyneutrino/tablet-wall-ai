@@ -17,14 +17,45 @@ commit, uses separate launcher configuration/ports, and records all observations
 - Pick a data directory with room for `wall.db`, `assets/`, `media/`, and the
   two logs. The default is `~/.local/share/tablet-wall-ai`.
 - Never run this profile on shared or venue Wi-Fi. Registration and device
-  sockets are open to hotspot clients, uploads are disabled, and there is no
-  app login in the HTTP trial.
+  sockets are open to hotspot clients, and there is no app login in the HTTP
+  trial. Image uploads are disabled by default.
 
 ## 2. Start
 
 ```sh
 make hotspot ARGS='--data-dir /absolute/path/to/wall-data'
 ```
+
+To add an image from the controller running on this computer, opt in for that
+launch:
+
+```sh
+make hotspot ARGS='--data-dir /absolute/path/to/wall-data --operator-uploads'
+```
+
+With the default data directory, use `make hotspot ARGS='--operator-uploads'`.
+The preflight prints **Image uploads: this computer only** when enabled,
+or **Image uploads: disabled** with launch help when off.
+
+The flag is not saved in hotspot settings. It enables the backend's existing
+loopback upload admission for the exact controller Origin on `127.0.0.1` and
+the configured backend port. The upload request must come directly from this
+computer; forwarded requests are refused. It does not make the controller
+available from a phone on the hotspot. The tablet listener continues to deny
+uploads, library routes, controller pages, and operator commands. The UI and
+Settings help explain **Adding images is off for this launch** and the launch
+command. A browser setting cannot enable uploads. Inherited non-disabled
+`TABLET_WALL_UPLOAD_MODE` values are refused, even with the flag. Unset that
+variable before using this launch option. The HTTP trial still refuses
+`TABLET_WALL_AUTH_TOKEN`; use the separate authenticated HTTPS deployment for
+that profile.
+
+This is a trusted single-operator computer profile. A local process can forge
+the exact Origin header, so this check is not local-user authentication.
+Requests require one exact Origin, a loopback transport peer, and no
+`Forwarded` or `X-Forwarded-*` headers. The backend stays bound to `127.0.0.1`.
+Testing a phone-sized viewport on this local origin does not admit a remote
+phone. Shared or venue Wi-Fi remains unsupported.
 
 The launcher prints a preflight block with the interface, hotspot address,
 exact tablet URL, controller URL, Wi-Fi name (or `unknown`), data paths, and

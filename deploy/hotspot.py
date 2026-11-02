@@ -231,7 +231,7 @@ def wait_for(origin: str, children: list[subprocess.Popen[bytes]], stopped: thre
 
 
 def run(settings: Settings, address: str, config_path: Path,
-        wifi_name: str | None = None) -> None:
+        wifi_name: str | None = None, operator_uploads: bool = False) -> None:
     runtime = Path(os.environ.get("XDG_RUNTIME_DIR", Path.home() / ".cache")) / "tablet-wall-ai"
     runtime.mkdir(parents=True, exist_ok=True)
     port_path = runtime / f"hotspot-{settings.tablet_port}"
@@ -240,22 +240,42 @@ def run(settings: Settings, address: str, config_path: Path,
             fcntl.flock(lock, fcntl.LOCK_EX | fcntl.LOCK_NB)
         except BlockingIOError:
             raise RuntimeError("A hotspot launcher already owns this tablet port.") from None
-        _run(settings, address, config_path, port_path.with_suffix(".firewall.json"), wifi_name)
+        _run(settings, address, config_path, port_path.with_suffix(".firewall.json"),
+             wifi_name, operator_uploads)
 
 
-def preflight(settings: Settings, address: str, wifi_name: str | None) -> None:
+def preflight(settings: Settings, address: str, wifi_name: str | None,
+              operator_uploads: bool = False) -> None:
     """Print the settings this launch will actually use, before it binds."""
     tablet = f"http://{address}:{settings.tablet_port}/client/"
     operator = f"http://127.0.0.1:{settings.backend_port}"
     print(f"Preflight: interface {settings.interface}; hotspot address {address}\n"
           f"  Tablet URL: {tablet}\n"
           f"  Controller (this computer only): {operator}/controller/physical.html\n"
+          f"  Image uploads: {'this computer only' if operator_uploads else 'disabled (use --operator-uploads for this launch)'}\n"
           f"  Wi-Fi network: {wifi_name or 'unknown'}\n"
           f"  Data and logs: {settings.data_dir} "
           "(wall.db, assets/, media/, backend.log, caddy.log)\n"
           "  Security: HTTP trusted-hotspot trial; app authentication unset; "
-          "managed uploads disabled; not safe on shared or venue Wi-Fi.",
+          "not safe on shared or venue Wi-Fi.",
           flush=True)
+
+
+def backend_environment(settings: Settings, address: str, data: Path,
+                        wifi_name: str | None, operator_uploads: bool) -> dict[str, str]:
+    env = {
+        **os.environ,
+        "TABLET_WALL_DB": str(data / "wall.db"),
+        "TABLET_WALL_ASSET_DIR": str(data / "assets"),
+        "TABLET_WALL_MEDIA_DIR": str(data / "media"),
+        "TABLET_WALL_TABLET_ORIGIN": f"http://{address}:{settings.tablet_port}",
+        "TABLET_WALL_OPERATOR_ORIGIN": f"http://127.0.0.1:{settings.backend_port}",
+        "WALL_BACKEND_PORT": str(settings.backend_port),
+        "TABLET_WALL_UPLOAD_MODE": "loopback" if operator_uploads else "disabled",
+    }
+    if wifi_name:
+        env["TABLET_WALL_WIFI_NAME"] = wifi_name
+    return env
 
 
 def spawn_logged(argv: list[str], env: dict[str, str],
@@ -301,7 +321,7 @@ def readiness_summary(operator: str) -> dict | None:
 
 
 def _run(settings: Settings, address: str, config_path: Path, ownership_path: Path,
-         wifi_name: str | None = None) -> None:
+         wifi_name: str | None = None, operator_uploads: bool = False) -> None:
     tablet = f"http://{address}:{settings.tablet_port}"
     operator = f"http://127.0.0.1:{settings.backend_port}"
     for host, port in (("127.0.0.1", settings.backend_port), (address, settings.tablet_port)):
@@ -318,17 +338,7 @@ def _run(settings: Settings, address: str, config_path: Path, ownership_path: Pa
         path.mkdir(parents=True, exist_ok=True)
     proxy_path = config_path.with_suffix(".Caddyfile")
     proxy_path.write_text(proxy_config(address, settings.tablet_port))
-    env = {
-        **os.environ,
-        "TABLET_WALL_DB": str(data / "wall.db"),
-        "TABLET_WALL_ASSET_DIR": str(data / "assets"),
-        "TABLET_WALL_MEDIA_DIR": str(data / "media"),
-        "TABLET_WALL_TABLET_ORIGIN": tablet,
-        "TABLET_WALL_OPERATOR_ORIGIN": operator,
-        "WALL_BACKEND_PORT": str(settings.backend_port),
-    }
-    if wifi_name:
-        env["TABLET_WALL_WIFI_NAME"] = wifi_name
+    env = backend_environment(settings, address, data, wifi_name, operator_uploads)
     caddy = os.environ.get("CADDY_BIN", "caddy")
     validation = subprocess.run(
         [caddy, "validate", "--config", str(proxy_path), "--adapter", "caddyfile"],
@@ -407,6 +417,8 @@ def main() -> int:
     parser.add_argument("--data-dir", help="persistent database, assets, media, and logs directory")
     parser.add_argument("--backend-port", type=int)
     parser.add_argument("--tablet-port", type=int)
+    parser.add_argument("--operator-uploads", action="store_true",
+                        help="allow image uploads from this computer's local browser for this launch only (default: disabled)")
     default_config = Path(os.environ.get("XDG_CONFIG_HOME", Path.home() / ".config")) / "tablet-wall-ai/hotspot.json"
     parser.add_argument("--config", type=Path, default=default_config)
     args = parser.parse_args()
@@ -414,8 +426,11 @@ def main() -> int:
         for executable in ("nmcli", "ip", "firewall-cmd", os.environ.get("CADDY_BIN", "caddy")):
             if shutil.which(executable) is None:
                 raise ValueError(f"Install {executable} before running make hotspot.")
-        if os.environ.get("TABLET_WALL_AUTH_TOKEN") or os.environ.get("TABLET_WALL_UPLOAD_MODE", "disabled") != "disabled":
-            raise ValueError("This HTTP trial needs authentication unset and uploads disabled. Use the HTTPS deployment for authenticated operation.")
+        if os.environ.get("TABLET_WALL_AUTH_TOKEN"):
+            raise ValueError("This HTTP trial needs authentication unset. Use the HTTPS deployment for authenticated operation.")
+        inherited_upload_mode = os.environ.get("TABLET_WALL_UPLOAD_MODE", "disabled").strip().lower()
+        if inherited_upload_mode != "disabled":
+            raise ValueError("This launcher does not inherit TABLET_WALL_UPLOAD_MODE. Unset it and use --operator-uploads for local image uploads.")
         config_path = args.config.expanduser().resolve()
         config_path.parent.mkdir(parents=True, exist_ok=True)
         with config_path.with_suffix(".lock").open("a") as lock:
@@ -425,8 +440,8 @@ def main() -> int:
                 raise RuntimeError("This hotspot launcher is already running.") from None
             settings, address = read_settings(config_path, args)
             wifi_name = os.environ.get("TABLET_WALL_WIFI_NAME") or hotspot_name(settings.interface)
-            preflight(settings, address, wifi_name)
-            run(settings, address, config_path, wifi_name)
+            preflight(settings, address, wifi_name, args.operator_uploads)
+            run(settings, address, config_path, wifi_name, args.operator_uploads)
         return 0
     except (OSError, ValueError, TypeError, RuntimeError, subprocess.SubprocessError, http.client.HTTPException) as error:
         print(f"Hotspot startup failed: {error}", file=sys.stderr)

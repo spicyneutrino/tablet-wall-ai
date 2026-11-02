@@ -25,7 +25,7 @@ dev: ## Run the dev server with auto-reload
 run: ## Run the server without auto-reload
 	@cd "$(ROOT)" && uv run fastapi run main.py --host $(HOST) --port $(PORT)
 
-hotspot: ## Run tablets on the active hotspot with persistent data
+hotspot: ## Run tablets on the active hotspot; optional --operator-uploads enables local-browser image uploads
 	@cd "$(ROOT)" && uv run python -m deploy.hotspot $(ARGS)
 
 test: ## Run Python and client JavaScript tests

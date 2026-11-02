@@ -60,6 +60,19 @@ class TestAdmission:
             media.admit_upload(request())
         assert error.value.status == 503
 
+    @pytest.mark.parametrize("mode,status", [("", 403), ("DISABLED", 403), ("bogus", 503)])
+    def test_invalid_or_disabled_modes_fail_closed(self, monkeypatch, tmp_path, mode, status):
+        configure(monkeypatch, tmp_path, mode=mode)
+        with pytest.raises(media.StoreError) as error:
+            media.admit_upload(request())
+        assert error.value.status == status
+
+    def test_comma_joined_origin_is_refused(self, monkeypatch, tmp_path):
+        configure(monkeypatch, tmp_path)
+        with pytest.raises(media.StoreError) as error:
+            media.admit_upload(request(origin=f"{ORIGIN}, {ORIGIN}"))
+        assert error.value.status == 403
+
     def test_an_enabled_mode_without_an_operator_origin_denies(self, monkeypatch, tmp_path):
         configure(monkeypatch, tmp_path, mode="loopback")
         monkeypatch.delenv("TABLET_WALL_OPERATOR_ORIGIN")
@@ -88,9 +101,23 @@ class TestAdmission:
 
     def test_loopback_refuses_forwarded_headers(self, monkeypatch, tmp_path):
         configure(monkeypatch, tmp_path, mode="loopback")
-        for header in ("x-forwarded-for", "forwarded", "x-forwarded-proto"):
+        for header in ("x-forwarded-for", "forwarded", "x-forwarded-proto",
+                       "x-forwarded-host", "x-forwarded-port", "x-forwarded-anything"):
             with pytest.raises(media.StoreError) as error:
                 media.admit_upload(request(extra=[(header, "10.0.0.7")]))
+            assert error.value.status == 403
+
+    def test_forged_operator_credential_does_not_bypass_loopback_guards(
+        self, monkeypatch, tmp_path
+    ):
+        configure(monkeypatch, tmp_path, mode="loopback")
+        for host, extra in (
+            ("10.0.0.7", [("x-tablet-wall-operator", CREDENTIAL)]),
+            ("127.0.0.1", [("x-tablet-wall-operator", CREDENTIAL),
+                           ("x-forwarded-for", "127.0.0.1")]),
+        ):
+            with pytest.raises(media.StoreError) as error:
+                media.admit_upload(request(host=host, extra=extra))
             assert error.value.status == 403
 
     def test_proxy_requires_exactly_one_matching_credential(self, monkeypatch, tmp_path):
