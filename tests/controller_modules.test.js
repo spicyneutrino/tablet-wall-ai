@@ -164,7 +164,7 @@ assert.equal(inventoryController.model.normalizeAssets({}), null);
 })().catch(error => { console.error(error); process.exitCode = 1; });
 load("physical-stage.js");
 const physicalEditor = {
-    busy: false, selectedId: "tablet", draft: { slots: { tablet: {
+    busy: false, tabName: "show", selectedId: "tablet", draft: { slots: { tablet: {
         center_x_mm: 10, center_y_mm: 20, nudge_x_mm: 0, nudge_y_mm: 0, mount_angle: 270
     } } }
 };
