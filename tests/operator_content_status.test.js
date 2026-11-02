@@ -42,6 +42,8 @@ const content = context.window.OperatorContent.create({ state, renderStage() {},
     content.render(); assert.match(node("image-message").textContent, /confirm display/);
     render.accepted_token = { ...token, revision: 1 }; content.render(); assert.match(node("image-message").textContent, /stale/);
     render.state = "failed"; content.render(); assert.match(node("image-message").textContent, /failure/);
+    config.runtime.devices.t.mapping.state = "needs_calibration"; content.render(); assert.match(node("image-message").textContent, /cannot confirm/);
+    config.runtime.devices.t.mapping.state = "ready";
     config.runtime.devices.t.online = false; content.render(); assert.match(node("image-message").textContent, /offline/);
     config.runtime.devices.t.online = true; config.revision = 3; content.render(); assert.match(node("image-message").textContent, /changed after/);
     config.revision = 2;

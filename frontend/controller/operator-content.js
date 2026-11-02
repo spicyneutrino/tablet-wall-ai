@@ -5,8 +5,8 @@ window.OperatorContent = {
         let images = [], selected = null, fit = "cover", selectionDirty = false, loading = false, busy = false, inventoryReady = false;
         let previous = null, xhr = null, inventoryVersion = 0, selectionVersion = 0, baseEtag = null, savedScene = null, uploadUncertain = false;
         const gallery = new Map();
-        let messageError = false, shownRevision = null;
-        const message = (text, error = false) => { shownRevision = null; messageError = error; $("image-message").textContent = text; };
+        let retainMessage = false, shownRevision = null;
+        const message = (text, retain = false) => { shownRevision = null; retainMessage = retain; $("image-message").textContent = text; };
         function renderShownStatus() {
             if (!shownRevision) return;
             const config = state.operatorConfig;
@@ -22,7 +22,7 @@ window.OperatorContent = {
                 else if (states.some(item => item.status === "failed")) text = label + " applied. A tablet reported a display failure; review tablet status.";
                 else if (states.some(item => item.status === "offline" || item.status === "unknown" && !item.online)) text = label + " applied. A tablet is offline or missing; review tablet status.";
                 else if (states.some(item => item.status === "stale")) text = label + " applied. Tablet display confirmation is stale.";
-                else if (states.some(item => ["blocked", "hidden", "unsupported", "unsupported_client", "unsupported_content"].includes(item.status))) text = label + " applied. A tablet cannot confirm display; review tablet status.";
+                else if (states.some(item => item.status !== "displayed" && item.status !== "loading")) text = label + " applied. A tablet cannot confirm display; review tablet status.";
                 else if (states.every(item => item.status === "displayed")) text = label + " applied. Current tablet reports confirm display.";
                 else text = label + " applied. Waiting for current tablet reports.";
             }
@@ -153,8 +153,7 @@ window.OperatorContent = {
                 previous = before ? sceneInput(before) : previous;
                 if (selectionVersion === submitted) { selectionDirty = false; savedScene = null; baseEtag = null; }
                 ingestConfig(result, { preserveDraft: true });
-                if (messageError !== true) {
-                    messageError = false;
+                if (!retainMessage) {
                     shownRevision = result && result.generation !== undefined && result.revision !== undefined
                         ? { generation: result.generation, revision: result.revision, image: content.type === "image" } : null;
                     if (shownRevision) renderShownStatus();
@@ -164,7 +163,7 @@ window.OperatorContent = {
                 return true;
             } catch (error) {
                 if (error.status === 412) showConflict("The wall changed. Your image choice is retained with its original guard. Review current state before rebuilding this preview.");
-                message("Could not show this content. " + error.message + " Your selection and geometry are retained.", "show");
+                message("Could not show this content. " + error.message + " Your selection and geometry are retained.");
                 return false;
             } finally { busy = false; render(); renderStage(); }
         }
