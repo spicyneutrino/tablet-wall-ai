@@ -80,7 +80,7 @@ def test_tablet_ingress_strips_the_operator_credential():
     tablet = re.sub(r"#.*", "", tablet)
     lines = tablet.splitlines()
     proxy_lines = [index for index, line in enumerate(lines) if "reverse_proxy" in line]
-    assert len(proxy_lines) == 7
+    assert len(proxy_lines) == 8
     for index in proxy_lines:
         assert lines[index + 1].strip() == "header_up -X-Tablet-Wall-Operator"
     assert not re.search(r"header_up\s+X-Tablet-Wall-Operator", tablet)

@@ -596,6 +596,11 @@ def test_generated_hotspot_ingress_keeps_loopback_uploads_operator_only(tmp_path
             assert len(recorded(local, "GET", "/media").json()["assets"]) == 1
             for path in ("/client/", "/client/client.js", "/client/client.css", "/client/view.js", "/client/favicon.svg"):
                 assert recorded(public, "GET", path).status_code == 200
+            icon = recorded(public, "HEAD", "/client/favicon.svg")
+            assert icon.status_code == 200 and icon.content == b""
+            for method, path in (("POST", "/client/favicon.svg"), ("HEAD", "/client/favicon.svg/extra"),
+                                 ("HEAD", "/client/client.js")):
+                assert recorded(public, method, path).status_code == 403
             redirect = recorded(public, "GET", "/client")
             assert redirect.status_code == 308 and redirect.headers["location"] == "/client/"
             published = recorded(public, "GET", descriptor["url"])

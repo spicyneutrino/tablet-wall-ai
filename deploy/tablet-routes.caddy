@@ -13,9 +13,19 @@
 	# credential, so a forged header from a tablet never reaches the backend.
 	@client {
 		method GET
-		path /client/ /client/index.html /client/client.js /client/client.css /client/view.js /client/ruler.js /client/favicon.svg
+		path /client/ /client/index.html /client/client.js /client/client.css /client/view.js /client/ruler.js
 	}
 	handle @client {
+		reverse_proxy 127.0.0.1:{$WALL_BACKEND_PORT:8000} {
+			header_up -X-Tablet-Wall-Operator
+		}
+	}
+
+	@client_icon {
+		method GET HEAD
+		path /client/favicon.svg
+	}
+	handle @client_icon {
 		reverse_proxy 127.0.0.1:{$WALL_BACKEND_PORT:8000} {
 			header_up -X-Tablet-Wall-Operator
 		}

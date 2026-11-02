@@ -143,18 +143,24 @@ window.OperatorContent = {
             request.setRequestHeader("Content-Type", file.type || "application/octet-stream");
             request.upload.onprogress = event => { if (event.lengthComputable) $("upload-progress").value = event.loaded / event.total * 100; };
             request.upload.onload = () => { $("upload-message").textContent = "Transfer complete. Checking and preparing the image…"; $("upload-progress").removeAttribute("value"); };
+            const uncertain = () => {
+                inventoryVersion += 1; loading = false; uploadUncertain = true;
+                $("upload-message").textContent = "Upload completion is uncertain. Refresh images and check the library before retrying. Nothing was shown automatically.";
+            };
             request.onload = async () => {
                 let result; try { result = JSON.parse(request.responseText); } catch (_) { result = {}; }
-                if (request.status >= 200 && request.status < 300 && result.asset) {
-                    const id = result.asset.id || result.asset.asset_id;
+                const success = request.status >= 200 && request.status < 300;
+                const id = result && result.asset && (result.asset.id || result.asset.asset_id);
+                if (request.status >= 500 || request.status === 0 || success && (typeof id !== "string" || !id)) {
+                    uncertain();
+                } else if (success) {
                     inventoryVersion += 1;
                     const selectedUpload = selectionVersion === selectionAtUpload && await choose(id);
                     $("upload-message").textContent = selectedUpload ? "Image added and selected. Review Fit / Fill, then Show image. Nothing was shown automatically."
                         : "Image added to the library. Your newer choice is retained. Nothing was shown automatically.";
                     await refresh();
-                } else $("upload-message").textContent = "Image addition refused. " + (typeof result.detail === "string" ? result.detail : result.detail && result.detail.message || "HTTP " + request.status) + ". Check the file or launch admission, then retry.";
+                } else $("upload-message").textContent = "Image addition refused. " + (result && (typeof result.detail === "string" ? result.detail : result.detail && result.detail.message) || "HTTP " + request.status) + ". Check the file or launch admission, then retry.";
             };
-            const uncertain = () => { uploadUncertain = true; $("upload-message").textContent = "Upload completion is uncertain. Refresh images and check the library before retrying. Nothing was shown automatically."; };
             request.onerror = uncertain; request.ontimeout = uncertain;
             request.onloadend = () => { xhr = null; $("upload-progress").hidden = true; render(); };
             request.send(file);

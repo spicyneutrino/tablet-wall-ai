@@ -211,3 +211,47 @@ still records uncovered mandatory cases and refuses to label its aggregate
 acceptance complete. Root is assigning the remaining software variants and a
 fresh independent review; native assistive technology, native zoom and hardware
 limits remain explicit. No aggregate redesign PASS is claimed here.
+
+
+## Independent review and upload reconciliation correction
+
+The independent final application review of clean `295cb61` verified the three
+previous command/draft findings closed. It passed 296 focused Python tests, all
+26 then-existing Node test files, 15 protocol cases and 88 positive assertions
+across four private rendered journeys. Its verdict remained ISSUES because the
+separate upload XHR path treated a real publication followed by HTTP 503 as a
+known refusal, enabling another submission. It also proved that favicon HEAD
+was denied despite the intended GET/HEAD contract. The full report is
+`/tmp/tablet-wall-final-independent-3tap37yn/REPORT.md`.
+
+Root tracked these findings in issue #27 and corrected the upload outcome at
+its transport boundary. HTTP 5xx, status zero and successful responses without
+a readable asset identity now retain upload uncertainty. They invalidate older
+inventory reads; only a subsequent successful inventory refresh unlocks retry.
+Known validation/admission refusals keep their specific guidance. The wall is
+never changed by uploading. The favicon has a separate exact GET/HEAD matcher;
+other client methods and suffix paths remain denied.
+
+The new Node regression first failed on the misleading refusal, then passed
+for seven ambiguous receipt variants, old reads, failed refreshes, successful
+reconciliation and six known refusal statuses. All **27 Node test files** pass.
+The actual browser proof forwarded real JPEG bytes to publication, replaced its
+response with 503, and passed **12 checks**, including blocked duplicate sends,
+failed/successful inventory refreshes, unreadable 201 handling, unchanged wall
+content and phone width. There were no page exceptions; the two HTTP 503 errors
+were deliberate response injections. Root inspected the desktop/phone evidence.
+
+Focused deployment and ingress checks pass **57 Python tests** with one existing
+deprecation warning. The generated Caddy proof returns 200 for icon GET/HEAD and
+403 for POST, suffix HEAD and other client-file HEAD. Both backend/proxy ports
+closed, and denied requests left stored state unchanged. Ruff and whitespace
+checks pass. The initial test run retained a stale seven-proxy count assertion;
+that test was updated for the eighth explicitly credential-stripping matcher.
+The initial 56-pass/one-failure log remains alongside the passing rerun.
+
+Evidence is at `/tmp/tablet-wall-upload-fix-6eadvom6/`, including `node.json`,
+`pytest-rerun.xml`, `pytest-rerun.log`, the generated ingress manifest and
+`browser-1793637082624971442`. The browser manifest records modified-source
+hashes, its driver hash, stopped browser/server and closed port. These are
+root correction checks, not an independent approval of the correction or a
+complete portable acceptance pass. The separate matrix expansion remains open.
