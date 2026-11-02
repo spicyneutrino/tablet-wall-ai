@@ -300,3 +300,37 @@ portable driver safety selection passes **16 Python tests** with one existing
 deprecation warning; Ruff passes on all seven driver/test files. These focused
 runs record the modified source hashes. The following complete run uses a clean
 committed application and is the final software acceptance candidate.
+
+
+## Complete candidate software matrix
+
+The clean `3994d21` candidate completed all **38 software scenarios and 853
+assertion rows**, with no interruptions, failed product assertions, page
+exceptions or unexpected console/network failures. `software_complete` and
+`pass` are true; `acceptance_complete` remains false for the native/hardware
+limits. The runner's exit 1 is intentional. The matching external generated
+Caddy proof is verified. See [VERIFICATION.md](VERIFICATION.md) for scope and
+reproduction commands.
+
+Root audited exact loaded driver copies, candidate hashes and cleanup across
+all runs. All **39 server launches, 206 contexts and 461 recorded browser PIDs**
+were stopped/closed, private data removed, and no owned port or process remained.
+The audit and script are retained in
+`/tmp/tablet-wall-combined-final-20261102/root-cleanup-audit.json` and
+`root-audit.py`. Root inspected current combined desktop, 320px and enlarged
+client recovery screenshots.
+
+The corrected broad test wrapper passes **1,830 Python tests**, all **27 Node
+files**, production Ruff and mypy. Its first attempt hid installed Playwright
+browsers with private XDG cache and failed seven launches; that log is retained.
+The passing rerun exposes the existing browser cache without changing display
+settings or installing anything. Full logs are at
+`/tmp/tablet-wall-final-suite-krq8zc44/`. Application/scenario bytes were unchanged;
+one report-description file was modified while the rerun completed.
+
+The final review quota interruption leaves terminal independent approval open.
+Two software coverage descriptions were clarified afterward so PASS labels do
+not include unrun native IME/AT or browser zoom. Original results and executed
+driver copies remain untouched; `coverage-label-clarification.json` records
+identical scenario membership/statuses and retained environment limits. Three
+focused proof/report tests and Ruff pass after that reporting-only change.

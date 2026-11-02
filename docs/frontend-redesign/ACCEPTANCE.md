@@ -1,6 +1,6 @@
 # Acceptance for the operator workspace redesign
 
-This is the implementation finish line for [PLAN.md](PLAN.md) and [ARCHITECTURE.md](ARCHITECTURE.md). It specifies future executable scenarios. No scenario is marked passed by this planning commit. The independent reviews remain partial baseline evidence, not acceptance of the new UI.
+This is the implementation finish line for [PLAN.md](PLAN.md) and [ARCHITECTURE.md](ARCHITECTURE.md). The portable scenarios below are implemented. See [VERIFICATION.md](VERIFICATION.md) for the executed candidate, retained failures, software results and native/hardware limits.
 
 Every mandatory scenario must pass or remain explicitly blocked with its evidence and effect on completion. Root runs the rendered application, inspects screenshots, and fixes relevant problems before handoff. A build, mocked DOM test, or successful API call alone cannot establish a complete operator flow.
 
@@ -23,7 +23,7 @@ rtk proxy .venv/bin/python simulator/browser/redesign_acceptance.py --artifacts 
 rtk proxy .venv/bin/python simulator/browser/redesign_acceptance.py --artifacts /tmp/tablet-wall-layout-NEW --scenario responsive
 ```
 
-These commands are the required new interface, not currently available commands. The driver refuses an existing artifact directory. It can use a private implementation-local helper for isolated server startup, but must not silently point at an arbitrary already-running server.
+The driver refuses an existing artifact directory and cannot target an arbitrary already-running server. `--ingress-proof <manifest.json>` can attach read-only generated-ingress evidence only when its source hashes match. A full run returns nonzero while native/hardware gates remain open; inspect `pass`, `software_complete`, `acceptance_complete` and `mandatory_uncovered` separately.
 
 For manual inspection, apply browser-harness and frontend-testing-debugging. Follow the current host routing constraints. Do not use `preview_*` to verify edits. For any permitted baseline/shared browser work, use preview status first as required by T3. For edited-app verification use the configured Chrome DevTools/Playwright tools when available and an isolated context. Record exact unavailable tool errors and browser-harness doctor results before a permitted fallback. Existing standing instructions permit repository Python Playwright fallback with cached Chromium. Inspect the actual display/session and installed browser paths before changing any display assumptions. Do not modify DISPLAY, install browsers globally, attach the user's profile, or weaken CSP to make a test pass.
 
@@ -82,8 +82,9 @@ Phone viewport upload is tested on the admitted local origin. Do not claim the t
 | Injected state | Required production behavior |
 | --- | --- |
 | Invalid image decode, such as non-image bytes named `.png` | Actionable rejection, current wall unchanged, no published ready item, file input/retry usable. UI waits for the actual result rather than matching the file name. |
-| Admission 403 or unknown/invalid configuration 503 | Factual refusal beside Add image. No security toggle, forwarded-header trick, or auto-fallback to tablet ingress. Current wall remains intact. |
-| Capacity/queue/storage refusal | Report the specific recoverable limit/refusal and re-enable appropriate controls. No half-published item is offered as ready. |
+| Admission or validation 4xx | Factual refusal beside Add image. No security toggle, forwarded-header trick, or auto-fallback to tablet ingress. Current wall remains intact. |
+| HTTP 5xx or unreadable successful receipt | Completion is uncertain, including configuration/storage errors that may arrive after publication. Require a later successful inventory refresh before retry; older reads and failed refreshes cannot unlock it. No automatic Show. |
+| Known capacity/queue refusal | Report the specific refusal. Retry controls follow known 4xx refusal versus ambiguous 5xx completion. No half-published item is offered as ready. |
 | Network failure or timeout after request body was sent | Mark uncertain completion, Refresh inventory before retry, no automatic Show, and no duplicate live action. |
 | Inventory refresh races with an earlier refresh | The older result cannot remove a later uploaded selection or newer item. The latest selection remains attached to its asset identity. |
 | Selected image disappears before Show | Mark unavailable, disable unsafe Show or present the server refusal, retain selection/reason, and offer Choose replacement image. Never choose another file silently. |
