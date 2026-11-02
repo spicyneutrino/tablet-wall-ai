@@ -5,7 +5,34 @@ window.OperatorContent = {
         let images = [], selected = null, fit = "cover", selectionDirty = false, loading = false, busy = false, inventoryReady = false;
         let previous = null, xhr = null, inventoryVersion = 0, selectionVersion = 0, baseEtag = null, savedScene = null, uploadUncertain = false;
         const gallery = new Map();
-        const message = text => { $("image-message").textContent = text; };
+        let messageError = false, shownRevision = null;
+        const message = (text, error = false) => { shownRevision = null; messageError = error; $("image-message").textContent = text; };
+        function renderShownStatus() {
+            if (!shownRevision) return;
+            const config = state.operatorConfig;
+            let text;
+            if (!config || state.rosterError || state.etagState !== "current") text = "Content applied. Tablet status is stale; refresh status to check display.";
+            else if (config.generation !== shownRevision.generation || config.revision !== shownRevision.revision) {
+                text = "Wall content or arrangement changed after this command. Review current wall status.";
+            } else {
+                const evidence = window.OperatorState.aggregate(config, performance.now());
+                const states = evidence.states;
+                const label = shownRevision.image ? "Image" : "Content";
+                if (!evidence.total) text = label + " applied. No participating tablets are on the wall.";
+                else if (states.some(item => item.status === "failed")) text = label + " applied. A tablet reported a display failure; review tablet status.";
+                else if (states.some(item => item.status === "offline" || item.status === "unknown" && !item.online)) text = label + " applied. A tablet is offline or missing; review tablet status.";
+                else if (states.some(item => item.status === "stale")) text = label + " applied. Tablet display confirmation is stale.";
+                else if (states.some(item => ["blocked", "hidden", "unsupported", "unsupported_client", "unsupported_content"].includes(item.status))) text = label + " applied. A tablet cannot confirm display; review tablet status.";
+                else if (states.every(item => item.status === "displayed")) text = label + " applied. Current tablet reports confirm display.";
+                else text = label + " applied. Waiting for current tablet reports.";
+            }
+            $("image-message").textContent = text;
+        }
+        function contextual(id, visible) {
+            const control = $(id);
+            if (!visible && !control.hidden && document.activeElement === control) ($("image-select").disabled ? $("image-search") : $("image-select")).focus();
+            control.hidden = !visible;
+        }
         const sceneInput = content => content.type === "image"
             ? { type: "image", asset: content.asset, fit: content.fit || "cover", ...(content.background ? { background: content.background } : {}) }
             : { type: content.type };
@@ -75,6 +102,8 @@ window.OperatorContent = {
             $("show-calibration").disabled = state.layoutKind !== "logical" || busy;
             for (const id of ["show-colours", "pattern-grid", "pattern-black"]) $(id).disabled = busy;
             $("show-image").disabled = busy || loading || !selectedContent() || !state.etag || state.etagState !== "current";
+            contextual("image-rebuild", selectionDirty); contextual("image-discard", selectionDirty);
+            contextual("restore-image", !!previous);
             $("image-rebuild").disabled = !selectionDirty || busy; $("image-discard").disabled = !selectionDirty || busy;
             $("show-image").textContent = savedScene ? "Show saved scene" : "Show image";
             $("restore-image").disabled = busy || !previous || state.etagState !== "current";
@@ -97,6 +126,7 @@ window.OperatorContent = {
             $("upload-submit").disabled = !!xhr || uploadUncertain;
             state.previewContent = selectionDirty ? chosen || { type: "image", asset: selected, available: false } : null;
             renderGallery();
+            renderShownStatus();
         }
         async function refresh() {
             const version = ++inventoryVersion;
@@ -108,7 +138,7 @@ window.OperatorContent = {
                 images = result.images; inventoryReady = true; uploadUncertain = false;
                 message(images.length + (images.length === 1 ? " image available." : " images available.") + " Selection previews locally. Show image applies it.");
             } catch (error) {
-                if (version === inventoryVersion) message("Image library unavailable. " + error.message + " Use Refresh images to retry. Your selection is retained.");
+                if (version === inventoryVersion) message("Image library unavailable. " + error.message + " Use Refresh images to retry. Your selection is retained.", true);
             } finally { if (version === inventoryVersion) { loading = false; render(); renderStage(); } }
         }
         async function show(content, { guard = baseEtag || state.etag, scene = null } = {}) {
@@ -123,11 +153,18 @@ window.OperatorContent = {
                 previous = before ? sceneInput(before) : previous;
                 if (selectionVersion === submitted) { selectionDirty = false; savedScene = null; baseEtag = null; }
                 ingestConfig(result, { preserveDraft: true });
-                message("Image applied. Waiting for current tablet reports."); announce("Content applied. Current tablet reports confirm display separately.");
+                if (messageError !== true) {
+                    messageError = false;
+                    shownRevision = result && result.generation !== undefined && result.revision !== undefined
+                        ? { generation: result.generation, revision: result.revision, image: content.type === "image" } : null;
+                    if (shownRevision) renderShownStatus();
+                    else message((content.type === "image" ? "Image" : "Content") + " applied. Waiting for current tablet reports.");
+                }
+                announce("Content applied. Current tablet reports confirm display separately.");
                 return true;
             } catch (error) {
                 if (error.status === 412) showConflict("The wall changed. Your image choice is retained with its original guard. Review current state before rebuilding this preview.");
-                message("Could not show this content. " + error.message + " Your selection and geometry are retained.");
+                message("Could not show this content. " + error.message + " Your selection and geometry are retained.", "show");
                 return false;
             } finally { busy = false; render(); renderStage(); }
         }
@@ -168,7 +205,7 @@ window.OperatorContent = {
         $("images-check-connection").addEventListener("click", async () => {
             $("images-check-connection").disabled = true;
             try { await refreshConnection(); await refresh(); }
-            catch (error) { message("Could not check image-addition availability. " + error.message); }
+            catch (error) { message("Could not check image-addition availability. " + error.message, true); }
             finally { $("images-check-connection").disabled = false; render(); }
         });
         $("image-select").addEventListener("change", event => choose(event.target.value));
@@ -180,7 +217,7 @@ window.OperatorContent = {
         $("show-colours").addEventListener("click", async () => { if (await resolveOutput("Show tablet colours")) await show({ type: "color" }, { guard: state.etag }); });
         $("show-calibration").addEventListener("click", async () => { if (await resolveOutput("Show a calibration pattern")) await show({ type: "calibration" }, { guard: state.etag }); });
         $("upload-form").addEventListener("submit", upload);
-        $("image-thumbnail").addEventListener("error", () => message("Thumbnail unavailable. Refresh the library or choose another image. This is separate from tablet paint status."));
+        $("image-thumbnail").addEventListener("error", () => message("Thumbnail unavailable. Refresh the library or choose another image. This is separate from tablet paint status.", true));
         for (const pattern of ["grid", "black"]) $("pattern-" + pattern).addEventListener("click", async () => {
             if (!await resolveOutput("Show a check pattern")) return;
             try {
@@ -189,7 +226,7 @@ window.OperatorContent = {
                 inventoryVersion += 1; loading = false;
                 images = images.filter(item => item.id !== image.id).concat(image); inventoryReady = true;
                 await show({ type: "image", asset: image.id, fit: "contain" }, { guard: state.etag });
-            } catch (error) { message("Pattern unavailable. " + error.message + " Choose a prepared grid or black image from the library."); }
+            } catch (error) { message("Pattern unavailable. " + error.message + " Choose a prepared grid or black image from the library.", true); }
         });
         return { render, refresh, dirty: () => selectionDirty,
             showSelected: () => show(selectedContent(), { scene: savedScene, guard: baseEtag || state.etag }),
