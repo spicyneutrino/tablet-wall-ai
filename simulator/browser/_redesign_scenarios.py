@@ -436,10 +436,15 @@ def parity(rig):
     )
     task("Settings")
     page.locator("#diagnostic-colour").fill("#246344")
-    page.locator("#diagnostic-colour-one").click()
-    expect(page.locator("#diagnostic-colour-message")).to_contain_text(
-        "Diagnostic colour set"
-    )
+    with page.expect_response(
+        lambda response: (
+            response.url.endswith("/api/v3/config") and response.request.method == "GET"
+        )
+    ):
+        page.locator("#diagnostic-colour-one").click()
+        expect(page.locator("#diagnostic-colour-message")).to_contain_text(
+            "Diagnostic colour set"
+        )
     page.locator("#diagnostic-colour-refresh").click()
     expect(page.locator("#diagnostic-colour-message")).to_contain_text("#246344")
     check(

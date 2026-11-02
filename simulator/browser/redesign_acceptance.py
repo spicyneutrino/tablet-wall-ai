@@ -434,6 +434,9 @@ class Rig:
         if dialog.type == "beforeunload" or not self.dialog_accept:
             dialog.dismiss()
         else:
+            self.manifest["operator_actions"].append(
+                "Accept explicit confirmation: " + dialog.message
+            )
             dialog.accept()
 
     def response(self, response, label):
@@ -1227,6 +1230,7 @@ def recovery(rig):
         lambda: not rig.config()["runtime"]["devices"][ids[0]]["online"],
         p.wait_for_timeout,
     )
+    expect(p.locator("#tablet-forget-preview")).to_be_enabled(timeout=20000)
     rig.check(
         not p.locator("#tablet-forget-preview").is_disabled(),
         "Offline registration exposes reviewed recovery",
