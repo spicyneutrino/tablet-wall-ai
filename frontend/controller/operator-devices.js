@@ -27,12 +27,32 @@
 
         let selectedId = null, impact = null, replacement = null, busy = false, snapshotsKey = "", replaceVersion = 0;
         const results = new Map();
+        const identifies = new Map();
         let nameReview = null;
         const message = text => { $("tablet-action-message").textContent = text; };
         const path = (id, suffix = "") => "/api/v3/devices/" + encodeURIComponent(id) + suffix;
         function config() { return state.operatorConfig || { layout: state.base, scene: state.scene, runtime: { devices: state.roster }, revision: state.revision, generation: state.generation }; }
         function clearPlans() { nameReview = null; $("tablet-name-review").hidden = true; impact = null; replacement = null; $("tablet-forget-impact").hidden = true; $("replace-apply").disabled = true; $("replace-cancel").disabled = true; }
         function render() {
+            for (const [id, button] of identifies) if (!state.roster[id] && !window.OperatorState.entries(state.base)[id]) {
+                button.remove(); identifies.delete(id);
+            }
+            for (const row of $("device-list").children) {
+                const id = row.dataset.deviceId, device = state.roster[id];
+                let button = identifies.get(id);
+                if (!button) {
+                    button = document.createElement("button"); button.type = "button"; button.className = "btn roster-identify";
+                    button.textContent = "Identify";
+                    button.addEventListener("click", () => run(async () => {
+                        await api("POST", path(id, "/identify"), { duration_ms: 5000 }, { etag: true });
+                        const text = "Identify requested for " + labelFor(id) + ". It temporarily covers the image; delivery needs a tablet report.";
+                        results.set(id, text); if (state.selectedId === id) message(text); announce(text);
+                    }, id));
+                    row.append(button); identifies.set(id, button);
+                }
+                button.setAttribute("aria-label", "Identify " + labelFor(id));
+                button.disabled = busy || !device?.online || !(device.caps || []).includes("identify") || state.etagState !== "current";
+            }
             const id = state.selectedId;
             const device = state.roster[id];
             $("operator-device-actions").hidden = !id;
@@ -58,10 +78,13 @@
                 if (document.activeElement !== $("tablet-label")) $("tablet-label").value = form.values.name;
                 $("tablet-label-form").dataset.dirty = String(form.dirty);
                 $("tablet-label-form").dataset.deviceId = id;
+                $("tablet-label-review").hidden = !form.dirty;
+                $("tablet-label-discard").hidden = !form.dirty;
                 if (form.conflict) message("This tablet’s saved name changed elsewhere. Your name is retained. Discard to use the current name, or review before saving.");
             }
             $("tablet-action-name").textContent = id ? labelFor(id) : "Select a tablet in the list or stage.";
             const evidence = id ? window.OperatorState.tabletState(config(), id, performance.now()) : null;
+            if (impact || replacement) $("tablet-lifecycle").open = true;
             $("tablet-evidence").textContent = evidence ? evidence.text : "";
             $("tablet-recovery").textContent = !id ? "" : !device || !device.online
                 ? "On the tablet, check power, keep its screen awake, join the wall network and reopen the tablet page in its existing browser. The server cannot wake a powered-off or sleeping tablet."
@@ -71,6 +94,7 @@
                 : evidence.status === "failed" ? "The tablet reported a failed image. Check the image availability, then retry it."
                 : ["blocked", "invalid", "stale_calibration", "needs_calibration", "needs_profile", "viewport_mismatch", "zoom_changed", "missing_profile", "missing_calibration", "invalid_mapping"].includes(evidence.status) ? "Return the tablet to its calibrated rotation, 100% zoom and launch mode, or review its measurements."
                 : evidence.status === "unplaced" ? "Connected and available. Place this tablet in Arrange." : "Current matching reports are separate from connection status. Reconnect keeps this browser identity.";
+            $("tablet-recovery").hidden = !!evidence?.showing;
             const next = $("tablet-next-action");
             next.hidden = !device || !device.online || evidence?.showing || ["hidden", "identifying", "unsupported_client", "unsupported_content", "unsupported"].includes(evidence?.status);
             next.dataset.deviceId = id || "";
@@ -204,13 +228,15 @@
             nameReview = null; $("tablet-name-review").hidden = true;
             const form = tabletForms.edit(selectedId, "name", { name: $("tablet-label").value }, state.etag);
             $("tablet-label-form").dataset.dirty = String(form.dirty);
+            $("tablet-label-review").hidden = !form.dirty;
+            $("tablet-label-discard").hidden = !form.dirty;
         });
         $("tablet-label-discard").addEventListener("click", () => {
             const id = selectedId;
             nameReview = null; $("tablet-name-review").hidden = true;
             tabletForms.discard(id, "name");
             const form = tabletForms.observe(id, "name", { name: (state.deviceLabels || {})[id] || "" }, state.etag);
-            $("tablet-label").value = form.values.name; render();
+            $("tablet-label").value = form.values.name; $("tablet-label").focus(); render();
         });
         $("tablet-label-form").addEventListener("submit", async event => {
             event.preventDefault();

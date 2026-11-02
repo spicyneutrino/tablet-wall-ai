@@ -75,7 +75,7 @@
             inputVersion += 1;
             state.gridPreview = null; previewCommand = null;
             $("grid-cancel").disabled = true;
-            syncDraftUi(); renderStage();
+            syncDraftUi(); updateButtons(); renderStage();
         }
         function releases() { return Object.keys(model.entries(state.base)).filter(id => !selected.has(id)); }
         function renderReleases() {
@@ -128,6 +128,25 @@
             if ($("grid-2x2")) $("grid-2x2").textContent = selected.size > 1 ? "Two rows · " + Math.ceil(selected.size / 2) + " columns" + (selected.size % 2 ? " · one empty cell" : "") : "One tablet";
             $("grid-kind-note").textContent = $("grid-kind").value === "logical" ? "Quick arrangement uses relative screen shapes. It does not claim measured continuity."
                 : "Match real sizes uses pinned measurements. Confirm the hardware and mounted top edge. Model dimensions remain approximate.";
+            const stale = !!baseEtag && baseEtag !== state.etag;
+            $("grid-preview").disabled = busy || !!state.gridPreview && !stale;
+            $("grid-preview").hidden = !!state.gridPreview && !stale;
+            $("grid-rebuild").hidden = !edited || !stale;
+            $("grid-cancel").hidden = !edited || !!state.gridPreview;
+            $("grid-cancel").disabled = busy || !edited;
+            const ids = order.filter(id => selected.has(id));
+            const physical = $("grid-kind").value === "physical";
+            const required = releases().length || modelReview() || physical && ids.some(id => {
+                const pair = validPair(id), slot = state.base.slots?.[id];
+                return !pair || !slot && angles[id] === "" && $("grid-common-mount").value === ""
+                    || slot && pair && (slot.profile_revision !== pair.profile.revision || slot.calibration_revision !== pair.calibration.revision);
+            });
+            const names = ids.map(labelFor);
+            const subjects = names.every(name => /^Tablet \d+$/.test(name)) ? "Tablets " + names.map(name => name.slice(7)).join(", ") : names.join(", ");
+            $("arrange-membership-summary").textContent = (ids.length ? subjects : "Choose tablets")
+                + (required ? " · required hardware, mounting or release review" : " · review order and pins");
+            if (required) $("arrange-membership").open = true;
+            $("arrange-membership").dataset.required = String(!!required);
         }
         function render() {
             if (!state.base) return;
@@ -255,13 +274,14 @@
                 const wall = model.bounds(result.layout);
                 text("Preview only. " + result.order.length + (result.order.length === 1 ? " tablet · " : " tablets · ") + previewCommand.rows + " row" + (previewCommand.rows === 1 ? "" : "s") + " × " + previewCommand.columns
                     + " column" + (previewCommand.columns === 1 ? "" : "s") + " · wall " + Number(wall.width.toFixed(1)) + " × " + Number(wall.height.toFixed(1)) + (kind === "physical" ? " mm" : " logical units")
-                    + " · extra gap " + previewCommand.gap + " · orientation " + previewCommand.orientation + ". Order " + result.order.map(labelFor).join(" / ") + ". " + (result.warnings || []).join(" ")
-                    + (result.previous_kind !== kind ? " Apply will request a named safety copy of the current arrangement." : "")
-                    + " Use Apply arrangement below to commit geometry only.");
+                    + " · extra gap " + previewCommand.gap + " · orientation " + previewCommand.orientation + ". " + (result.warnings || []).join(" ")
+                    + (result.previous_kind !== kind ? " Apply will request a named safety copy of the current arrangement." : ""));
                 $("grid-cancel").disabled = false;
                 updateButtons(); syncDraftUi(); renderStage();
+                if ($("arrange-membership").dataset.required === "false") $("arrange-membership").open = false;
+                $("arrange-review-summary").focus({ preventScroll: true });
             } catch (error) { text("Cannot preview arrangement. " + error.message + " The committed wall is unchanged."); }
-            finally { busy = false; $("grid-preview").disabled = false; }
+            finally { busy = false; updateButtons(); }
         }
         async function apply() {
             if (!state.gridPreview || !previewCommand || busy) return;
@@ -280,7 +300,7 @@
                 ingestConfig(result, { preserveDraft: version !== inputVersion }); $("grid-cancel").disabled = true;
                 text("Arrangement applied once." + (result.previous_layout_saved ? " Previous arrangement saved as “" + result.previous_layout_saved + "”." : "")); announce("Arrangement applied.");
             } catch (error) { if (error.status === 412) showConflict("The grid preview is stale. Your preview is retained. Reload and preview again."); text("Apply failed. " + error.message + " The preview is retained."); }
-            finally { busy = false; syncDraftUi(); }
+            finally { busy = false; updateButtons(); syncDraftUi(); }
         }
         for (const id of ["grid-kind", "grid-rows", "grid-columns", "grid-gap", "grid-padding", "grid-orientation", "grid-sizing", "grid-holes"]) $(id).addEventListener("change", () => { invalidate(); updateButtons(); });
         for (const [id, twoRows] of [["grid-2x2", true], ["grid-1x4", false]]) $(id).addEventListener("click", () => {

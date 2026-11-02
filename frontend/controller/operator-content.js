@@ -30,7 +30,7 @@ window.OperatorContent = {
         }
         function contextual(id, visible) {
             const control = $(id);
-            if (!visible && !control.hidden && document.activeElement === control) ($("image-select").disabled ? $("image-search") : $("image-select")).focus();
+            if (!visible && !control.hidden && document.activeElement === control) $("image-search").focus();
             control.hidden = !visible;
         }
         const sceneInput = content => content.type === "image"
@@ -102,13 +102,14 @@ window.OperatorContent = {
             $("show-calibration").disabled = state.layoutKind !== "logical" || busy;
             for (const id of ["show-colours", "pattern-grid", "pattern-black"]) $(id).disabled = busy;
             $("show-image").disabled = busy || loading || !selectedContent() || !state.etag || state.etagState !== "current";
-            contextual("image-rebuild", selectionDirty); contextual("image-discard", selectionDirty);
+            contextual("image-rebuild", selectionDirty && baseEtag !== state.etag); contextual("image-discard", selectionDirty);
             contextual("restore-image", !!previous);
             $("image-rebuild").disabled = !selectionDirty || busy; $("image-discard").disabled = !selectionDirty || busy;
             $("show-image").textContent = savedScene ? "Show saved scene" : "Show image";
             $("restore-image").disabled = busy || !previous || state.etagState !== "current";
             $("refresh-images").disabled = loading;
             const chosen = selectedContent();
+            $("image-title").textContent = image ? image.name : savedScene ? savedScene.name : "Selected image";
             $("image-details").textContent = image ? image.name + " · " + image.width + " × " + image.height + " source px"
                 : selected ? "Selected image is unavailable. Refresh the library or choose a replacement. Your selection and geometry are retained." : "Choose or add an image, review its preview, then Show image.";
             const thumbnail = $("image-thumbnail"); thumbnail.hidden = !image;
@@ -228,6 +229,7 @@ window.OperatorContent = {
             } catch (error) { message("Pattern unavailable. " + error.message + " Choose a prepared grid or black image from the library.", true); }
         });
         return { render, refresh, dirty: () => selectionDirty,
+            imageFor: id => images.find(image => image.id === id),
             showSelected: () => show(selectedContent(), { scene: savedScene, guard: baseEtag || state.etag }),
             previewScene(entry, guard) {
                 savedScene = { ...entry }; selected = entry.content.asset || null; fit = entry.content.fit || "cover";

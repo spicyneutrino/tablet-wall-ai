@@ -681,9 +681,9 @@
 
     function tabEntries() {
         return [
+            { name: "content", tab: el.tabContent, panel: el.panelContent },
             { name: "tablet", tab: el.tabTablet, panel: el.panelTablet },
             { name: "show", tab: el.tabShow, panel: el.panelShow },
-            { name: "content", tab: el.tabContent, panel: el.panelContent },
             { name: "saved", tab: document.getElementById("tab-saved"), panel: document.getElementById("panel-saved") },
             { name: "system", tab: el.tabSystem, panel: el.panelSystem }
         ];
@@ -747,6 +747,7 @@
             heading.focus({ preventScroll: true });
         }
         if (workspace) workspace.render();
+        if (changed) renderStage();
         if (changed && name === "saved") { loadLayouts(); loadScenes(); }
         return true;
     }
@@ -898,6 +899,10 @@
     }
 
     function observeSession(view, settings = {}) {
+        if (!view.uncertain && document.activeElement === document.getElementById("refresh-command-status")) {
+            document.querySelector('[role="tabpanel"]:not([hidden]) .task-title').focus({ preventScroll: true });
+        }
+        document.getElementById("command-uncertainty").hidden = !view.uncertain;
         if (!view.config) { renderAll(); return; }
         if (settings.runtime) { renderAll(); return; }
         const config = view.config, firstConfig = !state.base;
@@ -924,7 +929,8 @@
         if (conflict) showConflict("The wall changed. Your arrangement preview and its original guard are retained. Review the live wall, then rebuild or discard the preview.");
         else if (!state.draftConflict) hideConflict();
         renderAll(); maybeChooseInitialTab();
-        if (firstConfig) announce("Wall connected. Open Add tablets to begin.");
+        if (firstConfig) announce(Object.keys(window.OperatorState.entries(state.base)).length ? "Wall connected. Review current tablet reports."
+            : Object.values(state.roster).some(device => device.online) ? "Wall connected. Arrange connected tablets." : "Wall connected. Add tablets to begin.");
     }
 
     function ensureSelection() {
@@ -1210,7 +1216,10 @@
     const {
         addSelectedDevice, deleteSelectedSlot, endDrag, nudgeSelected, onPointerCancel, onPointerDown, onPointerMove, onPointerUp, renderDeviceHealth, renderDeviceList, renderStage: drawStage, rotateSelected, selectDevice, syncInspector
     } = window.PhysicalStage.create({
-        selectionChanged: () => { if (operatorDevices) operatorDevices.render(); renderLogicalEditor(); },
+        selectionChanged: () => {
+            if (operatorDevices) operatorDevices.render(); renderLogicalEditor();
+            if (state.tabName === "show") document.getElementById("arrange-custom").open = true;
+        },
         DRAG_THRESHOLD_PX, afterDraftChange, announce, bodyMetrics, calibrationFor, beginManual, canManualEdit, clearMsg, clone, deviceEntries, deviceLabel, deviceNumber, deviceRows, el, finiteOr, formatNumber, isOnline, latestProfile, mutateDraft, numberedLabel, populateDeviceCard, profileFor, pushUndo, roundTo, selectedSlot, setInputValue, showError, showTab, state, syncTabDots, validPair
     });
 
@@ -2644,7 +2653,28 @@
             const name = document.createElement("strong"); name.className = "saved-name"; name.textContent = entry.name;
             const meta = document.createElement("span"); meta.className = "saved-meta";
             meta.textContent = entry.valid === false ? "Damaged saved data · replace or delete" : count + (count === 1 ? " tablet" : " tablets") + " · " + (entry.logical ? "Relative arrangement" : "Measured arrangement") + " · image excluded";
-            info.append(name, meta); row.append(info);
+            info.append(name, meta);
+            if (entry.valid !== false) {
+                const svg = document.createElementNS("http://www.w3.org/2000/svg", "svg");
+                svg.classList.add("saved-thumb"); svg.setAttribute("aria-hidden", "true");
+                const bounds = window.OperatorState.bounds(layout);
+                svg.setAttribute("viewBox", [bounds.x, bounds.y, bounds.width, bounds.height].join(" "));
+                for (const panel of window.OperatorStage.panels(layout, profileFor)) {
+                    if (panel.missing) continue;
+                    const rect = document.createElementNS(svg.namespaceURI, "rect");
+                    for (const [key, value] of Object.entries(panel.body)) rect.setAttribute(key, value);
+                    rect.setAttribute("fill", "#f5e5d7"); rect.setAttribute("stroke", "#9d4616");
+                    rect.setAttribute("stroke-width", "2"); rect.setAttribute("vector-effect", "non-scaling-stroke");
+                    if (panel.angle) rect.setAttribute("transform", "rotate(" + panel.angle + " " + panel.cx + " " + panel.cy + ")");
+                    svg.append(rect);
+                }
+                row.append(svg);
+                const subjects = document.createElement("span"); subjects.className = "saved-meta";
+                subjects.textContent = Object.entries(window.OperatorState.entries(layout)).map(([id, slot]) => numberedLabel(id)
+                    + (layout.kind === "physical" ? " (profile r" + slot.profile_revision + ", calibration r" + slot.calibration_revision + ")" : "")).join(", ");
+                info.append(subjects);
+            }
+            row.append(info);
             const actions = document.createElement("span"); actions.className = "saved-actions";
             for (const [verb, handler] of [["Recall", () => recallLayout(entry)], ["Delete", () => deleteLayout(entry)]]) {
                 const button = document.createElement("button"); button.type = "button"; button.className = "btn btn-sm";
@@ -2731,8 +2761,18 @@
             for (const entry of savedScenes) {
                 const row = document.createElement("li"); row.className = "saved-row"; row.dataset.snapshotName = entry.name; row.dataset.kind = "scene";
                 const label = document.createElement("span"); label.className = "saved-info";
-                label.textContent = entry.name + " · " + (entry.valid === false ? "Damaged saved data" : entry.content.type === "image" ? "Image · " + (entry.content.fit === "contain" ? "Show whole image" : "Fill wall") : "Test content") + " · arrangement excluded";
+                const name = document.createElement("strong"); name.textContent = entry.name;
+                const meta = document.createElement("span"); meta.className = "saved-meta";
+                meta.textContent = (entry.valid === false ? "Damaged saved data" : entry.content.type === "image" ? "Image · " + (entry.content.fit === "contain" ? "Show whole image" : "Fill wall") : "Test content") + " · arrangement excluded";
+                label.append(name, meta);
+                const image = entry.valid !== false && operatorContent.imageFor(entry.content.asset);
+                if (image) {
+                    const thumbnail = document.createElement("img"); thumbnail.className = "saved-thumb"; thumbnail.alt = ""; thumbnail.src = image.thumbnail_url;
+                    thumbnail.addEventListener("error", () => { thumbnail.hidden = true; }); row.append(thumbnail);
+                    const source = document.createElement("span"); source.className = "saved-meta"; source.textContent = image.name; label.append(source);
+                }
                 row.append(label);
+                const actions = document.createElement("span"); actions.className = "saved-actions";
                 for (const verb of ["Preview", "Delete"]) {
                     const button = document.createElement("button"); button.type = "button"; button.className = "btn btn-sm";
                     button.textContent = verb; button.setAttribute("aria-label", verb + " scene “" + entry.name + "”"); button.disabled = verb === "Preview" && entry.valid === false;
@@ -2750,8 +2790,9 @@
                             document.getElementById("scene-message").textContent = "Saved scene deleted."; document.getElementById("scene-name").focus();
                         } catch (error) { document.getElementById("scene-message").textContent = error.message; }
                     });
-                    row.append(button);
+                    actions.append(button);
                 }
+                row.append(actions);
                 list.append(row);
             }
             if (!savedScenes.length) document.getElementById("scene-message").textContent = "No saved scenes yet.";
@@ -2810,6 +2851,7 @@
                     + ". Keeping your proposal adopts this reviewed guard only. Apply arrangement remains a separate command. Exact historical measurement pins remain in the proposal."
                     + (state.draft.kind !== current.layout.kind ? " Applying changes the sizing representation and requires a server-created return point." : "");
                 document.getElementById("manual-review-details").textContent = "Current geometry\n" + JSON.stringify(current.layout, null, 2) + "\nYour proposed geometry\n" + JSON.stringify(state.draft, null, 2);
+                if (!await showTab("show", { persist: true })) return;
                 document.getElementById("manual-arrangement-review").hidden = false;
                 document.getElementById("manual-review-summary").focus();
             } catch (error) { handleWriteError(error); }
@@ -2978,7 +3020,7 @@
         tabEntries().forEach(function (entry) {
             if (!entry.tab) return;
             entry.tab.addEventListener("click", function () {
-                showTab(entry.name, { persist: true });
+                showTab(entry.name, { persist: true, focus: true });
             });
         });
         if (el.railTabs) el.railTabs.addEventListener("keydown", onTabKeyDown);
@@ -3364,6 +3406,7 @@
             discardArrangement: cancelDraft, discardImage: () => operatorContent.discard(),
             canCommit: kind => kind === "image" ? !document.getElementById("show-image").disabled : isDirty() && !el.btnApply.disabled,
             selectTablet: selectDevice, commitTask, renderStage, refreshReadiness: () => operatorReadiness.load(), refreshStatus: refreshRoster });
+        document.getElementById("refresh-command-status").addEventListener("click", () => session.refresh().catch(error => showError(error.message)));
         window.addEventListener("beforeunload", event => {
             if (hasUnsavedEdits()) { event.preventDefault(); event.returnValue = ""; }
         });

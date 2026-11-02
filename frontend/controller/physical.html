@@ -12,12 +12,15 @@
     <link rel="stylesheet" href="operator-stage.css?v=1">
 </head>
 <body class="physical">
-<a class="skip" href="#stage-title">Skip to the wall stage</a>
+<a class="skip" href="#rail">Skip to active task</a>
 <a class="skip skip-controls" href="#rail-tabs">Skip to controls</a>
 
 <header class="topbar">
     <h1 class="brand">Tablet wall</h1>
-    <p class="topbar-note">Arrange tablets and show a spanning still image.</p>
+    <div class="wall-summary"><span id="connected-summary">Checking connections…</span><button type="button" class="wall-health" id="btn-wall-health" data-kind="info" data-action="btn-wall-health">
+                <span id="wall-health">Checking tablet status…</span>
+                <span class="health-action">Issues</span>
+            </button><span id="pending-summary" hidden></span></div>
     <div class="topbar-transport" id="topbar-transport" hidden role="group" aria-label="Playback transport">
         <span class="topbar-playback" id="topbar-playback-state" data-state="stopped">stopped</span>
         <button type="button" class="btn btn-sm btn-primary" id="btn-topbar-start" data-action="btn-topbar-start">Start</button>
@@ -26,75 +29,28 @@
     </div>
 </header>
 
-<div class="rail-tabs workspace-nav" id="rail-tabs" role="tablist" aria-label="Wall tasks" tabindex="-1"><button type="button" class="rail-tab" id="tab-tablet" role="tab" aria-selected="false" aria-controls="panel-tablet" tabindex="-1" data-action="tab-tablet">Tablets<span class="tab-dot" id="tab-tablet-dot" hidden></span></button><button type="button" class="rail-tab" id="tab-show" role="tab" aria-selected="true" aria-controls="panel-show" tabindex="0" data-action="tab-show">Arrange</button><button type="button" class="rail-tab" id="tab-content" role="tab" aria-selected="false" aria-controls="panel-content" tabindex="-1" data-action="tab-content">Images<span class="tab-dot" id="tab-content-dot" hidden></span></button><button type="button" class="rail-tab" id="tab-saved" role="tab" aria-selected="false" aria-controls="panel-saved" tabindex="-1" data-action="tab-saved">Saved</button><button type="button" class="rail-tab" id="tab-system" role="tab" aria-selected="false" aria-controls="panel-system" tabindex="-1" data-action="tab-system">Settings</button></div><div class="layout console operator-workspace">
-    <main class="main">
-        <section class="card stage-card wall-stage" aria-labelledby="stage-title">
-            <div class="wall-head">
-                <h2 id="stage-title" tabindex="-1">Wall</h2>
-
-            <div class="stage-mode"><strong id="stage-mode-label">Live wall</strong><button type="button" class="btn" id="view-live" hidden data-action="view-live">View live</button><button type="button" class="btn" id="view-preview" hidden data-action="view-preview">View preview</button></div><details class="technical-details"><summary>Technical details</summary><p class="wall-meta physical-meta">
-                    <span>Revision <b id="wall-revision">–</b></span>
-                    <span>Session <b id="wall-generation">–</b></span>
-                    <span class="etag-meta">
-                        ETag <code id="etag-value" title="">–</code>
-                        <span class="chip" id="etag-state" data-kind="info">waiting</span>
-                    </span>
-                </p></details></div>
-
-            <p class="hint" id="layout-kind-note">Loading the configuration.</p>
-            <button type="button" class="wall-health" id="btn-wall-health" data-kind="info" data-action="btn-wall-health">
-                <span id="wall-health">Checking tablet status…</span>
-                <span class="health-action">Issues</span>
-            </button>
-
-            <p class="page-error" id="error-text" role="alert" hidden></p>
-
-            <div class="conflict" id="conflict-panel" role="alert" hidden>
+<div class="rail-tabs workspace-nav" id="rail-tabs" role="tablist" aria-label="Wall tasks" tabindex="-1"><button type="button" class="rail-tab" id="tab-content" role="tab" aria-selected="false" aria-controls="panel-content" tabindex="-1" data-action="tab-content">Images<span class="tab-dot" id="tab-content-dot" hidden></span></button><button type="button" class="rail-tab" id="tab-tablet" role="tab" aria-selected="false" aria-controls="panel-tablet" tabindex="-1" data-action="tab-tablet">Tablets<span class="tab-dot" id="tab-tablet-dot" hidden></span></button><button type="button" class="rail-tab" id="tab-show" role="tab" aria-selected="true" aria-controls="panel-show" tabindex="0" data-action="tab-show">Arrange</button><button type="button" class="rail-tab" id="tab-saved" role="tab" aria-selected="false" aria-controls="panel-saved" tabindex="-1" data-action="tab-saved">Saved</button><button type="button" class="rail-tab" id="tab-system" role="tab" aria-selected="false" aria-controls="panel-system" tabindex="-1" data-action="tab-system">Settings</button></div><div class="layout console operator-workspace">
+    <main class="main" id="main-workspace"><div class="global-messages"><p class="page-error" id="error-text" role="alert" hidden></p><section class="command-uncertainty task-section" id="command-uncertainty" role="alert" hidden><h2>A command may have completed</h2><p>Refresh status and inspect the wall before trying another write. Your local work is retained.</p><button type="button" class="btn" id="refresh-command-status">Refresh status</button></section><div class="conflict" id="conflict-panel" role="alert" hidden>
                 <p class="conflict-title">Configuration changed on the server</p>
                 <p class="conflict-text" id="conflict-text"></p>
                 <div class="conflict-actions">
                     <button type="button" class="btn" id="btn-review-arrangement" data-action="btn-review-arrangement">Compare current arrangement</button><button type="button" class="btn btn-danger" id="btn-conflict-reload" data-action="btn-conflict-reload">Reload wall</button>
                 </div>
-            </div>
+            </div></div>
 
-            <div class="stage-scroll" id="stage-scroll" tabindex="0" role="region" aria-label="Wall. Scroll to pan; select a tablet and use the arrow keys to nudge it.">
-                <svg class="stage-svg" id="stage-svg" viewBox="0 0 720 480" role="group" aria-label="Wall. Select a tablet and drag it, or use the arrow keys to nudge the selected tablet."></svg>
-            </div>
-
-            <section class="arrangement-review task-section" id="manual-arrangement-review" hidden><h3>Review the current wall and your proposal</h3><p id="manual-review-summary" tabindex="-1"></p><details class="technical-details"><summary>Exact geometry and pins</summary><pre class="form-comparison" id="manual-review-details"></pre></details><button type="button" class="btn" id="manual-review-keep" data-action="manual-review-keep">Keep my arrangement against this wall</button></section><p class="hint" id="stage-preview-note">Hatching marks hidden bezels and gaps. Fill may also crop source edges outside the wall.</p>
-            <p class="hint" id="stage-quality-summary"></p>
-            <details class="stage-details"><summary>Preview coverage and resolution estimates</summary>
-            <div class="stage-foot">
-                <p class="stage-scale" id="stage-scale">Waiting for the wall.</p>
-                <ul class="stage-legend" aria-label="Stage legend">
-                    <li class="lg"><span class="lg-body" aria-hidden="true"></span>Tablet body</li>
-                    <li class="lg"><span class="lg-active" aria-hidden="true"></span>Active panel</li>
-                    <li class="lg"><span class="lg-sel" aria-hidden="true"></span>Selected</li>
-                    <li class="lg"><span class="lg-grid" aria-hidden="true"></span>Wall grid</li>
-                </ul>
-            </div>
-            <p class="hint" id="stage-resolution"></p>
-            <p class="hint">Drag a measured tablet to move it on the wall. A drag starts after 3 px, so a tap only selects. Escape cancels a drag in progress.</p>
-            </details>
-        <section class="wall-empty task-section" id="wall-empty" aria-labelledby="empty-title" hidden><h3 id="empty-title">Build your first wall</h3><p>Connect tablets, arrange their screens, then choose an image to span them.</p><button type="button" class="btn btn-primary" id="empty-add-tablets" data-action="empty-add-tablets">Add tablets</button></section></section>
-    </main>
-
-    <aside class="side rail task-workspace" id="rail" aria-label="Console controls">
+    <div class="task-workspace" id="rail" tabindex="-1">
 
         <div class="rail-panels" id="rail-panels">
             <section class="rail-panel task-panel" id="panel-show" role="tabpanel" aria-labelledby="tab-show" tabindex="0" data-task="arrange"><h2 class="task-title" tabindex="-1" id="task-arrange">Arrange</h2>
         <div id="operator-wall">
 
-        <section class="card task-section" aria-labelledby="grid-title"><h3 id="grid-title">Choose screens and shape</h3>
-            <p class="hint">Choose tablets in reading order. Preview changes nothing. Apply replaces the arrangement once.</p>
-            <label class="field" for="grid-kind">Screen sizing<select class="inp" id="grid-kind" data-field="grid-kind"><option value="logical">Quick arrangement</option><option value="physical">Match real sizes</option></select></label>
+        <section class="card task-section" aria-labelledby="grid-title"><h3 id="grid-title">Shape</h3>
+            <div class="grid-sizing-choice"><label for="grid-kind">Screen sizing</label><select class="inp" id="grid-kind" data-field="grid-kind"><option value="logical">Quick arrangement</option><option value="physical">Match real sizes</option></select></div>
             <p class="hint" id="grid-kind-note"></p>
             <div class="operator-actions"><button class="btn" type="button" id="grid-2x2" data-action="grid-2x2">2 × 2 (2 rows, 2 columns)</button><button class="btn" type="button" id="grid-1x4" data-action="grid-1x4">Row of selected tablets</button></div>
 
-        <details class="grid-advanced task-details" id="grid-advanced"><summary>Custom grid, gaps and bounds</summary><div class="operator-fields"><label class="field" for="grid-rows">Rows<input class="inp" id="grid-rows" type="number" min="1" max="64" value="2" step="1" data-field="grid-rows"></label><label class="field" for="grid-columns">Columns<input class="inp" id="grid-columns" type="number" min="1" max="64" value="2" step="1" data-field="grid-columns"></label>
-            <label class="field" for="grid-gap">Extra gap between bodies<input class="inp" id="grid-gap" type="number" min="0" value="0" step="any" data-field="grid-gap"></label><label class="field" for="grid-padding">Outer padding<input class="inp" id="grid-padding" type="number" min="0" value="0" step="any" data-field="grid-padding"></label></div><label class="field" for="grid-orientation">Screen orientation<select class="inp" id="grid-orientation" data-field="grid-orientation"><option value="preserve">Preserve mounting / stored sizes</option><option value="landscape">Landscape</option><option value="portrait">Portrait</option><option value="auto">Auto from fresh viewport and confirmed model</option></select></label><label class="field" for="grid-sizing">Wall bounds<select class="inp" id="grid-sizing" data-field="grid-sizing"><option value="tablets">Fit wall to tablet bodies</option><option value="fixed">Keep current same-kind bounds</option></select></label><label class="check-label"><input type="checkbox" id="grid-holes" data-field="grid-holes"> Allow empty trailing cells</label></details><ol id="grid-order" class="operator-order" aria-label="Tablet order, left to right then top to bottom"></ol><div id="grid-releases"></div><section class="group-setup task-section" aria-labelledby="group-model-title"><h3 id="group-model-title">Set up selected tablets together</h3><p id="group-subjects"></p><label class="field" for="group-model">Actual hardware model<select class="inp" id="group-model" data-field="group-model"><option value="">Choose the model you checked</option></select></label><label class="check-label"><input type="checkbox" id="group-hardware" data-field="group-hardware"> I checked that these selected tablets are this hardware model. Its dimensions remain approximate.</label><button type="button" class="btn" id="group-confirm" data-action="group-confirm">Confirm model for selected tablets</button><button type="button" class="btn" id="group-new-review" data-action="group-new-review" hidden>Start a new model review with the current arrangement selection</button><p id="group-result" role="status"></p></section><label class="field" for="grid-common-mount">Common mounted top edge<select class="inp" id="grid-common-mount" data-field="grid-common-mount"><option value="">Choose explicitly for new measured tablets</option><option value="0">0° · top at top</option><option value="90">90° · top at right</option><option value="180">180° · top at bottom</option><option value="270">270° · top at left</option></select></label><div class="operator-actions"><button class="btn" type="button" id="grid-preview" data-action="grid-preview">Preview arrangement</button><button class="btn" type="button" id="grid-rebuild" data-action="grid-rebuild">Rebuild preview with current wall</button><button class="btn" type="button" id="grid-cancel" disabled data-action="grid-cancel">Cancel preview</button></div><p id="grid-message" role="status" aria-live="polite"></p></section></div>
-
-            <section class="card inspector task-section" aria-labelledby="inspector-title">
+        <details id="arrange-membership"><summary id="arrange-membership-summary">Tablets and mounting · review order</summary><ol id="grid-order" class="operator-order" aria-label="Tablet order, left to right then top to bottom"></ol><div id="grid-releases"></div><section class="group-setup task-section" aria-labelledby="group-model-title"><h3 id="group-model-title">Set up selected tablets together</h3><p id="group-subjects"></p><label class="field" for="group-model">Actual hardware model<select class="inp" id="group-model" data-field="group-model"><option value="">Choose the model you checked</option></select></label><label class="check-label"><input type="checkbox" id="group-hardware" data-field="group-hardware"> I checked that these selected tablets are this hardware model. Its dimensions remain approximate.</label><button type="button" class="btn" id="group-confirm" data-action="group-confirm">Confirm model for selected tablets</button><button type="button" class="btn" id="group-new-review" data-action="group-new-review" hidden>Start a new model review with the current arrangement selection</button><p id="group-result" role="status"></p></section><label class="field" for="grid-common-mount">Common mounted top edge<select class="inp" id="grid-common-mount" data-field="grid-common-mount"><option value="">Choose explicitly for new measured tablets</option><option value="0">0° · top at top</option><option value="90">90° · top at right</option><option value="180">180° · top at bottom</option><option value="270">270° · top at left</option></select></label><details class="grid-advanced task-details" id="grid-advanced"><summary>Custom grid, gaps and bounds</summary><div class="operator-fields"><label class="field" for="grid-rows">Rows<input class="inp" id="grid-rows" type="number" min="1" max="64" value="2" step="1" data-field="grid-rows"></label><label class="field" for="grid-columns">Columns<input class="inp" id="grid-columns" type="number" min="1" max="64" value="2" step="1" data-field="grid-columns"></label>
+            <label class="field" for="grid-gap">Extra gap between bodies<input class="inp" id="grid-gap" type="number" min="0" value="0" step="any" data-field="grid-gap"></label><label class="field" for="grid-padding">Outer padding<input class="inp" id="grid-padding" type="number" min="0" value="0" step="any" data-field="grid-padding"></label></div><label class="field" for="grid-orientation">Screen orientation<select class="inp" id="grid-orientation" data-field="grid-orientation"><option value="preserve">Preserve mounting / stored sizes</option><option value="landscape">Landscape</option><option value="portrait">Portrait</option><option value="auto">Auto from fresh viewport and confirmed model</option></select></label><label class="field" for="grid-sizing">Wall bounds<select class="inp" id="grid-sizing" data-field="grid-sizing"><option value="tablets">Fit wall to tablet bodies</option><option value="fixed">Keep current same-kind bounds</option></select></label><label class="check-label"><input type="checkbox" id="grid-holes" data-field="grid-holes"> Allow empty trailing cells</label></details></details><div class="operator-actions"><button class="btn" type="button" id="grid-preview" data-action="grid-preview">Preview arrangement</button><button class="btn" type="button" id="grid-rebuild" data-action="grid-rebuild">Rebuild preview with current wall</button><button class="btn" type="button" id="grid-cancel" disabled data-action="grid-cancel">Discard grid draft</button></div></section><div class="arrange-result"><div id="wall-context-show"></div><section class="arrange-commit task-section" aria-label="Review arrangement"><p id="grid-message" role="status" aria-live="polite"></p><footer class="task-footer" data-task-footer="arrange"><p id="arrange-review-summary" tabindex="-1">Review the preview before applying. This changes geometry only.</p><div id="arrange-footer-actions" class="operator-actions"><button type="button" class="btn btn-primary" id="btn-apply" disabled data-action="btn-apply">Apply arrangement</button><button type="button" class="btn" id="btn-cancel" disabled data-action="btn-cancel">Discard arrangement</button></div></footer></section></div><details id="arrange-custom"><summary>Custom positions and bounds</summary>            <section class="card inspector task-section" aria-labelledby="inspector-title">
             <h2 id="inspector-title">Selected tablet</h2>
             <p class="empty-note" id="inspector-empty">Select a tablet on the stage or in the list.</p>
 
@@ -230,16 +186,19 @@
                 <div class="operator-actions"><button type="button" class="btn" id="logical-tile" data-action="logical-tile">Tile in wall bounds</button><button type="button" class="btn" id="logical-pack" data-action="logical-pack">Pack tablets</button></div>
             </details>
             <p id="logical-message" role="status"></p>
-        </section><div class="arrangement-history operator-actions" role="group" aria-label="Layout draft">
+        </section></details></div>
+
+<div class="arrangement-history operator-actions" role="group" aria-label="Layout draft">
                 <button type="button" class="btn btn-ghost" id="btn-undo" disabled data-action="btn-undo">Undo</button>
                 <button type="button" class="btn btn-ghost" id="btn-redo" disabled data-action="btn-redo">Redo</button>
                 <span class="draft-flag" id="draft-flag" data-dirty="false">No changes</span>
                 <span class="toolbar-gap" aria-hidden="true"></span>
 
                 <button type="button" class="btn btn-ghost" id="btn-reload" aria-label="Reload configuration" data-action="btn-reload">Reload</button>
-            </div><footer class="task-footer" data-task-footer="arrange"><p id="arrange-review-summary">Review the preview before applying. This changes geometry only.</p><div id="arrange-footer-actions" class="operator-actions"><button type="button" class="btn btn-primary" id="btn-apply" disabled data-action="btn-apply">Apply arrangement</button><button type="button" class="btn" id="btn-cancel" disabled data-action="btn-cancel">Discard arrangement</button></div></footer></section>
-            <section class="rail-panel task-panel" id="panel-tablet" role="tabpanel" aria-labelledby="tab-tablet" tabindex="0" hidden data-task="tablets"><h2 class="task-title" tabindex="-1" id="task-tablets">Tablets</h2><section class="join-tablets task-section" aria-labelledby="join-title"><h3 id="join-title">Add tablets</h3><p>Open the tablet address on each tablet on the same network. Keep the page open and the tablet on power.</p><label class="field" for="tablet-url">Tablet address<input class="inp" id="tablet-url" readonly value="Tablet address not configured" data-field="tablet-url"></label><button class="btn" type="button" id="copy-tablet-url" disabled data-action="copy-tablet-url">Copy tablet URL</button><p id="tablet-url-note"></p><figure id="tablet-qr-figure" hidden><img id="tablet-qr" alt="QR code for the configured tablet address"><figcaption id="tablet-qr-note">Scan to open the tablet page. The QR encodes only the join address, not a credential.</figcaption></figure><p id="tablet-qr-error" role="alert" hidden>QR image failed to load. The text address above still works. <button class="btn" type="button" id="btn-readiness-qr-retry" data-action="btn-readiness-qr-retry">Retry QR</button></p><p id="join-network">Network details have not been reported.</p><button type="button" class="btn" id="join-refresh" data-action="join-refresh">Check connection</button><button type="button" class="btn" id="join-arrange" data-action="join-arrange">Arrange connected tablets</button></section>
-        <section class="card devices-card task-section" aria-labelledby="devices-title">
+            </div></section>
+            <section class="rail-panel task-panel" id="panel-tablet" role="tabpanel" aria-labelledby="tab-tablet" tabindex="0" hidden data-task="tablets"><div class="task-heading"><h2 class="task-title" tabindex="-1" id="task-tablets">Tablets</h2><button type="button" class="btn" id="add-tablets">Add tablets</button></div>
+
+            <p class="task-intro">Find a tablet by its display number.</p><div class="tablets-workspace"><div class="roster-workspace"><section class="card devices-card task-section" aria-labelledby="devices-title">
             <div class="sec-head">
                 <h2 id="devices-title">Joined tablets</h2>
                 <span class="sec-count" id="device-count">0 online</span>
@@ -248,17 +207,16 @@
                 <p class="hint" id="roster-status" role="status">Tablet status has not been checked.</p>
                 <button type="button" class="btn btn-sm" id="btn-roster-refresh" data-action="btn-roster-refresh">Refresh status</button>
             </div>
-            <p class="hint">Tablets appear automatically. A connected tablet can be placed in Arrange. Keep tablet pages open and screens awake using their power settings. Current matching paint reports confirm the applied image separately.</p>
+
             <ul class="dev-list" id="device-list" aria-label="Tablets known to this server"></ul>
             <p class="empty-note" id="device-empty" hidden>No tablets are registered yet. Open <a href="/client/">/client/</a> on a tablet on the same LAN, they appear here automatically.</p>
-        </section>
-        <div id="operator-device-actions" hidden><section class="tablet-actions task-section" aria-labelledby="tablet-actions-title">
-            <h2 id="tablet-actions-title">Tablet actions</h2><h3 id="tablet-action-name" tabindex="-1">Select a tablet.</h3><p id="tablet-evidence"></p><details class="technical-details"><summary>Measurement and browser details</summary><p class="hint" id="tablet-provenance"></p></details><button class="btn" id="open-tablet-measurements" type="button" data-action="open-tablet-measurements">Review measurements / confirm model</button>
+        </section><details id="tablet-joining"><summary>Add tablets and joining help</summary><section class="join-tablets task-section" aria-label="Joining help"><p>Open the tablet address on each tablet on the same network. Keep the page open and the tablet on power.</p><label class="field" for="tablet-url">Tablet address<input class="inp" id="tablet-url" readonly value="Tablet address not configured" data-field="tablet-url"></label><button class="btn" type="button" id="copy-tablet-url" disabled data-action="copy-tablet-url">Copy tablet URL</button><p id="tablet-url-note"></p><figure id="tablet-qr-figure" hidden><img id="tablet-qr" alt="QR code for the configured tablet address"><figcaption id="tablet-qr-note">Scan to open the tablet page. The QR encodes only the join address, not a credential.</figcaption></figure><p id="tablet-qr-error" role="alert" hidden>QR image failed to load. The text address above still works. <button class="btn" type="button" id="btn-readiness-qr-retry" data-action="btn-readiness-qr-retry">Retry QR</button></p><p id="join-network">Network details have not been reported.</p><button type="button" class="btn" id="join-refresh" data-action="join-refresh">Check connection</button><button type="button" class="btn" id="join-arrange" data-action="join-arrange">Arrange connected tablets</button></section></details></div><div class="tablet-selection"><div id="operator-device-actions" hidden><section class="tablet-actions task-section" aria-labelledby="tablet-actions-title">
+            <h2 id="tablet-actions-title">Selected tablet</h2><h3 id="tablet-action-name" tabindex="-1">Select a tablet.</h3><p id="tablet-evidence"></p>
             <form id="tablet-label-form" data-form="tablet-label-form"><label class="field" for="tablet-label">Tablet name<input class="inp" id="tablet-label" maxlength="80" autocomplete="off" data-field="tablet-label"></label><button class="btn" id="tablet-label-save" data-action="tablet-label-save">Save name</button><button type="button" class="btn" id="tablet-label-review" data-action="tablet-label-review">Compare current saved name</button><button type="button" class="btn" id="tablet-label-discard" data-action="tablet-label-discard">Discard name</button></form><section class="field-review" id="tablet-name-review" hidden><p id="tablet-name-comparison"></p><button class="btn" type="button" id="tablet-name-keep" data-action="tablet-name-keep">Keep my name against this saved value</button></section>
             <div class="operator-actions"><button class="btn" id="tablet-identify" type="button" data-action="tablet-identify">Identify for 5 seconds</button><button class="btn" id="tablet-retry-image" type="button" data-action="tablet-retry-image">Retry image</button><button class="btn" id="tablet-reconnect" type="button" data-action="tablet-reconnect">Reconnect</button></div>
             <p class="hint">Reconnect keeps the tablet identity, label and number. Identify temporarily covers the image.</p>
-            <label class="check-label" id="tablet-participation-label"><input type="checkbox" id="tablet-participation" data-field="tablet-participation"> Include this slot in the show (draft)</label>
-            <div class="operator-actions"><button class="btn" id="tablet-remove" type="button" data-action="tablet-remove">Remove from wall</button><button class="btn btn-danger" id="tablet-forget-preview" type="button" data-action="tablet-forget-preview">Review offline Forget</button></div>
+
+            <details id="tablet-placement"><summary>Placement and measurements</summary><details class="technical-details"><summary>Measurement and browser details</summary><p class="hint" id="tablet-provenance"></p></details><button class="btn" id="open-tablet-measurements" type="button" data-action="open-tablet-measurements">Review measurements / confirm model</button><label class="check-label" id="tablet-participation-label"><input type="checkbox" id="tablet-participation" data-field="tablet-participation"> Include this slot in the show (draft)</label></details><details id="tablet-lifecycle"><summary>Remove, Forget or replace</summary><div class="operator-actions"><button class="btn" id="tablet-remove" type="button" data-action="tablet-remove">Remove from wall</button><button class="btn btn-danger" id="tablet-forget-preview" type="button" data-action="tablet-forget-preview">Review offline Forget</button></div>
             <div id="tablet-forget-impact" hidden><p id="tablet-forget-text"></p><label class="check-label"><input type="checkbox" id="tablet-forget-active" data-field="tablet-forget-active"> Also remove the active slot</label><button class="btn btn-danger" id="tablet-forget-confirm" type="button" data-action="tablet-forget-confirm">Confirm Forget</button><button class="btn" id="tablet-forget-cancel" type="button" data-action="tablet-forget-cancel">Cancel Forget</button></div>
             <details><summary>Replace this offline browser identity</summary><p>Choose the exact saved arrangements to update. Same hardware copies pinned measurements. Different hardware cannot inherit physical measurements.</p>
                 <label class="field" for="replace-target">Replacement registration<select class="inp" id="replace-target" data-field="replace-target"><option value="">Choose new registration</option></select></label>
@@ -267,23 +225,19 @@
                 <label class="field" for="replace-number">Display number (optional)<input class="inp" id="replace-number" type="number" min="1" max="512" step="1" data-field="replace-number"></label>
                 <fieldset id="replace-saved" class="task-section"><legend>Saved arrangements to update</legend></fieldset>
                 <button class="btn" type="button" id="replace-preview" data-action="replace-preview">Preview replacement</button><p id="replace-summary" role="status" aria-live="polite"></p><details class="technical-details"><summary>Exact identity, connection and historical pins</summary><pre class="form-comparison" id="replace-technical"></pre></details><button class="btn" type="button" id="replace-cancel" data-action="replace-cancel" disabled>Discard replacement preview</button><button class="btn btn-danger" type="button" id="replace-apply" disabled data-action="replace-apply">Confirm replacement</button>
-            </details><p id="tablet-action-message" role="status" aria-live="polite"></p><p class="tablet-recovery" id="tablet-recovery"></p><button type="button" class="btn" id="tablet-next-action" hidden data-action="tablet-next-action">Review problem</button><section class="replacement-offer" id="replacement-offer" hidden><h3>Replacing an offline tablet?</h3><p>Choose the old registration to review a deliberate replacement. Joining never transfers an identity automatically.</p><label class="field" for="replacement-old">Old offline registration<select class="inp" id="replacement-old" data-field="replacement-old"><option value="">Choose old tablet</option></select></label><button type="button" class="btn" id="replacement-open" data-action="replacement-open">Review replacement with this new tablet</button></section></section></div>
+            </details></details><p id="tablet-action-message" role="status" aria-live="polite"></p><p class="tablet-recovery" id="tablet-recovery"></p><button type="button" class="btn" id="tablet-next-action" hidden data-action="tablet-next-action">Review problem</button><section class="replacement-offer" id="replacement-offer" hidden><h3>Replacing an offline tablet?</h3><p>Choose the old registration to review a deliberate replacement. Joining never transfers an identity automatically.</p><label class="field" for="replacement-old">Old offline registration<select class="inp" id="replacement-old" data-field="replacement-old"><option value="">Choose old tablet</option></select></label><button type="button" class="btn" id="replacement-open" data-action="replacement-open">Review replacement with this new tablet</button></section></section></div><details class="wall-context" open><summary>Wall and selected tablet</summary><div id="wall-context-tablet"></div></details></div></div><section class="wall-issues task-section" aria-labelledby="issues-title"><h3 id="issues-title" tabindex="-1">Wall issues</h3><p id="issues-empty"></p><ul class="issue-list" id="wall-issues"></ul></section></section>
+            <section class="rail-panel task-panel" id="panel-content" role="tabpanel" aria-labelledby="tab-content" tabindex="0" hidden data-task="images"><h2 class="task-title" tabindex="-1" id="task-images">Images</h2><div class="images-workspace"><section class="image-library task-section" aria-label="Image library"><div class="library-labels"><label for="image-search">Search images</label><a class="selected-controls-link" href="#selected-image-controls">Selected image controls</a></div><div class="library-toolbar"><div class="field"><input class="inp" type="search" id="image-search" autocomplete="off" data-field="image-search"></div><button type="button" class="btn" id="add-image">Add image</button></div><ul id="image-gallery" class="image-gallery" aria-label="Image library"></ul></section><section class="selected-image task-section" id="selected-image-controls" tabindex="-1" aria-labelledby="image-title"><img id="image-thumbnail" alt="Selected still image preview" hidden>
+            <h3 id="image-title">Selected image</h3>
 
-            <section class="wall-issues task-section" aria-labelledby="issues-title"><h3 id="issues-title" tabindex="-1">Wall issues</h3><p id="issues-empty"></p><ul class="issue-list" id="wall-issues"></ul></section></section>
-            <section class="rail-panel task-panel" id="panel-content" role="tabpanel" aria-labelledby="tab-content" tabindex="0" hidden data-task="images"><h2 class="task-title" tabindex="-1" id="task-images">Images</h2><section class="card image-card task-section" aria-labelledby="image-title">
-            <h2 id="image-title">Choose an image</h2>
-            <p id="active-image">Reading active content…</p>
-            <img id="image-thumbnail" alt="Selected still image preview" hidden>
-            <label class="field" for="image-select">Image<select class="inp" id="image-select" data-field="image-select"><option value="">Loading images…</option></select></label>
             <label class="field" for="image-fit">Wall-wide fit<select class="inp" id="image-fit" data-field="image-fit"><option value="cover">Fill the wall (crops)</option><option value="contain">Fit whole image (adds bars)</option></select></label>
-            <p class="hint" id="image-details"></p><p class="hint" id="image-fit-note"></p>
-            <footer class="task-footer" data-task-footer="images"><div class="operator-actions"><button class="btn btn-primary" id="show-image" type="button" disabled data-action="show-image">Show image</button><button class="btn" id="refresh-images" type="button" data-action="refresh-images">Refresh images</button><button class="btn" id="restore-image" type="button" disabled data-action="restore-image">Restore previous content</button></div>
+
+            <footer class="task-footer" data-task-footer="images"><div class="operator-actions"><button class="btn btn-primary" id="show-image" type="button" disabled data-action="show-image">Show image</button><button class="btn" id="restore-image" type="button" disabled data-action="restore-image">Restore previous content</button></div>
             <p id="image-message" role="status" aria-live="polite"></p><button class="btn" id="image-rebuild" type="button" data-action="image-rebuild">Rebuild image preview with current wall</button><button class="btn" id="image-discard" type="button" data-action="image-discard">Discard image preview</button></footer>
 
-        <button class="btn" type="button" id="images-check-connection" data-action="images-check-connection">Check image-addition connection</button><p id="upload-instruction">Checking upload availability…</p><form id="upload-form" hidden data-form="upload-form"><label class="field" for="upload-file">Upload a still image<input class="inp" type="file" id="upload-file" accept="image/png,image/jpeg" data-field="upload-file" required></label>
-                <button class="btn" id="upload-submit" data-action="upload-submit">Upload image</button><progress id="upload-progress" max="100" value="0" aria-label="Image upload progress" hidden></progress></form><p id="upload-message" role="status" aria-live="polite"></p><label class="field" for="image-search">Search images<input class="inp" type="search" id="image-search" autocomplete="off" data-field="image-search"></label><ul id="image-gallery" class="image-gallery" aria-label="Image library"></ul></section></section>
+        <p class="hint" id="image-details"></p><p class="hint" id="image-fit-note"></p><p id="active-image">Reading active content…</p><details class="technical-details"><summary>Alternate filename selection</summary><label class="field" for="image-select">Image<select class="inp" id="image-select" data-field="image-select"><option value="">Loading images…</option></select></label></details><details class="wall-context" open><summary>Wall preview and live output</summary><div id="wall-context-content"></div></details></section></div><div class="image-utilities"><details id="image-addition"><summary>Add image and upload availability</summary><button class="btn" type="button" id="images-check-connection" data-action="images-check-connection">Check image-addition connection</button><p id="upload-instruction">Checking upload availability…</p><form id="upload-form" hidden data-form="upload-form"><label class="field" for="upload-file">Upload a still image<input class="inp" type="file" id="upload-file" accept="image/png,image/jpeg" data-field="upload-file" required></label>
+                <button class="btn" id="upload-submit" data-action="upload-submit">Upload image</button><progress id="upload-progress" max="100" value="0" aria-label="Image upload progress" hidden></progress></form><p id="upload-message" role="status" aria-live="polite"></p></details><button class="btn" id="refresh-images" type="button" data-action="refresh-images">Refresh images</button></div></section>
             <section class="rail-panel task-panel" id="panel-system" role="tabpanel" aria-labelledby="tab-system" tabindex="0" hidden data-task="settings"><h2 class="task-title" tabindex="-1" id="task-settings">Settings</h2>
-        <div id="operator-readiness"><section class="card task-section" aria-labelledby="readiness-title"><h2 id="readiness-title">Check wall</h2><button type="button" class="btn btn-danger" id="clear-wall" data-action="clear-wall">Clear wall</button>
+        <div id="operator-readiness"><section class="card task-section" aria-labelledby="readiness-title"><h2 id="readiness-title">Check wall</h2>
             <p id="readiness-status" role="status" aria-live="polite">Reading server readiness…</p>
             <p id="readiness-errors" role="alert" hidden></p>
 
@@ -647,13 +601,13 @@
 </div>
         </section><details><summary>Check patterns</summary><p class="hint">Patterns use committed wall bounds. A generated grid or black wall is an ordinary image. Keep your prior content with Restore previous content.</p>
                 <div class="operator-actions"><button class="btn" type="button" id="show-colours" data-action="show-colours">Tablet colours</button><button class="btn" type="button" id="show-calibration" data-action="show-calibration">Logical calibration pattern</button><button class="btn" type="button" id="pattern-grid" data-action="pattern-grid">Wall-sized grid</button><button class="btn" type="button" id="pattern-black" data-action="pattern-black">Black wall</button></div>
-            </details><section class="diagnostic-colours task-section" aria-labelledby="diagnostic-colours-title"><h3 id="diagnostic-colours-title">Tablet test colours</h3><p>Change the diagnostic colour used by one tablet or all tablets. This legacy command has no revision guard. It does not select or show an image.</p><p id="diagnostic-colour-subject">Select a tablet in Tablets.</p><label class="field" for="diagnostic-colour">Test colour<input type="color" id="diagnostic-colour" value="#ef4444" data-field="diagnostic-colour"></label><button type="button" class="btn" id="diagnostic-colour-one" data-action="diagnostic-colour-one">Set selected tablet colour</button><button type="button" class="btn" id="diagnostic-colour-all" data-action="diagnostic-colour-all">Set all tablet colours</button><button type="button" class="btn" id="diagnostic-colour-refresh" data-action="diagnostic-colour-refresh">Read selected colour</button><p id="diagnostic-colour-message" role="status"></p></section></section>
+            </details><section class="diagnostic-colours task-section" aria-labelledby="diagnostic-colours-title"><h3 id="diagnostic-colours-title">Tablet test colours</h3><p>Change the diagnostic colour used by one tablet or all tablets. This legacy command has no revision guard. It does not select or show an image.</p><p id="diagnostic-colour-subject">Select a tablet in Tablets.</p><label class="field" for="diagnostic-colour">Test colour<input type="color" id="diagnostic-colour" value="#ef4444" data-field="diagnostic-colour"></label><button type="button" class="btn" id="diagnostic-colour-one" data-action="diagnostic-colour-one">Set selected tablet colour</button><button type="button" class="btn" id="diagnostic-colour-all" data-action="diagnostic-colour-all">Set all tablet colours</button><button type="button" class="btn" id="diagnostic-colour-refresh" data-action="diagnostic-colour-refresh">Read selected colour</button><p id="diagnostic-colour-message" role="status"></p></section><details class="destructive-area"><summary>Destructive wall actions</summary><p>Clear removes the applied arrangement. Review the confirmation before continuing.</p><button type="button" class="btn btn-danger" id="clear-wall" data-action="clear-wall">Clear wall</button></details></section>
         <section class="rail-panel task-panel" id="panel-saved" data-task="saved" role="tabpanel" aria-labelledby="tab-saved" hidden><h2 class="task-title" tabindex="-1">Saved</h2><section class="card saved-card task-section" aria-labelledby="saved-title">
             <div class="sec-head">
                 <h2 id="saved-title">Saved arrangements</h2>
                 <button type="button" class="btn btn-ghost btn-sm" id="btn-layouts-refresh" data-action="btn-layouts-refresh">Refresh</button>
             </div>
-            <p class="hint">Saving keeps the committed layout, not the draft. Apply the draft first to save its changes under a new name.</p>
+            <ul class="saved-list" id="saved-layouts" aria-label="Saved arrangements"></ul><p class="empty-note" id="saved-empty" hidden>No saved arrangements yet.</p><p class="hint">Saving keeps the committed layout, not the draft. Apply the draft first to save its changes under a new name.</p>
 
             <form class="saved-form" id="layout-save-form" novalidate data-form="layout-save-form">
                 <div class="field">
@@ -664,10 +618,44 @@
             </form>
 
             <p class="form-msg" id="layout-msg" role="status" aria-live="polite" hidden></p>
-            <p class="form-msg" id="layouts-status" role="status" hidden></p><ul class="saved-list" id="saved-layouts" aria-label="Saved arrangements"></ul>
-            <p class="empty-note" id="saved-empty" hidden>No saved arrangements yet.</p>
-        </section><section class="saved-scenes task-section" aria-labelledby="saved-scenes-title"><h3 id="saved-scenes-title">Saved scenes</h3><p>Keep the applied image or test content and its Fit / Fill choice. Arrangements are saved separately.</p><form id="scene-save-form" data-form="scene-save-form"><label class="field" for="scene-name">Scene name<input class="inp" id="scene-name" maxlength="64" autocomplete="off" data-field="scene-name"></label><button type="submit" class="btn" id="scene-save" data-action="scene-save">Save applied scene</button></form><button type="button" class="btn" id="scenes-refresh" data-action="scenes-refresh">Refresh scenes</button><ul id="saved-scenes" class="saved-list" aria-label="Saved scenes"></ul><p id="scene-message" role="status"></p></section><section class="return-point task-section" id="return-point" hidden><h3>Return point saved</h3><p id="return-point-name"></p><button type="button" class="btn" id="return-point-recall" data-action="return-point-recall">Recall return point</button></section></section></div>
-    </aside>
+            <p class="form-msg" id="layouts-status" role="status" hidden></p>
+
+        </section><section class="saved-scenes task-section" aria-labelledby="saved-scenes-title"><h3 id="saved-scenes-title">Saved scenes</h3><p>Keep the applied image or test content and its Fit / Fill choice. Arrangements are saved separately.</p><ul id="saved-scenes" class="saved-list" aria-label="Saved scenes"></ul><form id="scene-save-form" data-form="scene-save-form"><label class="field" for="scene-name">Scene name<input class="inp" id="scene-name" maxlength="64" autocomplete="off" data-field="scene-name"></label><button type="submit" class="btn" id="scene-save" data-action="scene-save">Save applied scene</button></form><button type="button" class="btn" id="scenes-refresh" data-action="scenes-refresh">Refresh scenes</button><p id="scene-message" role="status"></p></section><section class="return-point task-section" id="return-point" hidden><h3>Return point saved</h3><p id="return-point-name"></p><button type="button" class="btn" id="return-point-recall" data-action="return-point-recall">Recall return point</button></section></section></div>
+    </div>
+    <div id="wall-context-park" hidden><section class="card stage-card wall-stage" aria-labelledby="stage-title">
+            <div class="wall-head">
+                <h2 id="stage-title" tabindex="-1">Wall</h2>
+
+            <div class="stage-mode"><strong id="stage-mode-label">Live wall</strong><button type="button" class="btn" id="view-live" hidden data-action="view-live">View live</button><button type="button" class="btn" id="view-preview" hidden data-action="view-preview">View preview</button></div></div>
+
+            <div class="stage-scroll" id="stage-scroll" tabindex="0" role="region" aria-label="Wall. Scroll to pan; select a tablet and use the arrow keys to nudge it.">
+                <svg class="stage-svg" id="stage-svg" viewBox="0 0 720 480" role="group" aria-label="Wall. Select a tablet and drag it, or use the arrow keys to nudge the selected tablet."></svg>
+            </div>
+
+            <section class="arrangement-review task-section" id="manual-arrangement-review" hidden><h3>Review the current wall and your proposal</h3><p id="manual-review-summary" tabindex="-1"></p><details class="technical-details"><summary>Exact geometry and pins</summary><pre class="form-comparison" id="manual-review-details"></pre></details><button type="button" class="btn" id="manual-review-keep" data-action="manual-review-keep">Keep my arrangement against this wall</button></section>
+            <p class="hint" id="stage-quality-summary"></p>
+            <details class="stage-details"><summary>Geometry, coverage and technical details</summary><p class="hint" id="layout-kind-note">Loading the configuration.</p><details class="technical-details"><summary>Technical details</summary><p class="wall-meta physical-meta">
+                    <span>Revision <b id="wall-revision">–</b></span>
+                    <span>Session <b id="wall-generation">–</b></span>
+                    <span class="etag-meta">
+                        ETag <code id="etag-value" title="">–</code>
+                        <span class="chip" id="etag-state" data-kind="info">waiting</span>
+                    </span>
+                </p></details><p class="hint" id="stage-preview-note">Hatching marks hidden bezels and gaps. Fill may also crop source edges outside the wall.</p>
+            <div class="stage-foot">
+                <p class="stage-scale" id="stage-scale">Waiting for the wall.</p>
+                <ul class="stage-legend" aria-label="Stage legend">
+                    <li class="lg"><span class="lg-body" aria-hidden="true"></span>Tablet body</li>
+                    <li class="lg"><span class="lg-active" aria-hidden="true"></span>Active panel</li>
+                    <li class="lg"><span class="lg-sel" aria-hidden="true"></span>Selected</li>
+                    <li class="lg"><span class="lg-grid" aria-hidden="true"></span>Wall grid</li>
+                </ul>
+            </div>
+            <p class="hint" id="stage-resolution"></p>
+            <p class="hint">Drag a measured tablet to move it on the wall. A drag starts after 3 px, so a tap only selects. Escape cancels a drag in progress.</p>
+            </details>
+        <section class="wall-empty task-section" id="wall-empty" aria-labelledby="empty-title" hidden><h3 id="empty-title">Build your first wall</h3><p>Connect tablets, arrange their screens, then choose an image to span them.</p><button type="button" class="btn btn-primary" id="empty-add-tablets" data-action="empty-add-tablets">Add tablets</button></section></section></div>
+    </main>
 </div>
 
 <footer class="statusbar">

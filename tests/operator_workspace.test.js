@@ -13,7 +13,7 @@ function setup() {
     };
     const window = {};
     vm.runInNewContext(fs.readFileSync(require.resolve("../frontend/controller/operator-workspace.js"), "utf8"),
-        { window, document: { getElementById: element, activeElement: element("trigger") } });
+        { window, document: { getElementById: element, querySelector: () => element("stage"), activeElement: element("trigger") } });
     const draft = { arrangement: true, image: true, applied: [] };
     const workspace = window.OperatorWorkspace.create({ state: {}, arrangementDirty: () => draft.arrangement,
         arrangementPreview: () => draft.arrangement, imageDirty: () => draft.image,

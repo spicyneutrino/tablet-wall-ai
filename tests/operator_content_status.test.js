@@ -32,9 +32,13 @@ const content = context.window.OperatorContent.create({ state, renderStage() {},
     assert.equal(node("image-discard").hidden, true); assert.equal(node("restore-image").hidden, true);
     await node("image-select").change({ target: { value: "a" } });
     assert.equal(node("image-discard").hidden, false);
+    assert.equal(node("image-rebuild").hidden, true, "a current preview needs no Rebuild");
+    state.etag = "changed"; content.render();
+    assert.equal(node("image-rebuild").hidden, false, "a stale-base draft exposes Rebuild");
+    state.etag = "e";
     node("image-discard").focus();
     await content.showSelected();
-    assert.equal(document.activeElement, node("image-select"));
+    assert.equal(document.activeElement, node("image-search"));
     assert.equal(node("image-discard").hidden, true); assert.equal(node("restore-image").hidden, false);
     assert.match(node("image-message").textContent, /Waiting for current/);
     const render = config.runtime.devices.t.render;
@@ -56,6 +60,6 @@ const content = context.window.OperatorContent.create({ state, renderStage() {},
     content.previewScene({ name: "new", content: { type: "image", asset: "b" } }, "e");
     release.resolve(config); await pending;
     assert.equal(state.previewContent.asset, "b"); assert.equal(content.dirty(), true); assert.equal(node("image-discard").hidden, false);
-    node("image-discard").focus(); content.discard(); assert.equal(document.activeElement, node("image-select"));
+    node("image-discard").focus(); content.discard(); assert.equal(document.activeElement, node("image-search"));
     console.log("Content status, error ownership, draft races and contextual actions passed");
 })().catch(error => { console.error(error); process.exitCode = 1; });
