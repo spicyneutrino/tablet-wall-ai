@@ -78,3 +78,17 @@ The physical wrapper's recorded file is corrected for future reruns; its origina
 All attempted runs' results.json record browser_disconnected=true, remaining_owned_browser_pids=[], private_data_removed=true, port_closed=true, and cleanup errors=[]. Server process-group cleanup is also recorded. No owned browser or server is intentionally left running.
 
 This does not establish combined-shell acceptance, actual heterogeneous pinned-profile client behavior, native optical accuracy, native zoom, assistive technology, physical tablets, TLS, sleep or soak behavior. Reverify the shell redraw integration and existing fixture correction before stage approval, then run the final combined candidate gate.
+
+## Root follow-up
+
+At `6c1afa8`, the physical-nudge fixture explicitly declares the Arrange task. All 29 Node files pass after this correction; the Arrange-only production fence remains intact. The workspace owner has the immediate-redraw requirement. That requirement is still open pending the integrated shell.
+
+A separate actual-client run at `6c1afa8` used the existing `mixed_models` journey before the first measured Apply. The applied slots referenced both 146.75×196mm and 147×210mm panels, each through its exact profile/calibration revision 1. This closes the narrow API-admitted heterogeneous-pins gap. It does not establish four compatible mixed-model clients: the synthetic Android viewport deliberately assigned the iPad model remained `viewport_mismatch`, while the other three were `ready`. The console reported three of four showing and exposed the recovery path.
+
+The external driver `/tmp/tablet-wall-mixed-pins-followup.py` has SHA-256 `8ce4ac0137bf68991eb33c6f41ab37c637971a3210f1af129fbd6398485577f4`. Command:
+
+```sh
+rtk proxy env PLAYWRIGHT_BROWSERS_PATH=/var/home/oak/.cache/ms-playwright .venv/bin/python -u /tmp/tablet-wall-mixed-pins-followup.py /tmp/tablet-wall-mixed-pins-root-20261102
+```
+
+All 14 checks passed, including distinct pinned dimensions, mapping refusal and console/network checks. The source identity, pins, traces, screenshots and cleanup are under that private artifact directory. Root inspected the desktop and phone mixed-model viewport captures. Those still use the old shell and do not pass the new task-entry composition gate. Browser disconnected, no owned browser PIDs remained, temporary data was removed, port closed and cleanup errors were empty. No live data or hardware was touched.
