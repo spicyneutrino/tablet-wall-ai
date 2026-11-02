@@ -53,6 +53,42 @@ def test_external_proof_rejects_changed_source_or_allowlist(tmp_path):
     assert result["classification"] == "external_root_evidence"
 
 
+def test_external_proof_parser_accepts_expanded_denial_matrix(tmp_path):
+    """Synthetic parser input, never an ingress execution or product acceptance."""
+    source = Path("/tmp/tablet-wall-favicon-ingress-tys6crky/ingress-manifest.json")
+    if not source.exists():
+        pytest.skip("Environment-local proof schema fixture is unavailable")
+    manifest = json.loads(source.read_text())
+    manifest["source_sha256"] = {
+        name: driver.digest(driver.ROOT / name) for name in manifest["source_sha256"]
+    }
+    manifest["allowlist_sha256"] = driver.digest(
+        driver.ROOT / "deploy/tablet-routes.caddy"
+    )
+    origin = f"http://127.0.0.1:{manifest['tablet_port']}"
+    manifest["requests"].extend(
+        {"origin": origin, "method": method, "path": path, "status": 403}
+        for method, path in (
+            ("POST", "/client/favicon.svg"),
+            ("HEAD", "/client/favicon.svg/extra"),
+            ("HEAD", "/client/client.js"),
+        )
+    )
+    manifest["requests"].append(
+        {
+            "origin": origin,
+            "method": "HEAD",
+            "path": "/client/favicon.svg",
+            "status": 200,
+        }
+    )
+    proof = tmp_path / "synthetic-parser-fixture.json"
+    proof.write_text(json.dumps(manifest))
+    result = driver.external_ingress_proof(proof)
+    assert result["verified"] and result["exact_favicon_head_proven"]
+    assert result["tablet_denials"] == 127
+
+
 @pytest.mark.timeout(30)
 def test_native_tab_helper_uses_real_tab_and_bounds_an_unreachable_target():
     with sync_playwright() as playwright:

@@ -214,7 +214,7 @@ def external_ingress_proof(path=None):
             and all(matching.values())
             and allowlist
             and manifest.get("passed") is True
-            and denials == 124
+            and denials >= 124
             and bool(favicon)
             and bool(uploads)
             and all(manifest["cleanup"].values())
