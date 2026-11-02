@@ -5,7 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <meta name="color-scheme" content="light">
     <meta name="description" content="Manage the wall, its tablets, show and content.">
-    <title>Wall console · tablet-wall-ai</title>
+    <title>Tablet wall · tablet-wall-ai</title>
     <link rel="icon" href="favicon.svg" type="image/svg+xml">
     <link rel="stylesheet" href="physical-legacy.css?v=2">
     <link rel="stylesheet" href="physical.css?v=13">
@@ -15,46 +15,36 @@
 <a class="skip skip-controls" href="#rail-tabs">Skip to controls</a>
 
 <header class="topbar">
-    <h1 class="brand">Wall console</h1>
+    <h1 class="brand">Tablet wall</h1>
     <p class="topbar-note">Arrange tablets and show a spanning still image.</p>
     <div class="topbar-transport" id="topbar-transport" hidden role="group" aria-label="Playback transport">
         <span class="topbar-playback" id="topbar-playback-state" data-state="stopped">stopped</span>
-        <button type="button" class="btn btn-sm btn-primary" id="btn-topbar-start">Start</button>
-        <button type="button" class="btn btn-sm" id="btn-topbar-pause" hidden>Pause</button>
-        <button type="button" class="btn btn-sm" id="btn-topbar-stop" hidden>Stop</button>
+        <button type="button" class="btn btn-sm btn-primary" id="btn-topbar-start" data-action="btn-topbar-start">Start</button>
+        <button type="button" class="btn btn-sm" id="btn-topbar-pause" hidden data-action="btn-topbar-pause">Pause</button>
+        <button type="button" class="btn btn-sm" id="btn-topbar-stop" hidden data-action="btn-topbar-stop">Stop</button>
     </div>
 </header>
 
-<div class="layout console">
+<div class="rail-tabs workspace-nav" id="rail-tabs" role="tablist" aria-label="Wall tasks" tabindex="-1"><button type="button" class="rail-tab" id="tab-tablet" role="tab" aria-selected="false" aria-controls="panel-tablet" tabindex="-1" data-action="tab-tablet">Tablets<span class="tab-dot" id="tab-tablet-dot" hidden></span></button><button type="button" class="rail-tab" id="tab-show" role="tab" aria-selected="true" aria-controls="panel-show" tabindex="0" data-action="tab-show">Arrange</button><button type="button" class="rail-tab" id="tab-content" role="tab" aria-selected="false" aria-controls="panel-content" tabindex="-1" data-action="tab-content">Images<span class="tab-dot" id="tab-content-dot" hidden></span></button><button type="button" class="rail-tab" id="tab-saved" role="tab" aria-selected="false" aria-controls="panel-saved" tabindex="-1" data-action="tab-saved">Saved</button><button type="button" class="rail-tab" id="tab-system" role="tab" aria-selected="false" aria-controls="panel-system" tabindex="-1" data-action="tab-system">Settings</button></div><div class="layout console operator-workspace">
     <main class="main">
-        <section class="card stage-card" aria-labelledby="stage-title">
+        <section class="card stage-card wall-stage" aria-labelledby="stage-title">
             <div class="wall-head">
-                <h2 id="stage-title" tabindex="-1">Wall stage</h2>
-                <p class="wall-meta physical-meta">
+                <h2 id="stage-title" tabindex="-1">Wall</h2>
+
+            <div class="stage-mode"><strong id="stage-mode-label">Live wall</strong><button type="button" class="btn" id="view-live" hidden data-action="view-live">View live</button><button type="button" class="btn" id="view-preview" hidden data-action="view-preview">View preview</button></div><details class="technical-details"><summary>Technical details</summary><p class="wall-meta physical-meta">
                     <span>Revision <b id="wall-revision">–</b></span>
                     <span>Session <b id="wall-generation">–</b></span>
                     <span class="etag-meta">
                         ETag <code id="etag-value" title="">–</code>
                         <span class="chip" id="etag-state" data-kind="info">waiting</span>
                     </span>
-                </p>
-            </div>
+                </p></details></div>
 
             <p class="hint" id="layout-kind-note">Loading the configuration.</p>
-            <button type="button" class="wall-health" id="btn-wall-health" data-kind="info">
+            <button type="button" class="wall-health" id="btn-wall-health" data-kind="info" data-action="btn-wall-health">
                 <span id="wall-health">Checking tablet status…</span>
-                <span class="health-action">Review tablets</span>
+                <span class="health-action">Issues</span>
             </button>
-
-            <div class="phys-toolbar" role="group" aria-label="Layout draft">
-                <button type="button" class="btn btn-ghost" id="btn-undo" disabled>Undo</button>
-                <button type="button" class="btn btn-ghost" id="btn-redo" disabled>Redo</button>
-                <span class="draft-flag" id="draft-flag" data-dirty="false">No changes</span>
-                <span class="toolbar-gap" aria-hidden="true"></span>
-                <button type="button" class="btn btn-primary" id="btn-apply" disabled>Apply layout</button>
-                <button type="button" class="btn" id="btn-cancel" disabled>Cancel draft</button>
-                <button type="button" class="btn btn-ghost" id="btn-reload" aria-label="Reload configuration">Reload</button>
-            </div>
 
             <p class="page-error" id="error-text" role="alert" hidden></p>
 
@@ -62,16 +52,15 @@
                 <p class="conflict-title">Configuration changed on the server</p>
                 <p class="conflict-text" id="conflict-text"></p>
                 <div class="conflict-actions">
-                    <button type="button" class="btn btn-danger" id="btn-conflict-reload">Reload config</button>
+                    <button type="button" class="btn" id="btn-review-arrangement" data-action="btn-review-arrangement">Compare current arrangement</button><button type="button" class="btn btn-danger" id="btn-conflict-reload" data-action="btn-conflict-reload">Reload wall</button>
                 </div>
             </div>
 
-            <div class="stage-scroll" id="stage-scroll" tabindex="0" role="region" aria-label="Wall stage. Scroll to pan; select a tablet and use the arrow keys to nudge it.">
-                <svg class="stage-svg" id="stage-svg" viewBox="0 0 720 480"
-                     role="group" aria-label="Wall stage. Select a tablet and drag it, or use the arrow keys to nudge the selected tablet."></svg>
+            <div class="stage-scroll" id="stage-scroll" tabindex="0" role="region" aria-label="Wall. Scroll to pan; select a tablet and use the arrow keys to nudge it.">
+                <svg class="stage-svg" id="stage-svg" viewBox="0 0 720 480" role="group" aria-label="Wall. Select a tablet and drag it, or use the arrow keys to nudge the selected tablet."></svg>
             </div>
 
-            <p class="hint" id="stage-preview-note">Hatching marks hidden bezels and gaps. Fill may also crop source edges outside the wall.</p>
+            <section class="arrangement-review task-section" id="manual-arrangement-review" hidden><h3>Review the current wall and your proposal</h3><p id="manual-review-summary" tabindex="-1"></p><details class="technical-details"><summary>Exact geometry and pins</summary><pre class="form-comparison" id="manual-review-details"></pre></details><button type="button" class="btn" id="manual-review-keep" data-action="manual-review-keep">Keep my arrangement against this wall</button></section><p class="hint" id="stage-preview-note">Hatching marks hidden bezels and gaps. Fill may also crop source edges outside the wall.</p>
             <p class="hint" id="stage-quality-summary"></p>
             <details class="stage-details"><summary>Preview coverage and resolution estimates</summary>
             <div class="stage-foot">
@@ -86,85 +75,25 @@
             <p class="hint" id="stage-resolution"></p>
             <p class="hint">Drag a measured tablet to move it on the wall. A drag starts after 3 px, so a tap only selects. Escape cancels a drag in progress.</p>
             </details>
-        </section>
+        <section class="wall-empty task-section" id="wall-empty" aria-labelledby="empty-title"><h3 id="empty-title">Build your first wall</h3><p>Connect tablets, arrange their screens, then choose an image to span them.</p><button type="button" class="btn btn-primary" id="empty-add-tablets" data-action="empty-add-tablets">Add tablets</button></section></section>
     </main>
 
-    <aside class="side rail" id="rail" aria-label="Console controls">
-        <div class="rail-tabs" id="rail-tabs" role="tablist" aria-label="Console tasks" tabindex="-1">
-            <button type="button" class="rail-tab" id="tab-show" role="tab" aria-selected="true" aria-controls="panel-show" tabindex="0">Wall</button>
-            <button type="button" class="rail-tab" id="tab-tablet" role="tab" aria-selected="false" aria-controls="panel-tablet" tabindex="-1">Tablets <span class="tab-dot" id="tab-tablet-dot" hidden></span></button>
-            <button type="button" class="rail-tab" id="tab-content" role="tab" aria-selected="false" aria-controls="panel-content" tabindex="-1">Content <span class="tab-dot" id="tab-content-dot" hidden></span></button>
-            <button type="button" class="rail-tab" id="tab-system" role="tab" aria-selected="false" aria-controls="panel-system" tabindex="-1">System</button>
-        </div>
+    <aside class="side rail task-workspace" id="rail" aria-label="Console controls">
+
         <div class="rail-panels" id="rail-panels">
-            <section class="rail-panel" id="panel-show" role="tabpanel" aria-labelledby="tab-show" tabindex="0">
+            <section class="rail-panel task-panel" id="panel-show" role="tabpanel" aria-labelledby="tab-show" tabindex="0" data-task="arrange"><h2 class="task-title" tabindex="-1" id="task-arrange">Arrange</h2>
         <div id="operator-wall">
-        <section class="card image-card" aria-labelledby="image-title">
-            <h2 id="image-title">Show a still image</h2>
-            <p id="active-image">Reading active content…</p>
-            <img id="image-thumbnail" alt="Selected still image preview" hidden>
-            <label class="field" for="image-select">Image<select class="inp" id="image-select"><option value="">Loading images…</option></select></label>
-            <label class="field" for="image-fit">Wall-wide fit<select class="inp" id="image-fit"><option value="cover">Fill the wall (crops)</option><option value="contain">Fit whole image (adds bars)</option></select></label>
-            <p class="hint" id="image-details"></p><p class="hint" id="image-fit-note"></p>
-            <div class="operator-actions"><button class="btn btn-primary" id="show-image" type="button" disabled>Show on wall</button><button class="btn" id="refresh-images" type="button">Refresh images</button><button class="btn" id="restore-image" type="button" disabled>Restore previous content</button></div>
-            <p id="image-message" role="status" aria-live="polite"></p>
-            <details><summary>Colours and continuity checks</summary><p class="hint">Patterns use committed wall bounds. A generated grid or black wall is an ordinary image. Keep your prior content with Restore previous content.</p>
-                <div class="operator-actions"><button class="btn" type="button" id="show-colours">Tablet colours</button><button class="btn" type="button" id="show-calibration">Logical calibration pattern</button><button class="btn" type="button" id="pattern-grid">Wall-sized grid</button><button class="btn" type="button" id="pattern-black">Black wall</button></div>
-            </details>
-        </section>
-        <section class="card" aria-labelledby="grid-title"><h2 id="grid-title">Layout &amp; size</h2>
+
+        <section class="card task-section" aria-labelledby="grid-title"><h3 id="grid-title">Choose screens and shape</h3>
             <p class="hint">Choose tablets in reading order. Preview changes nothing. Apply replaces the arrangement once.</p>
-            <label class="field" for="grid-kind">Layout kind<select class="inp" id="grid-kind"><option value="logical">Logical units</option><option value="physical">Measured millimetres</option></select></label>
+            <label class="field" for="grid-kind">Screen sizing<select class="inp" id="grid-kind" data-field="grid-kind"><option value="logical">Quick arrangement</option><option value="physical">Match real sizes</option></select></label>
             <p class="hint" id="grid-kind-note"></p>
-            <div class="operator-actions"><button class="btn" type="button" id="grid-2x2">2 × 2 (2 rows, 2 columns)</button><button class="btn" type="button" id="grid-1x4">1 × 4 (1 row, 4 columns)</button></div>
-            <div class="operator-fields"><label class="field" for="grid-rows">Rows<input class="inp" id="grid-rows" type="number" min="1" max="64" value="2" step="1"></label><label class="field" for="grid-columns">Columns<input class="inp" id="grid-columns" type="number" min="1" max="64" value="2" step="1"></label>
-            <label class="field" for="grid-gap">Extra gap between bodies<input class="inp" id="grid-gap" type="number" min="0" value="0" step="any"></label><label class="field" for="grid-padding">Outer padding<input class="inp" id="grid-padding" type="number" min="0" value="0" step="any"></label></div>
-            <label class="field" for="grid-orientation">Body orientation<select class="inp" id="grid-orientation"><option value="preserve">Preserve mounting / stored sizes</option><option value="landscape">Landscape</option><option value="portrait">Portrait</option><option value="auto">Auto from fresh viewport and confirmed model</option></select></label>
-            <label class="field" for="grid-sizing">Wall bounds<select class="inp" id="grid-sizing"><option value="tablets">Fit wall to tablet bodies</option><option value="fixed">Keep current same-kind bounds</option></select></label>
-            <label class="check-label"><input type="checkbox" id="grid-holes"> Allow empty trailing cells</label>
-            <ol id="grid-order" class="operator-order" aria-label="Tablet order, left to right then top to bottom"></ol>
-            <div id="grid-releases"></div>
-            <div class="operator-actions"><button class="btn" type="button" id="grid-preview">Preview arrangement</button><button class="btn" type="button" id="grid-cancel" disabled>Cancel preview</button></div>
-            <p id="grid-message" role="status" aria-live="polite"></p>
-        </section></div>
-        <section class="card saved-card" aria-labelledby="saved-title">
-            <div class="sec-head">
-                <h2 id="saved-title">Saved arrangements</h2>
-                <button type="button" class="btn btn-ghost btn-sm" id="btn-layouts-refresh">Refresh</button>
-            </div>
-            <p class="hint">Saving keeps the committed layout, not the draft. Apply the draft first to save its changes under a new name.</p>
+            <div class="operator-actions"><button class="btn" type="button" id="grid-2x2" data-action="grid-2x2">2 × 2 (2 rows, 2 columns)</button><button class="btn" type="button" id="grid-1x4" data-action="grid-1x4">Row of selected tablets</button></div>
 
-            <form class="saved-form" id="layout-save-form" novalidate>
-                <div class="field">
-                    <label class="label" for="layout-name">Name</label>
-                    <input class="inp" id="layout-name" type="text" maxlength="64" autocomplete="off"
-                           spellcheck="false" placeholder="Lobby, 3 across" aria-describedby="layout-msg">
-                </div>
-                <button type="submit" class="btn" id="btn-layout-save">Save committed layout</button>
-            </form>
+        <details class="grid-advanced task-details" id="grid-advanced"><summary>Custom grid, gaps and bounds</summary><div class="operator-fields"><label class="field" for="grid-rows">Rows<input class="inp" id="grid-rows" type="number" min="1" max="64" value="2" step="1" data-field="grid-rows"></label><label class="field" for="grid-columns">Columns<input class="inp" id="grid-columns" type="number" min="1" max="64" value="2" step="1" data-field="grid-columns"></label>
+            <label class="field" for="grid-gap">Extra gap between bodies<input class="inp" id="grid-gap" type="number" min="0" value="0" step="any" data-field="grid-gap"></label><label class="field" for="grid-padding">Outer padding<input class="inp" id="grid-padding" type="number" min="0" value="0" step="any" data-field="grid-padding"></label></div><label class="field" for="grid-orientation">Screen orientation<select class="inp" id="grid-orientation" data-field="grid-orientation"><option value="preserve">Preserve mounting / stored sizes</option><option value="landscape">Landscape</option><option value="portrait">Portrait</option><option value="auto">Auto from fresh viewport and confirmed model</option></select></label><label class="field" for="grid-sizing">Wall bounds<select class="inp" id="grid-sizing" data-field="grid-sizing"><option value="tablets">Fit wall to tablet bodies</option><option value="fixed">Keep current same-kind bounds</option></select></label><label class="check-label"><input type="checkbox" id="grid-holes" data-field="grid-holes"> Allow empty trailing cells</label></details><ol id="grid-order" class="operator-order" aria-label="Tablet order, left to right then top to bottom"></ol><div id="grid-releases"></div><section class="group-setup task-section" aria-labelledby="group-model-title"><h3 id="group-model-title">Set up selected tablets together</h3><p id="group-subjects"></p><label class="field" for="group-model">Actual hardware model<select class="inp" id="group-model" data-field="group-model"><option value="">Choose the model you checked</option></select></label><label class="check-label"><input type="checkbox" id="group-hardware" data-field="group-hardware"> I checked that these selected tablets are this hardware model. Its dimensions remain approximate.</label><button type="button" class="btn" id="group-confirm" data-action="group-confirm">Confirm model for selected tablets</button><button type="button" class="btn" id="group-new-review" data-action="group-new-review" hidden>Start a new model review with the current arrangement selection</button><p id="group-result" role="status"></p></section><label class="field" for="grid-common-mount">Common mounted top edge<select class="inp" id="grid-common-mount" data-field="grid-common-mount"><option value="">Choose explicitly for new measured tablets</option><option value="0">0° · top at top</option><option value="90">90° · top at right</option><option value="180">180° · top at bottom</option><option value="270">270° · top at left</option></select></label><div class="operator-actions"><button class="btn" type="button" id="grid-preview" data-action="grid-preview">Preview arrangement</button><button class="btn" type="button" id="grid-rebuild" data-action="grid-rebuild">Rebuild preview with current wall</button><button class="btn" type="button" id="grid-cancel" disabled data-action="grid-cancel">Cancel preview</button></div><p id="grid-message" role="status" aria-live="polite"></p></section></div>
 
-            <p class="form-msg" id="layout-msg" role="status" aria-live="polite" hidden></p>
-            <ul class="saved-list" id="saved-layouts" aria-label="Saved arrangements"></ul>
-            <p class="empty-note" id="saved-empty" hidden>No saved arrangements yet.</p>
-        </section>
-
-            </section>
-            <section class="rail-panel" id="panel-tablet" role="tabpanel" aria-labelledby="tab-tablet" tabindex="0" hidden>
-        <section class="card devices-card" aria-labelledby="devices-title">
-            <div class="sec-head">
-                <h2 id="devices-title">Tablets</h2>
-                <span class="sec-count" id="device-count">0 online</span>
-            </div>
-            <div class="roster-status-row">
-                <p class="hint" id="roster-status" role="status">Tablet status has not been checked.</p>
-                <button type="button" class="btn btn-sm" id="btn-roster-refresh">Refresh status</button>
-            </div>
-            <p class="hint">Display number, online state, short device id, active panel size, image confirmation, and the active pinned profile and calibration revisions. Wake lock is optional. On HTTP, keep tablets awake using their OS power settings. A tablet with no slot can be added once it has a profile and a matching calibration.</p>
-            <ul class="dev-list" id="device-list" aria-label="Tablets known to this server"></ul>
-            <p class="empty-note" id="device-empty" hidden>No tablets are registered yet. Open <a href="/client/">/client/</a> on a tablet on the same LAN, then reload this page.</p>
-        </section>
-        <div id="operator-device-actions"></div>
-        <section class="card inspector" aria-labelledby="inspector-title">
+            <section class="card inspector task-section" aria-labelledby="inspector-title">
             <h2 id="inspector-title">Selected tablet</h2>
             <p class="empty-note" id="inspector-empty">Select a tablet on the stage or in the list.</p>
 
@@ -172,82 +101,416 @@
                 <div class="insp-head">
                     <div class="insp-name">
                         <h3 id="selected-title" tabindex="-1">–</h3>
-                        <p class="insp-id-line">
+
+                    <details class="technical-details"><summary>Tablet technical details</summary><p class="insp-id-line">
                             <code id="selected-id">–</code>
-                            <button type="button" class="btn btn-ghost btn-sm" id="btn-copy-selected-id">Copy full id</button>
-                        </p>
-                    </div>
+                            <button type="button" class="btn btn-ghost btn-sm" id="btn-copy-selected-id" data-action="btn-copy-selected-id">Copy full id</button>
+                        </p></details></div>
                     <span class="chip" id="selected-state" data-kind="ok">On the wall</span>
                 </div>
-                <p class="hint" id="selected-note"></p>
+                <details class="technical-details"><summary>Pinned measurement details</summary><p class="hint" id="selected-note"></p></details>
 
                 <div class="slot-fields">
                     <div class="field">
                         <label class="label" for="slot-center-x">Centre X (mm)</label>
-                        <input class="inp" id="slot-center-x" type="number" step="any" inputmode="decimal" autocomplete="off">
+                        <input class="inp" id="slot-center-x" type="number" step="any" inputmode="decimal" autocomplete="off" data-field="slot-center-x">
                     </div>
                     <div class="field">
                         <label class="label" for="slot-center-y">Centre Y (mm)</label>
-                        <input class="inp" id="slot-center-y" type="number" step="any" inputmode="decimal" autocomplete="off">
+                        <input class="inp" id="slot-center-y" type="number" step="any" inputmode="decimal" autocomplete="off" data-field="slot-center-y">
                     </div>
                     <div class="field">
                         <label class="label" for="slot-angle">Mount angle (°)</label>
-                        <input class="inp" id="slot-angle" type="number" step="any" inputmode="decimal" autocomplete="off">
+                        <input class="inp" id="slot-angle" type="number" step="any" inputmode="decimal" autocomplete="off" data-field="slot-angle">
                     </div>
                     <div class="field">
                         <label class="label" for="slot-nudge-x">Nudge X (mm)</label>
-                        <input class="inp" id="slot-nudge-x" type="number" step="any" inputmode="decimal" autocomplete="off">
+                        <input class="inp" id="slot-nudge-x" type="number" step="any" inputmode="decimal" autocomplete="off" data-field="slot-nudge-x">
                     </div>
                     <div class="field">
                         <label class="label" for="slot-nudge-y">Nudge Y (mm)</label>
-                        <input class="inp" id="slot-nudge-y" type="number" step="any" inputmode="decimal" autocomplete="off">
+                        <input class="inp" id="slot-nudge-y" type="number" step="any" inputmode="decimal" autocomplete="off" data-field="slot-nudge-y">
                     </div>
                 </div>
 
                 <div class="insp-actions">
-                    <button type="button" class="btn" id="btn-rotate">Rotate 90°</button>
-                    <button type="button" class="btn btn-danger" id="btn-delete-slot">Delete from wall</button>
+                    <button type="button" class="btn" id="btn-rotate" data-action="btn-rotate">Rotate 90°</button>
+                    <button type="button" class="btn btn-danger" id="btn-delete-slot" data-action="btn-delete-slot">Remove position from preview</button>
                 </div>
 
                 <div class="nudge-block" role="group" aria-labelledby="nudge-title">
                     <span class="label" id="nudge-title">Nudge by 1 mm</span>
                     <div class="nudge-grid">
-                        <button type="button" class="btn nudge-btn" id="btn-nudge-x-minus"
-                                aria-label="Nudge X minus 1 millimetre">X −1</button>
-                        <button type="button" class="btn nudge-btn" id="btn-nudge-x-plus"
-                                aria-label="Nudge X plus 1 millimetre">X +1</button>
-                        <button type="button" class="btn nudge-btn" id="btn-nudge-y-minus"
-                                aria-label="Nudge Y minus 1 millimetre">Y −1</button>
-                        <button type="button" class="btn nudge-btn" id="btn-nudge-y-plus"
-                                aria-label="Nudge Y plus 1 millimetre">Y +1</button>
+                        <button type="button" class="btn nudge-btn" id="btn-nudge-x-minus" aria-label="Nudge X minus 1 millimetre" data-action="btn-nudge-x-minus">X −1</button>
+                        <button type="button" class="btn nudge-btn" id="btn-nudge-x-plus" aria-label="Nudge X plus 1 millimetre" data-action="btn-nudge-x-plus">X +1</button>
+                        <button type="button" class="btn nudge-btn" id="btn-nudge-y-minus" aria-label="Nudge Y minus 1 millimetre" data-action="btn-nudge-y-minus">Y −1</button>
+                        <button type="button" class="btn nudge-btn" id="btn-nudge-y-plus" aria-label="Nudge Y plus 1 millimetre" data-action="btn-nudge-y-plus">Y +1</button>
                     </div>
                     <p class="hint">Arrow keys nudge by 1 mm. Shift + arrow nudges by 10 mm.</p>
                 </div>
 
                 <div class="inspector-footer">
-                    <button type="button" class="btn btn-primary" id="btn-apply-local" disabled>Apply layout</button>
-                    <button type="button" class="btn" id="btn-cancel-local" disabled>Cancel changes</button>
+                    <button type="button" class="btn btn-primary" id="btn-apply-local" disabled data-action="btn-apply-local">Apply arrangement</button>
+                    <button type="button" class="btn" id="btn-cancel-local" disabled data-action="btn-cancel-local">Discard arrangement</button>
                 </div>
             </div>
 
             <div id="inspector-missing" hidden>
                 <p class="empty-note" id="slot-missing-text"></p>
-                <button type="button" class="btn btn-primary" id="btn-add-slot">Add to wall</button>
+                <button type="button" class="btn btn-primary" id="btn-add-slot" data-action="btn-add-slot">Add to wall</button>
+            </div>
+        </section><section class="card bounds-card task-section" aria-labelledby="bounds-title">
+            <h2 id="bounds-title">Wall bounds</h2>
+            <p class="hint">The rectangle every slot is placed inside. Values are millimetres, measured from the top-left corner of the wall as the audience sees it.</p>
+            <div class="field">
+                <label class="label" for="bounds-mode">Wall sizing</label>
+                <select class="inp" id="bounds-mode" data-field="bounds-mode">
+                    <option value="fixed">Fixed wall size</option>
+                    <option value="tablets">Fit wall to tablets</option>
+                </select>
+            </div>
+            <div class="field bounds-padding-field">
+                <label class="label" for="bounds-padding">Outer padding (mm)</label>
+                <input class="inp" id="bounds-padding" type="number" min="0" step="any" value="0" inputmode="decimal" data-field="bounds-padding">
+            </div>
+            <p class="hint">Fixed uses the dimensions below. Fit encloses the placed tablet bodies, including their borders and rotation. Diagonal tablets can leave empty corners.</p>
+            <p class="form-msg" id="sizing-msg" role="status" aria-live="polite" hidden></p>
+            <div class="pack-row">
+                <div class="field">
+                    <label class="label" for="pack-columns">Columns</label>
+                    <input class="inp" id="pack-columns" type="number" min="1" step="1" value="3" inputmode="numeric" data-field="pack-columns">
+                </div>
+                <div class="field">
+                    <label class="label" for="pack-gap">Gap (mm)</label>
+                    <input class="inp" id="pack-gap" type="number" min="0" step="any" value="0" inputmode="decimal" data-field="pack-gap">
+                </div>
+                <button type="button" class="btn" id="btn-pack-tablets" data-action="btn-pack-tablets">Pack tablets</button>
+            </div>
+            <div class="bounds-grid">
+                <div class="field">
+                    <label class="label" for="bounds-x">X (mm)</label>
+                    <input class="inp" id="bounds-x" type="number" step="any" inputmode="decimal" autocomplete="off" data-field="bounds-x">
+                </div>
+                <div class="field">
+                    <label class="label" for="bounds-y">Y (mm)</label>
+                    <input class="inp" id="bounds-y" type="number" step="any" inputmode="decimal" autocomplete="off" data-field="bounds-y">
+                </div>
+                <div class="field">
+                    <label class="label" for="bounds-width">Width (mm)</label>
+                    <input class="inp" id="bounds-width" type="number" min="1" step="any" inputmode="decimal" autocomplete="off" data-field="bounds-width">
+                </div>
+                <div class="field">
+                    <label class="label" for="bounds-height">Height (mm)</label>
+                    <input class="inp" id="bounds-height" type="number" min="1" step="any" inputmode="decimal" autocomplete="off" data-field="bounds-height">
+                </div>
+            </div>
+            <p class="hint" id="bounds-note"></p>
+        </section><section class="logical-editor task-section" id="logical-editor" hidden aria-labelledby="logical-title">
+            <h3 id="logical-title">Relative arrangement</h3>
+            <p>Relative units describe the preview, without a measured continuity claim. Select a tablet in the diagram or Tablets.</p>
+            <div id="logical-fields" class="operator-fields"></div>
+            <label class="field" for="logical-snap">Snap spacing (relative units)<input class="inp" id="logical-snap" type="number" min="1" value="1" step="1" data-field="logical-snap"></label>
+            <label class="field" for="logical-width">Wall width (relative units)<input class="inp" id="logical-width" type="number" min="1" step="1" data-field="logical-width"></label>
+            <label class="field" for="logical-height">Wall height (relative units)<input class="inp" id="logical-height" type="number" min="1" step="1" data-field="logical-height"></label>
+            <label class="field" for="logical-mode">Bounds<select class="inp" id="logical-mode" data-field="logical-mode"><option value="tablets">Fit to tablets</option><option value="fixed">Fixed bounds</option></select></label>
+            <label class="field" for="logical-padding">Outer padding (relative units)<input class="inp" id="logical-padding" type="number" min="0" step="1" value="0" data-field="logical-padding"></label>
+            <button type="button" class="btn" id="logical-rotate" data-action="logical-rotate">Rotate selected 90°</button>
+            <details class="logical-tiling task-section">
+                <summary>Tile or pack tablets</summary>
+                <p>Preview changes the arrangement draft. Tablets outside the chosen scope keep their positions. New relative sizes use the reported screen aspect when available, or a square fallback.</p>
+                <div class="operator-fields">
+                    <label class="field" for="logical-tile-scope">Tablets<select class="inp" id="logical-tile-scope" data-field="logical-tile-scope"><option value="placed">Placed tablets</option><option value="online">Online tablets</option><option value="all">All registered tablets</option></select></label>
+                    <label class="field" for="logical-tile-columns">Columns<input class="inp" id="logical-tile-columns" type="number" min="1" step="1" value="4" data-field="logical-tile-columns"></label>
+                    <label class="field" for="logical-tile-rows">Rows<input class="inp" id="logical-tile-rows" type="number" min="1" step="1" value="1" data-field="logical-tile-rows"></label>
+                    <label class="field" for="logical-tile-gap">Gap (relative units)<input class="inp" id="logical-tile-gap" type="number" min="0" step="1" value="0" data-field="logical-tile-gap"></label>
+                    <label class="field" for="logical-tile-order">Order<select class="inp" id="logical-tile-order" data-field="logical-tile-order"><option value="wall">Arrangement selection order</option><option value="id">Tablet ID</option></select></label>
+                    <label class="field" for="logical-tile-shape">Tile shape<select class="inp" id="logical-tile-shape" data-field="logical-tile-shape"><option value="keep">Keep screen aspect</option><option value="fill">Fill each cell</option></select></label>
+                </div>
+                <div class="operator-actions"><button type="button" class="btn" id="logical-tile" data-action="logical-tile">Tile in wall bounds</button><button type="button" class="btn" id="logical-pack" data-action="logical-pack">Pack tablets</button></div>
+            </details>
+            <p id="logical-message" role="status"></p>
+        </section><div class="arrangement-history operator-actions" role="group" aria-label="Layout draft">
+                <button type="button" class="btn btn-ghost" id="btn-undo" disabled data-action="btn-undo">Undo</button>
+                <button type="button" class="btn btn-ghost" id="btn-redo" disabled data-action="btn-redo">Redo</button>
+                <span class="draft-flag" id="draft-flag" data-dirty="false">No changes</span>
+                <span class="toolbar-gap" aria-hidden="true"></span>
+
+                <button type="button" class="btn btn-ghost" id="btn-reload" aria-label="Reload configuration" data-action="btn-reload">Reload</button>
+            </div><footer class="task-footer" data-task-footer="arrange"><p id="arrange-review-summary">Review the preview before applying. This changes geometry only.</p><div id="arrange-footer-actions" class="operator-actions"><button type="button" class="btn btn-primary" id="btn-apply" disabled data-action="btn-apply">Apply arrangement</button><button type="button" class="btn" id="btn-cancel" disabled data-action="btn-cancel">Discard arrangement</button></div></footer></section>
+            <section class="rail-panel task-panel" id="panel-tablet" role="tabpanel" aria-labelledby="tab-tablet" tabindex="0" hidden data-task="tablets"><h2 class="task-title" tabindex="-1" id="task-tablets">Tablets</h2><section class="join-tablets task-section" aria-labelledby="join-title"><h3 id="join-title">Add tablets</h3><p>Open the tablet address on each tablet on the same network. Keep the page open and the tablet on power.</p><label class="field" for="tablet-url">Tablet address<input class="inp" id="tablet-url" readonly value="Tablet address not configured" data-field="tablet-url"></label><button class="btn" type="button" id="copy-tablet-url" disabled data-action="copy-tablet-url">Copy tablet URL</button><p id="tablet-url-note"></p><figure id="tablet-qr-figure" hidden><img id="tablet-qr" alt="QR code for the configured tablet address"><figcaption id="tablet-qr-note">Scan to open the tablet page. The QR encodes only the join address, not a credential.</figcaption></figure><p id="tablet-qr-error" role="alert" hidden>QR image failed to load. The text address above still works. <button class="btn" type="button" id="btn-readiness-qr-retry" data-action="btn-readiness-qr-retry">Retry QR</button></p><p id="join-network">Network details have not been reported.</p><button type="button" class="btn" id="join-refresh" data-action="join-refresh">Check connection</button><button type="button" class="btn" id="join-arrange" data-action="join-arrange">Arrange connected tablets</button></section>
+        <section class="card devices-card task-section" aria-labelledby="devices-title">
+            <div class="sec-head">
+                <h2 id="devices-title">Joined tablets</h2>
+                <span class="sec-count" id="device-count">0 online</span>
+            </div>
+            <div class="roster-status-row">
+                <p class="hint" id="roster-status" role="status">Tablet status has not been checked.</p>
+                <button type="button" class="btn btn-sm" id="btn-roster-refresh" data-action="btn-roster-refresh">Refresh status</button>
+            </div>
+            <p class="hint">Tablets appear automatically. A connected tablet can be placed in Arrange. Keep tablet pages open and screens awake using their power settings. Current matching paint reports confirm the applied image separately.</p>
+            <ul class="dev-list" id="device-list" aria-label="Tablets known to this server"></ul>
+            <p class="empty-note" id="device-empty" hidden>No tablets are registered yet. Open <a href="/client/">/client/</a> on a tablet on the same LAN, they appear here automatically.</p>
+        </section>
+        <div id="operator-device-actions"><section class="tablet-actions task-section" aria-labelledby="tablet-actions-title">
+            <h2 id="tablet-actions-title">Tablet actions</h2><h3 id="tablet-action-name" tabindex="-1">Select a tablet.</h3><p id="tablet-evidence"></p><details class="technical-details"><summary>Measurement and browser details</summary><p class="hint" id="tablet-provenance"></p></details><button class="btn" id="open-tablet-measurements" type="button" data-action="open-tablet-measurements">Review measurements / confirm model</button>
+            <form id="tablet-label-form" data-form="tablet-label-form"><label class="field" for="tablet-label">Tablet name<input class="inp" id="tablet-label" maxlength="80" autocomplete="off" data-field="tablet-label"></label><button class="btn" id="tablet-label-save" data-action="tablet-label-save">Save name</button><button type="button" class="btn" id="tablet-label-review" data-action="tablet-label-review">Compare current saved name</button><button type="button" class="btn" id="tablet-label-discard" data-action="tablet-label-discard">Discard name</button></form><section class="field-review" id="tablet-name-review" hidden><p id="tablet-name-comparison"></p><button class="btn" type="button" id="tablet-name-keep" data-action="tablet-name-keep">Keep my name against this saved value</button></section>
+            <div class="operator-actions"><button class="btn" id="tablet-identify" type="button" data-action="tablet-identify">Identify for 5 seconds</button><button class="btn" id="tablet-retry-image" type="button" data-action="tablet-retry-image">Retry image</button><button class="btn" id="tablet-reconnect" type="button" data-action="tablet-reconnect">Reconnect</button></div>
+            <p class="hint">Reconnect keeps the tablet identity, label and number. Identify temporarily covers the image.</p>
+            <label class="check-label" id="tablet-participation-label"><input type="checkbox" id="tablet-participation" data-field="tablet-participation"> Include this slot in the show (draft)</label>
+            <div class="operator-actions"><button class="btn" id="tablet-remove" type="button" data-action="tablet-remove">Remove from wall</button><button class="btn btn-danger" id="tablet-forget-preview" type="button" data-action="tablet-forget-preview">Review offline Forget</button></div>
+            <div id="tablet-forget-impact" hidden><p id="tablet-forget-text"></p><label class="check-label"><input type="checkbox" id="tablet-forget-active" data-field="tablet-forget-active"> Also remove the active slot</label><button class="btn btn-danger" id="tablet-forget-confirm" type="button" data-action="tablet-forget-confirm">Confirm Forget</button><button class="btn" id="tablet-forget-cancel" type="button" data-action="tablet-forget-cancel">Cancel Forget</button></div>
+            <details><summary>Replace this offline browser identity</summary><p>Choose the exact saved arrangements to update. Same hardware copies pinned measurements. Different hardware cannot inherit physical measurements.</p>
+                <label class="field" for="replace-target">Replacement registration<select class="inp" id="replace-target" data-field="replace-target"><option value="">Choose new registration</option></select></label>
+                <label class="field" for="replace-hardware">Hardware declaration<select class="inp" id="replace-hardware" data-field="replace-hardware"><option value="">Choose explicitly</option><option value="same_hardware">Same hardware, new browser identity</option><option value="different_hardware">Different hardware</option></select></label>
+                <label class="check-label"><input type="checkbox" id="replace-active" checked data-field="replace-active"> Update active arrangement</label><label class="check-label"><input type="checkbox" id="replace-label" checked data-field="replace-label"> Transfer operator label</label>
+                <label class="field" for="replace-number">Display number (optional)<input class="inp" id="replace-number" type="number" min="1" max="512" step="1" data-field="replace-number"></label>
+                <fieldset id="replace-saved" class="task-section"><legend>Saved arrangements to update</legend></fieldset>
+                <button class="btn" type="button" id="replace-preview" data-action="replace-preview">Preview replacement</button><p id="replace-summary" role="status" aria-live="polite"></p><details class="technical-details"><summary>Exact identity, connection and historical pins</summary><pre class="form-comparison" id="replace-technical"></pre></details><button class="btn" type="button" id="replace-cancel" data-action="replace-cancel" disabled>Discard replacement preview</button><button class="btn btn-danger" type="button" id="replace-apply" disabled data-action="replace-apply">Confirm replacement</button>
+            </details><p id="tablet-action-message" role="status" aria-live="polite"></p><p class="tablet-recovery" id="tablet-recovery"></p><button type="button" class="btn" id="tablet-next-action" hidden data-action="tablet-next-action">Review problem</button><section class="replacement-offer" id="replacement-offer" hidden><h3>Replacing an offline tablet?</h3><p>Choose the old registration to review a deliberate replacement. Joining never transfers an identity automatically.</p><label class="field" for="replacement-old">Old offline registration<select class="inp" id="replacement-old" data-field="replacement-old"><option value="">Choose old tablet</option></select></label><button type="button" class="btn" id="replacement-open" data-action="replacement-open">Review replacement with this new tablet</button></section></section></div>
+
+            <section class="wall-issues task-section" aria-labelledby="issues-title"><h3 id="issues-title" tabindex="-1">Wall issues</h3><p id="issues-empty"></p><ul class="issue-list" id="wall-issues"></ul></section></section>
+            <section class="rail-panel task-panel" id="panel-content" role="tabpanel" aria-labelledby="tab-content" tabindex="0" hidden data-task="images"><h2 class="task-title" tabindex="-1" id="task-images">Images</h2><section class="card image-card task-section" aria-labelledby="image-title">
+            <h2 id="image-title">Choose an image</h2>
+            <p id="active-image">Reading active content…</p>
+            <img id="image-thumbnail" alt="Selected still image preview" hidden>
+            <label class="field" for="image-select">Image<select class="inp" id="image-select" data-field="image-select"><option value="">Loading images…</option></select></label>
+            <label class="field" for="image-fit">Wall-wide fit<select class="inp" id="image-fit" data-field="image-fit"><option value="cover">Fill the wall (crops)</option><option value="contain">Fit whole image (adds bars)</option></select></label>
+            <p class="hint" id="image-details"></p><p class="hint" id="image-fit-note"></p>
+            <footer class="task-footer" data-task-footer="images"><div class="operator-actions"><button class="btn btn-primary" id="show-image" type="button" disabled data-action="show-image">Show image</button><button class="btn" id="refresh-images" type="button" data-action="refresh-images">Refresh images</button><button class="btn" id="restore-image" type="button" disabled data-action="restore-image">Restore previous content</button></div>
+            <p id="image-message" role="status" aria-live="polite"></p><button class="btn" id="image-rebuild" type="button" data-action="image-rebuild">Rebuild image preview with current wall</button><button class="btn" id="image-discard" type="button" data-action="image-discard">Discard image preview</button></footer>
+
+        <button class="btn" type="button" id="images-check-connection" data-action="images-check-connection">Check image-addition connection</button><p id="upload-instruction">Checking upload availability…</p><form id="upload-form" hidden data-form="upload-form"><label class="field" for="upload-file">Upload a still image<input class="inp" type="file" id="upload-file" accept="image/png,image/jpeg" data-field="upload-file" required></label>
+                <button class="btn" id="upload-submit" data-action="upload-submit">Upload image</button><progress id="upload-progress" max="100" value="0" aria-label="Image upload progress" hidden></progress></form><p id="upload-message" role="status" aria-live="polite"></p><label class="field" for="image-search">Search images<input class="inp" type="search" id="image-search" autocomplete="off" data-field="image-search"></label><ul id="image-gallery" class="image-gallery" aria-label="Image library"></ul></section></section>
+            <section class="rail-panel task-panel" id="panel-system" role="tabpanel" aria-labelledby="tab-system" tabindex="0" hidden data-task="settings"><h2 class="task-title" tabindex="-1" id="task-settings">Settings</h2>
+        <div id="operator-readiness"><section class="card task-section" aria-labelledby="readiness-title"><h2 id="readiness-title">Check wall</h2><button type="button" class="btn btn-danger" id="clear-wall" data-action="clear-wall">Clear wall</button>
+            <p id="readiness-status" role="status" aria-live="polite">Reading server readiness…</p>
+            <p id="readiness-errors" role="alert" hidden></p>
+
+            <p class="hint" id="readiness-refreshed">Not read yet.</p>
+            <button class="btn" type="button" id="btn-readiness-refresh" data-action="btn-readiness-refresh">Refresh readiness</button>
+            <dl id="operator-readiness-facts" class="operator-facts"></dl>
+            <details id="readiness-paths"><summary>Data paths</summary><dl class="operator-facts" id="operator-readiness-paths"></dl></details>
+            <details id="readiness-advice"><summary>What this server cannot do</summary><ul id="operator-readiness-advice"></ul></details>
+            <p id="readiness-message" role="status" aria-live="polite"></p></section></div>
+        <details class="card" id="measurement-details"><summary>Advanced measurements and model confirmation</summary><section class="field-review" id="measurement-review" hidden><h3>Review changed saved fields</h3><pre class="form-comparison" id="measurement-comparison"></pre><button type="button" class="btn" id="measurement-keep" data-action="measurement-keep">Keep my fields against these saved values</button></section>        <section class="card device-card task-section" aria-labelledby="device-card-title">
+            <h2 id="device-card-title">Profile and calibration</h2>
+            <p class="empty-note" id="device-card-empty">Select a tablet to edit its measurements.</p>
+
+            <div id="device-card-body" hidden>
+                <div class="device-card-head">
+                    <p class="device-card-subject" id="device-card-name">–</p>
+                    <span class="chip" id="device-card-cal" data-kind="info">–</span>
+                </div>
+
+                <div class="field">
+                    <label class="label" for="tablet-model">Tablet model</label>
+                    <select class="inp" id="tablet-model" data-field="tablet-model"></select>
+                    <p class="hint" id="tablet-model-status" role="status"></p>
+                    <button class="btn" type="button" id="apply-tablet-model" data-action="apply-tablet-model">Confirm model choice</button><button type="button" class="btn" id="review-model" data-action="review-model">Compare current saved model</button><button type="button" class="btn" id="discard-model" data-action="discard-model">Discard model choice</button>
+                    <p class="hint">Turning the tablet updates its browser mapping. Use the wall rotation controls to match how it is mounted. Fullscreen assumes no browser inset; other modes are approximate.</p>
+                </div>
+                <form class="measure-form" id="profile-form" novalidate data-form="profile-form">
+                    <h3>Profile</h3>
+                    <p class="current" id="profile-current"></p>
+
+                    <div class="form-grid">
+                        <div class="field">
+                            <label class="label" for="profile-active-width">Active width (mm)</label>
+                            <input class="inp" id="profile-active-width" type="number" min="0" step="any" inputmode="decimal" autocomplete="off" data-field="profile-active-width" aria-describedby="profile-msg">
+                        </div>
+                        <div class="field">
+                            <label class="label" for="profile-active-height">Active height (mm)</label>
+                            <input class="inp" id="profile-active-height" type="number" min="0" step="any" inputmode="decimal" autocomplete="off" data-field="profile-active-height" aria-describedby="profile-msg">
+                        </div>
+                        <div class="field">
+                            <label class="label" for="profile-bezel-top">Bezel top (mm)</label>
+                            <input class="inp" id="profile-bezel-top" type="number" min="0" step="any" inputmode="decimal" autocomplete="off" data-field="profile-bezel-top" aria-describedby="profile-msg">
+                        </div>
+                        <div class="field">
+                            <label class="label" for="profile-bezel-right">Bezel right (mm)</label>
+                            <input class="inp" id="profile-bezel-right" type="number" min="0" step="any" inputmode="decimal" autocomplete="off" data-field="profile-bezel-right" aria-describedby="profile-msg">
+                        </div>
+                        <div class="field">
+                            <label class="label" for="profile-bezel-bottom">Bezel bottom (mm)</label>
+                            <input class="inp" id="profile-bezel-bottom" type="number" min="0" step="any" inputmode="decimal" autocomplete="off" data-field="profile-bezel-bottom" aria-describedby="profile-msg">
+                        </div>
+                        <div class="field">
+                            <label class="label" for="profile-bezel-left">Bezel left (mm)</label>
+                            <input class="inp" id="profile-bezel-left" type="number" min="0" step="any" inputmode="decimal" autocomplete="off" data-field="profile-bezel-left" aria-describedby="profile-msg">
+                        </div>
+                        <div class="field field-wide">
+                            <label class="label" for="profile-label">Label</label>
+                            <input class="inp" id="profile-label" type="text" maxlength="80" autocomplete="off" spellcheck="false" data-field="profile-label" aria-describedby="profile-msg">
+                        </div>
+                        <div class="field field-wide">
+                            <label class="label" for="profile-provenance">Provenance</label>
+                            <input class="inp" id="profile-provenance" type="text" maxlength="40" autocomplete="off" spellcheck="false" placeholder="manual, datasheet" data-field="profile-provenance" aria-describedby="profile-msg">
+                        </div>
+                        <div class="field">
+                            <label class="label" for="profile-pixel-width">Panel pixels wide (optional)</label>
+                            <input class="inp" id="profile-pixel-width" type="number" min="1" step="1" inputmode="numeric" autocomplete="off" data-field="profile-pixel-width" aria-describedby="profile-msg">
+                        </div>
+                        <div class="field">
+                            <label class="label" for="profile-pixel-height">Panel pixels high (optional)</label>
+                            <input class="inp" id="profile-pixel-height" type="number" min="1" step="1" inputmode="numeric" autocomplete="off" data-field="profile-pixel-height" aria-describedby="profile-msg">
+                        </div>
+                    </div>
+
+                    <p class="form-msg" id="profile-msg" role="status" aria-live="polite" hidden></p>
+                    <button type="submit" class="btn btn-primary" id="btn-profile-save" data-action="btn-profile-save">Save profile</button><button type="button" class="btn" id="review-profile" data-action="review-profile">Compare current saved profile</button><button type="button" class="btn" id="discard-profile" data-action="discard-profile">Discard profile fields</button>
+                </form>
+
+                <form class="measure-form" id="calibration-form" novalidate data-form="calibration-form">
+                    <h3>Calibration</h3>
+                    <p class="current" id="calibration-current"></p>
+                    <fieldset class="task-section">
+                        <legend>Optional advanced ruler measurement</legend>
+                        <p>Confirmed known models can already use the physical wall. New measurements are optional. Keep supplied measurements unless you choose a new ruler calibration.</p>
+                        <p id="cal-live-viewport" role="status" aria-live="polite">Waiting for tablet viewport.</p>
+                        <button class="btn" id="cal-use-viewport" type="button" data-action="cal-use-viewport">Use tablet viewport</button>
+                        <p id="cal-ruler-address-note">Loading tablet address…</p>
+                        <p><a id="cal-ruler-link" hidden></a></p>
+                        <button class="btn" id="cal-copy-ruler" type="button" hidden data-action="cal-copy-ruler">Copy ruler address</button>
+                        <p>On the selected tablet, measure each ruler line with a physical ruler. Copy the full current labelled CSS span for each line. Long spans reduce extrapolation. The 200 px short-span option remains available on the tablet.</p>
+                        <div class="form-grid">
+                            <div class="field"><label class="label" for="cal-ruler-mm-x">Horizontal measured length (mm)</label><input class="inp" id="cal-ruler-mm-x" type="number" min="0" step="any" inputmode="decimal" data-field="cal-ruler-mm-x" aria-describedby="calibration-msg"></div>
+                            <div class="field"><label class="label" for="cal-ruler-mm-y">Vertical measured length (mm)</label><input class="inp" id="cal-ruler-mm-y" type="number" min="0" step="any" inputmode="decimal" data-field="cal-ruler-mm-y" aria-describedby="calibration-msg"></div>
+                            <div class="field"><label class="label" for="cal-ruler-span-x">Horizontal line span (CSS px)</label><input class="inp" id="cal-ruler-span-x" type="number" min="0" step="any" value="200" inputmode="decimal" data-field="cal-ruler-span-x" aria-describedby="calibration-msg"></div>
+                            <div class="field"><label class="label" for="cal-ruler-span-y">Vertical line span (CSS px)</label><input class="inp" id="cal-ruler-span-y" type="number" min="0" step="any" value="200" inputmode="decimal" data-field="cal-ruler-span-y" aria-describedby="calibration-msg"></div>
+                        </div>
+                        <div class="form-grid">
+                            <div class="field"><label class="label" for="cal-ruler-error-x">Horizontal ruler error (± mm)</label><input class="inp" id="cal-ruler-error-x" type="number" min="0" step="any" inputmode="decimal" aria-describedby="calibration-msg" data-field="cal-ruler-error-x"></div>
+                            <div class="field"><label class="label" for="cal-ruler-error-y">Vertical ruler error (± mm)</label><input class="inp" id="cal-ruler-error-y" type="number" min="0" step="any" inputmode="decimal" aria-describedby="calibration-msg" data-field="cal-ruler-error-y"></div>
+                        </div>
+                        <p class="hint" id="cal-ruler-error-note">Estimate the reading error for each measured line. It is propagated across the usable panel before saving. This does not establish a 2 mm accuracy claim.</p>
+                        <button class="btn" id="cal-use-ruler" type="button" data-action="cal-use-ruler">Check ruler measurements</button>
+                        <div id="cal-ruler-preview" role="status" aria-live="polite" tabindex="-1" hidden></div>
+                        <fieldset id="cal-ruler-decision" hidden class="task-section">
+                            <legend>Choose which measurement to use</legend>
+                            <p>Keep supplied writes nothing and preserves the current profile and mapping. Use ruler prepares a new calibration revision with these scales and errors. The supplied profile, old revisions and layout pins stay unchanged. Measure again discards this check.</p>
+                            <button class="btn" id="cal-keep-supplied" type="button" data-action="cal-keep-supplied">Keep supplied</button>
+                            <button class="btn" id="cal-accept-ruler" type="button" data-action="cal-accept-ruler">Use ruler</button>
+                            <button class="btn" id="cal-measure-again" type="button" data-action="cal-measure-again">Measure again</button>
+                        </fieldset>
+                        <p>X is the browser’s horizontal axis; Y is vertical. Quarter turn maps these CSS axes into the native panel, and odd quarter turns exchange width and height. Each axis is measured independently. DPR does not change these measurements. Estimated panel profiles are not ruler verified; browser toolbars can inset the picture area.</p>
+                    </fieldset>
+                    <h4>Advanced calibration fields</h4>
+                    <p>Set quarter turn before checking the ruler. Review the propagated uncertainty. Measure the browser picture area’s inset from the panel origin for panel offsets; use 0 only when the viewport starts at the panel origin. Review these fields, then Save calibration.</p>
+
+                    <div class="form-grid">
+                        <div class="field">
+                            <label class="label" for="cal-profile-revision">Profile revision</label>
+                            <input class="inp" id="cal-profile-revision" type="number" min="1" step="1" inputmode="numeric" autocomplete="off" data-field="cal-profile-revision" aria-describedby="calibration-msg">
+                        </div>
+                        <div class="field">
+                            <label class="label" for="cal-viewport-width">Viewport width (CSS px)</label>
+                            <input class="inp" id="cal-viewport-width" type="number" min="1" step="any" inputmode="decimal" autocomplete="off" data-field="cal-viewport-width" aria-describedby="calibration-msg">
+                        </div>
+                        <div class="field">
+                            <label class="label" for="cal-viewport-height">Viewport height (CSS px)</label>
+                            <input class="inp" id="cal-viewport-height" type="number" min="1" step="any" inputmode="decimal" autocomplete="off" data-field="cal-viewport-height" aria-describedby="calibration-msg">
+                        </div>
+                        <div class="field">
+                            <label class="label" for="cal-dpr">Device pixel ratio</label>
+                            <input class="inp" id="cal-dpr" type="number" min="0" step="any" inputmode="decimal" autocomplete="off" data-field="cal-dpr" aria-describedby="calibration-msg">
+                        </div>
+                        <div class="field">
+                            <label class="label" for="cal-orientation">Orientation</label>
+                            <select class="inp" id="cal-orientation" data-field="cal-orientation" aria-describedby="calibration-msg">
+                                <option value="">Choose orientation</option>
+                                <option value="0">0°</option>
+                                <option value="90">90°</option>
+                                <option value="180">180°</option>
+                                <option value="270">270°</option>
+                            </select>
+                        </div>
+                        <div class="field">
+                            <label class="label" for="cal-mode">Mode</label>
+                            <select class="inp" id="cal-mode" data-field="cal-mode" aria-describedby="calibration-msg">
+                                <option value="">Choose mode</option>
+                                <option value="tab">Tab</option>
+                                <option value="fullscreen">Fullscreen</option>
+                                <option value="standalone">Standalone</option>
+                            </select>
+                        </div>
+                        <div class="field">
+                            <label class="label" for="cal-quarter-turn">Quarter turn</label>
+                            <select class="inp" id="cal-quarter-turn" data-field="cal-quarter-turn" aria-describedby="calibration-msg">
+                                <option value="0">0</option>
+                                <option value="1">1</option>
+                                <option value="2">2</option>
+                                <option value="3">3</option>
+                            </select>
+                        </div>
+                        <div class="field">
+                            <label class="label" for="cal-anchor-edge">Anchor edge</label>
+                            <select class="inp" id="cal-anchor-edge" data-field="cal-anchor-edge" aria-describedby="calibration-msg">
+                                <option value="top-left">Top left</option>
+                                <option value="top-right">Top right</option>
+                                <option value="bottom-left">Bottom left</option>
+                                <option value="bottom-right">Bottom right</option>
+                            </select>
+                        </div>
+                        <div class="field">
+                            <label class="label" for="cal-offset-x">Panel offset X (mm)</label>
+                            <input class="inp" id="cal-offset-x" type="number" step="any" inputmode="decimal" autocomplete="off" data-field="cal-offset-x" aria-describedby="calibration-msg">
+                        </div>
+                        <div class="field">
+                            <label class="label" for="cal-offset-y">Panel offset Y (mm)</label>
+                            <input class="inp" id="cal-offset-y" type="number" step="any" inputmode="decimal" autocomplete="off" data-field="cal-offset-y" aria-describedby="calibration-msg">
+                        </div>
+                        <div class="field">
+                            <label class="label" for="cal-mm-css-x">mm per CSS pixel X</label>
+                            <input class="inp" id="cal-mm-css-x" type="number" min="0" step="any" inputmode="decimal" autocomplete="off" data-field="cal-mm-css-x" aria-describedby="calibration-msg">
+                        </div>
+                        <div class="field">
+                            <label class="label" for="cal-mm-css-y">mm per CSS pixel Y</label>
+                            <input class="inp" id="cal-mm-css-y" type="number" min="0" step="any" inputmode="decimal" autocomplete="off" data-field="cal-mm-css-y" aria-describedby="calibration-msg">
+                        </div>
+                        <div class="field">
+                            <label class="label" for="cal-uncertainty">Uncertainty (mm)</label>
+                            <input class="inp" id="cal-uncertainty" type="number" min="0" step="any" inputmode="decimal" autocomplete="off" data-field="cal-uncertainty" aria-describedby="calibration-msg">
+                        </div>
+                        <div class="field field-wide">
+                            <label class="label" for="cal-method">Method</label>
+                            <input class="inp" id="cal-method" type="text" maxlength="80" autocomplete="off" spellcheck="false" placeholder="ruler across the active edge" data-field="cal-method" aria-describedby="calibration-msg">
+                        </div>
+                    </div>
+
+                    <p class="form-msg" id="calibration-msg" role="status" aria-live="polite" hidden></p>
+                    <button type="submit" class="btn btn-primary" id="btn-calibration-save" data-action="btn-calibration-save">Save calibration</button><button type="button" class="btn" id="review-calibration" data-action="review-calibration">Compare current saved calibration</button><button type="button" class="btn" id="discard-calibration" data-action="discard-calibration">Discard calibration fields</button>
+                </form>
             </div>
         </section>
-            </section>
-            <section class="rail-panel" id="panel-content" role="tabpanel" aria-labelledby="tab-content" tabindex="0" hidden>
-        <section class="card" aria-labelledby="content-library-title"><h2 id="content-library-title">Still image library</h2>
-            <p>Curated folder images and ready uploads appear together in Wall. Selecting an image previews it before Show on wall.</p>
-            <button type="button" class="btn" id="open-wall-images">Choose an image in Wall</button>
-            <p id="upload-instruction">Checking upload availability…</p>
-            <form id="upload-form" hidden><label class="field" for="upload-file">Upload a still image<input class="inp" type="file" id="upload-file" accept="image/png,image/jpeg"></label>
-                <button class="btn" id="upload-submit">Upload image</button><progress id="upload-progress" max="100" value="0" aria-label="Image upload progress" hidden></progress></form>
-            <p id="upload-message" role="status" aria-live="polite"></p>
+        </details>
+
+        <section class="card field-card task-section" aria-labelledby="field-title">
+            <div class="sec-head">
+                <h2 id="field-title">Field check</h2>
+                <span class="chip" id="diag-state" data-kind="info">loading</span>
+            </div>
+            <p class="hint">
+                Operator-only storage, identity and wake-lock state. Diagnostics are available
+                for admitted operators, independently of uploads. This is software evidence, not a device-trust claim.
+            </p>
+            <div class="field-actions">
+                <button type="button" class="btn" id="btn-diag-refresh" data-action="btn-diag-refresh">Refresh diagnostics</button>
+                <button type="button" class="btn btn-ghost" id="btn-diag-verify" data-action="btn-diag-verify">Verify object bytes</button>
+                <button type="button" class="btn btn-ghost" id="btn-diag-download" disabled data-action="btn-diag-download">Download report</button>
+            </div>
+            <p class="form-msg" id="diag-msg" role="status" aria-live="polite" hidden></p>
+            <dl class="diag-grid" id="diag-grid"></dl>
+
+            <div class="diag-integrity" id="diag-integrity" hidden>
+                <h3>Object integrity</h3>
+                <p class="diag-integrity-text" id="diag-integrity-text"></p>
+                <ul class="diag-problems" id="diag-problems" aria-label="Damaged objects"></ul>
+            </div>
         </section>
-        <section class="card"><h2>Experimental playback</h2><p>Software evidence only. Playback has not been validated on tablets.</p>
-            <label class="check-label"><input type="checkbox" id="experimental-opt-in"> Enable experimental playlist and playback controls</label>
-            <div id="experimental-controls" hidden>        <section class="playback-card" id="playback-card" aria-labelledby="playback-title">
+
+            <section class="card task-section"><h2>Experimental playback</h2><p>Software evidence only. Playback has not been validated on tablets.</p>
+            <label class="check-label"><input type="checkbox" id="experimental-opt-in" data-field="experimental-opt-in"> Enable experimental playlist and playback controls</label>
+            <div id="experimental-controls" hidden>        <section class="playback-card task-section" id="playback-card" aria-labelledby="playback-title">
             <div class="playback-head">
                 <h2 id="playback-title">Playback</h2>
                 <span class="chip playback-stale" id="playback-stale" data-kind="warn" hidden>stale</span>
@@ -260,28 +523,27 @@
             <p class="playback-countdown" id="playback-countdown" aria-hidden="true"></p>
 
             <div class="playback-actions">
-                <button type="button" class="btn btn-primary" id="btn-playback-start">Start</button>
-                <button type="button" class="btn" id="btn-playback-pause" hidden>Pause</button>
-                <button type="button" class="btn" id="btn-playback-retry" hidden>Retry</button>
+                <button type="button" class="btn btn-primary" id="btn-playback-start" data-action="btn-playback-start">Start</button>
+                <button type="button" class="btn" id="btn-playback-pause" hidden data-action="btn-playback-pause">Pause</button>
+                <button type="button" class="btn" id="btn-playback-retry" hidden data-action="btn-playback-retry">Retry</button>
                 <span class="playback-action-gap" aria-hidden="true"></span>
-                <button type="button" class="btn playback-stop" id="btn-playback-stop" hidden>Stop</button>
+                <button type="button" class="btn playback-stop" id="btn-playback-stop" hidden data-action="btn-playback-stop">Stop</button>
             </div>
 
             <div class="playback-steps" id="playback-steps" hidden>
-                <button type="button" class="btn btn-ghost btn-sm" id="btn-playback-previous">Previous</button>
-                <button type="button" class="btn btn-ghost btn-sm" id="btn-playback-next">Next</button>
+                <button type="button" class="btn btn-ghost btn-sm" id="btn-playback-previous" data-action="btn-playback-previous">Previous</button>
+                <button type="button" class="btn btn-ghost btn-sm" id="btn-playback-next" data-action="btn-playback-next">Next</button>
             </div>
 
             <p class="form-msg" id="playback-msg" hidden></p>
             <p class="playback-cohort-line" id="playback-cohort-line" hidden></p>
 
-            <button type="button" class="btn btn-ghost playback-more" id="btn-playback-more"
-                    aria-expanded="false" aria-controls="playback-extra">More</button>
+            <button type="button" class="btn btn-ghost playback-more" id="btn-playback-more" aria-expanded="false" aria-controls="playback-extra" data-action="btn-playback-more">More</button>
 
             <div class="playback-extra" id="playback-extra">
                 <p class="playback-preflight" id="playback-preflight">Checking the saved playlist and layout…</p>
 
-                <section class="playback-exclusions" id="playback-exclusions" aria-labelledby="playback-exclusions-title" hidden>
+                <section class="playback-exclusions task-section" id="playback-exclusions" aria-labelledby="playback-exclusions-title" hidden>
                     <h3 id="playback-exclusions-title">Exclude from this show</h3>
                     <p class="playback-exclusion-summary" id="playback-exclusion-summary" role="status" aria-live="polite"></p>
                     <ul class="playback-exclusion-list" id="playback-exclusion-list" aria-label="Participating tablets"></ul>
@@ -312,7 +574,7 @@
                     <div class="playback-policy" id="playback-policy-block">
                         <label class="field">
                             <span class="label" for="playback-policy">Policy</span>
-                            <select class="inp" id="playback-policy">
+                            <select class="inp" id="playback-policy" data-field="playback-policy">
                                 <option value="">Server default</option>
                                 <option value="strict">Strict: every required tablet ready</option>
                                 <option value="online">Online: hold, then record misses</option>
@@ -332,7 +594,7 @@
                 </details>
             </div>
         </section>
-        <section class="card playlist-card" aria-labelledby="playlist-title">
+        <section class="card playlist-card task-section" aria-labelledby="playlist-title">
             <div class="sec-head">
                 <h2 id="playlist-title">Playlist</h2>
                 <span class="sec-count" id="playlist-count">0 items</span>
@@ -345,12 +607,12 @@
             <div class="playlist-add">
                 <label class="field playlist-pick">
                     <span class="label" id="playlist-library-label">Media library</span>
-                    <select class="inp" id="playlist-library" aria-labelledby="playlist-library-label">
+                    <select class="inp" id="playlist-library" aria-labelledby="playlist-library-label" data-field="playlist-library">
                         <option value="">Loading the library…</option>
                     </select>
                 </label>
-                <button type="button" class="btn" id="btn-playlist-add" disabled>Add to playlist</button>
-                <button type="button" class="btn btn-ghost" id="btn-playlist-library-refresh">Refresh library</button>
+                <button type="button" class="btn" id="btn-playlist-add" disabled data-action="btn-playlist-add">Add to playlist</button>
+                <button type="button" class="btn btn-ghost" id="btn-playlist-library-refresh" data-action="btn-playlist-library-refresh">Refresh library</button>
             </div>
             <p class="form-msg" id="playlist-library-msg" role="status" aria-live="polite" hidden></p>
 
@@ -358,10 +620,10 @@
             <p class="empty-note" id="playlist-empty" hidden>No items yet. Add a file from the library.</p>
 
             <div class="playlist-foot">
-                <label class="check"><input type="checkbox" id="playlist-loop" checked> Loop</label>
+                <label class="check"><input type="checkbox" id="playlist-loop" checked data-field="playlist-loop"> Loop</label>
                 <span class="playlist-hint" id="playlist-hint">At least one item.</span>
-                <button type="button" class="btn btn-ghost btn-sm" id="playlist-undo" hidden>Undo remove</button>
-                <button type="button" class="btn btn-primary" id="btn-playlist-save">Save playlist</button>
+                <button type="button" class="btn btn-ghost btn-sm" id="playlist-undo" hidden data-action="playlist-undo">Undo remove</button>
+                <button type="button" class="btn btn-primary" id="btn-playlist-save" data-action="btn-playlist-save">Save playlist</button>
             </div>
             <p class="form-msg" id="playlist-msg" role="status" aria-live="polite" hidden></p>
 
@@ -370,315 +632,40 @@
                 <div class="playlist-raw-row">
                     <div class="field">
                         <label class="label" for="playlist-raw-id">Content id</label>
-                        <input class="inp" id="playlist-raw-id" type="text" spellcheck="false"
-                               autocomplete="off" placeholder="sha256:…">
+                        <input class="inp" id="playlist-raw-id" type="text" spellcheck="false" autocomplete="off" placeholder="sha256:…" data-field="playlist-raw-id">
                     </div>
                     <div class="field">
                         <label class="label" for="playlist-raw-dwell">Dwell (ms)</label>
-                        <input class="inp" id="playlist-raw-dwell" type="number" min="1000"
-                               max="600000" step="100" value="5000" inputmode="numeric">
+                        <input class="inp" id="playlist-raw-dwell" type="number" min="1000" max="600000" step="100" value="5000" inputmode="numeric" data-field="playlist-raw-dwell">
                     </div>
-                    <button type="button" class="btn" id="btn-playlist-raw-add">Add</button>
+                    <button type="button" class="btn" id="btn-playlist-raw-add" data-action="btn-playlist-raw-add">Add</button>
                 </div>
                 <p class="hint">A video's play length is always its clip length, whatever the dwell says.</p>
             </details>
         </section>
 </div>
-        </section>
-            </section>
-            <section class="rail-panel" id="panel-system" role="tabpanel" aria-labelledby="tab-system" tabindex="0" hidden>
-        <div id="operator-readiness"></div>
-        <details class="card" id="measurement-details"><summary>Advanced measurements and model confirmation</summary>        <section class="card device-card" aria-labelledby="device-card-title">
-            <h2 id="device-card-title">Profile and calibration</h2>
-            <p class="empty-note" id="device-card-empty">Select a tablet to edit its measurements.</p>
-
-            <div id="device-card-body" hidden>
-                <div class="device-card-head">
-                    <p class="device-card-subject" id="device-card-name">–</p>
-                    <span class="chip" id="device-card-cal" data-kind="info">–</span>
-                </div>
-
-                <div class="field">
-                    <label class="label" for="tablet-model">Tablet model</label>
-                    <select class="inp" id="tablet-model"></select>
-                    <p class="hint" id="tablet-model-status" role="status"></p>
-                    <button class="btn" type="button" id="apply-tablet-model">Confirm model choice</button>
-                    <p class="hint">Turning the tablet updates its browser mapping. Use the wall rotation controls to match how it is mounted. Fullscreen assumes no browser inset; other modes are approximate.</p>
-                </div>
-                <form class="measure-form" id="profile-form" novalidate>
-                    <h3>Profile</h3>
-                    <p class="current" id="profile-current"></p>
-
-                    <div class="form-grid">
-                        <div class="field">
-                            <label class="label" for="profile-active-width">Active width (mm)</label>
-                            <input class="inp" id="profile-active-width" type="number" min="0" step="any"
-                                   inputmode="decimal" autocomplete="off">
-                        </div>
-                        <div class="field">
-                            <label class="label" for="profile-active-height">Active height (mm)</label>
-                            <input class="inp" id="profile-active-height" type="number" min="0" step="any"
-                                   inputmode="decimal" autocomplete="off">
-                        </div>
-                        <div class="field">
-                            <label class="label" for="profile-bezel-top">Bezel top (mm)</label>
-                            <input class="inp" id="profile-bezel-top" type="number" min="0" step="any"
-                                   inputmode="decimal" autocomplete="off">
-                        </div>
-                        <div class="field">
-                            <label class="label" for="profile-bezel-right">Bezel right (mm)</label>
-                            <input class="inp" id="profile-bezel-right" type="number" min="0" step="any"
-                                   inputmode="decimal" autocomplete="off">
-                        </div>
-                        <div class="field">
-                            <label class="label" for="profile-bezel-bottom">Bezel bottom (mm)</label>
-                            <input class="inp" id="profile-bezel-bottom" type="number" min="0" step="any"
-                                   inputmode="decimal" autocomplete="off">
-                        </div>
-                        <div class="field">
-                            <label class="label" for="profile-bezel-left">Bezel left (mm)</label>
-                            <input class="inp" id="profile-bezel-left" type="number" min="0" step="any"
-                                   inputmode="decimal" autocomplete="off">
-                        </div>
-                        <div class="field field-wide">
-                            <label class="label" for="profile-label">Label</label>
-                            <input class="inp" id="profile-label" type="text" maxlength="80"
-                                   autocomplete="off" spellcheck="false">
-                        </div>
-                        <div class="field field-wide">
-                            <label class="label" for="profile-provenance">Provenance</label>
-                            <input class="inp" id="profile-provenance" type="text" maxlength="40"
-                                   autocomplete="off" spellcheck="false" placeholder="manual, datasheet">
-                        </div>
-                        <div class="field">
-                            <label class="label" for="profile-pixel-width">Panel pixels wide (optional)</label>
-                            <input class="inp" id="profile-pixel-width" type="number" min="1" step="1"
-                                   inputmode="numeric" autocomplete="off">
-                        </div>
-                        <div class="field">
-                            <label class="label" for="profile-pixel-height">Panel pixels high (optional)</label>
-                            <input class="inp" id="profile-pixel-height" type="number" min="1" step="1"
-                                   inputmode="numeric" autocomplete="off">
-                        </div>
-                    </div>
-
-                    <p class="form-msg" id="profile-msg" role="status" aria-live="polite" hidden></p>
-                    <button type="submit" class="btn btn-primary" id="btn-profile-save">Save profile</button>
-                </form>
-
-                <form class="measure-form" id="calibration-form" novalidate>
-                    <h3>Calibration</h3>
-                    <p class="current" id="calibration-current"></p>
-                    <fieldset>
-                        <legend>Optional advanced ruler measurement</legend>
-                        <p>Confirmed known models can already use the physical wall. New measurements are optional. Keep supplied measurements unless you choose a new ruler calibration.</p>
-                        <p id="cal-live-viewport" role="status" aria-live="polite">Waiting for tablet viewport.</p>
-                        <button class="btn" id="cal-use-viewport" type="button">Use tablet viewport</button>
-                        <p id="cal-ruler-address-note">Loading tablet address…</p>
-                        <p><a id="cal-ruler-link" hidden></a></p>
-                        <button class="btn" id="cal-copy-ruler" type="button" hidden>Copy ruler address</button>
-                        <p>On the selected tablet, measure each ruler line with a physical ruler. Copy the full current labelled CSS span for each line. Long spans reduce extrapolation. The 200 px short-span option remains available on the tablet.</p>
-                        <div class="form-grid">
-                            <div class="field"><label class="label" for="cal-ruler-mm-x">Horizontal measured length (mm)</label><input class="inp" id="cal-ruler-mm-x" type="number" min="0" step="any" inputmode="decimal"></div>
-                            <div class="field"><label class="label" for="cal-ruler-mm-y">Vertical measured length (mm)</label><input class="inp" id="cal-ruler-mm-y" type="number" min="0" step="any" inputmode="decimal"></div>
-                            <div class="field"><label class="label" for="cal-ruler-span-x">Horizontal line span (CSS px)</label><input class="inp" id="cal-ruler-span-x" type="number" min="0" step="any" value="200" inputmode="decimal"></div>
-                            <div class="field"><label class="label" for="cal-ruler-span-y">Vertical line span (CSS px)</label><input class="inp" id="cal-ruler-span-y" type="number" min="0" step="any" value="200" inputmode="decimal"></div>
-                        </div>
-                        <div class="form-grid">
-                            <div class="field"><label class="label" for="cal-ruler-error-x">Horizontal ruler error (± mm)</label><input class="inp" id="cal-ruler-error-x" type="number" min="0" step="any" inputmode="decimal" aria-describedby="cal-ruler-error-note"></div>
-                            <div class="field"><label class="label" for="cal-ruler-error-y">Vertical ruler error (± mm)</label><input class="inp" id="cal-ruler-error-y" type="number" min="0" step="any" inputmode="decimal" aria-describedby="cal-ruler-error-note"></div>
-                        </div>
-                        <p class="hint" id="cal-ruler-error-note">Estimate the reading error for each measured line. It is propagated across the usable panel before saving. This does not establish a 2 mm accuracy claim.</p>
-                        <button class="btn" id="cal-use-ruler" type="button">Check ruler measurements</button>
-                        <div id="cal-ruler-preview" role="status" aria-live="polite" tabindex="-1" hidden></div>
-                        <fieldset id="cal-ruler-decision" hidden>
-                            <legend>Choose which measurement to use</legend>
-                            <p>Keep supplied writes nothing and preserves the current profile and mapping. Use ruler prepares a new calibration revision with these scales and errors. The supplied profile, old revisions and layout pins stay unchanged. Measure again discards this check.</p>
-                            <button class="btn" id="cal-keep-supplied" type="button">Keep supplied</button>
-                            <button class="btn" id="cal-accept-ruler" type="button">Use ruler</button>
-                            <button class="btn" id="cal-measure-again" type="button">Measure again</button>
-                        </fieldset>
-                        <p>X is the browser’s horizontal axis; Y is vertical. Quarter turn maps these CSS axes into the native panel, and odd quarter turns exchange width and height. Each axis is measured independently. DPR does not change these measurements. Estimated panel profiles are not ruler verified; browser toolbars can inset the picture area.</p>
-                    </fieldset>
-                    <h4>Advanced calibration fields</h4>
-                    <p>Set quarter turn before checking the ruler. Review the propagated uncertainty. Measure the browser picture area’s inset from the panel origin for panel offsets; use 0 only when the viewport starts at the panel origin. Review these fields, then Save calibration.</p>
-
-
-                    <div class="form-grid">
-                        <div class="field">
-                            <label class="label" for="cal-profile-revision">Profile revision</label>
-                            <input class="inp" id="cal-profile-revision" type="number" min="1" step="1"
-                                   inputmode="numeric" autocomplete="off">
-                        </div>
-                        <div class="field">
-                            <label class="label" for="cal-viewport-width">Viewport width (CSS px)</label>
-                            <input class="inp" id="cal-viewport-width" type="number" min="1" step="any"
-                                   inputmode="decimal" autocomplete="off">
-                        </div>
-                        <div class="field">
-                            <label class="label" for="cal-viewport-height">Viewport height (CSS px)</label>
-                            <input class="inp" id="cal-viewport-height" type="number" min="1" step="any"
-                                   inputmode="decimal" autocomplete="off">
-                        </div>
-                        <div class="field">
-                            <label class="label" for="cal-dpr">Device pixel ratio</label>
-                            <input class="inp" id="cal-dpr" type="number" min="0" step="any"
-                                   inputmode="decimal" autocomplete="off">
-                        </div>
-                        <div class="field">
-                            <label class="label" for="cal-orientation">Orientation</label>
-                            <select class="inp" id="cal-orientation">
-                                <option value="">Choose orientation</option>
-                                <option value="0">0°</option>
-                                <option value="90">90°</option>
-                                <option value="180">180°</option>
-                                <option value="270">270°</option>
-                            </select>
-                        </div>
-                        <div class="field">
-                            <label class="label" for="cal-mode">Mode</label>
-                            <select class="inp" id="cal-mode">
-                                <option value="">Choose mode</option>
-                                <option value="tab">Tab</option>
-                                <option value="fullscreen">Fullscreen</option>
-                                <option value="standalone">Standalone</option>
-                            </select>
-                        </div>
-                        <div class="field">
-                            <label class="label" for="cal-quarter-turn">Quarter turn</label>
-                            <select class="inp" id="cal-quarter-turn">
-                                <option value="0">0</option>
-                                <option value="1">1</option>
-                                <option value="2">2</option>
-                                <option value="3">3</option>
-                            </select>
-                        </div>
-                        <div class="field">
-                            <label class="label" for="cal-anchor-edge">Anchor edge</label>
-                            <select class="inp" id="cal-anchor-edge">
-                                <option value="top-left">Top left</option>
-                                <option value="top-right">Top right</option>
-                                <option value="bottom-left">Bottom left</option>
-                                <option value="bottom-right">Bottom right</option>
-                            </select>
-                        </div>
-                        <div class="field">
-                            <label class="label" for="cal-offset-x">Panel offset X (mm)</label>
-                            <input class="inp" id="cal-offset-x" type="number" step="any"
-                                   inputmode="decimal" autocomplete="off">
-                        </div>
-                        <div class="field">
-                            <label class="label" for="cal-offset-y">Panel offset Y (mm)</label>
-                            <input class="inp" id="cal-offset-y" type="number" step="any"
-                                   inputmode="decimal" autocomplete="off">
-                        </div>
-                        <div class="field">
-                            <label class="label" for="cal-mm-css-x">mm per CSS pixel X</label>
-                            <input class="inp" id="cal-mm-css-x" type="number" min="0" step="any"
-                                   inputmode="decimal" autocomplete="off">
-                        </div>
-                        <div class="field">
-                            <label class="label" for="cal-mm-css-y">mm per CSS pixel Y</label>
-                            <input class="inp" id="cal-mm-css-y" type="number" min="0" step="any"
-                                   inputmode="decimal" autocomplete="off">
-                        </div>
-                        <div class="field">
-                            <label class="label" for="cal-uncertainty">Uncertainty (mm)</label>
-                            <input class="inp" id="cal-uncertainty" type="number" min="0" step="any"
-                                   inputmode="decimal" autocomplete="off">
-                        </div>
-                        <div class="field field-wide">
-                            <label class="label" for="cal-method">Method</label>
-                            <input class="inp" id="cal-method" type="text" maxlength="80"
-                                   autocomplete="off" spellcheck="false" placeholder="ruler across the active edge">
-                        </div>
-                    </div>
-
-                    <p class="form-msg" id="calibration-msg" role="status" aria-live="polite" hidden></p>
-                    <button type="submit" class="btn btn-primary" id="btn-calibration-save">Save calibration</button>
-                </form>
-            </div>
-        </section>
-        </details>
-        <section class="card bounds-card" aria-labelledby="bounds-title">
-            <h2 id="bounds-title">Wall bounds</h2>
-            <p class="hint">The rectangle every slot is placed inside. Values are millimetres, measured from the top-left corner of the wall as the audience sees it.</p>
-            <div class="field">
-                <label class="label" for="bounds-mode">Wall sizing</label>
-                <select class="inp" id="bounds-mode">
-                    <option value="fixed">Fixed wall size</option>
-                    <option value="tablets">Fit wall to tablets</option>
-                </select>
-            </div>
-            <div class="field bounds-padding-field">
-                <label class="label" for="bounds-padding">Outer padding (mm)</label>
-                <input class="inp" id="bounds-padding" type="number" min="0" step="any" value="0" inputmode="decimal">
-            </div>
-            <p class="hint">Fixed uses the dimensions below. Fit encloses the placed tablet bodies, including their borders and rotation. Diagonal tablets can leave empty corners.</p>
-            <p class="form-msg" id="sizing-msg" role="status" aria-live="polite" hidden></p>
-            <div class="pack-row">
-                <div class="field">
-                    <label class="label" for="pack-columns">Columns</label>
-                    <input class="inp" id="pack-columns" type="number" min="1" step="1" value="3" inputmode="numeric">
-                </div>
-                <div class="field">
-                    <label class="label" for="pack-gap">Gap (mm)</label>
-                    <input class="inp" id="pack-gap" type="number" min="0" step="any" value="0" inputmode="decimal">
-                </div>
-                <button type="button" class="btn" id="btn-pack-tablets">Pack tablets</button>
-            </div>
-            <div class="bounds-grid">
-                <div class="field">
-                    <label class="label" for="bounds-x">X (mm)</label>
-                    <input class="inp" id="bounds-x" type="number" step="any" inputmode="decimal" autocomplete="off">
-                </div>
-                <div class="field">
-                    <label class="label" for="bounds-y">Y (mm)</label>
-                    <input class="inp" id="bounds-y" type="number" step="any" inputmode="decimal" autocomplete="off">
-                </div>
-                <div class="field">
-                    <label class="label" for="bounds-width">Width (mm)</label>
-                    <input class="inp" id="bounds-width" type="number" min="1" step="any" inputmode="decimal" autocomplete="off">
-                </div>
-                <div class="field">
-                    <label class="label" for="bounds-height">Height (mm)</label>
-                    <input class="inp" id="bounds-height" type="number" min="1" step="any" inputmode="decimal" autocomplete="off">
-                </div>
-            </div>
-            <p class="hint" id="bounds-note"></p>
-        </section>
-        <section class="card field-card" aria-labelledby="field-title">
+        </section><details><summary>Check patterns</summary><p class="hint">Patterns use committed wall bounds. A generated grid or black wall is an ordinary image. Keep your prior content with Restore previous content.</p>
+                <div class="operator-actions"><button class="btn" type="button" id="show-colours" data-action="show-colours">Tablet colours</button><button class="btn" type="button" id="show-calibration" data-action="show-calibration">Logical calibration pattern</button><button class="btn" type="button" id="pattern-grid" data-action="pattern-grid">Wall-sized grid</button><button class="btn" type="button" id="pattern-black" data-action="pattern-black">Black wall</button></div>
+            </details><section class="diagnostic-colours task-section" aria-labelledby="diagnostic-colours-title"><h3 id="diagnostic-colours-title">Tablet test colours</h3><p>Change the diagnostic colour used by one tablet or all tablets. This legacy command has no revision guard. It does not select or show an image.</p><p id="diagnostic-colour-subject">Select a tablet in Tablets.</p><label class="field" for="diagnostic-colour">Test colour<input type="color" id="diagnostic-colour" value="#ef4444" data-field="diagnostic-colour"></label><button type="button" class="btn" id="diagnostic-colour-one" data-action="diagnostic-colour-one">Set selected tablet colour</button><button type="button" class="btn" id="diagnostic-colour-all" data-action="diagnostic-colour-all">Set all tablet colours</button><button type="button" class="btn" id="diagnostic-colour-refresh" data-action="diagnostic-colour-refresh">Read selected colour</button><p id="diagnostic-colour-message" role="status"></p></section></section>
+        <section class="rail-panel task-panel" id="panel-saved" data-task="saved" role="tabpanel" aria-labelledby="tab-saved" hidden><h2 class="task-title" tabindex="-1">Saved</h2><section class="card saved-card task-section" aria-labelledby="saved-title">
             <div class="sec-head">
-                <h2 id="field-title">Field check</h2>
-                <span class="chip" id="diag-state" data-kind="info">loading</span>
+                <h2 id="saved-title">Saved arrangements</h2>
+                <button type="button" class="btn btn-ghost btn-sm" id="btn-layouts-refresh" data-action="btn-layouts-refresh">Refresh</button>
             </div>
-            <p class="hint">
-                Operator-only storage, identity and wake-lock state. Diagnostics are available
-                for admitted operators, independently of uploads. This is software evidence, not a device-trust claim.
-            </p>
-            <div class="field-actions">
-                <button type="button" class="btn" id="btn-diag-refresh">Refresh diagnostics</button>
-                <button type="button" class="btn btn-ghost" id="btn-diag-verify">Verify object bytes</button>
-                <button type="button" class="btn btn-ghost" id="btn-diag-download" disabled>Download report</button>
-            </div>
-            <p class="form-msg" id="diag-msg" role="status" aria-live="polite" hidden></p>
-            <dl class="diag-grid" id="diag-grid"></dl>
+            <p class="hint">Saving keeps the committed layout, not the draft. Apply the draft first to save its changes under a new name.</p>
 
-            <div class="diag-integrity" id="diag-integrity" hidden>
-                <h3>Object integrity</h3>
-                <p class="diag-integrity-text" id="diag-integrity-text"></p>
-                <ul class="diag-problems" id="diag-problems" aria-label="Damaged objects"></ul>
-            </div>
-        </section>
-        <section class="card legacy-card" aria-labelledby="legacy-title">
-            <h2 id="legacy-title">Compatibility editor</h2>
-            <p class="hint">
-                Logical units stay unit-based. Advanced legacy geometry is available in the compatibility editor; it is read-only while a measured layout is active.
-            </p>
-            <p><a class="btn btn-sm" href="index.html">Logical editor (compatibility)</a></p>
-        </section>
-            </section>
-        </div>
+            <form class="saved-form" id="layout-save-form" novalidate data-form="layout-save-form">
+                <div class="field">
+                    <label class="label" for="layout-name">Name</label>
+                    <input class="inp" id="layout-name" type="text" maxlength="64" autocomplete="off" spellcheck="false" placeholder="Lobby, 3 across" aria-describedby="layout-msg" data-field="layout-name">
+                </div>
+                <button type="submit" class="btn" id="btn-layout-save" data-action="btn-layout-save">Save committed layout</button>
+            </form>
+
+            <p class="form-msg" id="layout-msg" role="status" aria-live="polite" hidden></p>
+            <p class="form-msg" id="layouts-status" role="status" hidden></p><ul class="saved-list" id="saved-layouts" aria-label="Saved arrangements"></ul>
+            <p class="empty-note" id="saved-empty" hidden>No saved arrangements yet.</p>
+        </section><section class="saved-scenes task-section" aria-labelledby="saved-scenes-title"><h3 id="saved-scenes-title">Saved scenes</h3><p>Keep the applied image or test content and its Fit / Fill choice. Arrangements are saved separately.</p><form id="scene-save-form" data-form="scene-save-form"><label class="field" for="scene-name">Scene name<input class="inp" id="scene-name" maxlength="64" autocomplete="off" data-field="scene-name"></label><button type="submit" class="btn" id="scene-save" data-action="scene-save">Save applied scene</button></form><button type="button" class="btn" id="scenes-refresh" data-action="scenes-refresh">Refresh scenes</button><ul id="saved-scenes" class="saved-list" aria-label="Saved scenes"></ul><p id="scene-message" role="status"></p></section><section class="return-point task-section" id="return-point" hidden><h3>Return point saved</h3><p id="return-point-name"></p><button type="button" class="btn" id="return-point-recall" data-action="return-point-recall">Recall return point</button></section></section></div>
     </aside>
 </div>
 
@@ -691,17 +678,20 @@
     <p class="noscript">This page needs JavaScript. It talks to the server over plain HTTP.</p>
 </noscript>
 
-<script src="operator-state.js?v=1"></script>
-<script src="operator-stage.js?v=1"></script>
-<script src="operator-content.js?v=1"></script>
-<script src="operator-grid.js?v=1"></script>
-<script src="operator-devices.js?v=1"></script>
-<script src="operator-readiness.js?v=1"></script>
-<script src="operator-sync.js?v=1"></script>
+<script src="operator-state.js?v=2"></script>
+<script src="operator-forms.js?v=1"></script>
+<script src="operator-stage.js?v=2"></script>
+<script src="operator-content.js?v=2"></script>
+<script src="operator-grid.js?v=2"></script>
+<script src="operator-devices.js?v=2"></script>
+<script src="operator-readiness.js?v=2"></script>
+<script src="operator-sync.js?v=2"></script>
+<script src="operator-session.js?v=1"></script>
+<script src="operator-workspace.js?v=1"></script>
 <script src="physical-playback.js?v=1"></script>
 <script src="physical-sizing.js?v=1"></script>
-<script src="physical-stage.js?v=4"></script>
+<script src="physical-stage.js?v=5"></script>
 <script src="physical-calibration.js?v=1"></script>
-<script src="physical.js?v=17"></script>
-</body>
+<script src="physical.js?v=18"></script>
+<dialog class="draft-resolution" id="draft-resolution" aria-labelledby="draft-resolution-title"><h2 id="draft-resolution-title">Resolve your preview</h2><p id="draft-resolution-text"></p><div class="operator-actions"><button type="button" class="btn btn-primary" id="resolve-commit" data-action="resolve-commit">Apply arrangement</button><button type="button" class="btn" id="resolve-discard" data-action="resolve-discard">Discard preview</button><button type="button" class="btn" id="resolve-stay" data-action="resolve-stay">Stay</button></div></dialog></body>
 </html>

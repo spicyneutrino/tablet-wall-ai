@@ -1,9 +1,9 @@
 "use strict";
 window.OperatorSync = {
-    create({ api, ingestConfig, state, renderAll, showConflict, isDirty }) {
+    create({ api, ingestConfig, state, renderAll, showConflict, isDirty, onStatus = () => {} }) {
         const fence = state.readFence;
         let socket = null, reconnectTimer = null, reconcileTimer = null, stopped = false, fetching = false, queued = false;
-        const status = text => { const node = document.getElementById("operator-connection"); if (node) node.textContent = text; };
+        const status = onStatus;
         function receive(config) {
             ingestConfig(config, { preserveDraft: true, remote: true });
         }
@@ -44,13 +44,17 @@ window.OperatorSync = {
                     receive(frame.config); state.rosterCheckedAt = new Date().toISOString(); state.rosterError = null;
                     status("Live operator updates connected. Last snapshot " + new Date().toLocaleTimeString() + ".");
                 } else if (frame.type === "config_updated") {
-                    if (!state.busy) { state.etagState = "stale"; renderAll(); }
+                    if (!state.busy && frame.etag !== state.etag) { state.etagState = "stale"; renderAll(); }
                     if (isDirty() && frame.etag && frame.etag !== state.etag) showConflict("The server changed while this draft was being edited. Keep the draft and reload when ready.");
                     reconcile();
                 } else if (["device_online", "device_offline", "device_removed", "device_updated", "device_status"].includes(frame.type)) {
                     if (fetching) queued = true;
                     const device = frame.device, id = frame.device_id || frame.id || device && (device.id || device.device_id);
                     if (id) {
+                        if (["device_online", "device_offline", "device_removed"].includes(frame.type)) {
+                            state.connectionVersions ||= {};
+                            state.connectionVersions[id] = (state.connectionVersions[id] || 0) + 1;
+                        }
                         if (frame.type === "device_removed") delete state.roster[id];
                         else if (device) state.roster[id] = Object.assign({}, state.roster[id], device, frame.status || {});
                         else if (frame.status) state.roster[id] = Object.assign({}, state.roster[id], frame.status);

@@ -24,6 +24,57 @@
             cropX: Math.max(0, 1 - b.width / (width * scale)),
             cropY: Math.max(0, 1 - b.height / (height * scale)) };
     }
+    function fitLogical(layout) {
+        const list = Object.values(layout.placements || {});
+        if (layout.kind !== "logical" || layout.sizing.mode !== "tablets" || !list.length) return;
+        const left = Math.min(...list.map(p => p.x)), top = Math.min(...list.map(p => p.y));
+        const right = Math.max(...list.map(p => p.x + p.w)), bottom = Math.max(...list.map(p => p.y + p.h));
+        const padding = layout.sizing.padding;
+        for (const p of list) { p.x += padding - left; p.y += padding - top; }
+        layout.width = Math.max(1, right - left + padding * 2);
+        layout.height = Math.max(1, bottom - top + padding * 2);
+    }
+    function arrangeLogical(layout, ids, { columns, rows = Math.ceil(ids.length / columns), gap, tile = false, preserveAspect = true, aspects = {} }) {
+        if (!Number.isInteger(columns) || columns < 1 || !Number.isInteger(rows) || rows < 1 || !Number.isInteger(gap) || gap < 0) throw new Error("Use positive whole rows and columns and a nonnegative whole gap.");
+        if (!ids.length) throw new Error("No tablets match this scope.");
+        if (ids.length > rows * columns) throw new Error("The chosen tablets do not fit in these rows and columns.");
+        const result = clone(layout);
+        const cellW = Math.floor((layout.width - gap * (columns - 1)) / columns);
+        const cellH = Math.floor((layout.height - gap * (rows - 1)) / rows);
+        if (tile && (cellW < 1 || cellH < 1)) throw new Error("The gap leaves no room for tablet cells.");
+        let y = result.sizing.padding || 0;
+        for (let row = 0; row < rows; row += 1) {
+            let x = result.sizing.padding || 0, height = 0;
+            for (let col = 0; col < columns; col += 1) {
+                const id = ids[row * columns + col];
+                if (!id) break;
+                const p = result.placements[id];
+                if (!p) throw new Error("The captured tablet order changed. Review it again.");
+                if (tile) {
+                    const b = p.bezel, ratio = aspects[id] || (p.w - b.left - b.right) / (p.h - b.top - b.bottom);
+                    let w = cellW, h = cellH;
+                    if (preserveAspect) {
+                        const activeW = cellW - b.left - b.right, activeH = cellH - b.top - b.bottom;
+                        const contentW = Math.min(activeW, activeH * ratio);
+                        w = Math.round(contentW + b.left + b.right);
+                        h = Math.round(contentW / ratio + b.top + b.bottom);
+                    }
+                    if (w <= b.left + b.right || h <= b.top + b.bottom) throw new Error("The tile is smaller than its bezels. Increase the wall or reduce the gap.");
+                    p.w = w; p.h = h;
+                    p.x = Math.round(col * (cellW + gap) + (cellW - w) / 2);
+                    p.y = Math.round(row * (cellH + gap) + (cellH - h) / 2);
+                } else { p.x = x; p.y = y; x += p.w + gap; height = Math.max(height, p.h); }
+            }
+            y += height + gap;
+        }
+        fitLogical(result);
+        return result;
+    }
+    function rotateLogical(p) {
+        const b = p.bezel;
+        return { ...p, x: Math.round(p.x + (p.w - p.h) / 2), y: Math.round(p.y + (p.h - p.w) / 2),
+            w: p.h, h: p.w, bezel: { top: b.left, right: b.top, bottom: b.right, left: b.bottom } };
+    }
     function compareIds(roster, labels, a, b) {
         const number = id => Number.isInteger(roster[id] && roster[id].number) && roster[id].number > 0 ? roster[id].number : Infinity;
         const label = id => String(labels[id] || roster[id] && roster[id].label || "").trim().toLowerCase();
@@ -34,7 +85,10 @@
             .every(key => a[key] !== undefined && a[key] === b[key]);
     }
     function observeDevice(device, nowMono) {
-        return { ...device, ...(device.render ? { render: { ...device.render, observed_mono: nowMono } } : {}) };
+        const render = device.render;
+        const elapsed = render && Number.isFinite(render.observed_mono) ? Math.max(0, nowMono - render.observed_mono) : 0;
+        return { ...device, ...(render ? { render: { ...render,
+            ...(typeof render.age_ms === "number" ? { age_ms: render.age_ms + elapsed } : {}), observed_mono: nowMono } } : {}) };
     }
     function observeConfig(config, nowMono) {
         if (!config.runtime || !config.runtime.devices) return config;
@@ -84,10 +138,10 @@
     }
     function readFence() {
         let epoch = 0, issued = 0, accepted = 0;
-        return { event() { epoch += 1; }, start() { return { epoch, sequence: ++issued }; },
+        return { event() { epoch += 1; }, start() { return { epoch, sequence: ++issued }; }, current(ticket) { return ticket.epoch === epoch; },
             accept(ticket) { if (ticket.epoch !== epoch || ticket.sequence < accepted) return false; accepted = ticket.sequence; return true; } };
     }
-    const api = { clone, entries, layoutDraft, bounds, fitTransform, compareIds, sameToken, observeDevice, observeConfig, tabletState, aggregate, readFence };
+    const api = { fitLogical, arrangeLogical, rotateLogical, clone, entries, layoutDraft, bounds, fitTransform, compareIds, sameToken, observeDevice, observeConfig, tabletState, aggregate, readFence };
     if (typeof module !== "undefined" && module.exports) module.exports = api;
     else root.OperatorState = api;
 }(typeof window !== "undefined" ? window : globalThis));

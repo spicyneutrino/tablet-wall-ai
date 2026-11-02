@@ -71,6 +71,8 @@ for (const status of ["queued", "delivered", "shown"]) {
 }
 const clearedIdentify = fixture(); clearedIdentify.runtime.devices.tablet.identify = { state: "cleared", active: false };
 assert.equal(model.tabletState(clearedIdentify, "tablet", now).showing, true, "cleared Identify metadata must not obscure the current scene");
+const carried = model.observeConfig(fixture(), now + 1000);
+assert.equal(model.tabletState(carried, "tablet", now + 15001).status, "stale", "re-adopting a local projection cannot refresh the age of old paint evidence");
 const expired = fixture();
 assert.equal(model.tabletState(expired, "tablet", now + 15001).status, "stale", "cached age grows after a snapshot");
 expired.runtime.devices.tablet.online = false;

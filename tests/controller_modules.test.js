@@ -170,6 +170,8 @@ const physicalEditor = {
 };
 const physicalHistory = [];
 const physicalStage = context.window.PhysicalStage.create({
+    canManualEdit: () => true, beginManual: () => {},
+    mutateDraft: change => { physicalHistory.push(plain(physicalEditor.draft)); change(physicalEditor.draft); return true; },
     state: physicalEditor, selectedSlot: () => physicalEditor.draft.slots.tablet,
     clone: plain, finiteOr: (value, fallback) => Number.isFinite(Number(value)) ? Number(value) : fallback,
     roundTo: (value, digits) => Math.round(value * 10 ** digits) / 10 ** digits,
@@ -219,7 +221,7 @@ assert.equal(healthNodes.wallHealth.textContent, "Tablet status unavailable");
 for (const kind of ["logical", "physical"]) {
     for (const compact of [false, true]) {
         for (const reveal of [false, true]) {
-            const selected = { selectedId: "Beta", busy: false, draft: { kind }, basePlacements: {}, roster: {} };
+            const selected = { selectedId: "Beta", busy: false, draft: { kind, placements: {}, slots: {} }, basePlacements: {}, roster: {} };
             const selectionNodes = { deviceEmpty: {}, inspectorEmpty: {}, inspectorBody: { hidden: true }, inspectorMissing: {}, btnAddSlot: {}, slotMissingText: {}, deviceCount: {}, wallHealth: {}, btnWallHealth: { dataset: {} }, rosterStatus: { dataset: {} } };
             const notified = [];
             const selectionStage = context.window.PhysicalStage.create({ state: selected, el: selectionNodes, deviceRows: new Map(),

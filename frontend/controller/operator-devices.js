@@ -1,40 +1,89 @@
 "use strict";
-window.OperatorDevices = {
-    create({ state, api, labelFor, profileFor, calibrationFor, ingestConfig, refreshRoster, showConflict, isDirty, announce }) {
+(function (root) {
+    async function confirmModels({ ids, modelId, hardwareDeclared, reviewedEtag, api, ingestConfig, currentEtag, progress = () => {}, readAuthority = () => api("GET", "/api/v3/config", undefined, { fenced: true }) }) {
+        if (!hardwareDeclared || !ids.length || new Set(ids).size !== ids.length || !modelId || !reviewedEtag) throw new Error("Review the exact tablets, select a model, and declare that you checked their hardware.");
+        const captured = ids.slice(), completed = [];
+        let expected = reviewedEtag;
+        for (let index = 0; index < captured.length; index += 1) {
+            const id = captured[index];
+            try {
+                const config = await readAuthority();
+                if (config.etag !== expected) throw Object.assign(new Error("The wall changed outside this model confirmation. Review the remaining tablets."), { status: 412 });
+                ingestConfig(config, { preserveDraft: true });
+                if (currentEtag() !== expected) throw Object.assign(new Error("Newer authority arrived before assignment."), { status: 412 });
+                const result = await api("PUT", "/api/v3/tablet-assignments/" + encodeURIComponent(id), { mode: "explicit", model_id: modelId }, { ifMatch: expected });
+                if (!result || !result.etag) throw Object.assign(new Error("Assignment may have completed, but no next guard was returned."), { uncertain: true });
+                expected = result.commandEtag || result.etag; completed.push(id);
+                progress({ completed: completed.slice(), untouched: captured.slice(index + 1) });
+            } catch (error) {
+                return { status: error.uncertain || error.status === 0 ? "uncertain" : error.status === 412 ? "conflict" : "failed",
+                    completed, failed: id, untouched: captured.slice(index + 1), reason: error.message, expectedEtag: expected };
+            }
+        }
+        return { status: "completed", completed, untouched: [], expectedEtag: expected };
+    }
+    function create({ state, api, labelFor, profileFor, calibrationFor, ingestConfig, refreshRoster, showConflict, announce, tabletForms, resolveOutput = async () => true, removedFromWall = () => {}, selectTablet, openArrange }) {
         const $ = id => document.getElementById(id);
-        $("operator-device-actions").innerHTML = `<section class="card" aria-labelledby="tablet-actions-title">
-            <h2 id="tablet-actions-title">Tablet actions</h2><p id="tablet-action-name">Select a tablet.</p><p id="tablet-evidence"></p><p class="hint" id="tablet-provenance"></p><button class="btn" id="open-tablet-measurements" type="button">Review measurements / confirm model</button>
-            <form id="tablet-label-form"><label class="field" for="tablet-label">Operator label<input class="inp" id="tablet-label" maxlength="80" autocomplete="off"></label><button class="btn" id="tablet-label-save">Save label</button></form>
-            <div class="operator-actions"><button class="btn" id="tablet-identify" type="button">Identify for 5 seconds</button><button class="btn" id="tablet-retry-image" type="button">Retry image</button><button class="btn" id="tablet-reconnect" type="button">Reconnect</button></div>
-            <p class="hint">Reconnect keeps the tablet identity, label and number. Identify temporarily covers the image.</p>
-            <label class="check-label" id="tablet-participation-label"><input type="checkbox" id="tablet-participation"> Include this slot in the show (draft)</label>
-            <div class="operator-actions"><button class="btn" id="tablet-remove" type="button">Remove from wall</button><button class="btn btn-danger" id="tablet-forget-preview" type="button">Review offline Forget</button></div>
-            <div id="tablet-forget-impact" hidden><p id="tablet-forget-text"></p><label class="check-label"><input type="checkbox" id="tablet-forget-active"> Also remove the active slot</label><button class="btn btn-danger" id="tablet-forget-confirm" type="button">Confirm Forget</button><button class="btn" id="tablet-forget-cancel" type="button">Cancel Forget</button></div>
-            <details><summary>Replace this offline browser identity</summary><p>Choose the exact saved arrangements to update. Same hardware copies pinned measurements. Different hardware cannot inherit physical measurements.</p>
-                <label class="field" for="replace-target">Replacement registration<select class="inp" id="replace-target"><option value="">Choose new registration</option></select></label>
-                <label class="field" for="replace-hardware">Hardware declaration<select class="inp" id="replace-hardware"><option value="">Choose explicitly</option><option value="same_hardware">Same hardware, new browser identity</option><option value="different_hardware">Different hardware</option></select></label>
-                <label class="check-label"><input type="checkbox" id="replace-active" checked> Update active arrangement</label><label class="check-label"><input type="checkbox" id="replace-label" checked> Transfer operator label</label>
-                <label class="field" for="replace-number">Display number (optional)<input class="inp" id="replace-number" type="number" min="1" max="512" step="1"></label>
-                <fieldset id="replace-saved"><legend>Saved arrangements to update</legend></fieldset>
-                <button class="btn" type="button" id="replace-preview">Preview replacement</button><p id="replace-summary" role="status" aria-live="polite"></p><button class="btn btn-danger" type="button" id="replace-apply" disabled>Confirm replacement</button>
-            </details><p id="tablet-action-message" role="status" aria-live="polite"></p></section>`;
-        let selectedId = null, impact = null, replacement = null, busy = false, snapshotsKey = "", replaceVersion = 0, labelBaseline = "";
+
+        let selectedId = null, impact = null, replacement = null, busy = false, snapshotsKey = "", replaceVersion = 0;
+        const results = new Map();
+        let nameReview = null;
         const message = text => { $("tablet-action-message").textContent = text; };
         const path = (id, suffix = "") => "/api/v3/devices/" + encodeURIComponent(id) + suffix;
         function config() { return state.operatorConfig || { layout: state.base, scene: state.scene, runtime: { devices: state.roster }, revision: state.revision, generation: state.generation }; }
-        function clearPlans() { impact = null; replacement = null; $("tablet-forget-impact").hidden = true; $("replace-apply").disabled = true; }
+        function clearPlans() { nameReview = null; $("tablet-name-review").hidden = true; impact = null; replacement = null; $("tablet-forget-impact").hidden = true; $("replace-apply").disabled = true; $("replace-cancel").disabled = true; }
         function render() {
             const id = state.selectedId;
             const device = state.roster[id];
+            if (impact && (impact.etag !== state.etag || state.roster[impact.id]?.online)) {
+                impact = null; $("tablet-forget-confirm").disabled = true;
+                $("tablet-forget-text").textContent = "This Forget review is stale or the tablet reconnected. Review fresh offline impact before confirming.";
+            }
+            if (replacement && (replacement.preview.base_etag !== state.etag || state.rosterError || state.roster[replacement.id]?.online
+                    || !state.roster[replacement.target]?.online || (state.connectionVersions[replacement.target] || 0) !== replacement.connectionVersion)) {
+                replacement = null; $("replace-apply").disabled = true;
+                $("replace-summary").textContent = "The wall, saved references or replacement connection changed. Preview replacement again before confirming.";
+            }
             const active = window.OperatorState.entries(state.base)[id];
             if (id !== selectedId) {
                 selectedId = id; clearPlans(); snapshotsKey = "";
-                $("tablet-label").value = (state.deviceLabels || {})[id] || device && device.label || "";
-                labelBaseline = $("tablet-label").value;
+                const form = tabletForms.observe(id, "name", { name: (state.deviceLabels || {})[id] || device && device.label || "" }, state.etag);
+                $("tablet-label").value = form.values.name;
+                message(results.get(id) || "");
                 $("replace-target").value = ""; $("replace-hardware").value = "";
             }
+            if (id) {
+                const form = tabletForms.observe(id, "name", { name: (state.deviceLabels || {})[id] || device && device.label || "" }, state.etag);
+                if (document.activeElement !== $("tablet-label")) $("tablet-label").value = form.values.name;
+                $("tablet-label-form").dataset.dirty = String(form.dirty);
+                $("tablet-label-form").dataset.deviceId = id;
+                if (form.conflict) message("This tablet’s saved name changed elsewhere. Your name is retained. Discard to use the current name, or review before saving.");
+            }
             $("tablet-action-name").textContent = id ? labelFor(id) : "Select a tablet in the list or stage.";
-            $("tablet-evidence").textContent = id ? window.OperatorState.tabletState(config(), id, performance.now()).text : "";
+            const evidence = id ? window.OperatorState.tabletState(config(), id, performance.now()) : null;
+            $("tablet-evidence").textContent = evidence ? evidence.text : "";
+            $("tablet-recovery").textContent = !id ? "" : !device || !device.online
+                ? "On the tablet, check power, keep its screen awake, join the wall network and reopen the tablet page in its existing browser. The server cannot wake a powered-off or sleeping tablet."
+                : evidence.status === "hidden" ? "Bring the tablet page to the foreground and keep it open. A hidden page cannot confirm the current image."
+                : evidence.status === "identifying" ? "The Identify overlay temporarily covers the image. Wait for it to clear before relying on current image proof."
+                : ["unsupported_client", "unsupported_content", "unsupported"].includes(evidence.status) ? "Reopen the current tablet page in its existing browser and check browser support. The operator cannot remotely install or wake the tablet."
+                : evidence.status === "failed" ? "The tablet reported a failed image. Check the image availability, then retry it."
+                : ["blocked", "invalid", "stale_calibration", "needs_calibration", "needs_profile", "viewport_mismatch", "zoom_changed", "missing_profile", "missing_calibration", "invalid_mapping"].includes(evidence.status) ? "Return the tablet to its calibrated rotation, 100% zoom and launch mode, or review its measurements."
+                : evidence.status === "unplaced" ? "Connected and available. Place this tablet in Arrange." : "Current matching reports are separate from connection status. Reconnect keeps this browser identity.";
+            const next = $("tablet-next-action");
+            next.hidden = !device || !device.online || evidence?.showing || ["hidden", "identifying", "unsupported_client", "unsupported_content", "unsupported"].includes(evidence?.status);
+            next.dataset.deviceId = id || "";
+            next.dataset.action = evidence?.status === "failed" ? "tablet-retry-image" : evidence?.status === "unplaced" ? "arrange"
+                : ["blocked", "invalid", "stale_calibration", "needs_calibration", "needs_profile", "viewport_mismatch", "zoom_changed", "missing_profile", "missing_calibration", "invalid_mapping"].includes(evidence?.status) ? "open-tablet-measurements" : "tablet-reconnect";
+            next.textContent = next.dataset.action === "tablet-retry-image" ? "Retry this image" : next.dataset.action === "arrange" ? "Place in Arrange"
+                : next.dataset.action === "open-tablet-measurements" ? "Review measurements" : "Reconnect this tablet";
+            const oldIds = Object.keys(state.roster).filter(key => key !== id && !state.roster[key].online);
+            $("replacement-offer").hidden = !device || !device.online || !!active || !oldIds.length;
+            const oldSelect = $("replacement-old"), oldKey = oldIds.map(key => key + labelFor(key)).join("|");
+            if (oldSelect.dataset.key !== oldKey) {
+                const value = oldSelect.value; oldSelect.replaceChildren(new Option("Choose old tablet", ""));
+                oldIds.forEach(key => oldSelect.add(new Option(labelFor(key), key))); oldSelect.value = value; oldSelect.dataset.key = oldKey;
+            }
             const mapping = device && device.mapping || {};
             const slot = state.base && state.base.slots && state.base.slots[id];
             const profile = slot && profileFor(id, slot.profile_revision), calibration = slot && calibrationFor(id, slot.calibration_revision);
@@ -65,11 +114,15 @@ window.OperatorDevices = {
                 button.disabled = !device || !device.online || busy || (action === "identify" && !(device.caps || []).includes("identify"));
                 button.title = !device || !device.online ? "Unavailable while offline" : action === "identify" && !(device.caps || []).includes("identify") ? "This client does not advertise Identify" : "";
             }
+            $("tablet-forget-confirm").disabled = busy || !impact;
+            $("replace-apply").disabled = busy || !replacement;
+            $("replace-cancel").disabled = busy || !replacement;
+            $("replace-preview").disabled ||= !!device && device.online === true;
             $("tablet-remove").disabled ||= !active;
             $("tablet-forget-preview").disabled ||= !!device && device.online === true;
             $("tablet-forget-preview").title = device && device.online ? "Forget requires the tablet socket to be offline. Remove from wall keeps the registration." : "Review active slot and saved references before Forget.";
             $("tablet-participation-label").hidden = !slot;
-            if (slot && document.activeElement !== $("tablet-participation")) $("tablet-participation").checked = state.draft.slots[id].participating !== false;
+            if (slot && state.draft.slots[id] && document.activeElement !== $("tablet-participation")) $("tablet-participation").checked = state.draft.slots[id].participating !== false;
             const targets = Object.keys(state.roster).filter(key => key !== id).sort((a, b) => window.OperatorState.compareIds(state.roster, state.deviceLabels || {}, a, b));
             const selector = $("replace-target"), targetKey = targets.map(key => key + labelFor(key)).join("|");
             if (selector.dataset.key !== targetKey) {
@@ -84,7 +137,7 @@ window.OperatorDevices = {
                 const legend = document.createElement("legend"); legend.textContent = "Exact saved arrangements to update"; $("replace-saved").append(legend);
                 snapshots.forEach(snapshot => {
                     const layout = state.savedLayouts.find(saved => saved.name === snapshot.name);
-                    const references = layout && window.OperatorState.entries(layout.layout)[id];
+                    const references = layout && layout.etag === snapshot.etag && window.OperatorState.entries(layout.layout)[id];
                     const label = document.createElement("label"); label.className = "check-label";
                     const check = document.createElement("input"); check.type = "checkbox"; check.dataset.name = snapshot.name; check.dataset.etag = snapshot.etag || "";
                     check.checked = !!references && snapshot.valid !== false; check.disabled = snapshot.valid === false || !snapshot.etag;
@@ -95,12 +148,13 @@ window.OperatorDevices = {
                 if (!snapshots.length) { const note = document.createElement("p"); note.textContent = "Saved arrangement digests are not available. Refresh configuration before replacing saved reservations."; $("replace-saved").append(note); }
             }
         }
-        async function run(work) {
+        async function run(work, id = selectedId) {
             if (busy) return;
             const focused = document.activeElement;
             busy = true; render();
             try { await work(); }
-            catch (error) { if (error.status === 412) showConflict("Tablet action inputs changed. Review and preview again."); message("Action unavailable or failed. " + error.message + " Refresh status and retry."); }
+            catch (error) { if (error.status === 412) showConflict("Tablet action inputs changed. Review and preview again."); const text = "Action for " + labelFor(id) + " failed. " + error.message + (error.uncertain ? " Refresh status and inspect the result before retrying." : " Review the problem, then retry.");
+                results.set(id, text); if (id === selectedId) message(text); }
             finally {
                 busy = false; render();
                 if (focused && focused !== document.body && document.activeElement === document.body) {
@@ -110,82 +164,152 @@ window.OperatorDevices = {
                 }
             }
         }
-        $("tablet-label-form").addEventListener("submit", event => {
-            event.preventDefault(); const id = selectedId, label = $("tablet-label").value.trim();
-            run(async () => { const result = await api("PATCH", path(id), { label: label || null }, { etag: true }); if (state.selectedId === id) labelBaseline = label; ingestConfig(result, { preserveDraft: true }); message("Label saved for " + labelFor(id) + "."); });
+        $("tablet-next-action").addEventListener("click", () => {
+            const id = $("tablet-next-action").dataset.deviceId, action = $("tablet-next-action").dataset.action;
+            if (!id || id !== selectedId) return;
+            if (action === "arrange") openArrange(); else $(action).click();
+        });
+        $("replacement-open").addEventListener("click", () => {
+            const newId = selectedId, oldId = $("replacement-old").value;
+            if (!newId || !oldId || !state.roster[newId]?.online || state.roster[oldId]?.online) { message("Choose an offline registration to replace with this connected tablet."); return; }
+            selectTablet(oldId);
+            $("replace-target").value = newId;
+            $("replace-target").dispatchEvent(new Event("change", { bubbles: true }));
+            $("replace-target").closest("details").open = true;
+            $("replace-hardware").focus();
+        });
+        $("tablet-label-review").addEventListener("click", () => {
+            const id = selectedId, submitted = tabletForms.get(id, "name");
+            if (!id || !submitted) return;
+            run(async () => {
+                await refreshRoster();
+                if (id !== selectedId || submitted.version !== tabletForms.get(id, "name").version) return;
+                const remote = { name: state.deviceLabels[id] || state.roster[id]?.label || "" };
+                nameReview = { id, version: submitted.version, remote, etag: state.etag };
+                $("tablet-name-comparison").textContent = "Saved before · " + (submitted.baseline.name || "Default name")
+                    + ". Current saved · " + (remote.name || "Default name") + ". Your proposed name · " + (submitted.values.name || "Default name") + ".";
+                $("tablet-name-review").hidden = false; $("tablet-name-keep").focus();
+            }, id);
+        });
+        $("tablet-name-keep").addEventListener("click", () => {
+            const review = nameReview;
+            if (!review || review.id !== selectedId || review.etag !== state.etag || !tabletForms.review(review.id, "name", review.version, review.remote, review.etag)) {
+                message("The name or wall changed after this comparison. Review the current name again."); return;
+            }
+            $("tablet-name-review").hidden = true; nameReview = null;
+            message("Your name is retained against the reviewed saved value. Save name is a separate command."); render();
+        });
+        $("tablet-label").addEventListener("input", () => {
+            nameReview = null; $("tablet-name-review").hidden = true;
+            const form = tabletForms.edit(selectedId, "name", { name: $("tablet-label").value }, state.etag);
+            $("tablet-label-form").dataset.dirty = String(form.dirty);
+        });
+        $("tablet-label-discard").addEventListener("click", () => {
+            const id = selectedId;
+            nameReview = null; $("tablet-name-review").hidden = true;
+            tabletForms.discard(id, "name");
+            const form = tabletForms.observe(id, "name", { name: (state.deviceLabels || {})[id] || "" }, state.etag);
+            $("tablet-label").value = form.values.name; render();
+        });
+        $("tablet-label-form").addEventListener("submit", async event => {
+            event.preventDefault();
+            const id = selectedId, submitted = tabletForms.get(id, "name");
+            if (!id || !submitted) return;
+            if (!await resolveOutput("Save a tablet name")) return;
+            if (submitted.conflict) { message("The saved name changed elsewhere. Discard or compare your edit before saving."); return; }
+            run(async () => {
+                const result = await api("PATCH", path(id), { label: submitted.values.name.trim() || null }, { ifMatch: submitted.baseEtag });
+                tabletForms.saved(id, "name", submitted.version, submitted.values, result.etag);
+                ingestConfig(result, { preserveDraft: true });
+                const text = "Name saved for " + labelFor(id) + ".";
+                results.set(id, text); if (selectedId === id) message(text);
+            }, id);
         });
         for (const action of ["identify", "retry-image", "reconnect"]) $("tablet-" + action).addEventListener("click", () => {
             const id = selectedId;
             run(async () => { await api("POST", path(id, "/" + action), action === "identify" ? { duration_ms: 5000 } : undefined, { etag: true });
-                message(action === "identify" ? "Identify requested. Delivery is unconfirmed until the tablet reports it." : action === "retry-image" ? "Image retry requested. Waiting for a fresh paint confirmation." : "Reconnect requested. The tablet keeps its identity.");
+                const text = action === "identify" ? "Identify requested. Delivery is unconfirmed until the tablet reports it." : action === "retry-image" ? "Image retry requested. Waiting for a fresh paint confirmation." : "Reconnect requested. The tablet keeps its identity.";
+                results.set(id, text); if (selectedId === id) message(text);
                 await refreshRoster(); });
         });
         $("tablet-participation").addEventListener("change", () => {
             if (state.draft && state.draft.slots[selectedId]) state.onParticipation(selectedId, $("tablet-participation").checked);
         });
-        $("tablet-remove").addEventListener("click", () => {
+        $("tablet-remove").addEventListener("click", async () => {
             const id = selectedId;
-            if (isDirty()) { message("Apply or cancel the layout draft first."); return; }
+            if (!await resolveOutput("Remove " + labelFor(id) + " from the wall")) return;
             if (!window.confirm("Remove " + labelFor(id) + " from the active wall? Registration, measurements and saved arrangements stay.")) return;
             run(async () => {
-                const layout = window.OperatorState.clone(state.base);
-                delete window.OperatorState.entries(layout)[id];
-                const body = layout.kind === "physical" ? { bounds: layout.bounds, slots: layout.slots, sizing: layout.sizing }
-                    : { width: layout.width, height: layout.height, placements: layout.placements, sizing: layout.sizing };
-                const result = await api("PUT", layout.kind === "physical" ? "/api/v3/layout" : "/api/v3/logical-layout", body, { etag: true });
-                ingestConfig(result); message("Removed active slot. Registration and saved arrangements retained.");
-            });
+                const result = await api("POST", path(id, "/remove"), undefined, { etag: true });
+                ingestConfig(result); removedFromWall(id); if (selectedId === id) message("Removed active slot. Registration and saved arrangements retained.");
+            }, id);
         });
-        $("tablet-forget-preview").addEventListener("click", () => {
+        $("tablet-forget-preview").addEventListener("click", async () => {
             const id = selectedId;
+            if (!await resolveOutput("Review offline Forget")) return;
+            if (tabletForms.dirty(id)) { message("Save or discard this tablet’s unsaved name and measurement fields before Forget. They are retained."); return; }
             run(async () => {
-                const result = await api("GET", path(id, "/impact"));
-                if (id !== selectedId || result.online || !result.etag) throw new Error("Tablet state changed. Forget requires an offline socket and current impact ETag.");
-                impact = { id, ...result }; $("tablet-forget-impact").hidden = false;
+                const result = await api("GET", path(id, "/impact"), undefined, { fenced: true });
+                if (id !== selectedId || result.online || !result.etag || result.etag !== state.etag) throw new Error("Tablet state changed. Forget requires an offline socket and current impact ETag.");
+                impact = { id, ...result }; $("tablet-forget-impact").hidden = false; $("tablet-forget-confirm").disabled = false;
                 $("tablet-forget-active").checked = false; $("tablet-forget-active").disabled = !result.active_entry;
                 $("tablet-forget-text").textContent = "Forget " + labelFor(id) + "? This releases its label and leased number. " + (result.active_entry ? "An active slot must also be explicitly removed. " : "")
                     + "Saved reservations remain in " + ((result.saved_layouts || []).map(item => typeof item === "string" ? item : item.name).join(", ") || "no reported saved arrangements")
                     + ". Measurement history is retained. Reopening the old browser can register again. Forget is not revocation.";
-            });
+            }, id);
         });
         $("tablet-forget-confirm").addEventListener("click", () => {
             if (!impact) return;
-            const plan = impact;
+            const plan = impact, subject = labelFor(impact.id);
             if (plan.active_entry && !$("tablet-forget-active").checked) { message("Explicitly acknowledge removal of the active slot before Forget."); return; }
             run(async () => { const result = await api("DELETE", path(plan.id), { remove_active: $("tablet-forget-active").checked, saved_layouts: "keep" }, { ifMatch: plan.etag });
-                clearPlans(); ingestConfig(result); await refreshRoster(); message("Tablet forgotten. Saved reservations and measurements retained."); });
+                if (selectedId === plan.id) clearPlans(); ingestConfig(result); await refreshRoster(); if (selectedId === plan.id) message("Tablet forgotten. Saved reservations and measurements retained."); announce("Forgot " + subject + ". Saved reservations and measurements are retained."); });
         });
-        $("tablet-forget-cancel").addEventListener("click", clearPlans);
+        $("tablet-forget-cancel").addEventListener("click", () => { clearPlans(); $("tablet-forget-preview").focus(); });
+        $("replace-cancel").addEventListener("click", () => {
+            replacement = null; replaceVersion += 1; $("replace-apply").disabled = true; $("replace-cancel").disabled = true;
+            $("replace-summary").textContent = "Replacement preview discarded. No tablet or saved arrangement was changed.";
+            $("replace-preview").focus();
+        });
         for (const id of ["replace-target", "replace-hardware", "replace-active", "replace-label", "replace-number"]) $(id).addEventListener("change", () => { replacement = null; replaceVersion += 1; $("replace-apply").disabled = true; });
-        $("replace-preview").addEventListener("click", () => {
+        $("replace-preview").addEventListener("click", async () => {
             const id = selectedId, target = $("replace-target").value;
             if (!target || !$("replace-hardware").value) { message("Choose a replacement registration and explicitly declare the hardware relationship."); return; }
-            if (isDirty()) { message("Apply or cancel the layout draft before replacement."); return; }
+            const inputVersion = replaceVersion;
+            if (!await resolveOutput("Review tablet replacement")) return;
+            if (id !== selectedId || inputVersion !== replaceVersion) return;
+            if (tabletForms.dirty(id) || tabletForms.dirty(target)) { message("Save or discard unsaved fields for the old and replacement tablets before replacement. Their values are retained."); return; }
             const body = { replaces: id, hardware: $("replace-hardware").value, active: $("replace-active").checked,
                 saved_layouts: Array.from($("replace-saved").querySelectorAll("input:checked")).map(input => ({ name: input.dataset.name, etag: input.dataset.etag })), transfer_label: $("replace-label").checked };
             if ($("replace-number").value !== "") body.number = Number($("replace-number").value);
             run(async () => {
-                const etag = state.etag, version = replaceVersion;
+                const etag = state.etag, version = replaceVersion, connectionVersion = state.connectionVersions[target] || 0;
                 const preview = await api("POST", path(target, "/rebind/preview"), body, { ifMatch: etag });
-                if (version !== replaceVersion || id !== selectedId || state.etag !== etag || preview.base_etag !== etag || (preview.conflicts || []).length) throw new Error("Replacement conflicts. " + JSON.stringify(preview.conflicts || []));
-                replacement = { id, target, body, preview };
-                $("replace-summary").textContent = "Preview only. Replace " + labelFor(id) + " (" + id.slice(0, 8)
-                    + ") with " + labelFor(target) + " (" + target.slice(0, 8) + "). Update active: " + preview.affected_active + ". Selected saved arrangements: " + body.saved_layouts.map(item => item.name).join(", ")
-                    + ". Untouched saved reservations: " + (preview.untouched_saved || []).map(item => item.name).join(", ")
-                    + ". Profile revision map " + JSON.stringify(preview.profile_revision_map) + "; calibration map " + JSON.stringify(preview.calibration_revision_map)
-                    + ". Label after: " + (preview.label_after || "none") + "; number after: " + (preview.number_after || "unassigned") + ".";
+                if (version !== replaceVersion || id !== selectedId || state.etag !== etag || preview.base_etag !== etag || (state.connectionVersions[target] || 0) !== connectionVersion || (preview.conflicts || []).length) throw new Error("Replacement conflicts. " + JSON.stringify(preview.conflicts || []));
+                replacement = { id, target, body, preview, connectionVersion };
+                $("replace-summary").textContent = "Preview only. Replace " + labelFor(id) + " with " + labelFor(target) + ". "
+                    + (body.hardware === "same_hardware" ? "Same hardware, new browser identity. " : "Different hardware; physical measurements are not inherited. ")
+                    + (preview.affected_active ? "Update the active arrangement. " : "Keep the active arrangement. ")
+                    + "Selected saved arrangements · " + (body.saved_layouts.map(item => item.name).join(", ") || "none")
+                    + ". Untouched reservations · " + ((preview.untouched_saved || []).map(item => item.name).join(", ") || "none")
+                    + ". Name after replacement · " + (preview.label_after || "default name") + "; number · " + (preview.number_after || "unassigned") + ".";
+                $("replace-technical").textContent = JSON.stringify({ old_id: id, new_id: target, reviewed_etag: preview.base_etag,
+                    new_connection_id: preview.new_connection_id, profile_revision_map: preview.profile_revision_map,
+                    calibration_revision_map: preview.calibration_revision_map }, null, 2);
                 $("replace-apply").disabled = false;
-            });
+            }, id);
         });
         $("replace-apply").addEventListener("click", () => {
             if (!replacement) return;
             const plan = replacement;
             run(async () => {
                 const result = await api("POST", path(plan.target, "/rebind"), Object.assign({}, plan.body, { new_connection_id: plan.preview.new_connection_id }), { ifMatch: plan.preview.base_etag });
-                clearPlans(); ingestConfig(result); await refreshRoster(); message("Replacement applied to the active arrangement and exactly the selected saved arrangements."); announce("Tablet replacement applied.");
+                if (selectedId === plan.id) clearPlans(); ingestConfig(result); await refreshRoster(); if (selectedId === plan.id) message("Replacement applied to the active arrangement and exactly the selected saved arrangements."); announce("Tablet replacement applied.");
             });
         });
-        return { render, dirty: () => !!selectedId && $("tablet-label").value !== labelBaseline,
-            discard() { selectedId = null; clearPlans(); } };
+        return { render };
     }
-};
+    const exported = { confirmModels, create };
+    if (typeof module !== "undefined" && module.exports) module.exports = exported;
+    else root.OperatorDevices = exported;
+}(typeof window !== "undefined" ? window : globalThis));
