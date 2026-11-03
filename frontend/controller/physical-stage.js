@@ -191,14 +191,47 @@ window.PhysicalStage = {
          * Selection
          * ---------------------------------------------------------------- */
 
+        const deviceSheet = document.getElementById("device-sheet");
+        function compactSheet() {
+            return typeof window.matchMedia === "function" && window.matchMedia("(max-width: 48rem)").matches;
+        }
+        function syncDeviceSheetMode() {
+            if (!deviceSheet) return;
+            if (compactSheet()) {
+                if (deviceSheet.open) deviceSheet.close();
+                deviceSheet.removeAttribute("open");
+            } else {
+                if (deviceSheet.open && deviceSheet.dataset.modal === "true") deviceSheet.close();
+                if (!deviceSheet.open) deviceSheet.setAttribute("open", "");
+            }
+        }
+        function openDeviceSheet(trigger) {
+            if (!deviceSheet || !compactSheet()) return;
+            state.sheetTrigger = trigger || document.activeElement;
+            if (!deviceSheet.open) { deviceSheet.dataset.modal = "true"; deviceSheet.showModal(); }
+            const heading = document.getElementById("tablet-action-name");
+            if (heading) heading.focus({ preventScroll: true });
+        }
         function revealInspector() {
             if (state.drag || state.tabName === "show") return;
-            const id = state.selectedId;
+            const id = state.selectedId, trigger = document.activeElement;
             Promise.resolve(showTab("tablet", { persist: true })).then(opened => {
                 if (!opened || state.selectedId !== id || state.tabName !== "tablet") return;
+                if (compactSheet()) { openDeviceSheet(trigger); return; }
                 const heading = document.getElementById("tablet-action-name");
-                heading.focus({ preventScroll: true }); heading.scrollIntoView({ block: "nearest" });
+                if (heading) { heading.focus({ preventScroll: true }); heading.scrollIntoView({ block: "nearest" }); }
             });
+        }
+        if (deviceSheet && deviceSheet.addEventListener) {
+            deviceSheet.addEventListener("close", function () {
+                deviceSheet.dataset.modal = "";
+                const trigger = state.sheetTrigger;
+                state.sheetTrigger = null;
+                if (trigger && trigger.isConnected && !trigger.disabled) trigger.focus({ preventScroll: true });
+            });
+            document.getElementById("device-sheet-close")?.addEventListener("click", function () { deviceSheet.close(); });
+            window.addEventListener("resize", syncDeviceSheetMode);
+            syncDeviceSheetMode();
         }
 
         function selectDevice(id, options) {
@@ -218,12 +251,10 @@ window.PhysicalStage = {
             }
             selectionChanged();
             if (options && options.reveal) {
+                const trigger = document.activeElement;
                 Promise.resolve(showTab("tablet", { persist: true })).then(function (opened) {
-                    if (!opened || !window.matchMedia || !window.matchMedia("(max-width: 48rem)").matches) return;
-                    const heading = document.getElementById("tablet-action-name");
-                    if (!heading) return;
-                    heading.focus({ preventScroll: true });
-                    heading.scrollIntoView({ block: "start", behavior: "smooth" });
+                    if (!opened) return;
+                    if (compactSheet()) openDeviceSheet(trigger);
                 });
             }
         }

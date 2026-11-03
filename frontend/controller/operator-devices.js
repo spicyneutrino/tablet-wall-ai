@@ -86,7 +86,9 @@
             const evidence = id ? window.OperatorState.tabletState(config(), id, performance.now()) : null;
             if (impact || replacement) $("tablet-lifecycle").open = true;
             $("tablet-evidence").textContent = evidence ? evidence.text : "";
-            $("tablet-recovery").textContent = !id ? "" : !device || !device.online
+            $("tablet-recovery").textContent = !id ? "" : evidence.status === "unplaced"
+                ? "Not placed yet. The wall cannot address this tablet until it is placed in Arrange."
+                : !device || !device.online
                 ? "On the tablet, check power, keep its screen awake, join the wall network and reopen the tablet page in its existing browser. The server cannot wake a powered-off or sleeping tablet."
                 : evidence.status === "hidden" ? "Bring the tablet page to the foreground and keep it open. A hidden page cannot confirm the current image."
                 : evidence.status === "identifying" ? "The Identify overlay temporarily covers the image. Wait for it to clear before relying on current image proof."
@@ -96,7 +98,7 @@
                 : evidence.status === "unplaced" ? "Connected and available. Place this tablet in Arrange." : "Current matching reports are separate from connection status. Reconnect keeps this browser identity.";
             $("tablet-recovery").hidden = !!evidence?.showing;
             const next = $("tablet-next-action");
-            next.hidden = !device || !device.online || evidence?.showing || ["hidden", "identifying", "unsupported_client", "unsupported_content", "unsupported"].includes(evidence?.status);
+            next.hidden = !device || (evidence?.status !== "unplaced" && !device.online) || evidence?.showing || ["hidden", "identifying", "unsupported_client", "unsupported_content", "unsupported"].includes(evidence?.status);
             next.dataset.deviceId = id || "";
             next.dataset.action = evidence?.status === "failed" ? "tablet-retry-image" : evidence?.status === "unplaced" ? "arrange"
                 : ["blocked", "invalid", "stale_calibration", "needs_calibration", "needs_profile", "viewport_mismatch", "zoom_changed", "missing_profile", "missing_calibration", "invalid_mapping"].includes(evidence?.status) ? "open-tablet-measurements" : "tablet-reconnect";

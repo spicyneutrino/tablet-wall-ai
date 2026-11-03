@@ -150,8 +150,6 @@
         btnNudgeXPlus: document.getElementById("btn-nudge-x-plus"),
         btnNudgeYMinus: document.getElementById("btn-nudge-y-minus"),
         btnNudgeYPlus: document.getElementById("btn-nudge-y-plus"),
-        btnApplyLocal: document.getElementById("btn-apply-local"),
-        btnCancelLocal: document.getElementById("btn-cancel-local"),
         inspectorMissing: document.getElementById("inspector-missing"),
         slotMissingText: document.getElementById("slot-missing-text"),
         btnAddSlot: document.getElementById("btn-add-slot"),
@@ -1069,11 +1067,6 @@
         el.btnPackTablets.disabled = state.busy || !fitted;
     }
 
-    function syncLocalDraftActions() {
-        if (el.btnApplyLocal) el.btnApplyLocal.disabled = el.btnApply.disabled;
-        if (el.btnCancelLocal) el.btnCancelLocal.disabled = el.btnCancel.disabled;
-    }
-
     function syncDraftUi() {
         renderCalibrationHelper();
         if (!state.draft) {
@@ -1086,7 +1079,6 @@
             el.boundsMode.disabled = true;
             el.boundsPadding.disabled = true;
             el.btnPackTablets.disabled = true;
-            syncLocalDraftActions();
             updateSavedButtons();
             syncInspector();
             syncTabDots();
@@ -1119,7 +1111,6 @@
         el.btnLayoutsRefresh.disabled = state.busy;
         el.btnConflictReload.disabled = state.busy;
 
-        syncLocalDraftActions();
         syncBoundsInputs();
         updateSavedButtons();
         syncInspector();
@@ -3062,16 +3053,6 @@
         el.btnRedo.addEventListener("click", redoDraft);
         el.btnApply.addEventListener("click", applyLayout);
         el.btnCancel.addEventListener("click", cancelDraft);
-        if (el.btnApplyLocal) {
-            el.btnApplyLocal.addEventListener("click", function () {
-                el.btnApply.click();
-            });
-        }
-        if (el.btnCancelLocal) {
-            el.btnCancelLocal.addEventListener("click", function () {
-                el.btnCancel.click();
-            });
-        }
         el.btnReload.addEventListener("click", reloadConfigWithConfirm);
         el.btnConflictReload.addEventListener("click", reloadConfigWithConfirm);
 
