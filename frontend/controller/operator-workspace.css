@@ -448,15 +448,15 @@ dialog.tablet-selection::backdrop { background: var(--backdrop); }
 
 #grid-title { position: absolute; inline-size: 1px; block-size: 1px; padding: 0; margin: -1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
 
-@media (min-width: 48.01rem) and (max-width: 1100px) {
-    body[data-output-dirty="true"]:has([data-task="images"]:not([hidden])) { padding-block-end: 120px; }
-    body[data-output-dirty="true"] .image-actions { position: fixed; inset-inline: 0; inset-block-end: 0; z-index: 35; background: var(--surface); border-block-start: 1px solid var(--border); padding: .375rem 1rem; display: grid; grid-template-columns: minmax(0, 1fr) auto auto; align-items: center; gap: .25rem .5rem; }
+@media (min-width: 48.01rem) and (max-width: 1100px) and (min-height: 32.01rem) {
+    body[data-output-dirty="true"]:has([data-task="images"]:not([hidden])) { padding-block-end: 68px; }
+    body[data-output-dirty="true"] .image-actions { position: fixed; inset-inline: 0; inset-block-end: 0; z-index: 35; background: var(--surface); border-block-start: 1px solid var(--border); padding: .375rem 1rem; display: grid; grid-template-columns: minmax(0, 12rem) auto auto auto; align-items: center; gap: .25rem .5rem; }
     body[data-output-dirty="true"] .image-primary-actions { display: contents; }
     body[data-output-dirty="true"] .image-actions > .field { font-size: 0; gap: 0; min-inline-size: 0; }
     body[data-output-dirty="true"] .image-actions > .field .inp { font-size: .875rem; }
     body[data-output-dirty="true"] .image-actions .btn { padding: .5rem .75rem; font-size: .875rem; }
-    body[data-output-dirty="true"] .image-actions > [role="status"]:not(:empty) { grid-column: 1 / 2; margin: 0; font-size: .75rem; align-self: center; }
-    body[data-output-dirty="true"] .image-view-actions { grid-column: 2 / -1; display: flex; justify-content: end; }
+    body[data-output-dirty="true"] .image-actions > [role="status"] { display: none; }
+    body[data-output-dirty="true"] .image-view-actions { grid-column: auto; display: flex; justify-content: end; }
     body[data-output-dirty="true"] .image-more { display: none; }
 }
 
@@ -469,3 +469,7 @@ body[data-task="arrange"].show-stage-details #stage-identities { display: block;
 .arrange-tools .stage-technical-toggle { display: inline-flex; }
 
 #grid-cancel:disabled { display: none; }
+
+@media (max-width: 48rem) {
+    .arrange-tools .stage-technical-toggle { display: none; }
+}

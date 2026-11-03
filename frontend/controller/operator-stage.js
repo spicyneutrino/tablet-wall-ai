@@ -177,8 +177,8 @@
                     + (estimate.upscale > 1.1 ? " · " + estimate.upscale.toFixed(1) + "× upscale" : ""));
             } else outline.append(node("circle", { cx: panel.cx, cy: panel.cy, r: 8 / scale, fill: "none", stroke: "var(--stage-selected)", "stroke-width": 2 / scale }));
             if (!preview && status.status === "offline" && !panel.missing) {
-                outline.append(rect(panel.body, { class: "offline-reservation", opacity: 0.78 }));
-                outline.append(rect(panel.body, { fill: "url(#operator-occlusion)", opacity: 0.7 }));
+                outline.append(rect(panel.body, { class: "offline-reservation", opacity: 0.5 }));
+                outline.append(rect(panel.body, { fill: "url(#operator-occlusion)", opacity: 0.35 }));
             }
             if (!panel.missing) {
                 const label = labelFor ? labelFor(panel.id) : "";

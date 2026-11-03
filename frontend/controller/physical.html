@@ -231,13 +231,13 @@
       <p class="hint" id="image-details">Choose an image to preview it.</p>
     </div>
     <div class="image-actions">
-      <label class="field" for="image-fit">Wall-wide fit<select class="inp" id="image-fit" aria-label="Wall-wide fit" data-field="image-fit"><option value="cover">Fill wall</option><option value="contain">Fit image</option></select></label>
+      <label class="field" for="image-fit">Wall-wide fit<select class="inp" id="image-fit" aria-label="Wall-wide fit" data-field="image-fit"><option value="cover">Fill</option><option value="contain">Fit</option></select></label>
       <div class="image-action-row image-primary-actions"><button class="btn btn-primary" id="show-image" type="button" disabled data-action="show-image">Show image</button><button class="btn" id="image-discard" type="button" data-action="image-discard">Discard preview</button></div>
       <p id="image-message" role="status" aria-live="polite"></p>
       <details class="technical-details image-more" id="image-more"><summary>More image actions</summary><div class="image-action-row"><button class="btn" id="restore-image" type="button" disabled data-action="restore-image">Restore previous content</button><button class="btn" id="image-rebuild" type="button" data-action="image-rebuild">Rebuild preview</button></div></details><div class="image-action-row image-view-actions"><button type="button" class="btn" id="view-live" hidden data-action="view-live">View applied</button><button type="button" class="btn" id="view-preview" hidden data-action="view-preview">View preview</button></div>
     </div>
     <p class="hint" id="image-fit-note"></p>
-    <button type="button" class="btn stage-technical-toggle" id="show-stage-technical">Stage technical details</button><details class="technical-details" id="image-details-disclosure"><summary>Image details</summary><label class="field" for="image-select">Image<select class="inp" id="image-select" data-field="image-select"><option value="">Loading images…</option></select></label><img id="image-thumbnail" alt="Selected still image preview" hidden></details>
+    <details class="technical-details" id="image-details-disclosure"><summary>Image details</summary><label class="field" for="image-select">Image<select class="inp" id="image-select" data-field="image-select"><option value="">Loading images…</option></select></label><img id="image-thumbnail" alt="Selected still image preview" hidden></details>
   </aside>
   <section class="image-library task-section" aria-labelledby="library-title">
     <div class="library-head"><h3 id="library-title">Library</h3><div class="library-toolbar"><div class="field"><label for="image-search">Search images</label><input class="inp" type="search" id="image-search" autocomplete="off" placeholder="Search by filename" data-field="image-search"></div><button type="button" class="btn" id="add-image">Add image</button></div></div>
@@ -639,7 +639,7 @@
 
             <div class="stage-scroll" id="stage-scroll" tabindex="0" role="region" aria-label="Wall preview and tablet selection">
                 <svg class="stage-svg" id="stage-svg" viewBox="0 0 720 480" role="group" aria-label="Wall. Select a tablet and drag it, or use the arrow keys to nudge the selected tablet."></svg>
-            </div>
+            </div><button type="button" class="btn stage-technical-toggle" id="show-stage-technical-inline">Stage technical details</button>
 
             <section class="arrangement-review task-section" id="manual-arrangement-review" hidden><h3>Review the current wall and your proposal</h3><p id="manual-review-summary" tabindex="-1"></p><details class="technical-details"><summary>Exact geometry and pins</summary><pre class="form-comparison" id="manual-review-details"></pre></details><button type="button" class="btn" id="manual-review-keep" data-action="manual-review-keep">Keep my arrangement against this wall</button></section>
             <p class="hint" id="stage-quality-summary"></p>
@@ -656,7 +656,7 @@
                 <ul class="stage-legend" aria-label="Stage legend">
                     <li class="lg"><span class="lg-body" aria-hidden="true"></span>Tablet body</li>
                     <li class="lg"><span class="lg-active" aria-hidden="true"></span>Active panel</li>
-                    <li class="lg"><span class="lg-sel" aria-hidden="true"></span>Selected</li>
+                    <li class="lg"><span class="lg-sel" aria-hidden="true"></span>Selected</li><li class="lg"><span class="lg-offline" aria-hidden="true"></span>Offline</li>
                 </ul>
             </div>
             <p class="hint" id="stage-resolution"></p>

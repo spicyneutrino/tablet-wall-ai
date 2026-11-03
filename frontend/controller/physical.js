@@ -3442,7 +3442,7 @@
             if (identities) identities.open = true;
             if (details && document.body.classList.contains("show-stage-details")) details.scrollIntoView({ block: "start" });
         }
-        document.getElementById("show-stage-technical")?.addEventListener("click", toggleStageTechnical);
+        document.getElementById("show-stage-technical-inline")?.addEventListener("click", toggleStageTechnical);
         document.getElementById("show-arrange-technical")?.addEventListener("click", toggleStageTechnical);
         state.onParticipation = (id, participating) => mutateDraft(draft => { draft.slots[id].participating = participating; });
         document.getElementById("experimental-opt-in").addEventListener("change", event => {
