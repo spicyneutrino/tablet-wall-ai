@@ -1,6 +1,6 @@
 "use strict";
 window.OperatorWorkspace = {
-    create({ state, arrangementDirty, arrangementPreview, imageDirty, applyArrangement, showImage, discardArrangement, discardImage,
+    create({ state, labelFor, arrangementDirty, arrangementPreview, imageDirty, applyArrangement, showImage, discardArrangement, discardImage,
         commitTask, renderStage, refreshReadiness, refreshStatus, selectTablet, canCommit }) {
         const $ = id => document.getElementById(id);
         let pending = null, resolving = false;
@@ -61,14 +61,12 @@ window.OperatorWorkspace = {
             }
             const connected = Object.values(state.roster).filter(device => device.online).length;
             $("connected-summary").textContent = state.rosterError ? "Connections stale" : connected + " connected";
-            $("pending-summary").hidden = !arrangement && !image;
-            $("pending-summary").textContent = arrangement ? "Arrangement draft kept" : "Image preview kept";
             const joining = $("tablet-joining");
             const empty = !Object.keys(state.roster).length;
             if (empty && emptyRoster !== true) joining.open = true;
             else if (!empty && emptyRoster === true && !joining.contains(document.activeElement)) joining.open = false;
             emptyRoster = empty;
-            $("stage-mode-label").textContent = { live: "Live wall", "arrangement-preview": "Arrangement preview · not applied", "image-preview": "Image preview · not shown" }[mode];
+            $("stage-mode-label").textContent = { live: "Applied configuration", "arrangement-preview": "Arrangement preview · not applied", "image-preview": "Image preview · not shown" }[mode];
             $("view-live").hidden = mode === "live";
             $("view-preview").hidden = !state.viewLive || !hasPreview && !image;
             const summary = $("arrange-review-summary");
@@ -94,7 +92,7 @@ window.OperatorWorkspace = {
                     }
                     row.hidden = evidence.showing || evidence.status === "excluded";
                     const device = state.roster[id] || {}, number = device.number;
-                    const name = state.deviceLabels[id] || device.label || "Tablet " + (number || "unassigned");
+                    const name = labelFor ? labelFor(id) : state.deviceLabels[id] || device.label || "Tablet " + (number || "unassigned");
                     row.firstElementChild.textContent = name + " · " + evidence.text + " · Review recovery";
                     row.dataset.status = evidence.status;
                 }

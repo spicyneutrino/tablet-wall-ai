@@ -1051,7 +1051,7 @@ def first_wall(rig):
     )
     rig.viewport_shots("measured-review")
     rig.click("#btn-apply", "Apply arrangement")
-    expect(p.locator("#stage-mode-label")).to_have_text("Live wall", timeout=15000)
+    expect(p.locator("#stage-mode-label")).to_have_text("Applied configuration", timeout=15000)
     slots = rig.config()["layout"]["slots"]
     rig.check(
         len(slots) == 4
@@ -1110,7 +1110,7 @@ def first_wall(rig):
     )
     rig.viewport_shots("two-by-two-review")
     rig.click("#btn-apply")
-    expect(p.locator("#stage-mode-label")).to_have_text("Live wall", timeout=15000)
+    expect(p.locator("#stage-mode-label")).to_have_text("Applied configuration", timeout=15000)
     expect(p.locator("#wall-health")).to_contain_text("4 of 4 showing", timeout=15000)
     rig.check(
         rig.config()["scene"] == before["scene"],

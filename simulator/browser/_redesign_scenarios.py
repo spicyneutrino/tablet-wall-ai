@@ -54,7 +54,7 @@ def parity(rig):
     def apply():
         page.locator("#btn-apply").click()
         expect(page.locator("#stage-mode-label")).to_have_text(
-            "Live wall", timeout=10000
+            "Applied configuration", timeout=10000
         )
 
     def save_arrangement(name):
@@ -703,7 +703,7 @@ def edges(rig):
     def apply():
         page.locator("#btn-apply").click()
         expect(page.locator("#stage-mode-label")).to_have_text(
-            "Live wall", timeout=10000
+            "Applied configuration", timeout=10000
         )
 
     def row(id):

@@ -82,8 +82,7 @@ function factsText(nodes) {
     assert.equal(known.status.kind, "ok");
     assert.match(known.status.text, /does not prove a tablet is displaying the wall/);
     const joined = known.facts.map(pair => pair.join(" = ")).join(" | ");
-    for (const expected of ["Wall-Net", "Measured millimetres (physical)", "revision 7",
-        "generation gen-7", "schema 3", "HTTP", "None. Trusted local hotspot only.",
+    for (const expected of ["Wall-Net", "Measured millimetres (physical)", "HTTP", "None. Trusted local hotspot only.",
         "Disabled; use the configured image folder", "Trusted local hotspot",
         "A still image is selected", "1 online of 2 registered", "Readable",
         "2026-11-01T10:00:00Z — a snapshot was recorded on disk",
@@ -91,6 +90,8 @@ function factsText(nodes) {
         "Referenced content only.", "Only current matching paint reports count"]) {
         assert.ok(joined.includes(expected), "missing " + expected);
     }
+    assert.ok(!joined.includes("revision 7") && !joined.includes("generation gen-7") && !joined.includes("schema 3"),
+        "default readiness facts stay operator-facing; revision details live with the wall");
     assert.equal(known.errors.length, 0);
     assert.deepEqual(known.advice, ["The server cannot wake a tablet."]);
     assert.equal(known.paths.length, 4);

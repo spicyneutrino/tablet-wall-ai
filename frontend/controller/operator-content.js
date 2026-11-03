@@ -45,9 +45,10 @@ window.OperatorContent = {
         function select(id, nextFit = fit) {
             if (!selectionDirty) baseEtag = state.etag;
             selected = id; fit = nextFit; savedScene = null; selectionDirty = true; selectionVersion += 1;
-            state.viewLive = false; render(); renderStage();
+            state.viewLive = false; if (!retainMessage) message("Preview ready. Show image applies it."); render(); renderStage();
         }
         async function choose(id, nextFit = fit) {
+            if (!id) return false;
             const version = selectionVersion;
             if (!await resolveOutput("Preview this image", "image") || version !== selectionVersion) { render(); return false; }
             select(id, nextFit); return true;
@@ -65,15 +66,23 @@ window.OperatorContent = {
                     const thumbnail = document.createElement("img"); thumbnail.alt = ""; thumbnail.loading = "lazy";
                     const name = document.createElement("span"), dimensions = document.createElement("span");
                     name.className = "image-choice-name"; dimensions.className = "image-choice-dimensions";
-                    button.append(thumbnail, name, dimensions); item.append(button); list.append(item);
+                    const appliedNote = document.createElement("span"); appliedNote.className = "sr-only";
+                    button.append(thumbnail, name, dimensions); item.append(button, appliedNote); list.append(item);
                     button.addEventListener("click", () => choose(image.id));
                     thumbnail.addEventListener("error", () => { item.dataset.thumbnail = "unavailable"; thumbnail.hidden = true; });
-                    row = { item, button, thumbnail, name, dimensions }; gallery.set(image.id, row);
+                    row = { item, button, thumbnail, name, dimensions, appliedNote }; gallery.set(image.id, row);
                 }
                 row.item.hidden = !image.name.toLocaleLowerCase().includes(search);
                 row.item.dataset.selected = String(image.id === selected);
                 row.button.setAttribute("aria-pressed", String(image.id === selected)); row.button.disabled = busy;
+                const applied = Boolean(state.scene && state.scene.content.type === "image" && state.scene.content.asset === image.id);
+                row.item.dataset.applied = String(applied);
                 row.button.setAttribute("aria-label", "Preview " + image.name);
+                row.appliedNote.textContent = applied ? "Applied to the wall" : "";
+                if (applied) {
+                    if (!row.appliedNote.id) row.appliedNote.id = "image-applied-" + image.id.replace(/[^a-zA-Z0-9_-]/g, "_");
+                    row.button.setAttribute("aria-describedby", row.appliedNote.id);
+                } else row.button.removeAttribute("aria-describedby");
                 if (row.thumbnail.getAttribute("src") !== image.thumbnail_url) row.thumbnail.src = image.thumbnail_url;
                 const thumbnailScale = Math.min(160 / image.width, 160 / image.height);
                 row.thumbnail.width = Math.max(1, Math.round(image.width * thumbnailScale)); row.thumbnail.height = Math.max(1, Math.round(image.height * thumbnailScale));
@@ -110,8 +119,8 @@ window.OperatorContent = {
             $("refresh-images").disabled = loading;
             const chosen = selectedContent();
             $("image-title").textContent = image ? image.name : savedScene ? savedScene.name : "Selected image";
-            $("image-details").textContent = image ? image.name + " · " + image.width + " × " + image.height + " source px"
-                : selected ? "Selected image is unavailable. Refresh the library or choose a replacement. Your selection and geometry are retained." : "Choose or add an image, review its preview, then Show image.";
+            $("image-details").textContent = image ? image.width + " × " + image.height + " source px"
+                : selected ? "Selected image is unavailable. Refresh the library or choose a replacement. Your selection and geometry are retained." : "No image selected.";
             const thumbnail = $("image-thumbnail"); thumbnail.hidden = !image;
             if (image && thumbnail.getAttribute("src") !== image.thumbnail_url) thumbnail.src = image.thumbnail_url;
             const transform = chosen && state.base && window.OperatorState.fitTransform(state.base, chosen);
@@ -137,7 +146,7 @@ window.OperatorContent = {
                 if (version !== inventoryVersion) return;
                 if (!Array.isArray(result.images)) throw new Error("Image inventory was not returned.");
                 images = result.images; inventoryReady = true; uploadUncertain = false;
-                message(images.length + (images.length === 1 ? " image available." : " images available.") + " Selection previews locally. Show image applies it.");
+                message(images.length + (images.length === 1 ? " image available." : " images available.") + " Choose one to preview.");
             } catch (error) {
                 if (version === inventoryVersion) message("Image library unavailable. " + error.message + " Use Refresh images to retry. Your selection is retained.", true);
             } finally { if (version === inventoryVersion) { loading = false; render(); renderStage(); } }
@@ -209,7 +218,7 @@ window.OperatorContent = {
             finally { $("images-check-connection").disabled = false; render(); }
         });
         $("image-select").addEventListener("change", event => choose(event.target.value));
-        $("image-fit").addEventListener("change", event => choose(selected, event.target.value));
+        $("image-fit").addEventListener("change", event => { if (!selected && !savedScene) { event.target.value = fit; return; } choose(selected, event.target.value); });
         $("image-search").addEventListener("input", renderGallery);
         $("refresh-images").addEventListener("click", refresh);
         $("show-image").addEventListener("click", () => show(selectedContent(), { scene: savedScene, guard: baseEtag || state.etag }));
@@ -235,7 +244,7 @@ window.OperatorContent = {
                 savedScene = { ...entry }; selected = entry.content.asset || null; fit = entry.content.fit || "cover";
                 baseEtag = guard; selectionDirty = true; selectionVersion += 1; state.viewLive = false; render(); renderStage();
             },
-            discard() { selectionDirty = false; savedScene = null; baseEtag = null; state.previewContent = null; render(); renderStage(); },
+            discard() { selectionDirty = false; savedScene = null; baseEtag = null; state.previewContent = null; if (!retainMessage) message(images.length ? images.length + (images.length === 1 ? " image available." : " images available.") + " Choose one to preview." : "No images available."); render(); renderStage(); },
             rebuild() { baseEtag = state.etag; state.draftConflict = false; render(); },
             destroy() { if (xhr) xhr.abort(); } };
     }

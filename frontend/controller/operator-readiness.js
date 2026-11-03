@@ -89,12 +89,7 @@
         const layout = body && stringOrNull(wall.layout);
         const layoutText = layout ? LAYOUT_LABEL[layout] || "Not reported: unrecognised layout " + JSON.stringify(layout)
             : body === null ? "Unknown: live wall state unavailable." : "Not reported";
-        const wallParts = [];
-        if (layoutText) wallParts.push(layoutText);
-        if (body && wall.revision !== null && wall.revision !== undefined) wallParts.push("revision " + wall.revision);
-        if (body && stringOrNull(wall.generation)) wallParts.push("generation " + stringOrNull(wall.generation));
-        if (body && wall.schema !== null && wall.schema !== undefined) wallParts.push("schema " + wall.schema);
-        const wallText = wallParts.length ? wallParts.join(" · ") : "Unknown: live wall state unavailable.";
+        const wallText = layoutText;
 
         const transport = body && stringOrNull(security.transport);
         const authentication = body && stringOrNull(security.authentication);

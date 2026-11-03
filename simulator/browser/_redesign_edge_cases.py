@@ -97,7 +97,7 @@ def quick_wall(rig):
     p.locator("#grid-preview").click()
     expect(p.locator("#grid-message")).to_contain_text("Preview only")
     p.locator("#btn-apply").click()
-    expect(p.locator("#stage-mode-label")).to_have_text("Live wall")
+    expect(p.locator("#stage-mode-label")).to_have_text("Applied configuration")
     rig.check(
         len(rig.config()["layout"]["placements"]) == 4,
         "Real UI applies a relative four-tablet fixture",
@@ -159,7 +159,7 @@ def pointer_drag(rig):
     p.mouse.up()
     proposed = float(p.locator("#slot-center-x").input_value())
     p.locator("#btn-apply").click()
-    expect(p.locator("#stage-mode-label")).to_have_text("Live wall")
+    expect(p.locator("#stage-mode-label")).to_have_text("Applied configuration")
     current = rig.config()
     rig.check(
         abs(current["layout"]["slots"][device]["center_x_mm"] - proposed) < 0.01
@@ -228,7 +228,7 @@ def snap_spacing(rig):
     )
     p.locator("#btn-redo").click()
     p.locator("#btn-apply").click()
-    expect(p.locator("#stage-mode-label")).to_have_text("Live wall")
+    expect(p.locator("#stage-mode-label")).to_have_text("Applied configuration")
     rig.check(
         rig.config()["layout"]["placements"][device]["x"] == 90,
         "Snapped draft applies through the guarded arrangement action",
@@ -467,7 +467,7 @@ def mixed_models(rig):
     p.locator("#grid-preview").click()
     expect(p.locator("#grid-message")).to_contain_text("Preview only")
     p.locator("#btn-apply").click()
-    expect(p.locator("#stage-mode-label")).to_have_text("Live wall")
+    expect(p.locator("#stage-mode-label")).to_have_text("Applied configuration")
     rig.check(
         rig.config()["tablet_assignments"][subjects[0]]["model_id"] == "ipad-air-2"
         and all(
@@ -1169,7 +1169,7 @@ def replacement_digest(rig):
         other.locator(f'#stage-svg .slot[data-device-id="{ids(rig)[1]}"]').focus()
         other.keyboard.press("ArrowRight")
         other.locator("#btn-apply").click()
-        expect(other.locator("#stage-mode-label")).to_have_text("Live wall")
+        expect(other.locator("#stage-mode-label")).to_have_text("Applied configuration")
         save_arrangement(other, "Exact reservation")
         latest = rig.config()
         captured.update(
@@ -1404,7 +1404,7 @@ def refused_grid(rig):
         {"field": p.locator("#logical-w").input_value(), "stage_width": rendered},
     )
     p.locator("#btn-apply").click()
-    expect(p.locator("#stage-mode-label")).to_have_text("Live wall")
+    expect(p.locator("#stage-mode-label")).to_have_text("Applied configuration")
     rig.check(
         rig.config()["layout"]["placements"][device]["w"] == 95,
         "46a9f24 manual stage and committed geometry agree after refused grid preview",

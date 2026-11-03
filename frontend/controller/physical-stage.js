@@ -4,7 +4,7 @@
 window.PhysicalStage = {
     create: function (dependencies) {
         const {
-            DRAG_THRESHOLD_PX, afterDraftChange, announce, bodyMetrics, calibrationFor, beginManual, canManualEdit, clearMsg, clone, deviceEntries, deviceLabel, deviceNumber, deviceRows, el, finiteOr, formatNumber, isOnline, latestProfile, mutateDraft, numberedLabel, populateDeviceCard, profileFor, pushUndo, roundTo, selectedSlot, selectionChanged, setInputValue, showError, showTab, state, syncTabDots, validPair
+            DRAG_THRESHOLD_PX, afterDraftChange, announce, bodyMetrics, calibrationFor, beginManual, canManualEdit, clearMsg, clone, deviceEntries, deviceLabel, deviceNumber, deviceRows, el, finiteOr, formatNumber, isOnline, latestProfile, mutateDraft, numberTag, numberedLabel, populateDeviceCard, profileFor, pushUndo, roundTo, selectedSlot, selectionChanged, setInputValue, showError, showTab, state, syncTabDots, validPair
         } = dependencies;
 
         function focusStageSlot(id) {
@@ -56,7 +56,7 @@ window.PhysicalStage = {
             }
             summary.hidden = !rows.length;
             const bounds = window.OperatorState.bounds(layout);
-            el.stageScale.textContent = (!preview ? "Live wall · " : arrangementPreview ? "Arrangement preview · " : "Image preview · ")
+            el.stageScale.textContent = (!preview ? "Applied configuration · " : arrangementPreview ? "Arrangement preview · " : "Image preview · ")
                 + formatNumber(bounds.width, 1) + " × " + formatNumber(bounds.height, 1)
                 + (layout.kind === "physical" ? " mm" : " logical units") + (preview ? ". Preview is not tablet output confirmation." : ".");
         }
@@ -80,7 +80,10 @@ window.PhysicalStage = {
             if (!window.OperatorState.entries(state.draft)[id]) return;
 
             selectDevice(id, { reveal: false });
-            if (state.tabName !== "show" || state.busy || state.gridPreview || state.viewLive || state.previewContent) { revealInspector(); return; }
+            if (state.tabName !== "show" || state.busy || state.gridPreview || state.viewLive || state.previewContent) {
+                state.stageTap = { id: id, pointerId: event.pointerId, x: event.clientX, y: event.clientY };
+                return;
+            }
             if (!canManualEdit()) return;
             const point = pointerToStage(event);
             if (!point) return;
@@ -171,10 +174,17 @@ window.PhysicalStage = {
         }
 
         function onPointerUp(event) {
+            const tap = state.stageTap;
+            if (tap && event.pointerId === tap.pointerId) {
+                state.stageTap = null;
+                const moved = Math.hypot(event.clientX - tap.x, event.clientY - tap.y) > DRAG_THRESHOLD_PX;
+                if (!moved && state.selectedId === tap.id) revealInspector();
+            }
             if (state.drag && event.pointerId === state.drag.pointerId) endDrag(true);
         }
 
         function onPointerCancel(event) {
+            if (state.stageTap && event.pointerId === state.stageTap.pointerId) state.stageTap = null;
             if (state.drag && event.pointerId === state.drag.pointerId) endDrag(false);
         }
 
@@ -208,7 +218,15 @@ window.PhysicalStage = {
                 syncInspector();
             }
             selectionChanged();
-            if (options && options.reveal) showTab("tablet", { persist: true });
+            if (options && options.reveal) {
+                Promise.resolve(showTab("tablet", { persist: true })).then(function (opened) {
+                    if (!opened || !window.matchMedia || !window.matchMedia("(max-width: 48rem)").matches) return;
+                    const heading = document.getElementById("tablet-action-name");
+                    if (!heading) return;
+                    heading.focus({ preventScroll: true });
+                    heading.scrollIntoView({ block: "start", behavior: "smooth" });
+                });
+            }
         }
 
         function syncDeviceRows() {
@@ -239,7 +257,9 @@ window.PhysicalStage = {
                         + (Object.keys(facts).length ? " · " + Object.entries(facts).map(([key, count]) => count + " " + key.replaceAll("_", " ")).join(" · ") : "")
                     : "No tablets on the wall");
                 el.btnWallHealth.dataset.kind = stale || result.states.some(item => !["displayed", "offline", "excluded"].includes(item.status)) ? "warn" : "info";
-                if (state.scene && state.scene.content.type !== "image" && result.total) el.wallHealth.textContent = result.total + " tablets on the wall · no still image selected";
+                if (state.scene && state.scene.content.type !== "image" && result.total) el.wallHealth.textContent += " · no still image selected";
+                const compact = typeof window.matchMedia === "function" && window.matchMedia("(max-width: 36rem)").matches;
+                if (compact) el.wallHealth.textContent = (stale ? "Stale · " : "") + (result.total ? result.showing + "/" + result.total + " showing" : "No wall");
                 const online = Object.values(state.roster).filter(device => device.online).length;
                 el.deviceCount.textContent = online + " online · " + Object.keys(state.roster).length + " registered";
                 el.rosterStatus.textContent = stale ? "Status stale. " + state.rosterError + ". Refresh status to retry."
@@ -319,9 +339,9 @@ window.PhysicalStage = {
                 const size = entry.placement ? formatNumber(entry.placement.w, 1) + " × " + formatNumber(entry.placement.h, 1) + " relative units"
                     : entry.profile ? formatNumber(entry.profile.active_width_mm, 1) + " × " + formatNumber(entry.profile.active_height_mm, 1) + " mm" : "Size not set";
                 const status = current ? current.text : online ? "Connected · not on the wall" : "Offline";
-                row.number.textContent = deviceNumber(entry.id) ? "#" + deviceNumber(entry.id) : "Unassigned";
+                row.number.textContent = numberTag(entry.id);
                 row.name.textContent = entry.label;
-                row.meta.textContent = (online ? "Connected" : "Offline") + " · " + status + " · " + size;
+                row.meta.textContent = (current ? "" : (online ? "Connected · " : "Offline · ")) + status + " · " + size;
                 row.item.dataset.status = current ? current.status : online ? "online" : "offline";
                 row.pick.setAttribute("aria-label", numberedLabel(entry.id) + ", " + (online ? "connected" : "offline") + ", " + status);
                 row.add.hidden = !!(entry.slot || entry.placement); row.add.disabled = state.busy;

@@ -9,14 +9,18 @@
 .wall-health:hover { border-color: var(--accent); }
 .health-action { text-decoration: underline; text-underline-offset: .2em; }
 .stage-scroll { overflow: auto; min-inline-size: 0; background: var(--stage); border: 1px solid var(--control); border-radius: var(--radius); }
-.stage-svg { display: block; inline-size: min(100%, calc(50vh * var(--stage-aspect, 1.5))); block-size: auto; aspect-ratio: var(--stage-aspect, 1.5); margin-inline: auto; background: var(--stage); touch-action: none; }
+.stage-svg { display: block; inline-size: min(100%, calc(44vh * var(--stage-aspect, 1.5))); block-size: auto; aspect-ratio: var(--stage-aspect, 1.5); margin-inline: auto; background: var(--stage); }
+body[data-task="arrange"] .stage-svg { touch-action: none; }
 .wall-stage:has(.wall-empty:not([hidden])) .stage-svg { inline-size: min(100%, 28rem); }
 body[data-stage-mode="live"] .wall-stage:has(.wall-empty:not([hidden])) :is(.stage-scroll, .stage-details, #stage-preview-note, #stage-quality-summary) { display: none; }
 .operator-slot { cursor: pointer; }
 .stage-svg.is-dragging, .stage-svg.is-dragging .operator-slot { cursor: grabbing; }
 .operator-body-outline { stroke: var(--stage-text); }
-.operator-active-outline { stroke: #c7beb1; }
+.operator-active-outline { stroke: var(--stage-line); }
+.operator-slot-label { fill: var(--stage-text); paint-order: stroke; stroke: var(--stage); stroke-linejoin: round; font-weight: 600; pointer-events: none; }
+
 .operator-slot[aria-pressed="true"] .operator-body-outline { stroke: var(--stage-selected); }
+.operator-slot[aria-pressed="true"] .operator-slot-label { fill: var(--stage-selected); }
 .operator-slot[data-preview="true"] .operator-body-outline { stroke-dasharray: 5 3; }
 .operator-slot[data-preview="true"][aria-pressed="true"] .operator-body-outline { stroke-dasharray: none; }
 .operator-slot:focus-visible { outline: none; }

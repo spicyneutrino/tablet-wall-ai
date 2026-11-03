@@ -586,8 +586,30 @@
         };
     }
 
+    function placementOrder(id) {
+        const layout = state.base || state.draft;
+        if (!layout) return null;
+        const source = layout.kind === "logical" ? (layout.placements || {}) : (layout.slots || layout.placements || {});
+        const items = Object.entries(source).map(function (entry) {
+            return { id: entry[0], x: Number(entry[1] && (entry[1].x ?? entry[1].center_x_mm) || 0), y: Number(entry[1] && (entry[1].y ?? entry[1].center_y_mm) || 0), h: Number(entry[1] && (entry[1].h ?? entry[1].active_height_mm) || 0) };
+        });
+        const heights = items.map(function (item) { return item.h; }).filter(function (value) { return value > 0; }).sort(function (left, right) { return left - right; });
+        const median = heights.length ? heights[Math.floor(heights.length / 2)] : 0;
+        const tolerance = layout.kind === "physical" ? 50 : Math.max(1, median * 0.4);
+        items.sort(function (left, right) {
+            return Math.floor(left.y / tolerance) - Math.floor(right.y / tolerance) || left.x - right.x || left.id.localeCompare(right.id);
+        });
+        const index = items.findIndex(function (item) { return item.id === id; });
+        return index === -1 ? null : index + 1;
+    }
+
     function deviceLabel(id, profile) {
-        return state.deviceLabels[id] || state.roster[id] && state.roster[id].label || "Tablet " + (deviceNumber(id) || "unassigned");
+        const explicit = state.deviceLabels[id] || state.roster[id] && state.roster[id].label;
+        if (explicit) return explicit;
+        const number = deviceNumber(id);
+        if (number) return "Tablet " + number;
+        const screen = placementOrder(id);
+        return screen ? "Screen " + screen : "Unplaced tablet";
     }
 
     function deviceNumber(id) {
@@ -611,7 +633,9 @@
 
     function numberTag(id) {
         const number = deviceNumber(id);
-        return number === null ? "#–" : "#" + number;
+        if (number !== null) return "#" + number;
+        const screen = placementOrder(id);
+        return screen ? "S" + screen : "—";
     }
 
     function numberedLabel(id, profile) {
@@ -778,14 +802,14 @@
     }
 
     function onCompactChange() {
-        showTab(state.tabName || readStoredTab() || "show", { persist: false });
+        showTab(state.tabName || readStoredTab() || "content", { persist: false });
     }
 
     function maybeChooseInitialTab() {
         if (state.tabDecided) return;
         if (!state.configLoaded) return;
         state.tabDecided = true;
-        const name = Object.keys(window.OperatorState.entries(state.base)).length ? "show" : "tablet";
+        const name = Object.keys(window.OperatorState.entries(state.base)).length ? "content" : "tablet";
         showTab(name, { persist: false });
     }
 
@@ -797,6 +821,8 @@
         if (el.tabContentDot) {
             el.tabContentDot.hidden = !state.playlistDirty;
         }
+        if (el.tabTablet) el.tabTablet.setAttribute("aria-label", el.tabTabletDot && !el.tabTabletDot.hidden ? "Tablets, unsaved changes" : "Tablets");
+        if (el.tabContent) el.tabContent.setAttribute("aria-label", el.tabContentDot && !el.tabContentDot.hidden ? "Images, playlist draft" : "Images");
     }
 
     function syncTopbarTransport() {
@@ -1220,7 +1246,7 @@
             if (operatorDevices) operatorDevices.render(); renderLogicalEditor();
             if (state.tabName === "show") document.getElementById("arrange-custom").open = true;
         },
-        DRAG_THRESHOLD_PX, afterDraftChange, announce, bodyMetrics, calibrationFor, beginManual, canManualEdit, clearMsg, clone, deviceEntries, deviceLabel, deviceNumber, deviceRows, el, finiteOr, formatNumber, isOnline, latestProfile, mutateDraft, numberedLabel, populateDeviceCard, profileFor, pushUndo, roundTo, selectedSlot, setInputValue, showError, showTab, state, syncTabDots, validPair
+        DRAG_THRESHOLD_PX, afterDraftChange, announce, bodyMetrics, calibrationFor, beginManual, canManualEdit, clearMsg, clone, deviceEntries, deviceLabel, deviceNumber, deviceRows, el, finiteOr, formatNumber, isOnline, latestProfile, mutateDraft, numberTag, numberedLabel, populateDeviceCard, profileFor, pushUndo, roundTo, selectedSlot, setInputValue, showError, showTab, state, syncTabDots, validPair
     });
 
     const logicalFields = new Map();
@@ -1466,7 +1492,7 @@
 
     function profileDefaults(profile, id = state.selectedId) {
         return {
-            label: profile ? profile.label : "Tablet " + (deviceNumber(id) || "unassigned"),
+            label: profile ? profile.label : deviceLabel(id, profile),
             provenance: profile ? profile.provenance : "manual",
             activeWidth: profile ? profile.active_width_mm : "",
             activeHeight: profile ? profile.active_height_mm : "",
@@ -3400,7 +3426,7 @@
         operatorDevices = window.OperatorDevices.create({ state, api, labelFor, profileFor, calibrationFor, ingestConfig, refreshRoster, showConflict, announce, tabletForms, resolveOutput, removedFromWall: id => operatorGrid.exclude(id), selectTablet: selectDevice, openArrange: () => showTab("show", { focus: true, persist: true }) });
         operatorReadiness = window.OperatorReadiness.create({ state, api, copyText });
         session.subscribe(observeSession);
-        workspace = window.OperatorWorkspace.create({ state,
+        workspace = window.OperatorWorkspace.create({ state, labelFor,
             arrangementDirty: () => isDirty() || operatorGrid.dirty(), arrangementPreview: isDirty, imageDirty: () => operatorContent.dirty(),
             applyArrangement: applyLayout, showImage: () => operatorContent.showSelected(),
             discardArrangement: cancelDraft, discardImage: () => operatorContent.discard(),

@@ -72,7 +72,7 @@
         wallClip.append(node("rect", b)); defs.append(wallClip);
         const panelClip = node("clipPath", { id: "operator-panel-clip", clipPathUnits: "userSpaceOnUse" });
         const hatch = node("pattern", { id: "operator-occlusion", width: 9, height: 9, patternUnits: "userSpaceOnUse" });
-        hatch.append(node("path", { d: "M-2 2L2-2 M0 9L9 0 M7 11L11 7", stroke: "#75828d", "stroke-width": 1 }));
+        hatch.append(node("path", { d: "M-2 2L2-2 M0 9L9 0 M7 11L11 7", stroke: "var(--stage-line)", "stroke-width": 1 }));
         defs.append(hatch, panelClip); view.append(defs);
         const world = node("g", { transform: "translate(" + offX + " " + offY + ") scale(" + scale + ")" });
         view.append(world);
@@ -85,12 +85,12 @@
         const transform = content && content.type === "image" && model.fitTransform(layout, content);
         const image = opacity => node("image", { href: content.url, x: transform.x, y: transform.y,
             width: transform.width, height: transform.height, preserveAspectRatio: "none", opacity });
-        world.append(rect(b, { fill: content && content.background || "#0b1120", stroke: "#778793", "stroke-width": 1 / scale }));
+        world.append(rect(b, { fill: content && content.background || "var(--stage)", stroke: "var(--stage-line)", "stroke-width": 1 / scale }));
         if ((presentation === "arrange" || presentation === "context") && transform && content.url && content.available !== false && content.availability !== "unavailable") world.append(image(0.22));
         const wall = node("g", { "clip-path": "url(#operator-wall-clip)" }); world.append(wall);
         wall.append(rect(b, { fill: "url(#operator-occlusion)" }));
         const visible = node("g", { "clip-path": "url(#operator-panel-clip)" }); wall.append(visible);
-        visible.append(rect(b, { fill: content && content.background || "#0b1120" }));
+        visible.append(rect(b, { fill: content && content.background || "var(--stage)" }));
         if (transform && content.url && content.available !== false && content.availability !== "unavailable") visible.append(image(1));
         const estimates = [], upscaleFactors = [];
         list.sort((a, z) => Number(a.id === selectedId) - Number(z.id === selectedId)).forEach(panel => {
@@ -100,21 +100,31 @@
                 "aria-label": labelFor(panel.id) + ", " + status.text + (panel.missing ? ", pinned profile missing" : "") });
             const outline = node("g", { transform: rotation(panel) });
             if (!panel.missing) {
-                outline.append(rect(panel.body, { class: "operator-body-outline", fill: "transparent", stroke: panel.id === selectedId ? "#f4b942" : "#e5edf2", "stroke-width": (panel.id === selectedId ? 3 : 1.5) / scale }));
-                outline.append(rect(panel.active, { class: "operator-active-outline", fill: "none", stroke: "#a8bcc6", "stroke-width": 0.75 / scale }));
+                outline.append(rect(panel.body, { class: "operator-body-outline", fill: "transparent", "stroke-width": (panel.id === selectedId ? 3 : 1.5) / scale }));
+                outline.append(rect(panel.active, { class: "operator-active-outline", fill: "none", "stroke-width": 0.75 / scale }));
                 const estimate = resolution(panel, transform, content, runtime && runtime.devices && runtime.devices[panel.id]);
                 if (estimate && estimate.upscale > 1.1) upscaleFactors.push(estimate.upscale);
                 if (estimate) estimates.push(labelFor(panel.id) + " ≈" + estimate.pixels + " source px across" + (estimate.target ? " for " + estimate.target + " output px" : " (output resolution unknown)")
                     + (estimate.upscale > 1.1 ? " · " + estimate.upscale.toFixed(1) + "× upscale" : ""));
-            } else outline.append(node("circle", { cx: panel.cx, cy: panel.cy, r: 8 / scale, fill: "none", stroke: "#f4b942", "stroke-width": 2 / scale }));
+            } else outline.append(node("circle", { cx: panel.cx, cy: panel.cy, r: 8 / scale, fill: "none", stroke: "var(--stage-selected)", "stroke-width": 2 / scale }));
             if (!preview && status.status === "offline" && !panel.missing) {
-                outline.append(rect(panel.body, { class: "offline-reservation", fill: "#171b20", opacity: 0.78 }));
+                outline.append(rect(panel.body, { class: "offline-reservation", opacity: 0.78 }));
                 outline.append(rect(panel.body, { fill: "url(#operator-occlusion)", opacity: 0.7 }));
+            }
+            if (!panel.missing) {
+                const label = labelFor ? labelFor(panel.id) : "";
+                if (label && panel.active.width * scale >= 38 && panel.active.height * scale >= 20) {
+                    const room = Math.max(4, Math.floor((panel.active.width * scale - 14) / 6.2));
+                    const shown = label.length > room ? label.slice(0, Math.max(1, room - 1)) + "…" : label;
+                    outline.append(node("text", { x: panel.active.x + 6 / scale, y: panel.active.y + 15 / scale,
+                        class: "operator-slot-label", "font-size": 11 / scale, "stroke-width": 3 / scale,
+                        "aria-hidden": "true" }, shown));
+                }
             }
             group.append(outline);
             if (layout.kind === "logical" && panel.id === selectedId && !panel.missing && editable) {
                 group.append(rect({ x: panel.body.x + panel.body.width - 10 / scale, y: panel.body.y + panel.body.height - 10 / scale, width: 10 / scale, height: 10 / scale },
-                    { class: "logical-resize", fill: "#e5edf2", "aria-hidden": "true" }));
+                    { class: "logical-resize", fill: "var(--stage-text)", "aria-hidden": "true" }));
             }
             world.append(group);
         });

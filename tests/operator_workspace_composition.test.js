@@ -21,15 +21,14 @@ const workspace = context.window.OperatorWorkspace.create({ state, arrangementDi
 workspace.render();
 assert.equal(node("shared-stage").parent, node("wall-context-content"));
 assert.equal(node("connected-summary").textContent, "1 connected");
-assert.equal(node("pending-summary").hidden, true);
+assert.equal(node("stage-mode-label").textContent, "Applied configuration");
 node("edited-field").focus();
 workspace.render(); workspace.render();
 assert.equal(node("wall-context-content").appends.length, 1, "runtime updates do not detach the stage or SVG focus");
 assert.equal(document.activeElement, node("edited-field"));
 state.tabName = "tablet"; dirty = true; workspace.render();
 assert.equal(node("shared-stage").parent, node("wall-context-tablet"));
-assert.equal(node("pending-summary").textContent, "Image preview kept");
-assert.equal(node("pending-summary").hidden, false);
+assert.equal(node("stage-mode-label").textContent, "Image preview · not shown");
 state.rosterError = true; workspace.render();
 assert.equal(node("connected-summary").textContent, "Connections stale");
 node("add-image").listeners.click();

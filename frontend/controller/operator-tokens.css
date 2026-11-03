@@ -22,6 +22,7 @@
     --stage: #1e1a15;
     --stage-text: #f8f3e9;
     --stage-selected: #ffc084;
+    --stage-line: #8f897e;
     --font: "Schibsted Grotesk", system-ui, -apple-system, sans-serif;
     --radius: 6px;
     --page-pad: clamp(1rem, 2vw, 2rem);
