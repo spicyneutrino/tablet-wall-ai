@@ -125,7 +125,7 @@
                     || device.connection_id !== undefined && expected.connection_id !== device.connection_id) {
                 return result("stale", "Previous paint · current image unconfirmed");
             }
-            return result("displayed", content.type === "image" ? "Showing current image" : "Current scene displayed", content.type === "image");
+            return result("displayed", content.type === "image" ? "Reports current image" : "Current scene reported", content.type === "image");
         }
         const texts = { blocked: "Blocked", loading: "Loading image", failed: "Image failed", hidden: "Page hidden",
             stale: "Confirmation expired", unsupported: "Unsupported client or content", unplaced: "Not on the wall", unknown: "Image unconfirmed" };

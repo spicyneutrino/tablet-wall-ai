@@ -9,25 +9,18 @@ window.OperatorContent = {
         const message = (text, retain = false) => { shownRevision = null; retainMessage = retain; $("image-message").textContent = text; };
         function renderShownStatus() {
             if (!shownRevision) return;
-            const config = state.operatorConfig;
+            const config = state.operatorConfig, label = shownRevision.image ? "Image" : "Content";
             let text;
-            if (!config || state.rosterError || state.etagState !== "current") text = "Content applied. Tablet status is stale; refresh status to check display.";
-            else if (config.generation !== shownRevision.generation || config.revision !== shownRevision.revision) {
-                text = "Wall content or arrangement changed after this command. Review current wall status.";
+            if (!config || state.rosterError || state.etagState !== "current") {
+                text = label + " applied. Status is stale; refresh to check tablet reports.";
+            } else if (config.generation !== shownRevision.generation || config.revision !== shownRevision.revision) {
+                text = "Wall content or arrangement changed after this command. Review current state.";
             } else {
-                const evidence = window.OperatorState.aggregate(config, performance.now());
-                const states = evidence.states;
-                const label = shownRevision.image ? "Image" : "Content";
-                if (!evidence.total) text = label + " applied. No participating tablets are on the wall.";
-                else if (states.some(item => item.status === "failed")) text = label + " applied. A tablet reported a display failure; review tablet status.";
-                else if (states.some(item => item.status === "offline" || item.status === "unknown" && !item.online)) text = label + " applied. A tablet is offline or missing; review tablet status.";
-                else if (states.some(item => item.status === "stale")) text = label + " applied. Tablet display confirmation is stale.";
-                else if (states.some(item => item.status !== "displayed" && item.status !== "loading")) text = label + " applied. A tablet cannot confirm display; review tablet status.";
-                else if (states.every(item => item.status === "displayed")) text = label + " applied. Current tablet reports confirm display.";
-                else text = label + " applied. Waiting for current tablet reports.";
+                text = label + " applied. Tablet reports are in the header and Issues.";
             }
             $("image-message").textContent = text;
         }
+
         function contextual(id, visible) {
             const control = $(id);
             if (!visible && !control.hidden && document.activeElement === control) $("image-search").focus();
@@ -73,8 +66,8 @@ window.OperatorContent = {
                     row = { item, button, thumbnail, name, dimensions, appliedNote }; gallery.set(image.id, row);
                 }
                 row.item.hidden = !image.name.toLocaleLowerCase().includes(search);
-                row.item.dataset.selected = String(image.id === selected);
-                row.button.setAttribute("aria-pressed", String(image.id === selected)); row.button.disabled = busy;
+                row.item.dataset.selected = String(selectionDirty && image.id === selected);
+                row.button.setAttribute("aria-pressed", String(selectionDirty && image.id === selected)); row.button.disabled = busy;
                 const applied = Boolean(state.scene && state.scene.content.type === "image" && state.scene.content.asset === image.id);
                 row.item.dataset.applied = String(applied);
                 row.button.setAttribute("aria-label", "Preview " + image.name);
@@ -93,11 +86,11 @@ window.OperatorContent = {
             const content = state.scene && state.scene.content || {};
             const active = images.find(item => item.id === content.asset);
             state.activeImageUnavailableId = inventoryReady && content.type === "image" && !active ? content.asset : null;
-            $("active-image").textContent = content.type === "image"
-                ? "Applied image · " + (active ? active.name : content.name || content.asset) + " · " + (content.fit === "contain" ? "Show whole image" : "Fill wall")
-                    + (content.available === false || content.availability === "unavailable" || state.activeImageUnavailableId ? " · Unavailable. Choose a replacement image below." : "")
-                : content.type === "color" ? "Applied content · Tablet colours" : content.type === "calibration" ? "Applied content · Calibration pattern" : "No content reported";
-            if (!selectionDirty && content.type === "image") { selected = content.asset; fit = content.fit || "cover"; }
+            const appliedText = content.type === "image"
+                ? (active ? active.name : content.name || content.asset) + " · " + (content.fit === "contain" ? "Show whole image" : "Fill wall")
+                    + (content.available === false || content.availability === "unavailable" || state.activeImageUnavailableId ? " · Unavailable" : "")
+                : content.type === "color" ? "Tablet colours" : content.type === "calibration" ? "Calibration pattern" : "No content";
+            $("stage-applied-content").textContent = (selectionDirty ? "Applied: " : "· ") + appliedText;
             const selector = $("image-select"), image = images.find(item => item.id === selected);
             const key = JSON.stringify([images.map(item => [item.id, item.name]), !image && selected]);
             if (selector.dataset.key !== key) {
@@ -107,10 +100,10 @@ window.OperatorContent = {
                 selector.dataset.key = key;
             }
             selector.value = selected || ""; $("image-fit").value = fit;
-            selector.disabled = loading || busy; $("image-fit").disabled = busy;
+            selector.disabled = loading || busy; $("image-fit").disabled = busy || !selectionDirty;
             $("show-calibration").disabled = state.layoutKind !== "logical" || busy;
             for (const id of ["show-colours", "pattern-grid", "pattern-black"]) $(id).disabled = busy;
-            $("show-image").disabled = busy || loading || !selectedContent() || !state.etag || state.etagState !== "current";
+            $("show-image").disabled = busy || loading || !selectionDirty || !selectedContent() || !state.etag || state.etagState !== "current";
             contextual("image-rebuild", selectionDirty && baseEtag !== state.etag); contextual("image-discard", selectionDirty);
             contextual("restore-image", !!previous);
             $("image-rebuild").disabled = !selectionDirty || busy; $("image-discard").disabled = !selectionDirty || busy;
@@ -118,9 +111,9 @@ window.OperatorContent = {
             $("restore-image").disabled = busy || !previous || state.etagState !== "current";
             $("refresh-images").disabled = loading;
             const chosen = selectedContent();
-            $("image-title").textContent = image ? image.name : savedScene ? savedScene.name : "Selected image";
-            $("image-details").textContent = image ? image.width + " × " + image.height + " source px"
-                : selected ? "Selected image is unavailable. Refresh the library or choose a replacement. Your selection and geometry are retained." : "No image selected.";
+            $("image-title").textContent = selectionDirty && image ? image.name : "No image selected";
+            $("image-details").textContent = selectionDirty && image ? image.width + " × " + image.height + " source px"
+                : selectionDirty && selected ? "Selected image is unavailable. Refresh the library or choose a replacement. Your selection and geometry are retained." : "Choose an image to preview it.";
             const thumbnail = $("image-thumbnail"); thumbnail.hidden = !image;
             if (image && thumbnail.getAttribute("src") !== image.thumbnail_url) thumbnail.src = image.thumbnail_url;
             const transform = chosen && state.base && window.OperatorState.fitTransform(state.base, chosen);
@@ -161,7 +154,7 @@ window.OperatorContent = {
                     ? await api("POST", "/api/v3/scenes/" + encodeURIComponent(scene.name) + "/recall", undefined, { ifMatch: guard })
                     : await api("PUT", "/api/v3/scene", { content: sceneInput(content) }, { ifMatch: guard });
                 previous = before ? sceneInput(before) : previous;
-                if (selectionVersion === submitted) { selectionDirty = false; savedScene = null; baseEtag = null; }
+                if (selectionVersion === submitted) { selectionDirty = false; selected = null; savedScene = null; baseEtag = null; }
                 ingestConfig(result, { preserveDraft: true });
                 if (!retainMessage) {
                     shownRevision = result && result.generation !== undefined && result.revision !== undefined
@@ -244,7 +237,7 @@ window.OperatorContent = {
                 savedScene = { ...entry }; selected = entry.content.asset || null; fit = entry.content.fit || "cover";
                 baseEtag = guard; selectionDirty = true; selectionVersion += 1; state.viewLive = false; render(); renderStage();
             },
-            discard() { selectionDirty = false; savedScene = null; baseEtag = null; state.previewContent = null; if (!retainMessage) message(images.length ? images.length + (images.length === 1 ? " image available." : " images available.") + " Choose one to preview." : "No images available."); render(); renderStage(); },
+            discard() { selectionDirty = false; selected = null; savedScene = null; baseEtag = null; state.previewContent = null; if (!retainMessage) message(images.length ? images.length + (images.length === 1 ? " image available." : " images available.") + " Choose one to preview." : "No images available."); render(); renderStage(); },
             rebuild() { baseEtag = state.etag; state.draftConflict = false; render(); },
             destroy() { if (xhr) xhr.abort(); } };
     }

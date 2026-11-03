@@ -56,9 +56,8 @@ window.PhysicalStage = {
             }
             summary.hidden = !rows.length;
             const bounds = window.OperatorState.bounds(layout);
-            el.stageScale.textContent = (!preview ? "Applied configuration · " : arrangementPreview ? "Arrangement preview · " : "Image preview · ")
-                + formatNumber(bounds.width, 1) + " × " + formatNumber(bounds.height, 1)
-                + (layout.kind === "physical" ? " mm" : " logical units") + (preview ? ". Preview is not tablet output confirmation." : ".");
+            el.stageScale.textContent = formatNumber(bounds.width, 1) + " × " + formatNumber(bounds.height, 1)
+                + (layout.kind === "physical" ? " mm" : " logical units");
         }
 
         function pointerToStage(event) {
@@ -248,18 +247,14 @@ window.PhysicalStage = {
             if (window.OperatorState && state.operatorConfig) {
                 const result = window.OperatorState.aggregate(state.operatorConfig, performance.now());
                 const stale = !!state.rosterError;
-                const facts = result.states.reduce((all, item) => {
-                    if (!item.showing) all[item.status] = (all[item.status] || 0) + 1;
-                    return all;
-                }, {});
-                el.wallHealth.textContent = (stale ? "Status stale · " : "") + (result.total
-                    ? (stale ? "Current image confirmation unavailable" : result.showing + " of " + result.total + " showing")
-                        + (Object.keys(facts).length ? " · " + Object.entries(facts).map(([key, count]) => count + " " + key.replaceAll("_", " ")).join(" · ") : "")
-                    : "No tablets on the wall");
+                const paint = result.total
+                    ? (stale ? "Current image evidence unavailable" : result.showing + " of " + result.total + " report current image")
+                    : "No tablets on the wall";
+                el.wallHealth.textContent = (stale ? "Status stale · " : "") + paint;
                 el.btnWallHealth.dataset.kind = stale || result.states.some(item => !["displayed", "offline", "excluded"].includes(item.status)) ? "warn" : "info";
-                if (state.scene && state.scene.content.type !== "image" && result.total) el.wallHealth.textContent += " · no still image selected";
                 const compact = typeof window.matchMedia === "function" && window.matchMedia("(max-width: 36rem)").matches;
-                if (compact) el.wallHealth.textContent = (stale ? "Stale · " : "") + (result.total ? result.showing + "/" + result.total + " showing" : "No wall");
+                if (compact) el.wallHealth.textContent = (stale ? "Stale · " : "") + (result.total ? result.showing + "/" + result.total : "No wall");
+                el.btnWallHealth.setAttribute("aria-label", (stale ? "Status stale. " : "") + (result.total ? result.showing + " of " + result.total + " tablets report the current image. Issues." : "No tablets on the wall. Issues."));
                 const online = Object.values(state.roster).filter(device => device.online).length;
                 el.deviceCount.textContent = online + " online · " + Object.keys(state.roster).length + " registered";
                 el.rosterStatus.textContent = stale ? "Status stale. " + state.rosterError + ". Refresh status to retry."
@@ -343,7 +338,7 @@ window.PhysicalStage = {
                 row.name.textContent = entry.label;
                 row.meta.textContent = (current ? "" : (online ? "Connected · " : "Offline · ")) + status + " · " + size;
                 row.item.dataset.status = current ? current.status : online ? "online" : "offline";
-                row.pick.setAttribute("aria-label", numberedLabel(entry.id) + ", " + (online ? "connected" : "offline") + ", " + status);
+                row.pick.setAttribute("aria-label", numberedLabel(entry.id) + ", " + status);
                 row.add.hidden = !!(entry.slot || entry.placement); row.add.disabled = state.busy;
                 if (el.deviceList.children[index] !== row.item) el.deviceList.insertBefore(row.item, el.deviceList.children[index] || null);
             }
@@ -400,7 +395,7 @@ window.PhysicalStage = {
             }
 
             const participating = slot.participating !== false;
-            el.selectedState.textContent = participating ? "On the wall" : "Not participating";
+            el.selectedState.textContent = participating ? "Included in show" : "Excluded from show";
             el.selectedState.dataset.kind = participating ? "ok" : "warn";
 
             setInputValue(el.slotCenterX, formatNumber(slot.center_x_mm, 2));

@@ -66,7 +66,7 @@ window.OperatorWorkspace = {
             if (empty && emptyRoster !== true) joining.open = true;
             else if (!empty && emptyRoster === true && !joining.contains(document.activeElement)) joining.open = false;
             emptyRoster = empty;
-            $("stage-mode-label").textContent = { live: "Applied configuration", "arrangement-preview": "Arrangement preview · not applied", "image-preview": "Image preview · not shown" }[mode];
+            $("stage-mode-label").textContent = { live: "Applied configuration", "arrangement-preview": "Arrangement preview · not applied", "image-preview": "Image preview · not on tablets" }[mode];
             $("view-live").hidden = mode === "live";
             $("view-preview").hidden = !state.viewLive || !hasPreview && !image;
             const summary = $("arrange-review-summary");
