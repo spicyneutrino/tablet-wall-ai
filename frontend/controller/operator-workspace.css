@@ -343,7 +343,12 @@ dialog.tablet-selection::backdrop { background: var(--backdrop); }
     .rail-tab { flex: 1 1 0; min-inline-size: 0; padding: .5rem .125rem; font-size: .875rem; }
     .operator-workspace { padding-block-start: 1rem; }
     body[data-output-dirty="true"]:has([data-task="images"]:not([hidden])) { padding-block-end: calc(56px + env(safe-area-inset-bottom) + var(--image-action-height, 224px)); }
-    body[data-output-dirty="true"] .image-actions { position: fixed; inset-inline: 0; inset-block-end: calc(56px + env(safe-area-inset-bottom)); z-index: 35; background: var(--surface); border-block-start: 1px solid var(--border); padding: .375rem 1rem; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: .25rem .5rem; }
+    body[data-output-dirty="true"] .image-actions { position: fixed; inset-inline: 0; inset-block-end: calc(56px + env(safe-area-inset-bottom)); z-index: 35; background: var(--surface); border-block-start: 1px solid var(--border); padding: .375rem 1rem; grid-template-columns: minmax(0, 1fr) auto auto; align-items: center; gap: .25rem .5rem; }
+    body[data-output-dirty="true"] .image-primary-actions { display: contents; }
+    body[data-output-dirty="true"] .image-actions > .field { min-inline-size: 0; }
+    body[data-output-dirty="true"] .image-actions > .field > label { position: absolute; inline-size: 1px; block-size: 1px; padding: 0; margin: -1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
+    body[data-output-dirty="true"] .image-view-actions { grid-column: 1 / -1; display: flex; }
+    body[data-output-dirty="true"] .image-actions > [role="status"]:not(:empty) { grid-column: 1 / -1; margin: 0; font-size: .75rem; }
     body[data-output-dirty="true"] .image-actions > .field { font-size: .875rem; gap: 0; }
     body[data-output-dirty="true"] .image-actions .image-action-row { gap: .25rem; }
     body[data-output-dirty="true"] .image-actions .btn { flex: 1 1 auto; padding: .5rem; font-size: .875rem; }
@@ -388,3 +393,29 @@ dialog.tablet-selection::backdrop { background: var(--backdrop); }
 @media (max-width: 48rem) {
     .operator-slot-label { display: none; }
 }
+
+.image-primary-actions { align-items: center; }
+.image-primary-actions .btn-primary { flex: 0 1 auto; }
+.image-more { border-block-start: 1px solid var(--border); padding-block-start: .5rem; }
+.image-more > summary { min-block-size: 2.25rem; padding-block: .35rem; }
+.image-more .image-action-row { flex-wrap: wrap; }
+
+@media (max-width: 48rem) {
+    .wall-head { display: block; }
+    .wall-head h2 { display: none; }
+    .stage-mode { margin-block-start: 0; }
+}
+
+@media (min-width: 48.01rem) {
+    dialog.tablet-selection { position: static; margin: 0; inline-size: auto; max-inline-size: none; max-block-size: none; overflow: visible; border: 0; border-inline-start: 1px solid var(--border); border-radius: 0; padding: 0 0 0 2rem; background: transparent; }
+    dialog.tablet-selection .sheet-close { display: none; }
+}
+.sheet-close { display: block; inline-size: auto; margin-inline-start: auto; }
+.task-title:focus { outline: none; }
+
+@media (max-width: 48rem) {
+    .stage-mode { display: flex; flex-wrap: nowrap; gap: .35rem; align-items: baseline; min-inline-size: 0; }
+    .stage-applied-content { min-inline-size: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+}
+
+#tablet-action-name:focus { outline: none; }

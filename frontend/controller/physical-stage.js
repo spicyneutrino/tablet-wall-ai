@@ -251,7 +251,7 @@ window.PhysicalStage = {
             }
             selectionChanged();
             if (options && options.reveal) {
-                const trigger = document.activeElement;
+                const trigger = typeof document !== "undefined" ? document.activeElement : null;
                 Promise.resolve(showTab("tablet", { persist: true })).then(function (opened) {
                     if (!opened) return;
                     if (compactSheet()) openDeviceSheet(trigger);

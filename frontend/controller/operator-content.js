@@ -80,9 +80,13 @@ window.OperatorContent = {
                 if (row.thumbnail.getAttribute("src") !== image.thumbnail_url) row.thumbnail.src = image.thumbnail_url;
                 const thumbnailScale = Math.min(160 / image.width, 160 / image.height);
                 row.thumbnail.width = Math.max(1, Math.round(image.width * thumbnailScale)); row.thumbnail.height = Math.max(1, Math.round(image.height * thumbnailScale));
-                row.name.replaceChildren(...image.name.split(/(?<=_)/).flatMap(function (part) {
-                    return [document.createTextNode(part), document.createElement("wbr")];
-                }));
+                if (typeof document.createTextNode === "function") {
+                    row.name.replaceChildren(...image.name.split(/(?<=_)/).flatMap(function (part) {
+                        return [document.createTextNode(part), document.createElement("wbr")];
+                    }));
+                } else {
+                    row.name.textContent = image.name;
+                }
             });
         }
         function render() {
@@ -91,12 +95,9 @@ window.OperatorContent = {
             state.activeImageUnavailableId = inventoryReady && content.type === "image" && !active ? content.asset : null;
             let appliedText;
             if (content.type === "image") {
-                const width = active ? active.width : content.intrinsicWidth;
-                const height = active ? active.height : content.intrinsicHeight;
-                const size = Number.isFinite(width) && Number.isFinite(height) ? " · " + width + " × " + height : "";
                 const unavailable = content.available === false || content.availability === "unavailable" || state.activeImageUnavailableId ? " · Unavailable" : "";
                 appliedText = (active ? active.name : content.name || content.asset) + " · "
-                    + (content.fit === "contain" ? "Show whole image" : "Fill wall") + size + unavailable;
+                    + (content.fit === "contain" ? "Show whole image" : "Fill wall") + unavailable;
             } else {
                 appliedText = content.type === "color" ? "Tablet colours" : content.type === "calibration" ? "Calibration pattern" : "No content";
             }
@@ -117,6 +118,7 @@ window.OperatorContent = {
             $("show-image").disabled = busy || loading || !selectionDirty || !selectedContent() || !state.etag || state.etagState !== "current";
             contextual("image-rebuild", selectionDirty && baseEtag !== state.etag); contextual("image-discard", selectionDirty);
             contextual("restore-image", !!previous);
+            if ($("image-more")) $("image-more").hidden = $("restore-image").hidden && $("image-rebuild").hidden;
             $("image-rebuild").disabled = !selectionDirty || busy; $("image-discard").disabled = !selectionDirty || busy;
             $("show-image").textContent = savedScene ? "Show saved scene" : "Show image";
             $("restore-image").disabled = busy || !previous || state.etagState !== "current";

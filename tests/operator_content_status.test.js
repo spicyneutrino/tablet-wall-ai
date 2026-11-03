@@ -113,7 +113,7 @@ const content = context.window.OperatorContent.create({ state, renderStage() {},
     assert.match(appliedNote.textContent, /Applied configuration/);
     assert.match(appliedNote.textContent, /tablet reports are separate/);
     assert.equal(buttonA.attrs["aria-describedby"], appliedNote.id, "the applied marker has an accessible description");
-    assert.match(node("stage-applied-content").textContent, /a · Fill wall · 100 × 100/);
+    assert.match(node("stage-applied-content").textContent, /a · Fill wall/);
     assert.equal(node("stage-applied-content").textContent.includes("source px"), false);
 
     const confirm = "Image applied. Tablet reports are in the header and Issues.";
@@ -154,7 +154,7 @@ const content = context.window.OperatorContent.create({ state, renderStage() {},
     assert.equal(state.previewContent.asset, "b"); assert.equal(content.dirty(), true); assert.equal(node("image-discard").hidden, false);
     assert.equal(node("image-title").textContent, "b");
     assert.equal(node("image-details").textContent, "100 × 100 source px");
-    assert.match(node("stage-applied-content").textContent, /^Applied: a · Fill wall · 100 × 100$/,
+    assert.match(node("stage-applied-content").textContent, /^Applied: a · Fill wall$/,
         "the inspector shows draft facts and the stage mode area shows applied content");
     assert.equal(buttonA.attrs["aria-pressed"], "false", "Show cleared the draft it submitted");
     assert.equal(buttonB.attrs["aria-pressed"], "true", "a newer draft keeps its own rust outline");

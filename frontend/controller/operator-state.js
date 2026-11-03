@@ -100,7 +100,7 @@
         const slot = entries(config.layout)[id];
         const device = config.runtime && config.runtime.devices && config.runtime.devices[id];
         const result = (status, text, showing = false) => ({ status, text, showing, online: !!device && device.online === true });
-        if (!slot) return result("unplaced", "Not on the wall");
+        if (!slot) return result("unplaced", "No placement");
         if (!device) return result("unknown", "Missing tablet · spot reserved");
         if (slot.participating === false) return result("excluded", "Excluded from show");
         if (!device.online) return result("offline", "Offline · spot reserved");
@@ -128,7 +128,7 @@
             return result("displayed", content.type === "image" ? "Reports current image" : "Current scene reported", content.type === "image");
         }
         const texts = { blocked: "Blocked", loading: "Loading image", failed: "Image failed", hidden: "Page hidden",
-            stale: "Confirmation expired", unsupported: "Unsupported client or content", unplaced: "Not on the wall", unknown: "Image unconfirmed" };
+            stale: "Confirmation expired", unsupported: "Unsupported client or content", unplaced: "No placement", unknown: "Image unconfirmed" };
         return result(status in texts ? status : "unknown", (texts[status] || texts.unknown) + (render.reason ? " · " + render.reason : ""));
     }
     function aggregate(config, nowMs) {
