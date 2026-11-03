@@ -288,7 +288,7 @@ dialog.tablet-selection::backdrop { background: var(--backdrop); }
     .brand { flex: 0 0 auto; }
     .wall-summary { margin-inline-start: auto; flex-wrap: nowrap; }
     .wall-summary .wall-health { padding-block: .25rem; gap: .5rem; }
-    #wall-health { white-space: nowrap; }
+    #wall-health { min-inline-size: 0; white-space: normal; }
     .selected-image > #image-thumbnail { display: none; }
     .task-title { font-size: 1.75rem; }
     .image-choice-button img { aspect-ratio: 4 / 3; block-size: auto; }

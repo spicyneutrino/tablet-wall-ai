@@ -402,7 +402,7 @@ def visual_states(rig):
         }
     )
     p.locator("#refresh-images").click()
-    expect(p.locator("#image-message")).to_contain_text("0 images")
+    expect(p.locator("#image-message")).to_have_text("No images available.")
     rig.open_disclosures("#image-select")
     for width, height in ((1440, 900), (390, 844)):
         p.set_viewport_size({"width": width, "height": height})
@@ -477,11 +477,12 @@ def interaction_contrast(rig):
     p = rig.page
     quick_wall(rig)
     task(p, "Tablets")
-    p.locator(".dev-pick").first.click()
     for width, height in ((1440, 900), (390, 844)):
         p.set_viewport_size({"width": width, "height": height})
         for mode in ("hover", "focus"):
             target = p.locator("#tablet-label-save")
+            if not target.is_visible():
+                p.locator(".dev-pick").first.click()
             if mode == "hover":
                 target.hover()
             else:
@@ -523,8 +524,12 @@ def interaction_contrast(rig):
                     fatal=False,
                 )
             rig.shot(p, "interaction-" + mode)
+        if p.locator("#device-sheet-close").is_visible():
+            p.locator("#device-sheet-close").click()
         task(p, "Arrange")
         tile = p.locator("#stage-svg .slot").first
+        if not p.locator("#stage-identities").is_visible():
+            p.locator(".stage-technical-toggle:visible").click()
         rig.open_disclosures("#stage-identities li")
         native_tab_to(p, "#stage-svg .slot")
         tile.hover()

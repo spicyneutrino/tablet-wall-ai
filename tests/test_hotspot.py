@@ -230,7 +230,7 @@ hotspot.run(hotspot.Settings(**{hotspot.asdict(settings)!r}), "127.0.0.1", Path(
                                        env=env, stdout=output, stderr=output)
             try:
                 deadline = time.monotonic() + 20
-                while not config.exists() and process.poll() is None and time.monotonic() < deadline:
+                while "Ready." not in (tmp_path / "launcher.log").read_text() and process.poll() is None and time.monotonic() < deadline:
                     time.sleep(.1)
                 assert config.exists(), (tmp_path / "launcher.log").read_text() + (data / "caddy.log").read_text()
                 assert json.loads(config.read_text()) == hotspot.asdict(settings)

@@ -871,14 +871,16 @@ def edges(rig):
     page.locator("#scene-name").fill("Missing source")
     page.locator("#scene-save").click()
     expect(page.locator("#scene-message")).to_contain_text("Scene saved")
+    missing_asset = config()["scene"]["content"]["asset"]
     (RUN / "assets" / "supplied.png").unlink()
     task("Images")
     page.locator("#refresh-images").click()
-    expect(page.locator("#image-details")).to_contain_text("unavailable")
+    expect(page.locator("#stage-applied-content")).to_contain_text("Unavailable")
     expect(page.locator("#show-image")).to_be_disabled()
     check(
-        config()["layout"] == layout_before,
-        "Missing image retains geometry and unavailable selected identity",
+        config()["layout"] == layout_before
+        and config()["scene"]["content"]["asset"] == missing_asset,
+        "Missing applied image retains geometry and unavailable content identity",
     )
     replacement = RUN / "replacement.png"
     Image.new("RGB", (700, 400), (210, 130, 30)).save(replacement)
@@ -903,6 +905,7 @@ def edges(rig):
     )
     task("Tablets")
     pick(fifth_id)
+    rig.open_disclosures("#replacement-offer")
     expect(page.locator("#replacement-offer")).to_be_visible()
     page.locator("#replacement-old").select_option(ids[1])
     page.locator("#replacement-open").click()
