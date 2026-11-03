@@ -269,7 +269,13 @@ dialog.tablet-selection::backdrop { background: var(--backdrop); }
 .saved-row:not(:has(.saved-thumb)) { grid-template-columns: minmax(0, 1fr) auto; }
 .saved-row .saved-actions { align-items: center; }
 @media (max-width: 48rem) {
-    .images-workspace, .tablets-workspace, .arrange-result { grid-template-columns: minmax(0, 1fr); gap: 1rem; }
+    .images-workspace { grid-template-columns: minmax(0, 1fr); grid-template-areas: "stage" "library" "inspector"; }
+    .tablets-workspace, .arrange-result { grid-template-columns: minmax(0, 1fr); gap: 1rem; }
+    .wall-head { display: grid; grid-template-columns: minmax(0, 1fr); gap: .25rem; align-items: start; }
+    .wall-head h2 { font-size: .75rem; color: var(--muted); }
+    .stage-mode { justify-content: flex-start; }
+    .stage-applied-content { font-size: .8125rem; }
+    .stage-dimensions { display: none; }
     .images-workspace > .selected-image, .tablet-selection, .arrange-commit { border-inline-start: 0; padding-inline-start: 0; padding-block-start: .75rem; }
     .arrange-commit .task-footer { grid-template-columns: minmax(0, 1fr); }
 
@@ -329,6 +335,7 @@ dialog.tablet-selection::backdrop { background: var(--backdrop); }
 }
 @media (max-width: 48rem) {
     :root { --page-pad: 1rem; }
+    .images-workspace { grid-template-areas: "stage" "library" "inspector"; }
     body { padding-block-end: calc(56px + env(safe-area-inset-bottom)); }
     .topbar { block-size: 56px; }
     .workspace-nav-landmark { position: fixed; inset-block-start: auto; inset-block-end: 0; inset-inline: 0; border-block-start: 1px solid var(--border); border-block-end: 0; padding-block-end: env(safe-area-inset-bottom); }
@@ -369,4 +376,15 @@ dialog.tablet-selection::backdrop { background: var(--backdrop); }
 @media (forced-colors: active) {
     .btn-primary, .dev-number { border: 2px solid ButtonText; }
     .rail-tab[aria-selected="true"], .image-choice-button[aria-pressed="true"], .tablet-row[data-selected="true"] { outline: 2px solid Highlight; }
+}
+
+#image-message:empty { display: none; }
+.stage-applied-content { color: var(--text); font-weight: 600; }
+
+@media (max-width: 48rem) {
+    .operator-slot-label { display: none; }
+}
+
+@media (max-width: 48rem) {
+    .operator-slot-label { display: none; }
 }

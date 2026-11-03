@@ -80,7 +80,9 @@ window.OperatorContent = {
                 if (row.thumbnail.getAttribute("src") !== image.thumbnail_url) row.thumbnail.src = image.thumbnail_url;
                 const thumbnailScale = Math.min(160 / image.width, 160 / image.height);
                 row.thumbnail.width = Math.max(1, Math.round(image.width * thumbnailScale)); row.thumbnail.height = Math.max(1, Math.round(image.height * thumbnailScale));
-                row.name.textContent = image.name;
+                row.name.replaceChildren(...image.name.split(/(?<=_)/).flatMap(function (part) {
+                    return [document.createTextNode(part), document.createElement("wbr")];
+                }));
             });
         }
         function render() {
@@ -151,7 +153,7 @@ window.OperatorContent = {
                 if (version !== inventoryVersion) return;
                 if (!Array.isArray(result.images)) throw new Error("Image inventory was not returned.");
                 images = result.images; inventoryReady = true; uploadUncertain = false;
-                message(images.length + (images.length === 1 ? " image available." : " images available.") + " Choose one to preview.");
+                message(images.length ? "" : "No images available.");
             } catch (error) {
                 if (version === inventoryVersion) message("Image library unavailable. " + error.message + " Use Refresh images to retry. Your selection is retained.", true);
             } finally { if (version === inventoryVersion) { loading = false; render(); renderStage(); } }
@@ -252,7 +254,7 @@ window.OperatorContent = {
                 savedScene = { ...entry }; selected = entry.content.asset || null; fit = entry.content.fit || "cover";
                 baseEtag = guard; selectionDirty = true; selectionVersion += 1; state.viewLive = false; render(); renderStage();
             },
-            discard() { selectionDirty = false; selected = null; savedScene = null; baseEtag = null; state.previewContent = null; if (!retainMessage) message(images.length ? images.length + (images.length === 1 ? " image available." : " images available.") + " Choose one to preview." : "No images available."); render(); renderStage(); },
+            discard() { selectionDirty = false; selected = null; savedScene = null; baseEtag = null; state.previewContent = null; if (!retainMessage) message(images.length ? "" : "No images available."); render(); renderStage(); },
             rebuild() { baseEtag = state.etag; state.draftConflict = false; render(); },
             destroy() { if (xhr) xhr.abort(); } };
     }

@@ -238,13 +238,13 @@
     </div>
     <p class="hint" id="image-fit-note"></p>
     <details class="technical-details" id="image-details-disclosure"><summary>Image details</summary><label class="field" for="image-select">Image<select class="inp" id="image-select" data-field="image-select"><option value="">Loading images…</option></select></label><img id="image-thumbnail" alt="Selected still image preview" hidden></details>
-  </aside>
+  <div class="image-utilities"><details id="image-addition"><summary>Add image and upload availability</summary><button class="btn" type="button" id="images-check-connection" data-action="images-check-connection">Check image-addition connection</button><p id="upload-instruction">Checking upload availability…</p><form id="upload-form" hidden data-form="upload-form"><label class="field" for="upload-file">Upload a still image<input class="inp" type="file" id="upload-file" accept="image/png,image/jpeg" data-field="upload-file" required></label>
+                <button class="btn" id="upload-submit" data-action="upload-submit">Upload image</button><progress id="upload-progress" max="100" value="0" aria-label="Image upload progress" hidden></progress></form><p id="upload-message" role="status" aria-live="polite"></p></details><button class="btn" id="refresh-images" type="button" data-action="refresh-images">Refresh images</button></div></aside>
   <section class="image-library task-section" aria-labelledby="library-title">
     <div class="library-head"><h3 id="library-title">Library</h3><div class="library-toolbar"><div class="field"><input class="inp" type="search" id="image-search" autocomplete="off" placeholder="Search by filename" aria-label="Search images" data-field="image-search"></div><button type="button" class="btn" id="add-image">Add image</button></div></div>
     <ul id="image-gallery" class="image-gallery" aria-label="Image library"></ul>
   </section>
-</div><div class="image-utilities"><details id="image-addition"><summary>Add image and upload availability</summary><button class="btn" type="button" id="images-check-connection" data-action="images-check-connection">Check image-addition connection</button><p id="upload-instruction">Checking upload availability…</p><form id="upload-form" hidden data-form="upload-form"><label class="field" for="upload-file">Upload a still image<input class="inp" type="file" id="upload-file" accept="image/png,image/jpeg" data-field="upload-file" required></label>
-                <button class="btn" id="upload-submit" data-action="upload-submit">Upload image</button><progress id="upload-progress" max="100" value="0" aria-label="Image upload progress" hidden></progress></form><p id="upload-message" role="status" aria-live="polite"></p></details><button class="btn" id="refresh-images" type="button" data-action="refresh-images">Refresh images</button></div></section>
+</div></section>
             <section class="rail-panel task-panel" id="panel-system" role="tabpanel" aria-labelledby="tab-system" tabindex="0" hidden data-task="settings"><h2 class="task-title" tabindex="-1" id="task-settings">Settings</h2>
         <div id="operator-readiness"><section class="card task-section" aria-labelledby="readiness-title"><h2 id="readiness-title">Check wall</h2>
             <p id="readiness-status" role="status" aria-live="polite">Reading server readiness…</p>
@@ -635,7 +635,7 @@
             <div class="wall-head">
                 <h2 id="stage-title" tabindex="-1">Wall</h2>
 
-            <div class="stage-mode"><strong id="stage-mode-label">Applied configuration</strong><span class="stage-applied-content" id="stage-applied-content"></span><span class="stage-scale" id="stage-scale"></span></div></div>
+            <div class="stage-mode"><strong id="stage-mode-label">Applied configuration</strong><span class="stage-applied-content" id="stage-applied-content"></span><span class="stage-dimensions" id="stage-dimensions"></span></div></div>
 
             <div class="stage-scroll" id="stage-scroll" tabindex="0" role="region" aria-label="Wall preview and tablet selection">
                 <svg class="stage-svg" id="stage-svg" viewBox="0 0 720 480" role="group" aria-label="Wall. Select a tablet and drag it, or use the arrow keys to nudge the selected tablet."></svg>
