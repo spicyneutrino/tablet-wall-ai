@@ -8,10 +8,9 @@
 .wall-health { display: flex; justify-content: space-between; gap: 1rem; inline-size: 100%; min-block-size: 2.75rem; text-align: start; padding: .625rem .75rem; border: 1px solid var(--control); border-radius: var(--radius); background: var(--surface); font-size: .875rem; }
 .wall-health:hover { border-color: var(--accent); }
 .health-action { text-decoration: underline; text-underline-offset: .2em; }
-.stage-scroll { overflow: auto; min-inline-size: 0; background: var(--stage); border: 1px solid var(--control); border-radius: var(--radius); }
-.stage-svg { display: block; inline-size: min(100%, calc(44vh * var(--stage-aspect, 1.5))); block-size: auto; aspect-ratio: var(--stage-aspect, 1.5); margin-inline: auto; background: var(--stage); }
+.stage-scroll { overflow: auto; min-inline-size: 0; max-inline-size: 100%; justify-self: center; margin-inline: auto; background: var(--stage); border: 1px solid var(--control); border-radius: var(--radius); }
+.stage-svg { display: block; inline-size: 100%; block-size: auto; aspect-ratio: var(--stage-aspect, 1.5); background: var(--stage); }
 body[data-task="arrange"] .stage-svg { touch-action: none; }
-.wall-stage:has(.wall-empty:not([hidden])) .stage-svg { inline-size: min(100%, 28rem); }
 body[data-stage-mode="live"] .wall-stage:has(.wall-empty:not([hidden])) :is(.stage-scroll, .stage-details, #stage-preview-note, #stage-quality-summary) { display: none; }
 .operator-slot { cursor: pointer; }
 .stage-svg.is-dragging, .stage-svg.is-dragging .operator-slot { cursor: grabbing; }

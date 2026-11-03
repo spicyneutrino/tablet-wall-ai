@@ -43,6 +43,73 @@
         }
         remaining.forEach(item => item.remove());
     }
+    function fitLabels(svg) {
+        svg.querySelectorAll(".operator-slot-label").forEach(label => {
+            const matrix = label.getScreenCTM();
+            if (!matrix) return;
+            const scale = Math.hypot(matrix.a, matrix.b);
+            if (!scale) return;
+            const width = Number(label.dataset.width) * scale, height = Number(label.dataset.height) * scale;
+            const text = label.dataset.label;
+            const size = Math.min(12, height - 8, (width - 12) / (Math.min(4, text.length) * 0.6));
+            label.style.display = size < 10 ? "none" : "";
+            if (size < 10) return;
+            const room = Math.max(1, Math.floor((width - 12) / (size * 0.6)));
+            label.textContent = text.length > room ? text.slice(0, Math.max(1, room - 1)) + "…" : text;
+            label.setAttribute("font-size", size / scale);
+            label.setAttribute("stroke-width", 3 / scale);
+            label.setAttribute("x", Number(label.dataset.x) + 6 / scale);
+            label.setAttribute("y", Number(label.dataset.y) + (size + 4) / scale);
+        });
+    }
+    const fits = new WeakMap();
+    // Call OperatorStage.fit(el.stageSvg) after renderStage and stage relocation.
+    // Optional { actionBar, navigation } elements override the workspace defaults.
+    function fit(svg, options = {}) {
+        const field = svg.closest(".stage-scroll");
+        if (!field || !field.parentElement || !svg.viewBox.baseVal.width) return null;
+        const win = svg.ownerDocument.defaultView, doc = svg.ownerDocument;
+        let state = fits.get(svg);
+        if (!state) {
+            state = { options, parent: null };
+            const schedule = () => {
+                if (state.frame) return;
+                state.frame = win.requestAnimationFrame(() => { state.frame = 0; fit(svg, state.options); });
+            };
+            state.observer = new win.ResizeObserver(schedule);
+            win.addEventListener("resize", schedule);
+            fits.set(svg, state);
+        }
+        state.options = options;
+        if (state.parent !== field.parentElement) {
+            state.observer.disconnect();
+            state.parent = field.parentElement;
+            state.observer.observe(state.parent);
+        }
+        const parentStyle = win.getComputedStyle(state.parent), fieldStyle = win.getComputedStyle(field);
+        const availableWidth = state.parent.clientWidth - parseFloat(parentStyle.paddingLeft) - parseFloat(parentStyle.paddingRight);
+        if (availableWidth <= 0 || !field.getClientRects().length) return null;
+        let bottom = win.innerHeight;
+        const navigation = options.navigation || doc.querySelector(".workspace-nav-landmark");
+        const actionBar = options.actionBar || doc.querySelector(doc.body.dataset.task === "arrange" ? "#arrange-footer-actions" : ".image-actions");
+        for (const bar of [navigation, doc.body.dataset.outputDirty === "true" && actionBar]) {
+            if (!bar || !bar.getClientRects().length) continue;
+            const style = win.getComputedStyle(bar), rect = bar.getBoundingClientRect();
+            if (style.position === "fixed" && rect.bottom > bottom / 2) bottom = Math.min(bottom, rect.top - (parseFloat(style.marginTop) || 0));
+        }
+        const borderWidth = parseFloat(fieldStyle.borderLeftWidth) + parseFloat(fieldStyle.borderRightWidth);
+        const borderHeight = parseFloat(fieldStyle.borderTopWidth) + parseFloat(fieldStyle.borderBottomWidth);
+        const aspect = svg.viewBox.baseVal.width / svg.viewBox.baseVal.height;
+        const width = Math.max(0, availableWidth - borderWidth);
+        const availableHeight = bottom - field.getBoundingClientRect().top - 16 - borderHeight;
+        // A short viewport keeps a usable field and falls back to page scrolling.
+        const height = Math.min(width / aspect, Math.max(120, availableHeight));
+        field.style.inlineSize = Math.min(width, height * aspect) + borderWidth + "px";
+        svg.style.inlineSize = Math.min(width, height * aspect) + "px";
+        svg.style.blockSize = height + "px";
+        fitLabels(svg);
+        return { width: Math.min(width, height * aspect), height, availableWidth, availableHeight };
+    }
     function draw({ svg, layout, content, profileFor, labelFor, statusFor, selectedId, runtime, resolutionNode, preview = false, editable = true, presentation = "context", viewport = null }) {
         const ns = "http://www.w3.org/2000/svg";
         const node = (tag, attrs, text) => {
@@ -53,8 +120,8 @@
         };
         const b = model.bounds(layout);
         const width = 720;
-        const height = viewport ? viewport.height : Math.max(160, Math.min(720, 56 + 664 * b.height / b.width));
-        const scale = viewport ? viewport.scale : Math.min(664 / b.width, (height - 56) / b.height);
+        const height = viewport ? viewport.height : 20 + 700 * b.height / b.width;
+        const scale = viewport ? viewport.scale : 700 / b.width;
         const offX = viewport ? viewport.offX : width / 2 - (b.x + b.width / 2) * scale;
         const offY = viewport ? viewport.offY : height / 2 - (b.y + b.height / 2) * scale;
         const stage = { scale, offX, offY, width, height, step: 50 };
@@ -113,12 +180,12 @@
             }
             if (!panel.missing) {
                 const label = labelFor ? labelFor(panel.id) : "";
-                if (label && panel.active.width * scale >= 38 && panel.active.height * scale >= 20) {
-                    const room = Math.max(4, Math.floor((panel.active.width * scale - 14) / 6.2));
-                    const shown = label.length > room ? label.slice(0, Math.max(1, room - 1)) + "…" : label;
+                if (label) {
                     outline.append(node("text", { x: panel.active.x + 6 / scale, y: panel.active.y + 15 / scale,
                         class: "operator-slot-label", "font-size": 11 / scale, "stroke-width": 3 / scale,
-                        "aria-hidden": "true" }, shown));
+                        "data-label": label, "data-x": panel.active.x, "data-y": panel.active.y,
+                        "data-width": panel.active.width, "data-height": panel.active.height,
+                        "aria-hidden": "true" }, label));
                 }
             }
             group.append(outline);
@@ -129,6 +196,7 @@
             world.append(group);
         });
         syncChildren(svg, view);
+        fit(svg, fits.get(svg) && fits.get(svg).options);
         if (resolutionNode) resolutionNode.textContent = estimates.length ? "Estimated sampling. " + estimates.join("; ") + ". Rotation, clipping and gaps may reduce visible detail." : "Resolution estimate needs an image and panel dimensions. Preview does not confirm tablet output.";
         const quality = document.getElementById("stage-quality-summary");
         if (quality) quality.textContent = upscaleFactors.length ? "Estimated upscaling up to " + Math.max(...upscaleFactors).toFixed(1) + "×. Check resolution estimates." : "";
@@ -138,7 +206,7 @@
         }
         return stage;
     }
-    const api = { panels, resolution, draw };
+    const api = { panels, resolution, draw, fit };
     if (typeof module !== "undefined" && module.exports) module.exports = api;
     else root.OperatorStage = api;
 }(typeof window !== "undefined" ? window : globalThis));
