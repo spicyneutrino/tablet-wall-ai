@@ -42,7 +42,7 @@
 
         <div class="rail-panels" id="rail-panels">
             <section class="rail-panel task-panel" id="panel-show" role="tabpanel" aria-labelledby="tab-show" tabindex="0" data-task="arrange"><h2 class="task-title" tabindex="-1" id="task-arrange">Arrange</h2>
-        <div id="operator-wall"><div class="arrange-result"><div id="wall-context-show"></div><section class="arrange-commit task-section" aria-label="Review arrangement"><p id="grid-message" role="status" aria-live="polite"></p><footer class="task-footer" data-task-footer="arrange"><p id="arrange-review-summary" tabindex="-1">Review the preview before applying. This changes geometry only.</p><div id="arrange-footer-actions" class="operator-actions"><button type="button" class="btn btn-primary" id="btn-apply" disabled data-action="btn-apply">Apply arrangement</button><button type="button" class="btn" id="btn-cancel" disabled data-action="btn-cancel">Discard arrangement</button></div></footer></section></div>
+        <div id="operator-wall" class="arrange-workspace"><div class="arrange-result"><div id="wall-context-show"></div><section class="arrange-commit task-section" aria-label="Review arrangement"><p id="grid-message" role="status" aria-live="polite"></p><footer class="task-footer" data-task-footer="arrange"><p id="arrange-review-summary" tabindex="-1">Review the preview before applying. This changes geometry only.</p><div id="arrange-footer-actions" class="operator-actions"><button type="button" class="btn btn-primary" id="btn-apply" disabled data-action="btn-apply">Apply arrangement</button><button type="button" class="btn" id="btn-cancel" disabled data-action="btn-cancel">Discard arrangement</button></div></footer></section></div>
 
         <aside class="arrange-tools"><section class="card task-section" aria-labelledby="grid-title"><h3 id="grid-title">Shape</h3>
             <div class="grid-sizing-choice"><label for="grid-kind">Screen sizing</label><select class="inp" id="grid-kind" data-field="grid-kind"><option value="logical">Quick arrangement</option><option value="physical">Match real sizes</option></select></div>
@@ -234,7 +234,7 @@
       <label class="field" for="image-fit">Wall-wide fit<select class="inp" id="image-fit" data-field="image-fit"><option value="cover">Fill the wall (crops)</option><option value="contain">Fit whole image (adds bars)</option></select></label>
       <div class="image-action-row"><button class="btn btn-primary" id="show-image" type="button" disabled data-action="show-image">Show image</button><button class="btn" id="restore-image" type="button" disabled data-action="restore-image">Restore previous content</button></div>
       <p id="image-message" role="status" aria-live="polite"></p>
-      <div class="image-action-row image-secondary-actions"><button class="btn" id="image-rebuild" type="button" data-action="image-rebuild">Rebuild preview</button><button class="btn" id="image-discard" type="button" data-action="image-discard">Discard preview</button></div>
+      <div class="image-action-row image-secondary-actions"><button class="btn" id="image-rebuild" type="button" data-action="image-rebuild">Rebuild preview</button><button class="btn" id="image-discard" type="button" data-action="image-discard">Discard preview</button></div><div class="image-action-row image-view-actions"><button type="button" class="btn" id="view-live" hidden data-action="view-live">View applied</button><button type="button" class="btn" id="view-preview" hidden data-action="view-preview">View preview</button></div>
     </div>
     <p class="hint" id="image-fit-note"></p>
     <details class="technical-details" id="image-details-disclosure"><summary>Image details</summary><label class="field" for="image-select">Image<select class="inp" id="image-select" data-field="image-select"><option value="">Loading images…</option></select></label><img id="image-thumbnail" alt="Selected still image preview" hidden></details>
@@ -635,7 +635,7 @@
             <div class="wall-head">
                 <h2 id="stage-title" tabindex="-1">Wall</h2>
 
-            <div class="stage-mode"><strong id="stage-mode-label">Applied configuration</strong><span class="stage-applied-content" id="stage-applied-content"></span><span class="stage-scale" id="stage-scale"></span><button type="button" class="btn" id="view-live" hidden data-action="view-live">View applied</button><button type="button" class="btn" id="view-preview" hidden data-action="view-preview">View preview</button></div></div>
+            <div class="stage-mode"><strong id="stage-mode-label">Applied configuration</strong><span class="stage-applied-content" id="stage-applied-content"></span><span class="stage-scale" id="stage-scale"></span></div></div>
 
             <div class="stage-scroll" id="stage-scroll" tabindex="0" role="region" aria-label="Wall preview and tablet selection">
                 <svg class="stage-svg" id="stage-svg" viewBox="0 0 720 480" role="group" aria-label="Wall. Select a tablet and drag it, or use the arrow keys to nudge the selected tablet."></svg>

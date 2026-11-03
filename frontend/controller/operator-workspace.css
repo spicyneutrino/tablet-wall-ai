@@ -209,7 +209,7 @@ details > :where(p, div, form, fieldset, section, button, dl) + :where(p, div, f
 .image-actions { display: grid; gap: .75rem; }
 .image-action-row { display: flex; flex-wrap: wrap; gap: .5rem; align-items: center; }
 .image-actions .field { max-inline-size: none; }
-.image-library { position: sticky; inset-block-start: 68px; grid-area: library; min-inline-size: 0; padding: 1rem; background: var(--surface); }
+.image-library { position: sticky; inset-block-start: calc(64px + 52px + 8px); grid-area: library; min-inline-size: 0; padding: 1rem; background: var(--surface); }
 .arrange-workspace { display: grid; grid-template-columns: minmax(0, 1fr) 360px; gap: 2rem; align-items: start; }
 .arrange-result { grid-column: 1; grid-row: 1; min-inline-size: 0; }
 .arrange-tools { grid-column: 2; grid-row: 1; min-inline-size: 0; display: grid; gap: 1rem; }
