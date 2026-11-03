@@ -273,7 +273,7 @@ def entry_recovery(rig):
     client.set_viewport_size({"width": 900, "height": 1280})
     cdp.send("Emulation.setPageScaleFactor", {"pageScaleFactor": 1})
     expect(client.locator("#calibration-recovery")).to_be_hidden(timeout=15000)
-    expect(p.locator("#wall-health")).to_contain_text("4 of 4 showing", timeout=15000)
+    expect(p.locator("#wall-health")).to_contain_text("4 of 4 report current image", timeout=15000)
     rig.check(
         True,
         "Restoring calibrated viewport removes DOM recovery and requires fresh current paints",
@@ -747,7 +747,7 @@ def responsive(rig):
     reopened = rig.tablets[3].context.new_page()
     reopened.goto(rig.base + "/client/")
     rig.tablets[3] = reopened
-    expect(p.locator("#wall-health")).to_contain_text("4 of 4 showing", timeout=15000)
+    expect(p.locator("#wall-health")).to_contain_text("4 of 4 report current image", timeout=15000)
     rig.check(
         reopened.evaluate("localStorage.getItem('tablet-wall-device-id')") == ids[3],
         "Keyboard recovery retains tablet storage identity",

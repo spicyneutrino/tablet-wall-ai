@@ -56,7 +56,7 @@ window.PhysicalStage = {
             }
             summary.hidden = !rows.length;
             const bounds = window.OperatorState.bounds(layout);
-            el.stageScale.textContent = formatNumber(bounds.width, 1) + " × " + formatNumber(bounds.height, 1)
+            el.stageScale.textContent = " · " + formatNumber(bounds.width, 1) + " × " + formatNumber(bounds.height, 1)
                 + (layout.kind === "physical" ? " mm" : " logical units");
         }
 
@@ -191,7 +191,7 @@ window.PhysicalStage = {
          * Selection
          * ---------------------------------------------------------------- */
 
-        const deviceSheet = document.getElementById("device-sheet");
+        const deviceSheet = typeof document !== "undefined" ? document.getElementById("device-sheet") : null;
         function compactSheet() {
             return typeof window.matchMedia === "function" && window.matchMedia("(max-width: 48rem)").matches;
         }

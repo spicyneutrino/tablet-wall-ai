@@ -109,7 +109,7 @@ def show_supplied(rig):
     rig.page.get_by_role("button", name="Preview supplied.png", exact=True).click()
     rig.page.locator("#show-image").click()
     expect(rig.page.locator("#wall-health")).to_contain_text(
-        "4 of 4 showing", timeout=15000
+        "4 of 4 report current image", timeout=15000
     )
 
 
@@ -479,7 +479,7 @@ def mixed_models(rig):
     task(p, "Images")
     p.get_by_role("button", name="Preview supplied.png", exact=True).click()
     p.locator("#show-image").click()
-    expect(p.locator("#wall-health")).to_contain_text("3 of 4 showing", timeout=15000)
+    expect(p.locator("#wall-health")).to_contain_text("3 of 4 report current image", timeout=15000)
     expect(rig.tablets[0].locator("#calibration-recovery")).to_be_visible()
     task(p, "Tablets")
     pick(p, subjects[0])
@@ -527,7 +527,7 @@ def stale_reads(rig):
     expect(p.locator("#tablet-evidence")).to_contain_text("Offline")
     held.release()
     expect(p.locator("#tablet-evidence")).to_contain_text("Offline")
-    expect(p.locator("#wall-health")).to_contain_text("3 of 4 showing", timeout=15000)
+    expect(p.locator("#wall-health")).to_contain_text("3 of 4 report current image", timeout=15000)
     rig.check(
         not p.locator("#tablet-reconnect").is_enabled(),
         "Stale fallback roster cannot revive online commands or old paint after newer offline event",
@@ -542,7 +542,7 @@ def stale_reads(rig):
     reopened = rig.tablets[0].context.new_page()
     reopened.goto(rig.base + "/client/")
     rig.tablets[0] = reopened
-    expect(p.locator("#wall-health")).to_contain_text("4 of 4 showing", timeout=15000)
+    expect(p.locator("#wall-health")).to_contain_text("4 of 4 report current image", timeout=15000)
     diagnostic.release()
     expect(p.locator("#diagnostic-colour-message")).to_contain_text("newer update")
     rig.check(
@@ -661,7 +661,7 @@ def old_paint(rig):
         if row[1]["token"]["revision"] == latest["revision"]
     )
     bridges[-1].send(newest[0])
-    expect(p.locator("#wall-health")).to_contain_text("4 of 4 showing", timeout=15000)
+    expect(p.locator("#wall-health")).to_contain_text("4 of 4 report current image", timeout=15000)
     rig.check(
         rig.config()["runtime"]["devices"][device]["render"]["current"],
         "Only fresh exact native paint acknowledgement restores four current reports",
@@ -916,7 +916,7 @@ def stale_scene(rig):
     other.get_by_text("Check patterns", exact=True).click()
     rig.open_disclosures(other.locator("#show-colours"))
     other.locator("#show-colours").click()
-    expect(other.locator("#active-image")).to_contain_text("Tablet colours")
+    expect(other.locator("#stage-applied-content")).to_contain_text("Tablet colours")
     task(other, "Saved")
     other.locator("#scene-name").fill("Guarded scene")
     other.locator("#scene-save").click()
@@ -964,11 +964,11 @@ def missing_live(rig):
         rig.tablets[0].route("**/assets/**", lambda route: route.continue_())
         rig.tablets[0].reload()
         expect(p.locator("#wall-health")).to_contain_text(
-            "3 of 4 showing", timeout=15000
+            "3 of 4 report current image", timeout=15000
         )
         task(p, "Images")
         p.locator("#refresh-images").click()
-        expect(p.locator("#active-image")).to_contain_text("Unavailable")
+        expect(p.locator("#stage-applied-content")).to_contain_text("Unavailable")
         rig.check(
             rig.config()["scene"]["content"]["asset"]
             == before["scene"]["content"]["asset"]
@@ -991,7 +991,7 @@ def missing_live(rig):
         )
         p.locator("#show-image").click()
         expect(p.locator("#wall-health")).to_contain_text(
-            "4 of 4 showing", timeout=15000
+            "4 of 4 report current image", timeout=15000
         )
         rig.check(
             rig.config()["layout"] == before["layout"]

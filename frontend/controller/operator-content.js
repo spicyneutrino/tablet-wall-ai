@@ -90,7 +90,7 @@ window.OperatorContent = {
                 ? (active ? active.name : content.name || content.asset) + " · " + (content.fit === "contain" ? "Show whole image" : "Fill wall")
                     + (content.available === false || content.availability === "unavailable" || state.activeImageUnavailableId ? " · Unavailable" : "")
                 : content.type === "color" ? "Tablet colours" : content.type === "calibration" ? "Calibration pattern" : "No content";
-            $("stage-applied-content").textContent = (selectionDirty ? "Applied: " : "· ") + appliedText;
+            $("stage-applied-content").textContent = (selectionDirty && !state.viewLive ? "Applied: " : "· ") + appliedText;
             const selector = $("image-select"), image = images.find(item => item.id === selected);
             const key = JSON.stringify([images.map(item => [item.id, item.name]), !image && selected]);
             if (selector.dataset.key !== key) {

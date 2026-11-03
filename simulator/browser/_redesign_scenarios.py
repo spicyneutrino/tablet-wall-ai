@@ -41,7 +41,7 @@ def parity(rig):
 
     def showing(count=4):
         expect(page.locator("#wall-health")).to_contain_text(
-            f"{count} of {count} showing", timeout=10000
+            f"{count} of {count} report current image", timeout=10000
         )
 
     def grid_preview():
@@ -889,7 +889,7 @@ def edges(rig):
     expect(page.locator("#upload-message")).to_contain_text("added and selected")
     page.locator("#show-image").click()
     expect(page.locator("#wall-health")).to_contain_text(
-        "4 of 4 showing", timeout=10000
+        "4 of 4 report current image", timeout=10000
     )
     check(True, "Missing image recovers through actual Add image, preview and Show")
     task("Saved")

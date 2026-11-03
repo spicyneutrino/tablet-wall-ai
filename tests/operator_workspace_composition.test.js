@@ -28,7 +28,7 @@ assert.equal(node("wall-context-content").appends.length, 1, "runtime updates do
 assert.equal(document.activeElement, node("edited-field"));
 state.tabName = "tablet"; dirty = true; workspace.render();
 assert.equal(node("shared-stage").parent, node("wall-context-tablet"));
-assert.equal(node("stage-mode-label").textContent, "Image preview · not shown");
+assert.equal(node("stage-mode-label").textContent, "Image preview · not on tablets");
 state.rosterError = true; workspace.render();
 assert.equal(node("connected-summary").textContent, "Connections stale");
 node("add-image").listeners.click();
