@@ -116,8 +116,9 @@
         const idleInspector = idleActions && idleActions.getClientRects().length ? idleActions.closest(".wall-inspector") : null;
         const idleHeight = idleInspector ? idleActions.getBoundingClientRect().bottom - idleInspector.getBoundingClientRect().top
             + parseFloat(win.getComputedStyle(idleInspector).paddingBottom) : 0;
+        const stageTail = idleInspector ? Math.max(0, state.parent.getBoundingClientRect().bottom - field.getBoundingClientRect().bottom) : 0;
         const reserved = commit && commit.getClientRects().length ? commit.offsetHeight + 16
-            : idleInspector ? idleHeight + 16 : 0;
+            : idleInspector ? idleHeight + stageTail + 16 : 0;
         const availableHeight = bottom - field.getBoundingClientRect().top - 16 - borderHeight - reserved;
         // A short viewport keeps a usable field and falls back to page scrolling.
         const height = Math.min(width / aspect, Math.max(120, availableHeight));

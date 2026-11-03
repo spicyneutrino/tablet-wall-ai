@@ -38,14 +38,14 @@ The Bone palette study’s blue action/selection roles are **not** adopted. Prod
 
 Rust is never the resting fill of a primary/commit button. Primary and commit buttons use an ink fill (`#2D2822`) with cream text (`#EFECE4`) at rest; hover shifts to the rust fill. Rust is for links, focus, selection and preview, not the resting commit fill. Green is only for current confirmed evidence; the gallery's applied marker is neutral ink at weight 600, not green. The logo mark uses a rust border, not an inset shadow.
 
-Surfaces are separated by tone and spacing. Keep separators only between task groups, list rows, and control boundaries. Remove nested card borders and any decorative elevation. No gradients, glass, or new icon system. The one allowed shadow is a true floating layer (native dialog/backdrop); no other shadow.
+Working panels (image inspector, library and arrangement tools) use a quiet 1px `--border` edge and 12px corners against the canvas. Their shared inset is 20px on desktop and 16px on phone. Inputs and buttons retain 6px corners so the container and its controls have distinct scales. Use separators between task groups, list rows and control boundaries; do not nest outlined cards or add decorative elevation. No gradients, glass, or new icon system. The one allowed shadow is a true floating layer (native dialog/backdrop); no other shadow.
 
 ### Type and space
 
 - One family: Schibsted Grotesk.
 - Page title 28px/600 desktop and 26px phone; section 20px/600; body/control 16px; meta and quiet utilities 14px; tabular figures for millimetres and pixels.
-- Spacing: 4 / 8 / 12 / 16 / 24 / 32 / 48.
-- Radius: 6px. No uppercase micro-labels, decorative pills, or tracked caps.
+- Spacing: 4 / 8 / 12 / 16 / 20 / 24 / 32 / 48.
+- Radius: 6px controls, 12px working panels. No uppercase micro-labels, decorative pills, or tracked caps.
 - Surfaces use `--surface`; page uses `--bg`; selected rows use the `--selected` wash plus a 3px rust edge.
 
 ### Shell
@@ -86,8 +86,9 @@ The SVG labels use screen-space sizing. They target 11–13 CSS px after both th
 └───────────────────────────────────────────────┴───────────────┘
 ```
 
-- Grid: `minmax(0, 1fr) clamp(18rem, 31vw, 22.5rem)`, gap 20–32px. The stage starts immediately after the task heading. The 360px inspector has 16px inner padding.
+- Grid: `minmax(0, 1fr) clamp(18rem, 31vw, 22.5rem)`, gap 20–32px. The stage starts immediately after the task heading. The 360px inspector has 20px inner padding, reduced to 16px on phone.
 - The reviewer’s desktop filmstrip is dropped. The library is a 2-up thumbnail grid in the right column under the inspector; it is sticky while the wall is height-limited. This is what preserves the wall’s height.
+- Inspector and Library share the same border, corners and content inset. Panel headings are 18px; disclosures sit behind quiet separators and use 14px muted type. Arrangement-tool disclosures use the same type and aligned disclosure markers. Text utilities keep padded hover targets while aligning their text with the panel content. Empty feedback fields take no space.
 - The inspector is one surface: image title/dimensions, selected-image facts, Fit, Show/Restore, preview consequence, command message. It does not repeat applied content. Advanced/alternate/upload controls are disclosures at the bottom.
 - Stage mode line is the **only** applied-content home:
   - `Saved wall · Calibration pattern · 2 000 × 1 000`
@@ -174,8 +175,9 @@ The SVG labels use screen-space sizing. They target 11–13 CSS px after both th
 - Header 56px: brand, `0/4` (aria-label “0 of 4 report current image”), Issues. No connected summary.
 - Fixed bottom navigation 56px + safe area; content padding-bottom accounts for it.
 - Images follows stage, inspector, library. Idle actions provide an explicit way to browse or adjust the saved image. The preview action bar appears only after an explicit selection; Fit / Show / Discard share a row, with view actions below.
+- Stage notes and technical text align with the page gutter on phone; only the artwork field is full-bleed.
 - The phone wall is full-bleed to the screen edges. Its height respects both the wall aspect and the space needed for image controls; a 1.855:1 wall at 390px width is about 200px tall. Do not crop or rotate the wall to make the phone preview taller.
-- The stage height budget is `100dvh − 56px header − 56px bottom nav − safe area − measured action bar − gaps` while a preview exists. When no preview exists, the action bar is absent. Portrait stage fitting reserves the measured idle action area so image-change actions stay within reach. Short screens fall back to scrolling.
+- The stage height budget is `100dvh − 56px header − 56px bottom nav − safe area − measured action bar − gaps` while a preview exists. When no preview exists, the action bar is absent. Portrait stage fitting reserves the measured idle action area and trailing stage notes, including wrapped lines, so both image-change actions stay within reach. Short screens fall back to scrolling.
 - The action bar is fixed above the bottom nav: `position: fixed; inset-inline: 0; inset-block-end: calc(56px + env(safe-area-inset-bottom)); z-index: 35; background: var(--surface); border-block-start: 1px solid var(--border);` with content padding-bottom accounting for it. It contains Fit, Show, Discard, and View preview when a retained draft is viewing applied. The stage aspect ratio is preserved as this budget changes; the wall is never cropped to make the bar fit.
 - Arrange: stage first, preset row, one commit bar; advanced controls in a disclosure.
 - Tablets: roster first; selecting a row opens a **native `<dialog>` sheet**. `showModal()` gives focus containment, Escape and backdrop. The sheet is bottom-anchored with `margin: auto 0 0`, has a close button, max-height `calc(100dvh - 56px - env(safe-area-inset-top) - env(safe-area-inset-bottom))`, internal scrolling, and returns focus to the row. The 56px is header clearance; it is not the bottom navigation. The sheet may cover the bottom nav because it is in the top layer; do not subtract the nav height from its limit.

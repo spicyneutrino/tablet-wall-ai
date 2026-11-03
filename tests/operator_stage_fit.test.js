@@ -45,10 +45,10 @@ const navigation = { ...bar, computed: { position: "fixed", marginTop: "0px" },
 const doc = { defaultView: win, body: { dataset: { task: "images", outputDirty: "false" } },
     querySelector: selector => selector === ".image-actions" ? bar : navigation,
     createElementNS: (_, tag) => new Element(tag), getElementById: () => null };
-const parent = { clientWidth: 1000, computed: { paddingLeft: "16px", paddingRight: "16px" } };
+const parent = { clientWidth: 1000, computed: { paddingLeft: "16px", paddingRight: "16px" }, getBoundingClientRect: () => ({ bottom: 400 }) };
 const field = { parentElement: parent, style: {},
     computed: { borderLeftWidth: "1px", borderRightWidth: "1px", borderTopWidth: "1px", borderBottomWidth: "1px" },
-    getClientRects: () => [1], getBoundingClientRect: () => ({ top: 200 }) };
+    getClientRects: () => [1], getBoundingClientRect: () => ({ top: 200, bottom: 400 }) };
 const svg = { ownerDocument: doc, viewBox: { baseVal: { width: 720, height: 370 } }, style: {},
     closest: () => field, querySelectorAll: () => labels };
 const label = new Element("text");
@@ -87,6 +87,9 @@ doc.querySelector = selector => selector === ".image-actions" ? bar : selector =
 win.innerWidth = 390;
 doc.body.dataset.outputDirty = "false";
 assert.equal(fit(svg).height, 186, "the phone wall leaves room for the explicit image-change actions");
+parent.getBoundingClientRect = () => ({ bottom: 448 });
+assert.equal(fit(svg).height, 138, "wrapped stage notes leave both idle actions above the phone navigation");
+parent.getBoundingClientRect = () => ({ bottom: 400 });
 win.innerWidth = 1440;
 assert.equal(fit(svg).height, 382, "desktop actions retain their separate column");
 
