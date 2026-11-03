@@ -346,25 +346,29 @@ dialog.tablet-selection::backdrop { background: var(--backdrop); }
     body[data-output-dirty="true"] .image-actions { position: fixed; inset-inline: 0; inset-block-end: calc(56px + env(safe-area-inset-bottom)); z-index: 35; background: var(--surface); border-block-start: 1px solid var(--border); padding: .375rem 1rem; grid-template-columns: minmax(0, 1fr) auto auto; align-items: center; gap: .25rem .5rem; }
     body[data-output-dirty="true"] .image-primary-actions { display: contents; }
     body[data-output-dirty="true"] .image-actions > .field { min-inline-size: 0; }
-    body[data-output-dirty="true"] .image-actions > .field > label { position: absolute; inline-size: 1px; block-size: 1px; padding: 0; margin: -1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
-    body[data-output-dirty="true"] .image-view-actions { grid-column: 1 / -1; display: flex; }
-    body[data-output-dirty="true"] .image-actions > [role="status"]:not(:empty) { grid-column: 1 / -1; margin: 0; font-size: .75rem; }
-    body[data-output-dirty="true"] .image-actions > .field { font-size: .875rem; gap: 0; }
+    body[data-output-dirty="true"] .image-actions > .field > label { display: none; }
+    body[data-output-dirty="true"] .image-view-actions { grid-column: 2 / -1; display: flex; justify-content: end; }
+    body[data-output-dirty="true"] .image-actions > [role="status"]:not(:empty) { grid-column: 1 / 2; margin: 0; font-size: .75rem; align-self: center; }
+    body[data-output-dirty="true"] .image-actions > .field { font-size: 0; gap: 0; }
+    body[data-output-dirty="true"] .image-actions > .field .inp { font-size: .875rem; }
     body[data-output-dirty="true"] .image-actions .image-action-row { gap: .25rem; }
     body[data-output-dirty="true"] .image-actions .btn { flex: 1 1 auto; padding: .5rem; font-size: .875rem; }
-    body[data-output-dirty="true"] .image-actions > [role="status"]:not(:empty) { grid-column: 1 / -1; }
     .image-gallery { grid-template-columns: none; grid-auto-flow: column; grid-auto-columns: 132px; overflow-x: auto; scroll-snap-type: x proximity; padding: .25rem; }
     .image-choice { scroll-snap-align: start; }
     dialog.tablet-selection { margin: auto 0 0; inline-size: 100%; max-inline-size: none; }
 }
 @media (max-height: 32rem) and (orientation: landscape) {
+    .images-workspace { grid-template-columns: minmax(0, 1fr) 340px; grid-template-areas: "stage inspector" "stage library"; gap: 1rem 1.25rem; }
+    .wall-head h2 { display: none; }
+    .stage-mode { flex-wrap: nowrap; align-items: baseline; min-inline-size: 0; }
+    .stage-applied-content { min-inline-size: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .stage-dimensions { display: none; }
     .image-library { position: static; }
     .topbar { block-size: 44px; flex-wrap: nowrap; padding-block: 0; }
     .task-title { display: none; }
     body { padding-block-end: 0; }
     .workspace-nav-landmark { position: sticky; inset-block-start: 0; inset-block-end: auto; padding: 0; border-block-start: 0; border-block-end: 1px solid var(--border); }
     .workspace-nav { block-size: 43px; padding-block: 0; flex-wrap: nowrap; }
-    .images-workspace { grid-template-columns: minmax(0, 1fr); grid-template-areas: "stage" "inspector" "library"; }
     .arrange-workspace { grid-template-columns: minmax(0, 1fr); }
     .arrange-tools { grid-column: 1; grid-row: 2; }
     .image-gallery { grid-template-columns: none; grid-auto-flow: column; grid-auto-columns: 132px; overflow-x: auto; scroll-snap-type: x proximity; }

@@ -54,6 +54,8 @@ window.OperatorWorkspace = {
             document.body.dataset.stageMode = mode;
             document.body.dataset.connection = state.rosterError ? "stale" : state.configLoaded ? "current" : "loading";
             document.body.dataset.outputDirty = String(arrangement || image);
+            const wallEmpty = !state.base || !Object.keys(window.OperatorState.entries(state.base)).length;
+            if ($("wall-context-tablet")) $("wall-context-tablet").hidden = !wallEmpty;
             if (stageTask !== state.tabName) {
                 const host = $("wall-context-" + state.tabName) || $("wall-context-park");
                 host.append(stage);
