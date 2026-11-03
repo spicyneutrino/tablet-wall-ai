@@ -207,3 +207,9 @@ The SVG labels use screen-space sizing. They target 11–13 CSS px after both th
 - No mobile wizard.
 - No removal of calibration, conflict, ETag, preview/apply, or honest evidence.
 - No claim that a browser screenshot proves physical alignment.
+
+## Implementation notes (council-accepted deviations)
+
+- The tablet name input remains visible above the collapsed “Placement and technical details” disclosure. Naming is a first-time task; hiding it cost more than the saved height. The council accepted this deviation.
+- The portrait preview action bar renders at roughly 105px, carrying Fit, Show, Discard, one feedback line and View applied above the 56px bottom navigation. It keeps 44px touch targets. The council accepted this deviation; the 1024px bar is 57px and the short-landscape bar is 45px.
+- The short-landscape stage is height-limited to roughly 379×195 by the 44px header, 43px tabs and 45px action bar. It uses the full available height and preserves the wall aspect; the 80% rule is measured against the limiting dimension.
