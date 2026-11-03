@@ -9,7 +9,7 @@ HOST ?= 127.0.0.1
 
 .DEFAULT_GOAL := help
 
-.PHONY: help sync dev run test lint typecheck coverage sim guide clean
+.PHONY: help sync dev run hotspot test lint typecheck coverage sim guide clean
 
 help: ## Show this help
 	@echo "tablet-wall-ai:"
@@ -24,6 +24,9 @@ dev: ## Run the dev server with auto-reload
 
 run: ## Run the server without auto-reload
 	@cd "$(ROOT)" && uv run fastapi run main.py --host $(HOST) --port $(PORT)
+
+hotspot: ## Run tablets on the active hotspot with persistent data
+	@cd "$(ROOT)" && uv run python -m deploy.hotspot $(ARGS)
 
 test: ## Run Python and client JavaScript tests
 	@command -v node >/dev/null 2>&1 || { echo "make test needs Node.js for the client tests"; exit 1; }

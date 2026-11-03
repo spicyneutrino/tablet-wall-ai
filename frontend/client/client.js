@@ -43,14 +43,18 @@
 
     var STORAGE_KEY = "tablet-wall-device-id";
     var REGISTER_URL = "/devices/register";
-    var DEVICE_TYPE = "ipad"; // device geometry is a later phase
+    var deviceNavigator = typeof navigator === "undefined" ? {} : navigator;
+    var platformFamily = /Android/i.test(deviceNavigator.userAgent || "") ? "android" :
+        (/iPad|iPhone|iPod/i.test(deviceNavigator.userAgent || "") ||
+         (deviceNavigator.platform === "MacIntel" && deviceNavigator.maxTouchPoints > 1) ? "ios" : "other");
+    var DEVICE_TYPE = platformFamily;
 
     /* Protocol version 2 (wall/placement contract). `caps` advertises what
      * this client can render, so the server may send calibration and image
      * content (PROTOCOL.md "Still images": a device that has not advertised
      * `image` is never sent image content). */
     var PROTOCOL_VERSION = 3;
-    var CAPS = "calibration,image,physical";
+    var CAPS = "calibration,image,physical,render_ack,identify,image_contain";
 
     /* Prerecorded video: advertised only when this browser says it can play
      * H.264 in MP4, the one codec the server ingests. A page that cannot
@@ -85,6 +89,8 @@
         offline: "Offline \u00b7 retrying",
         connected: "",
         replaced: "Showing on another screen",
+        auth: "Sign in required",
+        deployment: "Sign-in unavailable. Ask the operator to enable /auth/login.",
     };
 
     /* The identity HUD is deliberately quiet: five seconds after a welcome,
@@ -438,29 +444,29 @@
     /* ------------------------------------------------------------------ */
 
     function fetchWithTimeout(url, options, timeoutMs) {
-        if (typeof AbortController !== "function") {
-            return fetch(url, options);
-        }
-        var controller = new AbortController();
-        var timer = setTimeout(function () {
-            controller.abort();
-        }, timeoutMs);
-        return fetch(url, Object.assign({}, options, { signal: controller.signal })).then(
-            function (response) {
+        return new Promise(function (resolve, reject) {
+            var controller = typeof AbortController === "function" ? new AbortController() : null;
+            var timer = setTimeout(function () {
+                reject(new Error("request timed out"));
+                if (controller) controller.abort();
+            }, timeoutMs);
+            Promise.resolve().then(function () {
+                return fetch(url, controller ? Object.assign({}, options, { signal: controller.signal }) : options);
+            }).then(function (response) {
                 clearTimeout(timer);
-                return response;
-            },
-            function (err) {
+                resolve(response);
+            }, function (err) {
                 clearTimeout(timer);
-                throw err;
-            }
-        );
+                reject(err);
+            });
+        });
     }
 
     /* Re-register before EVERY connection attempt: server state is in memory
      * and may have been lost to a restart. Throws on failure; the caller
      * backs off and retries instead of dying. */
     function register() {
+        var socket = activeSocket;
         return fetchWithTimeout(
             REGISTER_URL,
             {
@@ -476,18 +482,254 @@
                     width: window.innerWidth,
                     height: window.innerHeight,
                     device_type: DEVICE_TYPE,
+                    screen_width: window.screen && window.screen.width || undefined,
+                    screen_height: window.screen && window.screen.height || undefined,
+                    screen_dpr: window.devicePixelRatio || 1,
+                    platform_family: platformFamily,
                     number: deviceNumberValid(deviceNumber) ? deviceNumber : undefined,
                     wake_lock: wakeLock.state(),
                 }),
             },
             REGISTER_TIMEOUT_MS
         ).then(function (response) {
+            if (response.status === 401) {
+                if (socket === activeSocket && !identityReplaced) requireAuthentication();
+                var authError = new Error("authentication required");
+                authError.auth = true;
+                throw authError;
+            }
             if (!response.ok) {
                 throw new Error("registration failed: HTTP " + response.status);
             }
             return response;
         });
     }
+
+    var connectionId = null;
+    var renderInstruction = null;
+    var reportSequence = 0;
+    var paintSequence = 0;
+    var imagePainted = false;
+    var lastSocketActivity = 0;
+    var closeOwnedSocket = null;
+    var identityReplaced = false;
+    var authPaused = false;
+    var authAction = document.getElementById("auth-login");
+    var pageAway = false;
+    var identify = null;
+    var lastIdentifyCommand = null;
+    var lastIdentifyServerMs = -Infinity;
+    var identifyEl = document.getElementById("identify");
+
+    function pageVisible() {
+        return !pageAway && !document.hidden && document.visibilityState !== "hidden";
+    }
+
+    function validRenderToken(frame) {
+        var t = frame.token;
+        var content = frame.scene && frame.scene.content;
+        return t && typeof t === "object" && Object.keys(t).length === 6 &&
+            typeof t.connection_id === "string" && t.connection_id.length > 0 && t.connection_id.length <= 128 && t.connection_id === connectionId &&
+            typeof t.generation === "string" && t.generation.length > 0 && t.generation.length <= 128 &&
+            Number.isSafeInteger(t.revision) && t.revision >= 0 &&
+            Number.isSafeInteger(t.render_seq) && t.render_seq > 0 &&
+            typeof t.mapping_revision === "string" && t.mapping_revision.length > 0 && t.mapping_revision.length <= 256 &&
+            (t.asset === null || typeof t.asset === "string" && /^sha256:[0-9a-f]{64}$/.test(t.asset)) &&
+            t.generation === frame.generation && t.revision === frame.revision && t.render_seq === frame.render_seq &&
+            t.asset === (content && content.type === "image" ? content.asset : null);
+    }
+
+    function installRenderInstruction(frame) {
+        if (identify && identify.generation !== frame.generation) clearIdentify();
+        ++paintSequence;
+        renderInstruction = frame.token ? {
+            token: Object.assign({}, frame.token), socket: activeSocket,
+            viewport: JSON.stringify(viewportReport()), status: "loading", reason: null,
+        } : null;
+        reportRender("loading", null);
+    }
+
+    function instructionOwned(instruction) {
+        return instruction && instruction === renderInstruction &&
+            instruction.socket === activeSocket && activeSocket.readyState === 1 &&
+            instruction.token.connection_id === connectionId;
+    }
+
+    function reportRender(status, reason) {
+        var instruction = renderInstruction;
+        if (!instructionOwned(instruction)) return;
+        instruction.status = pageVisible() ? status : "hidden";
+        instruction.reason = pageVisible() ? reason : null;
+        try {
+            activeSocket.send(JSON.stringify({
+                type: "render_ack", token: instruction.token, report_seq: ++reportSequence,
+                status: instruction.status, reason: instruction.reason,
+                viewport: viewportReport(), visible: pageVisible(),
+            }));
+        } catch (err) {
+            warn("could not report render status", err);
+        }
+    }
+
+    function refreshRenderReport() {
+        if (!renderInstruction) return;
+        if (playbackOnScreen) reportRender("blocked", "playback");
+        else if (visualZoomed()) reportRender("blocked", "zoom");
+        else if (renderInstruction.viewport !== JSON.stringify(viewportReport())) reportRender("blocked", "viewport");
+        else reportRender(renderInstruction.status, renderInstruction.reason);
+    }
+
+    function updateRenderEvidence(instruction, paint) {
+        if (!instructionOwned(instruction) || !wallState) return;
+        if (!pageVisible()) { reportRender("hidden", null); return; }
+        if (playbackOnScreen) { reportRender("blocked", "playback"); return; }
+        if (visualZoomed()) { reportRender("blocked", "zoom"); return; }
+        if (instruction.viewport !== JSON.stringify(viewportReport())) {
+            reportRender("blocked", "viewport"); return;
+        }
+        if ((wallState.physical && !wallState.physical.slot && !wallState.physical.plan) ||
+            (!wallState.physical && !wallState.visible)) {
+            reportRender("unplaced", "no_slot"); return;
+        }
+        if (wallState.physical && wallState.contentType === "calibration") {
+            reportRender("unsupported", "capability"); return;
+        }
+        if (wallState.contentType === "image" && wallState.physical && !wallState.physical.plan) {
+            reportRender("blocked", wallState.physical.blockedReason || "calibration"); return;
+        }
+        if (["image", "color", "calibration"].indexOf(wallState.contentType) < 0) {
+            reportRender("unsupported", "capability"); return;
+        }
+        if (wallState.contentType !== "image") return;
+        if (imageStatus === "failed") {
+            var reason = imageFailureReason || "fetch";
+            reportRender("failed", reason); return;
+        }
+        if (!imagePainted) {
+            if (instruction.status !== "failed") reportRender("loading", null);
+            return;
+        }
+        reportRender("loading", null);
+        requestAnimationFrame(function () {
+            if (!instructionOwned(instruction) || paint !== paintSequence || !pageVisible() ||
+                instruction.viewport !== JSON.stringify(viewportReport()) || playbackOnScreen) return;
+            reportRender("displayed", null);
+        });
+    }
+
+    function identifyStatus(command, status) {
+        if (command !== identify || command.socket !== activeSocket ||
+            command.connection_id !== connectionId || activeSocket.readyState !== 1) return;
+        try {
+            activeSocket.send(JSON.stringify({ type: "identify_status", command_id: command.command_id,
+                connection_id: command.connection_id, status: status }));
+        } catch (err) { warn("could not report Identify status", err); }
+    }
+
+    function clearIdentify() {
+        if (!identify) return;
+        identifyStatus(identify, "cleared");
+        clearTimeout(identify.timer);
+        identify = null;
+        if (identifyEl) identifyEl.hidden = true;
+    }
+
+    function showIdentify(frame) {
+        if (frame.connection_id !== connectionId || frame.generation !== heldGeneration ||
+            typeof frame.command_id !== "string" || !frame.command_id || frame.command_id.length > 128 ||
+            frame.command_id === lastIdentifyCommand || !Number.isFinite(frame.server_ms) || frame.server_ms < lastIdentifyServerMs ||
+            !Number.isFinite(frame.expires_ms) || !Number.isFinite(frame.remaining_ms) || frame.remaining_ms < 0 ||
+            frame.label !== null && (typeof frame.label !== "string" || frame.label.length > 160 || /[\u0000-\u001f\u007f]/.test(frame.label)) ||
+            frame.number !== null && !deviceNumberValid(frame.number)) return;
+        var duration = frame.duration_ms === undefined ? 5000 : frame.duration_ms;
+        if (!Number.isSafeInteger(duration)) return;
+        duration = Math.max(1000, Math.min(10000, duration));
+        var remaining = Math.min(duration, frame.remaining_ms, frame.expires_ms - frame.server_ms);
+        if (clockOffset !== null) remaining = Math.min(remaining, frame.expires_ms - (performance.now() + clockOffset));
+        if (!(remaining > 0)) return;
+        clearIdentify();
+        if (!identifyEl) return;
+        var command = Object.assign({}, frame, { socket: activeSocket, deadline: performance.now() + remaining,
+            resumeDeadline: Date.now() + remaining });
+        identify = command;
+        lastIdentifyCommand = frame.command_id;
+        lastIdentifyServerMs = frame.server_ms;
+        document.getElementById("identify-number").textContent = frame.number === null ? "Tablet" : "#" + frame.number;
+        document.getElementById("identify-label").textContent = frame.label || shortDeviceId();
+        identifyEl.hidden = false;
+        command.timer = setTimeout(function () {
+            if (identify === command) clearIdentify();
+        }, remaining);
+        requestAnimationFrame(function () {
+            if (identify === command && pageVisible() && !identifyExpired(command)) identifyStatus(command, "shown");
+        });
+    }
+
+    function requireAuthentication() {
+        if (authPaused) return;
+        authPaused = true;
+        setStatus("auth");
+        if (authAction) {
+            var current = new URL(window.location.href);
+            authAction.href = "/auth/login?next=" + encodeURIComponent(current.pathname + current.search + current.hash);
+            authAction.hidden = false;
+            fetchWithTimeout(authAction.href, { credentials: "same-origin", cache: "no-store" }, REGISTER_TIMEOUT_MS)
+                .then(function (response) {
+                    if (authPaused && [403, 404, 405].indexOf(response.status) >= 0) {
+                        authAction.hidden = true;
+                        setStatus("deployment");
+                    }
+                }).catch(function () {});
+        }
+        if (activeSocket) retireSocket(activeSocket);
+    }
+
+    function retireSocket(socket) {
+        if (socket !== activeSocket || !closeOwnedSocket) return;
+        var finish = closeOwnedSocket;
+        finish({ code: 1006 });
+        try { socket.close(); } catch (err) { warn("socket close failed", err); }
+    }
+
+    function identifyExpired(command) {
+        // Some tablet clocks pause performance.now during sleep. Wall time can
+        // shorten this local deadline, but cannot extend the monotonic one.
+        return performance.now() >= command.deadline || Date.now() >= command.resumeDeadline;
+    }
+
+    var resumeProbe = false;
+    function probeResume() {
+        if (identify && identifyExpired(identify)) clearIdentify();
+        if (!pageVisible() || identityReplaced || authPaused) return;
+        if (!activeSocket) return;
+        if (performance.now() - lastSocketActivity >= 15000) {
+            retireSocket(activeSocket); return;
+        }
+        render();
+        sendViewport();
+        sendClockSample();
+        if (resumeProbe) return;
+        var socket = activeSocket;
+        resumeProbe = true;
+        register().catch(function (err) {
+            if (!err.auth && socket === activeSocket) retireSocket(socket);
+        }).then(function () { resumeProbe = false; });
+    }
+
+    window.addEventListener("online", probeResume);
+    window.addEventListener("pageshow", function () { pageAway = false; probeResume(); });
+    window.addEventListener("pagehide", function () {
+        pageAway = true;
+        clearIdentify();
+        ++paintSequence;
+        reportRender("hidden", null);
+        if (activeSocket) retireSocket(activeSocket);
+    });
+    document.addEventListener("visibilitychange", function () {
+        ++paintSequence;
+        if (!pageVisible()) reportRender("hidden", null);
+        else probeResume();
+    });
 
     /* ------------------------------------------------------------------ */
     /* Wall state and rendering                                           */
@@ -537,6 +779,7 @@
     var imageAttempt = null;
     var imageStatus = "none";
     var imageFailure = null;
+    var imageFailureReason = null;
     var imageCache = null;
 
     var canvasEl = null;
@@ -572,13 +815,13 @@
     }
 
     function deviceNumberValid(value) {
-        return Number.isInteger(value) && value > 0;
+        return Number.isSafeInteger(value) && value > 0;
     }
 
     /* Screen-space badge used on calibration and the diagnostic panels. The
      * number is the thing a person matches against the controller; the short
      * id is the fallback when a server did not send one. */
-    function drawDeviceBadge(ctx, vp, dpr) {
+    function drawDeviceBadge(ctx, vp, dpr, dprY) {
         if (!deviceNumberValid(deviceNumber)) return;
         var pad = Math.max(10, Math.min(vp.w, vp.h) * 0.03);
         var big = Math.max(22, Math.min(vp.w, vp.h) * 0.11);
@@ -586,7 +829,7 @@
         var title = "#" + deviceNumber;
         var sub = "TABLET " + deviceNumber + " \u00b7 " + shortDeviceId();
         ctx.save();
-        ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+        ctx.setTransform(dpr, 0, 0, dprY, 0, 0);
         ctx.textAlign = "left";
         ctx.textBaseline = "top";
         ctx.font = "700 " + big + "px " + FONT_STACK;
@@ -676,7 +919,7 @@
     }
 
     /* Sizes the backing store to CSS pixels x device pixel ratio so lines
-     * stay crisp, and returns { ctx, dpr, w, h } or null. */
+     * stay crisp, and returns the actual backing ratios and context, or null. */
     function prepareCanvas(cssW, cssH) {
         var el = ensureCanvas();
         if (!el) return null;
@@ -697,18 +940,38 @@
             warn("2d context unavailable");
             return null;
         }
-        return { ctx: ctx, dpr: dpr, w: cssW, h: cssH };
+        return { ctx: ctx, dpr: bw / cssW, dprY: bh / cssH, w: cssW, h: cssH };
     }
 
     /* Single entry point for every state change that affects the screen. */
     function render() {
-        renderScene();
-        relayoutVideo();
+        var instruction = renderInstruction;
+        var paint = ++paintSequence;
+        imagePainted = false;
+        try {
+            renderScene();
+            relayoutVideo();
+        } catch (err) {
+            warn("drawing failed", err);
+            reportRender("failed", "surface");
+            return;
+        }
+        updateRenderEvidence(instruction, paint);
     }
 
     function renderScene() {
         if (!wallState) return; /* no wall frame yet: colour-only surface */
 
+        if (wallState.contentType === "color") {
+            showCanvas(false);
+            return;
+        }
+        if ((wallState.physical && wallState.contentType === "calibration") ||
+            ["color", "image", "calibration"].indexOf(wallState.contentType) < 0) {
+            showCanvas(true);
+            drawUnsupported(wallState.contentType);
+            return;
+        }
         if (wallState.physical && !wallState.physical.plan) {
             showCanvas(true);
             drawNeedsCalibration();
@@ -726,7 +989,7 @@
         }
 
         /* Image content: the same wall mapping, clipped to this slice,
-         * carrying a centered cover of the whole wall. drawImageScene owns
+         * carrying a centered fit of the whole wall. drawImageScene owns
          * every image state — unplaced, loading, ready, failed. */
         if (wallState.contentType === "image") {
             showCanvas(true);
@@ -734,19 +997,7 @@
             return;
         }
 
-        /* Absent or colour content is the colour surface. Anything else is
-           content this page cannot draw: a type a newer server invented.
-           Falling back to the assigned colour would look exactly like a
-           healthy wall while showing the wrong thing, so say so on the panel,
-           where whoever is standing in front of it can see it. */
-        var type = wallState.contentType;
-        if (type === null || type === undefined || type === "color") {
-            showCanvas(false); /* colour content: today's behaviour, untouched */
-            return;
-        }
 
-        showCanvas(true);
-        drawUnsupported(type);
     }
 
     /* Content this page cannot render. Saying so beats showing a colour. */
@@ -756,7 +1007,7 @@
         var view = prepareCanvas(vp.w, vp.h);
         if (!view) return;
         var ctx = view.ctx;
-        ctx.setTransform(view.dpr, 0, 0, view.dpr, 0, 0);
+        ctx.setTransform(view.dpr, 0, 0, view.dprY, 0, 0);
 
         ctx.fillStyle = PATTERN.background;
         ctx.fillRect(0, 0, vp.w, vp.h);
@@ -790,7 +1041,7 @@
             midX,
             midY + idSize * 0.35 + noteSize
         );
-        drawDeviceBadge(ctx, vp, view.dpr);
+        drawDeviceBadge(ctx, vp, view.dpr, view.dprY);
     }
 
     function drawCalibration() {
@@ -811,19 +1062,20 @@
          */
         var scale = Math.max(vp.w / visible.w, vp.h / visible.h);
         if (!Number.isFinite(scale) || scale <= 0) return;
-        var k = scale * view.dpr; /* wall unit -> device pixel */
+        var k = scale * view.dpr; /* wall unit -> backing pixel */
+        var ky = scale * view.dprY;
         var ox = (visible.w - vp.w / scale) / 2;
         var oy = (visible.h - vp.h / scale) / 2;
         view.ctx.setTransform(
             k,
             0,
             0,
-            k,
+            ky,
             -(visible.x + ox) * k,
-            -(visible.y + oy) * k
+            -(visible.y + oy) * ky
         );
         drawPattern(view.ctx, scale, view.dpr, visible);
-        drawDeviceBadge(view.ctx, vp, view.dpr);
+        drawDeviceBadge(view.ctx, vp, view.dpr, view.dprY);
     }
 
     /*
@@ -988,7 +1240,7 @@
         var view = prepareCanvas(vp.w, vp.h);
         if (!view) return;
         var ctx = view.ctx;
-        ctx.setTransform(view.dpr, 0, 0, view.dpr, 0, 0);
+        ctx.setTransform(view.dpr, 0, 0, view.dprY, 0, 0);
 
         ctx.fillStyle = PATTERN.background;
         ctx.fillRect(0, 0, vp.w, vp.h);
@@ -1018,7 +1270,7 @@
             midX,
             midY + idSize * 0.35 + noteSize
         );
-        drawDeviceBadge(ctx, vp, view.dpr);
+        drawDeviceBadge(ctx, vp, view.dpr, view.dprY);
     }
 
     /* ------------------------------------------------------------------ */
@@ -1052,8 +1304,8 @@
             content.fit === undefined || content.fit === null
                 ? "cover"
                 : content.fit;
-        if (fit !== "cover") {
-            /* Only centered cover exists. Drawing some other fit on one
+        if (fit !== "cover" && fit !== "contain") {
+            /* Drawing an unsupported fit on one
              * tablet only would break every seam it touches, so refuse it
              * out loud instead. */
             return {
@@ -1068,9 +1320,12 @@
             iw = null;
             ih = null;
         }
+        var background = typeof content.background === "string" && /^#[0-9a-f]{6}$/i.test(content.background)
+            ? content.background.toLowerCase() : PATTERN.background;
         return {
             desc: {
-                key: [asset, url, fit, iw, ih].join("\u0000"),
+                key: [asset, url, fit, iw, ih, background].join("\u0000"),
+                background: background,
                 asset: asset,
                 url: url,
                 fit: fit,
@@ -1123,6 +1378,7 @@
      * or decode that stalls cannot outlive it.
      */
     function fetchImageSource(url, controller, handle) {
+        handle.phase = "fetch";
         return fetch(url, {
             method: "GET",
             credentials: "same-origin",
@@ -1134,6 +1390,7 @@
                         response && response.status != null
                             ? response.status
                             : "?";
+                    if (status === 401 || status === 403) handle.phase = "auth";
                     throw new Error("image fetch failed: HTTP " + status);
                 }
                 if (typeof response.blob !== "function") {
@@ -1142,6 +1399,7 @@
                 return response.blob();
             })
             .then(function (blob) {
+                handle.phase = "decode";
                 return decodeBlob(blob, url, handle);
             });
     }
@@ -1317,6 +1575,9 @@
         return (
             !attempt.settled &&
             attempt.token === imageToken &&
+            attempt.socket === activeSocket &&
+            attempt.instruction === renderInstruction &&
+            attempt.viewport === JSON.stringify(viewportReport()) &&
             wallState !== null &&
             wallState.contentType === "image" &&
             heldGeneration === attempt.generation &&
@@ -1351,7 +1612,7 @@
      * a decoded picture is invisible, and a retry decodes a fresh one
      * anyway.
      */
-    function failImageScene(reason) {
+    function failImageScene(reason, code) {
         if (imageAttempt !== null) {
             /* A timeout (or a failed load) must stop the <img> and revoke
              * its object URL instead of leaving bytes nobody wants. */
@@ -1360,6 +1621,7 @@
         imageAttempt = null;
         imageStatus = "failed";
         imageFailure = reason;
+        imageFailureReason = code || (/size/.test(reason) ? "size" : "fetch");
         releaseImageCache();
         warn("image scene failed: " + reason);
         render();
@@ -1407,7 +1669,10 @@
             imageAttempt !== null &&
             imageAttempt.key === desc.key &&
             imageAttempt.generation === heldGeneration &&
-            imageAttempt.revision === heldRevision
+            imageAttempt.revision === heldRevision &&
+            imageAttempt.socket === activeSocket &&
+            imageAttempt.instruction === renderInstruction &&
+            imageAttempt.viewport === JSON.stringify(viewportReport())
         ) {
             imageStatus = "loading"; /* this exact request is already running */
             return false;
@@ -1438,8 +1703,15 @@
 
     /* Begin (or restart) the load for one descriptor. */
     function startImageLoad(desc) {
+        if (imageAttempt) {
+            imageAttempt.settled = true;
+            releaseLoad(imageAttempt.load);
+        }
         var attempt = {
             token: ++imageToken,
+            socket: activeSocket,
+            instruction: renderInstruction,
+            viewport: JSON.stringify(viewportReport()),
             key: desc.key,
             generation: heldGeneration,
             revision: heldRevision,
@@ -1485,7 +1757,7 @@
             }
             if (!isCurrentImageAttempt(attempt)) return;
             attempt.settled = true;
-            failImageScene("image load timed out");
+            failImageScene("image load timed out", attempt.load.phase);
         }, IMAGE_LOAD_TIMEOUT_MS);
 
         /* The promise settled, so the attempt's own deadline is spent. */
@@ -1525,6 +1797,8 @@
                 }
                 imageCache = {
                     key: desc.key,
+                    fit: desc.fit,
+                    background: desc.background,
                     source: result.source,
                     iw: iw,
                     ih: ih,
@@ -1541,7 +1815,7 @@
                  * the operator has not asked to retry. */
                 if (!isCurrentImageAttempt(attempt)) return;
                 attempt.settled = true;
-                failImageScene(errorText(err));
+                failImageScene(errorText(err), attempt.load.phase);
             }
         );
     }
@@ -1591,6 +1865,7 @@
             return;
         }
         if (outcome !== "painted") {
+            reportRender("failed", outcome === "transform" ? "transform" : "surface");
             /*
              * No surface to paint on, or a mapping that makes no sense
              * yet — a canvas we cannot get, a viewport mid-change. That is
@@ -1603,14 +1878,15 @@
             return;
         }
         if (imageStatus === "loading") drawLoadingBanner(vp);
+        else if (entry.key === desc.key) imagePainted = true;
     }
 
     /*
-     * Centered cover of the WHOLE wall, drawn in wall coordinates under the
+     * Centered fit of the WHOLE wall, drawn in wall coordinates under the
      * very transform the calibration pattern uses — the visible rect mapped
      * onto this viewport, then clipped to it.
      *
-     * The cover rectangle depends only on the wall size and the image's
+     * The fit rectangle depends only on the wall size, fit and the image's
      * intrinsic size, so every tablet derives the identical rectangle and
      * the seams line up. Covering into each tablet's own visible rect instead
      * would hand every tablet a different scale (PROTOCOL.md "Fit").
@@ -1668,32 +1944,37 @@
             );
         } catch (err) {
             warn("physical transform failed", err);
-            return "surface";
+            return "transform";
         }
         var ctx = view.ctx;
         var dpr = view.dpr;
-        ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
-        ctx.beginPath();
-        ctx.rect(
-            result.clip.x,
-            result.clip.y,
-            result.clip.width,
-            result.clip.height
-        );
-        ctx.clip();
-        ctx.fillStyle = PATTERN.background;
-        ctx.fillRect(0, 0, vp.w, vp.h);
-        var m = result.matrix;
-        ctx.setTransform(
-            m[0] * dpr,
-            m[1] * dpr,
-            m[2] * dpr,
-            m[3] * dpr,
-            m[4] * dpr,
-            m[5] * dpr
-        );
-        ctx.drawImage(entry.source, 0, 0, iw, ih);
-        ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+        var dprY = view.dprY;
+        ctx.save();
+        try {
+            ctx.setTransform(dpr, 0, 0, dprY, 0, 0);
+            ctx.fillStyle = entry.background || PATTERN.background;
+            ctx.fillRect(0, 0, vp.w, vp.h);
+            ctx.beginPath();
+            ctx.rect(
+                result.clip.x,
+                result.clip.y,
+                result.clip.width,
+                result.clip.height
+            );
+            ctx.clip();
+            var m = result.matrix;
+            ctx.setTransform(
+                m[0] * dpr,
+                m[1] * dprY,
+                m[2] * dpr,
+                m[3] * dprY,
+                m[4] * dpr,
+                m[5] * dprY
+            );
+            ctx.drawImage(entry.source, 0, 0, iw, ih);
+        } finally {
+            ctx.restore();
+        }
         return "painted";
     }
 
@@ -1703,7 +1984,7 @@
         var view = prepareCanvas(vp.w, vp.h);
         if (!view) return;
         var ctx = view.ctx;
-        ctx.setTransform(view.dpr, 0, 0, view.dpr, 0, 0);
+        ctx.setTransform(view.dpr, 0, 0, view.dprY, 0, 0);
         ctx.fillStyle = PATTERN.background;
         ctx.fillRect(0, 0, vp.w, vp.h);
         var unit = Math.min(vp.w, vp.h);
@@ -1720,7 +2001,7 @@
             ? wallState.physical.calibration.reason || ""
             : "";
         ctx.fillText(reason, vp.w / 2, vp.h / 2 + size * 0.55);
-        drawDeviceBadge(ctx, vp, view.dpr);
+        drawDeviceBadge(ctx, vp, view.dpr, view.dprY);
     }
 
     function drawWallImage(vp, entry) {
@@ -1740,37 +2021,41 @@
 
         var scale = Math.max(vp.w / visible.w, vp.h / visible.h);
         if (!Number.isFinite(scale) || scale <= 0) return "surface";
-        var k = scale * view.dpr; /* wall unit -> device pixel */
+        var k = scale * view.dpr; /* wall unit -> backing pixel */
+        var ky = scale * view.dprY;
         var ctx = view.ctx;
         /* Centred cover of the visible rect onto the viewport, exactly as
          * the calibration mapping: rect centre to viewport centre, overflow
          * cropped equally on all sides. */
         var ox = (visible.w - vp.w / scale) / 2;
         var oy = (visible.h - vp.h / scale) / 2;
-        ctx.setTransform(k, 0, 0, k, -(visible.x + ox) * k, -(visible.y + oy) * k);
+        ctx.setTransform(k, 0, 0, ky, -(visible.x + ox) * k, -(visible.y + oy) * ky);
 
         var W = wallState.width;
         var H = wallState.height;
 
-        /* max(W/iw, H/ih), centred: the overflow is cropped equally on both
-         * sides, and the clip below crops whatever falls outside this
-         * device's visible rect. */
-        var s = Math.max(W / iw, H / ih);
+        /* Fit once to the whole wall; only the clip is device-specific. */
+        var s = entry.fit === "contain"
+            ? Math.min(W / iw, H / ih)
+            : Math.max(W / iw, H / ih);
         var dw = iw * s;
         var dh = ih * s;
         var dx = (W - dw) / 2;
         var dy = (H - dh) / 2;
 
         ctx.save();
-        ctx.beginPath();
-        ctx.rect(visible.x, visible.y, visible.w, visible.h);
-        ctx.clip();
-        /* Opaque underneath: a partially transparent source must never show
-         * the previous frame's pixels through it. */
-        ctx.fillStyle = PATTERN.background;
-        ctx.fillRect(visible.x, visible.y, visible.w, visible.h);
-        ctx.drawImage(entry.source, dx, dy, dw, dh);
-        ctx.restore();
+        try {
+            ctx.beginPath();
+            ctx.rect(visible.x, visible.y, visible.w, visible.h);
+            ctx.clip();
+            /* Opaque underneath: a partially transparent source must never show
+             * the previous frame's pixels through it. */
+            ctx.fillStyle = entry.background || PATTERN.background;
+            ctx.fillRect(visible.x, visible.y, visible.w, visible.h);
+            ctx.drawImage(entry.source, dx, dy, dw, dh);
+        } finally {
+            ctx.restore();
+        }
         return "painted";
     }
 
@@ -1779,7 +2064,7 @@
         var view = prepareCanvas(vp.w, vp.h);
         if (!view) return;
         var ctx = view.ctx;
-        ctx.setTransform(view.dpr, 0, 0, view.dpr, 0, 0);
+        ctx.setTransform(view.dpr, 0, 0, view.dprY, 0, 0);
 
         var unit = Math.min(vp.w, vp.h);
         var bandH = Math.max(44, unit * 0.18);
@@ -1836,7 +2121,7 @@
         var view = prepareCanvas(vp.w, vp.h);
         if (!view) return;
         var ctx = view.ctx;
-        ctx.setTransform(view.dpr, 0, 0, view.dpr, 0, 0);
+        ctx.setTransform(view.dpr, 0, 0, view.dprY, 0, 0);
 
         ctx.fillStyle = PATTERN.background;
         ctx.fillRect(0, 0, vp.w, vp.h);
@@ -1945,9 +2230,10 @@
         if (
             heldRevision !== null &&
             generation === heldGeneration &&
-            revision <= heldRevision
+            (revision < heldRevision || (revision === heldRevision &&
+                (!frame.token || frame.render_seq <= heldRenderSeq)))
         ) {
-            retryFailedImage(image);
+            if (!frame.token) retryFailedImage(image);
             return false;
         }
 
@@ -1957,6 +2243,8 @@
         var previousPlacement = placementSignature(persistedWall);
         heldRevision = revision;
         heldGeneration = generation;
+        heldRenderSeq = frame.render_seq || 0;
+        installRenderInstruction(frame);
         var state = {
             width: width,
             height: height,
@@ -1977,7 +2265,7 @@
         } else {
             refreshHud(state);
         }
-        if (playbackOnScreen) return true;
+        if (playbackOnScreen) { reportRender("blocked", "playback"); return true; }
         wallState = state;
         /* Image scenes carry asynchronous work: reconcile it with the frame
          * we just accepted — it starts the load, and paints the outcome if
@@ -2030,8 +2318,9 @@
         ) {
             return false;
         }
+        var matchesViewport = physicalViewportMatches(frame.calibration);
         var plan =
-            frame.plan && frame.calibration && frame.calibration.status === "valid"
+            !visualZoomed() && matchesViewport && frame.plan && frame.calibration && frame.calibration.status === "valid"
                 ? frame.plan
                 : null;
         if (heldGeneration !== null && generation !== heldGeneration) {
@@ -2041,6 +2330,7 @@
         heldRevision = revision;
         heldGeneration = generation;
         heldRenderSeq = sequence;
+        installRenderInstruction(frame);
         var renderState = {
             width: width,
             height: height,
@@ -2052,8 +2342,13 @@
             placement: null,
             visible: plan ? { x: 0, y: 0, w: width, h: height } : null,
             physical: {
+                blockedReason: frame.plan && !matchesViewport ? "viewport" : "calibration",
                 plan: plan,
-                calibration: frame.calibration || {},
+                calibration: visualZoomed()
+                    ? { reason: "Zoom changed. Return to the calibrated zoom." }
+                    : frame.plan && !matchesViewport
+                    ? { reason: "Viewport changed. Waiting for calibration." }
+                    : frame.calibration || {},
                 slot: frame.slot || null,
             },
         };
@@ -2066,7 +2361,7 @@
         } else {
             refreshHud(renderState);
         }
-        if (playbackOnScreen) return true;
+        if (playbackOnScreen) { reportRender("blocked", "playback"); return true; }
         wallState = renderState;
         if (!syncImageScene()) render();
         return true;
@@ -2085,12 +2380,32 @@
     var reportedSignature = JSON.stringify(viewportReport());
 
     function onViewportChange() {
-        render();
-
         var size = window.innerWidth + "x" + window.innerHeight;
         var signature = JSON.stringify(viewportReport());
-        if (signature === reportedSignature) return;
+        if (signature === reportedSignature) {
+            render();
+            return;
+        }
         reportedSignature = signature;
+        if ((wallState && wallState.physical) || (persistedWall && persistedWall.physical)) {
+            if (wallState && wallState.physical) {
+                wallState.physical.plan = null;
+                wallState.physical.calibration = { reason: "Viewport changed. Waiting for calibration." };
+            }
+            if (persistedWall && persistedWall.physical) {
+                persistedWall.physical.plan = null;
+                persistedWall.physical.calibration = { reason: "Viewport changed. Waiting for calibration." };
+            }
+            stopPlayback();
+        }
+        ++paintSequence;
+        if (imageAttempt) {
+            imageAttempt.settled = true;
+            releaseLoad(imageAttempt.load);
+            imageAttempt = null;
+        }
+        if (wallState && wallState.contentType === "image" && wallState.visible) syncImageScene();
+        render();
         // The socket path is what produces a new physical plan; a change that
         // keeps the same CSS size (a 180-degree flip) only shows up here.
         sendViewport();
@@ -2104,12 +2419,15 @@
             reportedSize = current;
             // Best effort only: a failed re-registration must not tear down a
             // healthy socket. The next connect attempt re-registers anyway.
-            register().catch(function () {});
+            if (!identityReplaced && !authPaused) register().catch(function () {});
         }, RESIZE_REREGISTER_MS);
     }
 
     window.addEventListener("resize", onViewportChange);
     window.addEventListener("orientationchange", onViewportChange);
+    if (window.visualViewport && window.visualViewport.addEventListener) {
+        window.visualViewport.addEventListener("resize", onViewportChange);
+    }
 
     /*
      * Tap-to-retry, which the failure panel promises. It listens on the
@@ -2233,13 +2551,13 @@
     function orientationAngle() {
         if (typeof screen !== "undefined" && screen && screen.orientation &&
             Number.isFinite(screen.orientation.angle)) {
-            return screen.orientation.angle;
+            return ((screen.orientation.angle % 360) + 360) % 360;
         }
-        return typeof window.orientation === "number" ? window.orientation : 0;
+        return typeof window.orientation === "number" ? ((window.orientation % 360) + 360) % 360 : 0;
     }
 
     function launchMode() {
-        if (document.fullscreenElement) return "fullscreen";
+        if (fullscreenElement()) return "fullscreen";
         if (
             typeof window.matchMedia === "function" &&
             window.matchMedia("(display-mode: standalone)").matches
@@ -2249,13 +2567,29 @@
         return "tab";
     }
 
+    function visualZoomed() {
+        return !!(window.visualViewport && Math.abs(window.visualViewport.scale - 1) > 0.001);
+    }
+
+    function physicalViewportMatches(calibration) {
+        if (!calibration) return false;
+        var live = viewportReport();
+        return Math.abs(calibration.viewport_width - live.width) <= 1 &&
+            Math.abs(calibration.viewport_height - live.height) <= 1 &&
+            (calibration.dpr === undefined || Math.abs(calibration.dpr - live.dpr) <= 0.02) &&
+            (calibration.orientation === undefined || calibration.orientation === live.orientation) &&
+            (calibration.mode === undefined || calibration.mode === live.mode);
+    }
+
     function viewportReport() {
+        var visual = visualZoomed() ? window.visualViewport : null;
         return {
-            width: window.innerWidth,
-            height: window.innerHeight,
+            width: visual ? visual.width : window.innerWidth,
+            height: visual ? visual.height : window.innerHeight,
             dpr: window.devicePixelRatio || 1,
             orientation: orientationAngle(),
             mode: launchMode(),
+            visual_scale: window.visualViewport && window.visualViewport.scale || 1,
         };
     }
 
@@ -2276,7 +2610,8 @@
             "&h=" + Math.round(report.height) +
             "&dpr=" + encodeURIComponent(report.dpr) +
             "&orientation=" + encodeURIComponent(report.orientation) +
-            "&mode=" + encodeURIComponent(report.mode)
+            "&mode=" + encodeURIComponent(report.mode) +
+            "&visual_scale=" + encodeURIComponent(report.visual_scale)
         );
     }
 
@@ -2308,6 +2643,13 @@
             ms = DEFAULT_HEARTBEAT_MS;
         }
         heartbeatTimer = setInterval(function () {
+            if (socket !== activeSocket) return;
+            if (performance.now() - lastSocketActivity >= 15000) {
+                retireSocket(socket);
+                return;
+            }
+            refreshRenderReport();
+            if (clockRefreshTimer === null) sendClockSample();
             wakeLock.retry();
             try {
                 if (socket.readyState === WebSocket.OPEN) {
@@ -2512,7 +2854,8 @@
         var analysis = analyzeImageContent({
             asset: asset.id,
             url: asset.url,
-            fit: "cover",
+            fit: asset.fit === undefined ? "cover" : asset.fit,
+            background: asset.background,
             intrinsicWidth: asset.intrinsicWidth,
             intrinsicHeight: asset.intrinsicHeight,
         });
@@ -2520,6 +2863,8 @@
     }
 
     function handlePrepare(frame) {
+        if (visualZoomed()) return;
+        if (frame.calibration && !physicalViewportMatches(frame.calibration)) return;
         if (isVideoPrepare(frame)) {
             prepareVideo(frame);
             return;
@@ -2612,6 +2957,8 @@
         releaseImageCache();
         imageCache = {
             key: prepared.content.key,
+            fit: prepared.content.fit,
+            background: prepared.content.background,
             source: prepared.image,
             iw: prepared.content.iw || prepared.image.naturalWidth,
             ih: prepared.content.ih || prepared.image.naturalHeight,
@@ -4277,8 +4624,19 @@
         /* A replaced socket is history: its queued frames must not start,
          * paint or freeze work the new connection owns. */
         if (socket !== activeSocket) return;
+        lastSocketActivity = performance.now();
+        if ((frame.type === "wall" || frame.type === "render") && frame.token && !validRenderToken(frame)) return;
 
         if (frame.type === "welcome") {
+            clearIdentify();
+            lastIdentifyCommand = null;
+            lastIdentifyServerMs = -Infinity;
+            clockPending = {};
+            connectionId = typeof frame.connection_id === "string" ? frame.connection_id : null;
+            renderInstruction = null;
+            reportSequence = 0;
+            heldRevision = null;
+            heldRenderSeq = 0;
             welcomedOnce = true;
             var number = Number(frame.number);
             deviceNumber = deviceNumberValid(number) ? number : null;
@@ -4296,6 +4654,8 @@
             }
             showHud();
             onWelcome();
+        } else if (frame.type === "identify") {
+            showIdentify(frame);
         } else if (frame.type === "set_color") {
             applyColor(frame.color);
         } else if (frame.type === "wall") {
@@ -4354,6 +4714,7 @@
             try {
                 socket = new WebSocket(deviceSocketUrl());
                 activeSocket = socket;
+                lastSocketActivity = performance.now();
             } catch (err) {
                 warn("could not open websocket", err);
                 resolve({ welcomed: false, code: null });
@@ -4373,9 +4734,21 @@
                 // A close event always follows; nothing to do here.
             });
 
-            socket.addEventListener("close", function (event) {
-                stopHeartbeat();
+            var finished = false;
+            function finish(event) {
+                if (finished) return;
+                finished = true;
+                clearTimeout(welcomeTimer);
                 if (activeSocket === socket) {
+                    if (event && event.code === 4409) identityReplaced = true;
+                    closeOwnedSocket = null;
+                    stopHeartbeat();
+                    clearIdentify();
+                    renderInstruction = null;
+                    ++paintSequence;
+                    invalidateImageScene();
+                    connectionId = null;
+                    clockPending = {};
                     activeSocket = null;
                     socketConnected = false;
                     refreshHud();
@@ -4385,6 +4758,14 @@
                     welcomed: welcomed,
                     code: event && typeof event.code === "number" ? event.code : null,
                 });
+            }
+            closeOwnedSocket = finish;
+            socket.addEventListener("close", finish);
+            var welcomeTimer = setTimeout(function () {
+                if (!welcomed && socket === activeSocket) retireSocket(socket);
+            }, REGISTER_TIMEOUT_MS);
+            socket.addEventListener("message", function () {
+                if (welcomed || finished) clearTimeout(welcomeTimer);
             });
         });
     }
@@ -4423,10 +4804,10 @@
             })
             .catch(function (err) {
                 warn("connection attempt failed", err);
-                return { welcomed: false, code: null };
+                return { welcomed: false, code: null, auth: !!err.auth };
             })
             .then(function (outcome) {
-                setStatus(welcomedOnce ? "reconnecting" : "offline");
+                if (!authPaused) setStatus(welcomedOnce ? "reconnecting" : "offline");
                 return outcome;
             });
     }
@@ -4441,12 +4822,17 @@
                 setStatus(welcomedOnce ? "reconnecting" : "offline");
                 outcome = { welcomed: false, code: null };
             }
+            if (authPaused) {
+                await new Promise(function () {});
+            }
             if (outcome && outcome.code === 4409) {
+                identityReplaced = true;
                 // Another page owns this tablet identity. Do not take it back
                 // on a timer: stop here until someone asks for it explicitly.
                 setStatus("replaced");
                 setReplaced(true);
                 await waitForTakeover();
+                identityReplaced = false;
                 setStatus("connecting");
             }
             await sleep(nextDelay());

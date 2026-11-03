@@ -49,6 +49,8 @@ expect_ws() {
 
 # Allowed tablet routes (invalid registration payload proves it reached the
 # app without actually creating/overwriting a tablet identity).
+expect 308 "$TABLET_ORIGIN/client"
+expect 200 -L "$TABLET_ORIGIN/client"
 expect 200 "$TABLET_ORIGIN/client/"
 expect 422 -X POST -H 'Content-Type: application/json' --data '{}' \
     "$TABLET_ORIGIN/devices/register"
@@ -59,6 +61,7 @@ expect_ws 101 "$TABLET_ORIGIN/ws/device?device_id=00000000-0000-4000-8000-000000
 # must hit the tablet origin's default-deny branch before it reaches FastAPI.
 for route in / /controller/ /ws/controller /wall /devices /assets \
     /layouts /scenes /docs /openapi.json /operator-config /diagnostics /media \
+    /auth/logout /auth/logout/ /auth/login/ \
     '/%77all' '/./wall' '/x/../wall' '//wall' '/client/%2e%2e/controller/' \
     '/client/..%2fwall' '/client/%2e%2e%2fwall' \
     '/client/%252e%252e/wall' '/client/..%5cwall' \
@@ -66,6 +69,11 @@ for route in / /controller/ /ws/controller /wall /devices /assets \
     "/assets/sha256:$(printf '0%.0s' {1..64})/../wall"; do
     expect 403 "$TABLET_ORIGIN$route"
 done
+# Only GET/POST /auth/login and POST /auth/logout are allowed. Wrong methods
+# and near-miss paths must hit the default-deny branch.
+expect 403 -X PUT -H 'Content-Type: application/x-www-form-urlencoded' \
+    --data 'token=x' "$TABLET_ORIGIN/auth/login"
+expect 403 -X DELETE "$TABLET_ORIGIN/auth/login"
 expect 403 -X PUT -H 'Content-Type: application/json' --data '{"width":5}' \
     "$TABLET_ORIGIN/wall"
 expect 403 -X POST "$TABLET_ORIGIN/wall/auto"
@@ -84,6 +92,7 @@ expect 403 -X POST "$TABLET_ORIGIN/scenes/Probe/recall"
 expect 403 -X DELETE "$TABLET_ORIGIN/scenes/Probe"
 expect 403 -X GET "$TABLET_ORIGIN/devices/register"
 expect 403 -X POST "$TABLET_ORIGIN/client/"
+expect 403 -X POST "$TABLET_ORIGIN/client"
 expect_ws 403 "$TABLET_ORIGIN/ws/controller?protocol=2"
 
 # The operator listener must authenticate reads, writes AND websocket upgrade.

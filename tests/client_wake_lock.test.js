@@ -118,6 +118,7 @@ function createHarness(opts = {}) {
         setInterval,
         clearInterval,
         Date: FakeDate,
+        performance,
         URL,
         fetch(url, options) {
             fetchLog.push({ url, body: options && options.body ? JSON.parse(options.body) : null });

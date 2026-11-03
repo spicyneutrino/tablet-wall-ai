@@ -48,7 +48,7 @@ SUPPORTED_PROTOCOLS = (1, 2, 3)
 # with the curated-asset endpoints (PROTOCOL.md "Still images"); a client only
 # sees image content after it advertises the matching cap.
 SERVER_CAPS = ["calibration", "image"]
-SERVER_CAPS_V3 = ["calibration", "image", "physical"]
+SERVER_CAPS_V3 = ["calibration", "image", "physical", "render_ack", "identify", "image_contain"]
 
 # Still images (PROTOCOL.md "Still images"): a content ID is ``sha256:`` plus
 # the lowercase SHA-256 of the file bytes, and the URL a descriptor carries is
@@ -57,8 +57,8 @@ SERVER_CAPS_V3 = ["calibration", "image", "physical"]
 ASSET_ID_PREFIX = "sha256:"
 _ASSET_ID_PATTERN = re.compile(r"sha256:[0-9a-f]{64}")
 
-# Only ``cover`` is currently supported, and it is matched exactly.
-SUPPORTED_FITS = ("cover",)
+# Global image fits are matched exactly.
+SUPPORTED_FITS = ("cover", "contain")
 DEFAULT_FIT = "cover"
 
 # Named save/recall: one pattern decides whether a path segment is a name at

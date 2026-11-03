@@ -1,10 +1,12 @@
 """Version 3 physical negotiation, render plan, and legacy fences (R2)."""
 
+import asyncio
 import hashlib
 import json
 import os
 from io import BytesIO
 from pathlib import Path
+from types import SimpleNamespace
 
 import pytest
 from fastapi.testclient import TestClient
@@ -127,6 +129,61 @@ def test_v3_render_plan_matches_the_hand_derived_matrix():
         )["matrix"]
         for actual, wanted in zip(matrix, expected):
             assert abs(actual - wanted) < 1e-9
+
+
+@pytest.mark.parametrize("caps", ["physical", "calibration,physical", ""])
+def test_physical_image_is_not_sent_without_advertised_support(caps):
+    with TestClient(main.app) as client:
+        setup_measurement()
+        setup_scene(client)
+        switch_physical(client)
+        with client.websocket_connect(device_url(
+            w=600, h=800, dpr=1.25, orientation=0, mode="fullscreen", caps=caps
+        )) as socket:
+            socket.receive_json()
+            socket.receive_json()
+            frame = socket.receive_json()
+        assert frame["scene"]["content"] == {"type": "color"}
+        assert frame["plan"] is None
+        assert frame["calibration"]["reason"] == "tablet does not advertise image support"
+
+
+def test_unplaced_physical_device_reports_the_missing_slot_before_capability():
+    with TestClient(main.app) as client:
+        setup_scene(client)
+        response = client.put("/api/v3/layout", json={
+            "bounds": {"x": 0, "y": 0, "width": 100, "height": 100}, "slots": {},
+        }, headers={"If-Match": client.get("/api/v3/config").json()["etag"]})
+        assert response.status_code == 200
+        with client.websocket_connect(device_url(caps="physical")) as socket:
+            socket.receive_json()
+            socket.receive_json()
+            frame = socket.receive_json()
+        assert frame["calibration"]["reason"] == "no physical slot"
+        assert frame["scene"]["content"] == {"type": "color"}
+        assert frame["plan"] is None
+
+
+@pytest.mark.parametrize("caps, allowed", [([], False), (["physical"], False), (["image", "physical"], True)])
+def test_prepared_image_requires_advertised_image_support(monkeypatch, caps, allowed):
+    main.devices[DEVICE] = {"caps": caps}
+    main.device_sockets[DEVICE] = object()
+    monkeypatch.setattr(main, "_asset_descriptor", lambda _: {
+        "mime": "image/png", "intrinsicWidth": 200, "intrinsicHeight": 100,
+    })
+    monkeypatch.setattr(main, "_physical_plan_for", lambda *args: ({}, {}))
+    sent = []
+
+    async def send(socket, frame):
+        sent.append(frame)
+
+    monkeypatch.setattr(main, "_send_to", send)
+    pending = SimpleNamespace(asset="fixture", leases={}, as_frame=lambda: {})
+    session = SimpleNamespace(cohort=[DEVICE], lineage=lambda: {})
+    assert asyncio.run(main._send_prepare(session, pending, DEVICE)) is allowed
+    assert len(sent) == int(allowed)
+    if sent:
+        assert sent[0]["type"] == "prepare"
 
 
 def test_a_stale_viewport_gets_no_physical_claim():

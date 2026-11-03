@@ -6,6 +6,14 @@ The report proves what the **kit** did. It never changes a hardware gate:
 `hardware_gate_status` is always `MISSING` and `hardware_claim` is always
 `false` unless an operator records separate physical evidence.
 
+The aggregate TWR-17 image-wall operator trial uses a separate
+[trial record contract](../tablet-wall-readiness/HARDWARE-ACCEPTANCE.md#trial-record-contract)
+and [JSON template](../tablet-wall-readiness/TWR-17-TRIAL-RECORD.template.json).
+It records signed observations and reasoned not-run rows across several gates.
+This kit schema continues to describe individual tool executions; its `completion`
+field is not the aggregate trial's verdict. Do not add an invented kit gate or
+silently map an operator's not-run result to a passed scenario.
+
 ## Required fields
 
 | Field | Meaning |

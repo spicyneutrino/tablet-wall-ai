@@ -93,9 +93,19 @@
         wallRev: document.getElementById("wall-rev"),
         wallGen: document.getElementById("wall-gen"),
         wallNote: document.getElementById("wall-note"),
+        btnWallSizeSettings: document.getElementById("btn-wall-size-settings"),
+        btnFitWallTablets: document.getElementById("btn-fit-wall-tablets"),
         wallForm: document.getElementById("wall-form"),
         wallWidth: document.getElementById("wall-width"),
         wallHeight: document.getElementById("wall-height"),
+        wallSizingMode: document.getElementById("wall-sizing-mode"),
+        wallPadding: document.getElementById("wall-padding"),
+        wallSizingHelp: document.getElementById("wall-sizing-help"),
+        packColumns: document.getElementById("pack-columns"),
+        packGap: document.getElementById("pack-gap"),
+        packControls: document.getElementById("pack-controls"),
+        btnPack: document.getElementById("btn-pack"),
+        packStatus: document.getElementById("pack-status"),
         wallContent: document.getElementById("wall-content"),
         wallContentState: document.getElementById("wall-content-state"),
         contentNow: document.getElementById("content-now"),
@@ -149,6 +159,7 @@
         empty: document.getElementById("empty"),
         emptyConn: document.getElementById("empty-conn"),
         clientUrl: document.getElementById("client-url"),
+        clientUrlLabel: document.getElementById("client-url-label"),
         btnCopyUrl: document.getElementById("btn-copy-url"),
         statusStamp: document.getElementById("status-stamp"),
         statusText: document.getElementById("status-text"),
@@ -315,6 +326,9 @@
     /** True while the wall form holds unsaved dimension edits, so an incoming
      *  `wall_updated` cannot overwrite what the operator is typing. */
     let wallDirty = false;
+    let wallBusy = false;
+    let packBusy = false;
+    let packDefaultsMode = null;
 
     /** Scene content chosen in the control but not yet confirmed by the
      *  server's PUT /scene response (or its `wall_updated` echo). */
@@ -386,7 +400,7 @@
      * the validated address to show and copy, or null while none is known
      * or the answer could not be trusted. */
     let tabletUrl = null;
-    let tabletUrlState = "pending"; // "pending" | "ready" | "unavailable"
+    let tabletUrlState = "pending"; // "pending" | "ready" | "local" | "unavailable"
     let tabletUrlReason = null;     // why it is unavailable; null otherwise
 
     /* ------------------------------------------------------------------ *
@@ -496,6 +510,7 @@
         return {
             width: Math.max(0, Math.round(numOr(raw.width, 0))),
             height: Math.max(0, Math.round(numOr(raw.height, 0))),
+            sizing: window.ControllerGeometry.normalizeSizing(raw.sizing),
             contentType: sceneContentType(raw),
             content: sceneContent(raw),
             generation: typeof raw.generation === "string" ? raw.generation : null,
@@ -574,10 +589,10 @@
             /* "close" always follows; let that drive the retry. */
         });
 
-        socket.addEventListener("close", function () {
+        socket.addEventListener("close", async function () {
             if (ws !== socket) return;
             ws = null;
-            scheduleReconnect();
+            if (await compatibilityAllowed()) scheduleReconnect();
         });
     }
 
@@ -1063,7 +1078,8 @@
 
         if (stage.wallDimensions) {
             stage.wallDimensions.textContent = wall
-                ? wall.width + " × " + wall.height + " units"
+                ? wall.width + " × " + wall.height + " units · " +
+                    (wall.sizing.mode === "tablets" ? "Fits tablets" : "Fixed size")
                 : "Waiting for the server";
         }
 
@@ -1084,7 +1100,10 @@
             if (document.activeElement !== el.wallHeight) {
                 el.wallHeight.value = String(wall.height);
             }
+            if (el.wallSizingMode) el.wallSizingMode.value = wall.sizing.mode;
+            if (el.wallPadding) el.wallPadding.value = String(wall.sizing.padding);
         }
+        renderWallSizingControls();
         // The scene control follows the server too, except while a choice is
         // still in flight (it is sent immediately, not on form submit).
         if (wall && pendingContent === null) {
@@ -1235,15 +1254,59 @@
     }
 
     function setWallControlsEnabled(on) {
+        const fitted = wall && wall.sizing.mode === "tablets";
         el.wallWidth.disabled = !on;
         el.wallHeight.disabled = !on;
-        el.btnWallSave.disabled = !on;
-        el.autoColumns.disabled = !on;
-        el.btnAuto.disabled = !on;
+        el.wallSizingMode.disabled = !on || wallBusy;
+        el.wallPadding.disabled = !on || wallBusy;
+        el.btnWallSave.disabled = !on || wallBusy;
+        el.autoColumns.disabled = !on || fitted;
+        el.btnAuto.disabled = !on || fitted;
+        el.btnAuto.title = fitted ? "Use Pack placed tablets while fitting the wall." : "";
         if (!el.wallContent) return;
         for (const button of el.wallContent.querySelectorAll(".seg-opt")) {
             button.disabled = !on;
         }
+    }
+
+    function renderWallSizingControls() {
+        if (!el.wallSizingMode || !wall) return;
+        const tabletsMode = el.wallSizingMode.value === "tablets";
+        el.wallWidth.readOnly = tabletsMode;
+        el.wallHeight.readOnly = tabletsMode;
+        el.btnWallSave.textContent = tabletsMode ? "Save sizing" : "Save size";
+        el.btnWallSave.disabled = wallBusy || !wallReady();
+        if (el.btnFitWallTablets) {
+            const alreadyFitted = wall.sizing.mode === "tablets" && wall.sizing.padding === 0;
+            el.btnFitWallTablets.disabled = wallBusy || !wallReady() || alreadyFitted;
+        }
+        const placedCount = Object.keys(wall.placements || {}).length;
+        if (el.wallPadding && el.wallPadding.closest) {
+            const field = el.wallPadding.closest("label");
+            if (field) field.hidden = !tabletsMode;
+        }
+        if (el.packControls) el.packControls.hidden = !tabletsMode;
+        if (el.wallSizingHelp) {
+            el.wallSizingHelp.textContent = tabletsMode
+                ? "The wall follows every placed footprint, including offline reservations. Dimensions update when placements change."
+                : "Size changes keep each footprint at its current coordinates.";
+        }
+        if (tabletsMode && packDefaultsMode !== "tablets" && el.packColumns) {
+            el.packColumns.value = String(Math.max(1, Math.ceil(Math.sqrt(placedCount || 1))));
+        }
+        packDefaultsMode = tabletsMode ? "tablets" : "fixed";
+        if (el.btnPack) {
+            el.btnPack.disabled = !tabletsMode || wall.sizing.mode !== "tablets"
+                || wallDirty || !placedCount || packBusy || wallBusy;
+        }
+        if (el.packStatus && tabletsMode && wallDirty) {
+            el.packStatus.textContent = "Save sizing before packing.";
+        } else if (el.packStatus && el.packStatus.textContent === "Save sizing before packing.") {
+            el.packStatus.textContent = "";
+        }
+        if (el.packColumns) el.packColumns.disabled = !tabletsMode || !placedCount || packBusy || wallBusy;
+        if (el.packGap) el.packGap.disabled = !tabletsMode || !placedCount || packBusy || wallBusy;
+        renderStageHistory();
     }
 
     /* ------------------------------------------------------------------ *
@@ -1291,9 +1354,9 @@
             }
             const capsKnown = Array.isArray(device.caps);
             const caps = capsKnown ? device.caps : [];
-            const hasImage = device.protocol === 2 && caps.indexOf("image") !== -1;
+            const hasImage = (device.protocol === 2 || device.protocol === 3) && caps.indexOf("image") !== -1;
             const lacksImage = device.protocol === 1 ||
-                (device.protocol === 2 && capsKnown && !hasImage);
+                ((device.protocol === 2 || device.protocol === 3) && capsKnown && !hasImage);
             if (device.online === true) {
                 // A v1 socket receives no wall frame, regardless of caps.
                 // Missing protocol/caps is unknown, not proof of fallback.
@@ -1378,8 +1441,8 @@
      * The capability chip in a tile's meta row — shown only while the scene
      * is an image, which is when "this tablet cannot render it" means
      * anything. It reports what the tablet advertised, not whether the wall
-     * succeeded, and an empty `caps` list is called unknown rather than
-     * treated as a refusal.
+     * succeeded. Missing `caps` remain unknown; a reported list without
+     * `image` means no image support.
      */
     function renderCapChip(tile, device) {
         if (!tile.capChip) return;
@@ -1390,16 +1453,16 @@
 
         const capsKnown = Array.isArray(device.caps);
         const caps = capsKnown ? device.caps : [];
-        const hasImage = device.protocol === 2 && caps.indexOf("image") !== -1;
+        const hasImage = (device.protocol === 2 || device.protocol === 3) && caps.indexOf("image") !== -1;
         const lacksImage = device.protocol === 1 ||
-            (device.protocol === 2 && capsKnown && !hasImage);
+            ((device.protocol === 2 || device.protocol === 3) && capsKnown && !hasImage);
         const online = device.online === true;
 
         let kind;
         let text;
         if (online && hasImage) {
             kind = "ok";
-            text = "Shows images";
+            text = "Image capable";
         } else if (online && device.protocol === 1) {
             kind = "warn";
             text = "Old version";
@@ -1411,7 +1474,7 @@
             text = "Image support unknown";
         } else if (hasImage) {
             kind = "dim";
-            text = "Shows images";
+            text = "Image capable";
         } else if (device.protocol === 1) {
             kind = "dim";
             text = "Old version";
@@ -2216,8 +2279,9 @@
      * HTTP commands
      * ------------------------------------------------------------------ */
 
-    async function requestJson(method, path, body) {
+    async function requestJson(method, path, body, ifMatch) {
         const options = { method: method, headers: {} };
+        if (ifMatch) options.headers["If-Match"] = ifMatch;
         if (body !== undefined) {
             options.headers["Content-Type"] = "application/json";
             options.body = JSON.stringify(body);
@@ -2367,29 +2431,41 @@
      * ------------------------------------------------------------------ */
 
     async function saveWall() {
+        if (wallBusy) return;
+        const mode = el.wallSizingMode.value === "tablets" ? "tablets" : "fixed";
+        const padding = Number(el.wallPadding.value);
         const width = Number(el.wallWidth.value);
         const height = Number(el.wallHeight.value);
-        if (!Number.isInteger(width) || width < 1 || !Number.isInteger(height) || height < 1) {
+        if (!Number.isInteger(padding) || padding < 0) {
+            logStatus("Wall margin must be a non-negative whole number.", "err");
+            return;
+        }
+        if (mode === "fixed" && (!Number.isInteger(width) || width < 1 || !Number.isInteger(height) || height < 1)) {
             logStatus("Wall width and height must be positive whole numbers.", "err");
             return;
         }
         // Layout only: scene content goes to PUT /scene (see below), so the
         // two never share a request (PROTOCOL.md "Wall state").
-        el.btnWallSave.disabled = true;
+        wallBusy = true;
+        renderWallSizingControls();
         try {
-            const data = await requestJson("PUT", "/wall", {
-                width: width,
-                height: height
-            });
+            const body = { sizing: { mode: mode, padding: padding } };
+            if (mode === "fixed") {
+                body.width = width;
+                body.height = height;
+            }
+            const previousWall = wall;
+            const data = await requestJson("PUT", "/wall", body);
             const next = normalizeWall(data);
             if (next && next.width > 0 && next.height > 0) {
-                wall = next;
-            } else {
+                adoptWallState(next);
+            } else if (wall === previousWall) {
                 // Something other than a wall state came back; keep the
                 // operator's values and let `wall_updated` reconcile.
                 wall = {
                     width: width,
                     height: height,
+                    sizing: { mode: mode, padding: padding },
                     // No scene is known here (the response was not a wall
                     // state), so none is claimed.
                     contentType: wall ? wall.contentType : null,
@@ -2402,13 +2478,63 @@
             wallDirty = false;
             renderWall();
             logStatus(
-                "Wall size saved: " + wall.width + " × " + wall.height + " (revision " + wall.revision + ").",
+                (mode === "tablets" ? "Tablet-fit sizing saved: " : "Wall size saved: ") +
+                    wall.width + " × " + wall.height + " (revision " + wall.revision + ").",
                 "ok"
             );
         } catch (err) {
             logStatus("Could not save the wall size: " + err.message, "err");
         } finally {
+            wallBusy = false;
             renderWall();
+        }
+    }
+
+    function fitWallToTablets() {
+        if (wallBusy || !wallReady()) return;
+        el.wallSizingMode.value = "tablets";
+        el.wallPadding.value = "0";
+        wallDirty = false;
+        renderWallSizingControls();
+        saveWall();
+    }
+
+    function openWallSizeSettings() {
+        const mobile = typeof window.matchMedia === "function" &&
+            window.matchMedia("(max-width: 900px)").matches;
+        const tab = mobile
+            ? stage.mobileTabs.find(function (item) { return item.dataset.task === "saved"; })
+            : stage.contextTabs.find(function (item) { return item.dataset.contextTab === "layout"; });
+        if (tab) tab.click();
+        if (el.wallSizingMode) el.wallSizingMode.focus();
+    }
+
+    async function packPlacedTablets() {
+        if (packBusy || wallBusy || wallDirty || !wall || wall.sizing.mode !== "tablets" ||
+                !Object.keys(wall.placements || {}).length) return;
+        const columns = Number(el.packColumns.value);
+        const gap = Number(el.packGap.value);
+        if (!Number.isInteger(columns) || columns < 1 || !Number.isInteger(gap) || gap < 0) {
+            logStatus("Pack columns must be positive and gap must be a non-negative whole number.", "err");
+            return;
+        }
+        packBusy = true;
+        if (el.packStatus) el.packStatus.textContent = "Packing placed tablets…";
+        renderWallSizingControls();
+        try {
+            const next = normalizeWall(await requestJson("POST", "/wall/pack", { columns: columns, gap: gap }));
+            if (!next || !next.width || !next.height) throw new Error("The server did not return a wall layout.");
+            adoptWallState(next);
+            wallDirty = false;
+            if (el.packStatus) el.packStatus.textContent = "Placed tablets packed into " + columns + " columns.";
+            renderWall();
+            logStatus("Packed " + Object.keys(wall.placements).length + " placed tablets.", "ok");
+        } catch (err) {
+            if (el.packStatus) el.packStatus.textContent = "Pack failed: " + err.message;
+            logStatus("Could not pack placed tablets: " + err.message, "err");
+        } finally {
+            packBusy = false;
+            renderWallSizingControls();
         }
     }
 
@@ -2506,14 +2632,17 @@
 
         tile.el.dataset.busy = "true";
         try {
-            await requestJson(
+            const data = await requestJson(
                 "PUT",
                 "/devices/" + encodeURIComponent(deviceId) + "/placement",
                 placement
             );
-            // PROTOCOL.md only promises a 200 for this call, so mirror what
-            // we sent; the authoritative revision arrives with `wall_updated`.
-            if (wall) {
+            const next = normalizeWall(data);
+            if (next && next.width > 0 && next.height > 0) {
+                adoptWallState(next);
+            } else if (wall) {
+                // Older servers return an empty success; mirror the submitted
+                // placement and let `wall_updated` supply any derived layout.
                 const placements = Object.assign({}, wall.placements);
                 placements[deviceId] = placement;
                 wall.placements = placements;
@@ -2545,11 +2674,14 @@
 
         tile.el.dataset.busy = "true";
         try {
-            await requestJson(
+            const data = await requestJson(
                 "DELETE",
                 "/devices/" + encodeURIComponent(deviceId) + "/placement"
             );
-            if (wall) {
+            const next = normalizeWall(data);
+            if (next && next.width > 0 && next.height > 0) {
+                adoptWallState(next);
+            } else if (wall) {
                 const placements = Object.assign({}, wall.placements);
                 delete placements[deviceId];
                 wall.placements = placements;
@@ -2779,12 +2911,24 @@
             event.preventDefault();
             saveWall();
         });
+        if (el.btnFitWallTablets) el.btnFitWallTablets.addEventListener("click", fitWallToTablets);
+        if (el.btnWallSizeSettings) el.btnWallSizeSettings.addEventListener("click", openWallSizeSettings);
 
         const markWallDirty = function () {
             wallDirty = true;
+            renderWallSizingControls();
         };
         el.wallWidth.addEventListener("input", markWallDirty);
         el.wallHeight.addEventListener("input", markWallDirty);
+        el.wallSizingMode.addEventListener("change", function () {
+            wallDirty = true;
+            renderWallSizingControls();
+        });
+        el.wallPadding.addEventListener("input", function () {
+            wallDirty = true;
+            renderWallSizingControls();
+        });
+        el.btnPack.addEventListener("click", packPlacedTablets);
 
         /* Scene content: applied immediately via PUT /scene — it is not part
          * of the form submit, which only saves the dimensions. */
@@ -3049,7 +3193,7 @@
         el.btnCopyUrl.addEventListener("click", function () {
             // Disabled while no URL is known — guard anyway, so a stale or
             // synthetic click can never put the status text on the clipboard.
-            if (tabletUrl === null) return;
+            if (tabletUrl === null || tabletUrlState !== "ready") return;
             // navigator.clipboard is secure-context only — guard it.
             if (window.isSecureContext && navigator.clipboard && navigator.clipboard.writeText) {
                 navigator.clipboard.writeText(tabletUrl).then(
@@ -3155,7 +3299,7 @@
                     throw new Error("tablet_origin is not a usable http(s) URL");
                 }
             }
-            tabletUrlState = "ready";
+            tabletUrlState = window.ControllerUrl.isLoopbackOrigin(tabletUrl) ? "local" : "ready";
             tabletUrlReason = null;
         } catch (err) {
             tabletUrl = null;
@@ -3178,7 +3322,8 @@
     function renderTabletUrl() {
         const node = el.clientUrl;
         const button = el.btnCopyUrl;
-        if (tabletUrl !== null) {
+        if (tabletUrl !== null && tabletUrlState === "ready") {
+            el.clientUrlLabel.textContent = "Tablet address";
             node.textContent = tabletUrl;
             node.dataset.state = "ready";
             button.disabled = false;
@@ -3187,6 +3332,13 @@
         }
         button.disabled = true;
         node.dataset.state = tabletUrlState;
+        if (tabletUrlState === "local") {
+            el.clientUrlLabel.textContent = "This computer only";
+            node.textContent = "Local testing only: " + tabletUrl;
+            button.title = "This address only works on this computer. Start hotspot setup to get a tablet address.";
+            return;
+        }
+        el.clientUrlLabel.textContent = "Tablet address";
         if (tabletUrlState === "pending") {
             node.textContent = "Reading the address from the server…";
             button.title = "Waiting for GET /operator-config";
@@ -3238,7 +3390,25 @@
         runtime: { get wall() { return wall; }, get tileOrder() { return tileOrder; } }
     });
 
-    function init() {
+    async function compatibilityAllowed() {
+        const guard = document.getElementById("compatibility-guard");
+        const app = document.getElementById("app");
+        try {
+            const config = await requestJson("GET", "/api/v3/config");
+            if (config.layout && ["logical", undefined].includes(config.layout.kind)
+                    && (config.operator_state_version === undefined || config.operator_state_version === 1)) { guard.hidden = true; app.hidden = false; return true; }
+            document.getElementById("compatibility-guard-text").textContent = "This wall uses a measured layout. This compatibility editor is read-only. Open the Wall console to see the real arrangement and active content.";
+        } catch (error) {
+            document.getElementById("compatibility-guard-text").textContent = "The active layout could not be checked. " + error.message + ". Reload to retry, or open the Wall console. Editing is blocked until the layout kind is known.";
+        }
+        wall = null;
+        app.hidden = true; guard.hidden = false;
+        if (reconnectTimer) { clearTimeout(reconnectTimer); reconnectTimer = null; }
+        return false;
+    }
+
+    async function init() {
+        if (!await compatibilityAllowed()) return;
         buildGlobalPalette();
         bindEvents();
         initStage();

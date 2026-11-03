@@ -14,6 +14,31 @@ The separate [browser runner](#run-the-isolated-browser-experiment) executes
 real client JavaScript and checks canvas pixels. Both modes leave production
 application code and data unchanged.
 
+## Current image-wall acceptance
+
+From the repository root, with Chromium installed for the locked Playwright
+version, run the two image-first acceptance drivers:
+
+```bash
+uv sync --group dev --group browser
+uv run --group browser python -m simulator.browser.readiness_acceptance --artifacts /tmp/new-readiness-run
+uv run --group browser python -m simulator.browser.operator_accessibility --artifacts /tmp/new-accessibility-run
+```
+
+Each artifact directory must be new. The runners use private loopback servers,
+explicit isolated storage, and private browser contexts, and stop their processes
+afterwards. The feature runner also exercises backup/verify/restore into its
+artifact directory. Results include application commit, driver hash, checks,
+retained failures, screenshots and logs. The accessibility matrix checks normal,
+200% zoom and enlarged text at desktop and phone widths.
+
+The [feature record](../docs/tablet-wall-readiness/FEATURE-ACCEPTANCE.md) and
+[accessibility record](../docs/tablet-wall-readiness/ACCESSIBILITY-ACCEPTANCE.md)
+state the measured scope and limits. These are software browser checks, not
+physical-panel accuracy, OS sleep, optical synchronisation or soak evidence.
+Older playback runners below are separate experimental evidence, not the current
+images-only acceptance gate.
+
 ## Quick start
 
 From the repository root:

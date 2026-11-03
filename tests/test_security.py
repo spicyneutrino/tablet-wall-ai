@@ -102,7 +102,7 @@ class TestGuardInactiveWhenUnset:
         assert revision(client) > before
 
     def test_controller_socket_needs_no_origin(self, client):
-        with client.websocket_connect("/ws/controller") as controller:
+        with client.websocket_connect("ws://127.0.0.1/ws/controller") as controller:
             frame = controller.receive_json()
 
         assert frame["type"] == "snapshot"
@@ -112,7 +112,7 @@ class TestGuardInactiveWhenUnset:
         monkeypatch.setenv(main.OPERATOR_ORIGIN_ENV, "")
 
         assert client.post("/wall/auto").status_code == 200
-        with client.websocket_connect("/ws/controller") as controller:
+        with client.websocket_connect("ws://127.0.0.1/ws/controller") as controller:
             assert controller.receive_json()["type"] == "snapshot"
 
 
@@ -330,7 +330,7 @@ class TestControllerSocket:
 
     def test_missing_origin_is_rejected_with_403(self, guarded):
         with pytest.raises(WebSocketDenialResponse) as exc_info:
-            with guarded.websocket_connect("/ws/controller"):
+            with guarded.websocket_connect("ws://127.0.0.1/ws/controller"):
                 pass  # pragma: no cover - the handshake must not complete
 
         assert exc_info.value.status_code == 403
@@ -342,7 +342,7 @@ class TestControllerSocket:
     def test_non_matching_origin_is_rejected_with_403(self, guarded, origin):
         with pytest.raises(WebSocketDenialResponse) as exc_info:
             with guarded.websocket_connect(
-                "/ws/controller", headers={"Origin": origin}
+                "ws://127.0.0.1/ws/controller", headers={"Origin": origin}
             ):
                 pass  # pragma: no cover - the handshake must not complete
 
@@ -351,7 +351,7 @@ class TestControllerSocket:
     def test_rejected_handshake_registers_nothing(self, guarded):
         with pytest.raises(WebSocketDenialResponse):
             with guarded.websocket_connect(
-                "/ws/controller", headers={"Origin": HOSTILE_ORIGIN}
+                "ws://127.0.0.1/ws/controller", headers={"Origin": HOSTILE_ORIGIN}
             ):
                 pass  # pragma: no cover
 
@@ -360,7 +360,7 @@ class TestControllerSocket:
 
     def test_matching_origin_is_accepted_and_gets_the_snapshot(self, guarded):
         with guarded.websocket_connect(
-            "/ws/controller", headers={"Origin": OPERATOR_ORIGIN}
+            "ws://127.0.0.1/ws/controller", headers={"Origin": OPERATOR_ORIGIN}
         ) as controller:
             frame = controller.receive_json()
 
@@ -372,7 +372,7 @@ class TestControllerSocket:
         guarded.post("/devices/register", json=device_payload)
 
         with guarded.websocket_connect(
-            f"/ws/device?device_id={DEVICE_ID}",
+            "ws://127.0.0.1" + (f"/ws/device?device_id={DEVICE_ID}"),
             headers={"Origin": "https://tablet.wall.test"},
         ) as device:
             welcome = device.receive_json()
@@ -452,7 +452,7 @@ class TestMalformedConfiguration:
 
         with pytest.raises(WebSocketDenialResponse) as exc_info:
             with client.websocket_connect(
-                "/ws/controller", headers={"Origin": OPERATOR_ORIGIN}
+                "ws://127.0.0.1/ws/controller", headers={"Origin": OPERATOR_ORIGIN}
             ):
                 pass  # pragma: no cover
 

@@ -37,7 +37,7 @@ def headers(**extra):
 
 def test_upload_publishes_serves_and_is_accepted_by_the_scene(operator):
     body = jpeg()
-    with TestClient(main.app) as client:
+    with TestClient(main.app, base_url="http://127.0.0.1") as client:
         response = client.post("/uploads?name=phone.jpg", content=body, headers=headers())
         assert response.status_code == 201, response.text
         payload = response.json()
@@ -73,13 +73,13 @@ def test_upload_publishes_serves_and_is_accepted_by_the_scene(operator):
 def test_upload_is_disabled_by_default(monkeypatch):
     monkeypatch.setenv("TABLET_WALL_UPLOAD_MODE", "disabled")
     monkeypatch.setenv("TABLET_WALL_OPERATOR_ORIGIN", ORIGIN)
-    with TestClient(main.app) as client:
+    with TestClient(main.app, base_url="http://127.0.0.1") as client:
         response = client.post("/uploads", content=jpeg(), headers=headers())
     assert response.status_code == 403
 
 
 def test_upload_requires_the_operator_origin(operator):
-    with TestClient(main.app) as client:
+    with TestClient(main.app, base_url="http://127.0.0.1") as client:
         response = client.post("/uploads", content=jpeg(), headers={"Content-Type": "image/jpeg"})
         wrong = client.post(
             "/uploads", content=jpeg(),
@@ -90,7 +90,7 @@ def test_upload_requires_the_operator_origin(operator):
 
 
 def test_upload_rejects_a_non_image_media_type(operator):
-    with TestClient(main.app) as client:
+    with TestClient(main.app, base_url="http://127.0.0.1") as client:
         response = client.post(
             "/uploads", content=b"hello",
             headers={**headers(), "Content-Type": "text/plain"},
@@ -101,7 +101,7 @@ def test_upload_rejects_a_non_image_media_type(operator):
 def test_upload_rejects_an_oversized_declared_and_streamed_body(operator, monkeypatch):
     monkeypatch.setattr(main, "MAX_SOURCE_BYTES", 10)
     monkeypatch.setattr(media, "MAX_SOURCE_BYTES", 10)
-    with TestClient(main.app) as client:
+    with TestClient(main.app, base_url="http://127.0.0.1") as client:
         declared = client.post("/uploads", content=b"x" * 11, headers=headers())
         streamed = client.post("/uploads", content=b"x" * 11, headers={k: v for k, v in headers().items()})
     assert declared.status_code == 413
@@ -114,7 +114,7 @@ def test_a_phone_style_rotated_jpeg_arrives_upright_and_stripped(operator):
     exif[0x0112] = 6  # rotate 90 degrees clockwise on display
     buffer = BytesIO()
     source.save(buffer, format="JPEG", quality=90, exif=exif)
-    with TestClient(main.app) as client:
+    with TestClient(main.app, base_url="http://127.0.0.1") as client:
         response = client.post(
             "/uploads?name=phone.jpg", content=buffer.getvalue(), headers=headers()
         )
@@ -132,7 +132,7 @@ def test_a_phone_style_rotated_jpeg_arrives_upright_and_stripped(operator):
 def test_upload_quota_exhaustion_is_a_507(operator, monkeypatch):
     monkeypatch.setattr(media, "QUOTA_BYTES", 1)
     monkeypatch.setattr(media, "FREE_RESERVE_BYTES", 0)
-    with TestClient(main.app) as client:
+    with TestClient(main.app, base_url="http://127.0.0.1") as client:
         response = client.post("/uploads", content=jpeg(), headers=headers())
     assert response.status_code == 507
     assert "quota" in response.json()["detail"]
@@ -143,7 +143,7 @@ def test_worker_timeout_is_reported_and_leaves_no_asset(operator, monkeypatch):
         raise media.StoreError(422, "image processing exceeded 30 seconds")
 
     monkeypatch.setattr(media, "run_worker", timeout)
-    with TestClient(main.app) as client:
+    with TestClient(main.app, base_url="http://127.0.0.1") as client:
         response = client.post("/uploads", content=jpeg(), headers=headers())
         library = client.get("/media")
     assert response.status_code == 422
@@ -152,7 +152,7 @@ def test_worker_timeout_is_reported_and_leaves_no_asset(operator, monkeypatch):
 
 
 def test_a_rejected_image_leaves_no_ready_asset(operator):
-    with TestClient(main.app) as client:
+    with TestClient(main.app, base_url="http://127.0.0.1") as client:
         response = client.post(
             "/uploads?name=broken.jpg", content=b"not an image", headers=headers()
         )

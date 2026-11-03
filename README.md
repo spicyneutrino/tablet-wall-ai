@@ -8,26 +8,23 @@ they show.
 
 This project began as a copy of `tablet-wall`. New development happens here.
 
-> **Status: R1-R5 software scope implemented and the 2026-10-25 playback and
-> controller review repairs merged; all physical and optical validation
-> pending.** Tablets self-register, hold a live WebSocket, heartbeat,
-> reconnect, and stop fighting over one identity. The operator can upload
-> JPEG/PNG stills and H.264 MP4 clips (when an admission mode is configured),
-> show stills on the logical wall, measure and calibrate physical panels, place
-> bodies with an accessible editor, and run hard-cut still/video playlists with
-> a sampled server clock, leased readiness, buffer evidence, pause/resume and
-> drift samples. A session can exclude named tablets at Start (session-only;
-> excluded screens keep the persisted scene and are not counted as
-> synchronized), and a tablet that reconnects during a playing video rejoins
-> through one bounded group recovery with a fresh common anchor. Schema 3 and
-> protocol 3 are live; v1/v2 remain compatible.
-> Physical seams, real tablet decode/suspend, optical timing, mixed-model
-> calibration and soak are not claimed — see
+> **Status: working image-wall prototype.** Tablets connect through their
+> browsers, show portions of one shared image, and can be arranged through the
+> controller. The operator reports physical trials in 2×2 and 1×4 arrangements.
+> Measured profiles, ruler calibration, rotation mapping, and saved layouts
+> are implemented. Precise mixed-model alignment and sustained physical
+> operation still need recorded validation.
+>
+> Experimental still/video playlist code and automated playback tests also
+> exist. They do not establish working video playback on the intended tablets.
+> The currently demonstrated hardware scope is image display. Physical seams,
+> tablet video decode/suspend, optical timing, and soak are not claimed. See
 > [Known limitations](#known-limitations).
 >
-> The current evidence record, acceptance gaps and review-fix commits are in
-> the [review-fix round](docs/planning/tablet-wall-roadmap-2026-10-23/EXECUTION_LOG.md#review-fix-round-2026-10-25)
-> and the [durable browser runners](simulator/README.md#durable-browser-acceptance-runners).
+> The current combined plan and evidence are in the
+> [readiness roadmap](docs/tablet-wall-readiness/ROADMAP.md) and
+> [verification record](docs/tablet-wall-readiness/VERIFICATION.md). The
+> [image-wall runbook](deploy/IMAGE-WALL-RUNBOOK.md) covers startup and recovery.
 
 > New to the codebase? Read the [field guide](docs/field-guide/index.html)
 > (open it in a browser) or its [Markdown source](docs/field-guide/GUIDE.md).
@@ -39,36 +36,57 @@ This project began as a copy of `tablet-wall`. New development happens here.
 - Python 3.13+
 - [uv](https://docs.astral.sh/uv/)
 
-## Quickstart
+## Run on this laptop
 
 ```bash
 uv sync          # create .venv and install dependencies
 make dev         # start the server with auto-reload on http://127.0.0.1:8000
 ```
 
-Then open:
+These addresses work only on the computer running the server:
 
 | Page       | URL                            |
 | ---------- | ------------------------------ |
-| Client     | http://127.0.0.1:8000/client/     |
-| Controller | http://127.0.0.1:8000/controller/ |
+| Local client test | http://127.0.0.1:8000/client/ |
+| Wall console | http://127.0.0.1:8000/controller/physical.html |
+| Logical compatibility editor | http://127.0.0.1:8000/controller/ |
 | API docs   | http://127.0.0.1:8000/docs        |
 
-`make dev` and `make run` bind to loopback by default; a tablet cannot reach
-them via the host's LAN address. For a laptop-hotspot trial with tablets, use
-the [two-origin Caddy reference](deploy/README.md) instead: it exposes only
-the tablet paths on the hotspot address and keeps the backend on loopback.
-Find the host's interface addresses with:
+## Connect tablets to the laptop hotspot
+
+On Linux with NetworkManager, firewalld, and Caddy installed, enable the
+laptop's Wi-Fi hotspot, connect the tablets to it, then run:
 
 ```bash
-hostname -I | awk '{print $1}'
+make hotspot
 ```
 
-Read [Known limitations](#known-limitations) before trying this. A deliberately
-ungated test on an isolated trusted LAN is possible with
-`make run HOST=0.0.0.0`, but that exposes **all** operator routes and is not
-Phase 3 security. The client uses `crypto.getRandomValues` when `randomUUID`
-is unavailable on a plain-HTTP LAN origin.
+Stop any earlier `make dev` or `make run` process first. The launcher refuses
+occupied ports rather than replacing another server.
+
+After its startup checks pass, open the printed **Tablets** URL on each
+tablet. For a hotspot at `10.42.0.1`, it is
+`http://10.42.0.1:8080/client/`. Use the URL printed for your current hotspot;
+its address can change. Both `/client` and `/client/` work. A tablet must never
+use `127.0.0.1` or `localhost` to reach the laptop.
+
+The Wall console stays at
+`http://127.0.0.1:8000/controller/physical.html` on the laptop. Its **System**
+tab shows the exact tablet address, Copy button, join QR, and readiness facts.
+A loopback address carries a warning that it only opens on this computer.
+The QR is an address shortcut; it does not authenticate or approve a tablet.
+
+The launcher saves settings in `~/.config/tablet-wall-ai/hotspot.json` and
+wall data in `~/.local/share/tablet-wall-ai/`, respecting the corresponding
+XDG directories. Next time, run `make hotspot` again. This does not load or
+overwrite a database in the checkout. See [hotspot options and existing
+data](deploy/README.md#start-the-http-hotspot-trial) to choose another directory.
+
+This is an HTTP trial for a trusted hotspot. Keep tablet screens awake
+manually; automatic wake-lock requires HTTPS. Only tablet routes are exposed
+on the hotspot. Press Ctrl+C to stop both servers and remove the firewall
+opening if the launcher added it. For TLS and certificate trust, use the
+[HTTPS reference](deploy/README.md#use-the-https-reference).
 
 ## Project layout
 
@@ -99,14 +117,15 @@ pyproject.toml              deps, dev deps, pytest config
    is the normal case over a plain-HTTP LAN origin.
 2. The client `POST`s that UUID and its screen size to `/devices/register`. It
    re-registers before every connection attempt to refresh its dimensions and establish live presence.
-3. It then opens `/ws/device`, sends a heartbeat every 5 s, and applies whatever
-   colour the controller assigns.
-4. `frontend/controller/controller.js` opens `/ws/controller`, receives the
-   roster as a `snapshot`, and is pushed `device_online`, `device_offline`,
-   `device_updated`, and `device_removed` events as things change. It polls
-   nothing.
-5. Colours travel *out* over HTTP (`POST /devices/{device_id}/color`) and are
-   pushed *to* the tablet over its socket.
+3. It opens `/ws/device`, sends a heartbeat every 5 s, and applies the current
+   scene and its assigned slice. Static images use one wall-wide Fill (`cover`)
+   or Fit whole image (`contain`) transform.
+4. The Wall console reads `/api/v3/config` and subscribes to protocol-3
+   `/ws/controller` updates. It also reconciles every 15 s while visible.
+5. Tablets report image attempts and painted frames using connection/revision
+   tokens. The console distinguishes current reports, loading, failed, stale,
+   hidden, offline, and mapping-blocked states. A paint report is software
+   evidence, not proof of optical alignment.
 
 Device identity, dimensions, type, display number, last seen, and assigned colours survive restart in SQLite. Restored devices start offline. Sockets, capabilities, clocks, and playback leases are never restored. Tablets re-register and reconnect on their own.
 
@@ -122,13 +141,13 @@ SQLite database as the active wall, so include it in backups.
 
 ### Operator diagnostics
 
-The physical controller keeps Show, Tablet, Content and System tabs available
+The Wall console keeps Wall, Tablets, Content and System tabs available
 on desktop and phone screens. Under System, Field check can refresh storage,
 backup and client health or verify stored object bytes. Download report saves
 the last successful response as timestamped JSON, including integrity results
 when verification was requested. Failed refreshes disable download until a
-successful retry. Diagnostics require the same operator admission as the media
-library. Reports contain operational metadata; review them before sharing.
+successful retry. Diagnostics use operator-read admission independently of upload
+mode. Reports contain operational metadata; review them before sharing.
 Desktop browser evidence does not replace physical tablet validation.
 
 ### Curating still images
@@ -156,7 +175,35 @@ Keep this directory modest. Every lookup reads and hashes current files; full im
 
 When authentication is disabled, every client that reaches the backend can read curated and managed assets. Built-in token authentication protects asset reads as well as operator routes. A proxy protecting only the operator listener does not protect tablet-facing asset URLs. Keep the backend on loopback and use TLS for token or cookie transport on shared networks.
 
+## Change the wall size
+
+Open the [Wall console](http://127.0.0.1:8000/controller/physical.html), then
+**Wall → Layout & size**. Choose **Logical units** or **Measured millimetres**,
+select **2 × 2** or **1 × 4**, review the participating tablet order and body
+orientation, then **Preview arrangement → Apply layout**. The 1 × 4 preset
+means one horizontal row. Gap defaults to zero; Fit wall to tablet bodies
+makes the bounds follow the packed footprints. Preview and Cancel do not
+change the tablets.
+
+Measured layouts use pinned screen, bezel and calibration records. Confirm the
+actual model or save measurements before using that mode. Model profiles remain
+approximate; they do not establish seam accuracy. Advanced bounds and
+measurements are under **System**; selected-tablet mount angles and nudges are
+under **Tablets**. Missing referenced measurements
+block fitting rather than guessing a size.
+
+The [logical compatibility editor](http://127.0.0.1:8000/controller/) retains
+custom logical Width/Height and packing controls under **Layout**. It is blocked
+while a measured layout is active. Use the Wall console for normal image and
+arrangement changes. See [wall sizing behavior](docs/WALL-SIZING.md) and
+[physical calibration](docs/PHYSICAL-CALIBRATION.md).
+
 ## HTTP API
+
+The primary console uses the authoritative v3 routes described in
+[the operator protocol](docs/OPERATOR-PROTOCOL.md). The compatibility endpoints
+below retain logical editing. `/wall` and `/scene` refuse a measured wall with
+an upgrade conflict; use v3 to read or change its actual layout and scene.
 
 | Method   | Path                          | Purpose                               |
 | -------- | ----------------------------- | ------------------------------------- |
@@ -238,10 +285,13 @@ A gate changes only with the operator's signed physical evidence.
   panels from those operator measurements; they are not browser-inferred
   physical proof. A well-aligned wall still needs a calibration pass, not a
   spec sheet.
+  See [mixed-tablet physical calibration](docs/PHYSICAL-CALIBRATION.md) for the
+  tablet ruler, measured viewport setup, and whole-wall grid check.
 - **Media support is bounded.** Curated JPEG/PNG stills are supported; a
   configured admission mode also accepts JPEG/PNG uploads and H.264 MP4
-  clips. Stills render as one centered `cover` image across the whole logical
-  wall. Video runs in hard-cut still/video playlists with a sampled server
+  clips. Stills render with one centered wall-wide Fill (`cover`) or
+  Fit whole image (`contain`) transform in either layout kind. Experimental
+  video code uses hard-cut still/video playlists with a sampled server
   clock, leased readiness, buffer evidence, pause/resume and drift samples.
   Browser evidence is desktop Chromium software evidence on one host: it does
   not prove optical onset, physical decode/suspend, iOS Safari, mixed-model
@@ -249,12 +299,11 @@ A gate changes only with the operator's signed physical evidence.
   no arbitrary-media or cross-device optical clock claim. The still/video
   seam and failure/reconnect behaviour have been checked in desktop Chromium;
   physical iPad/Safari and Android/Chrome validation is still pending.
-- **The aspect ratio compares against what the tablet reports.** The client
-  reports its viewport and re-registers when that changes, and the controller
-  warns when a placement's visible rect disagrees. When they do disagree the
-  client still renders, covering and cropping rather than distorting — so a
-  mismatch degrades the seam instead of breaking it. Pixel-perfect seams are
-  not achievable from a browser without kiosk-mode control.
+- **Logical and measured mapping differ.** A logical placement with a different
+  visible aspect is covered and cropped rather than distorted, which can leave
+  a seam mismatch. A measured plan checks pinned calibration against the live
+  viewport, orientation, zoom and launch mode; a mismatch blocks the plan with
+  a recovery reason. Physical alignment still needs a recorded device trial.
 - **Authentication is opt-in.** Set `TABLET_WALL_AUTH_TOKEN` to a random secret of at least 32 bytes to protect all HTTP and WebSocket routes. Browsers sign in at `/auth/login`; API clients use a Bearer token. Unset or empty preserves open local operation. See [authentication setup](docs/AUTH.md). The operator-Origin guard and proxy isolation remain separate checks. Use TLS on shared networks.
 - **A device must register before it can open a socket.** A socket for an
   unregistered id is closed with `4404` rather than registering on the fly, so
@@ -276,9 +325,10 @@ A gate changes only with the operator's signed physical evidence.
   device id silently replaces the first, so two browser tabs on one origin share
   a single identity. Controller sockets have no heartbeat, so one that vanishes
   without a clean close is only reaped when a later broadcast to it fails.
-- **`device_type` is hardcoded to `"ipad"`.** The client reports the actual
-  viewport for aspect-mismatch warnings, but device-type identification is not
-  implemented.
+- **Model detection is approximate.** The client reports its platform and
+  screen signature. Built-in iPad Air 2 and Pixel C matches reuse measured
+  profiles; a signature is not proof of the exact hardware. Unknown models
+  need manual measurements.
 - **Screen sleep is still an OS decision.** In a secure context (HTTPS) the
   page asks for a Screen Wake Lock while it is visible, retakes it when the
   page returns, and reports `held`/`released`/`unsupported`/`insecure`/`denied`
@@ -327,10 +377,11 @@ clock, and clock sync without a timed medium is cost with no visible capability.
 
 **Phase 3 — safe, unattended operation**
 
-*Sequencing: the software is currently ahead of the hardware evidence. Do not
-start 3c or 3d until the build through 3b has been confirmed on the actual
-tablets — the real-device gates are in [deploy/KIOSK.md](deploy/KIOSK.md) and
-the manual ingress checks in [deploy/README.md](deploy/README.md).*
+*Software checks are ahead of the hardware evidence. They do not establish
+unattended operation. Real-device gates remain in [deploy/KIOSK.md](deploy/KIOSK.md)
+and the manual ingress checks in [deploy/README.md](deploy/README.md). The
+[current readiness programme](docs/tablet-wall-readiness/ROADMAP.md) supersedes
+the earlier software sequencing below.*
 
 - [ ] **3a** Trust boundary: a two-origin laptop-hotspot proxy reference and
   configurable same-origin operator guards are in progress. Physical ingress
@@ -345,8 +396,8 @@ the manual ingress checks in [deploy/README.md](deploy/README.md).*
   tests, including a full backup/verify/restore drill; none of it has been
   exercised in a real deployment. Not complete, and not an unattended
   deployment.
-- [ ] **3c** Operational resilience: structured logs, health/readiness, asset-error states, soak tests — **deferred until the tablet trial confirms 2a–3b**
-- [ ] **3d** Engineering gate: ruff, targeted mypy, CI (basic CI starts in 2a) — **deferred for the same reason**
+- [ ] **3c** Operational resilience: health/readiness, bounded logs and image-error recovery are implemented and software-tested in the [readiness programme](docs/tablet-wall-readiness/ROADMAP.md); real-tablet soak remains open
+- [ ] **3d** Engineering gate: production Ruff and mypy run with the tests; the current [verification record](docs/tablet-wall-readiness/VERIFICATION.md) lists results. Hardware acceptance remains separate
 
 **Phase 4 — timed media, software slice**
 
@@ -367,7 +418,7 @@ schema or roadmap space is reserved on the assumption that something will.
 
 Run `uv sync --all-groups` before the checks. `make test` runs Python tests and all JavaScript suites. `make lint` runs Ruff syntax, undefined-name, unused-import, and common-defect checks on production Python. `make typecheck` checks annotated production code with strict optional handling; unannotated function bodies are not yet enforced.
 
-`make coverage` measures Python lines and branches, including worker subprocesses, writes `coverage.xml`, and enforces an 80% combined floor. Browser tests run separately with `uv run --group browser python -m simulator.browser.controller_run --artifacts /tmp/new-controller-run` and `uv run --group browser python -m simulator.browser.field_run --artifacts /tmp/new-field-run`. Use a fresh artifact directory each time.
+`make coverage` measures Python lines and branches, including worker subprocesses, writes `coverage.xml`, and enforces an 80% combined floor. Current image-wall browser acceptance uses `uv run --group browser python -m simulator.browser.readiness_acceptance --artifacts /tmp/new-readiness-run` and `uv run --group browser python -m simulator.browser.operator_accessibility --artifacts /tmp/new-accessibility-run`. Use a fresh artifact directory each time. The older `controller_run` covers experimental playback; it is not the image-wall acceptance gate. See the [browser runner guide](simulator/README.md#current-image-wall-acceptance).
 
 For repeatable viewport and reconnect checks, run `uv run --group browser python -m simulator.browser.audit_round --round 6 --artifacts /tmp/new-viewport-audit`. The browser runners always use temporary database, media, and asset paths. For any manual app launch, set those paths to a disposable scratch copy before startup; startup creates directories, writes SQLite, and cleans staging.
 

@@ -174,7 +174,7 @@ def test_combined_mutations_roll_back_wall_roster_profiles_and_notifications(
         save_roster(document)
         raise sqlite3.OperationalError("injected transaction failure")
 
-    socket_id = DEVICE if operation == "delete" else SECOND
+    socket_id = SECOND
     with client.websocket_connect(f"/ws/device?device_id={socket_id}&protocol=2") as socket:
         socket.receive_json()
         socket.receive_json()

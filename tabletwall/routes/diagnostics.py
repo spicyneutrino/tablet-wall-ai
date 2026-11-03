@@ -88,14 +88,15 @@ def _media_diagnostics() -> dict[str, Any]:
 def get_diagnostics(request: Request, verify: bool = Query(default=False)):
     """Operator-only storage and health readout.
 
-    Admitted exactly like the managed library (``media.admit_library``), so
-    it is unreachable on the tablet listener and fails closed while uploads
-    are disabled. Cheap by default; ``?verify=1`` additionally re-hashes every
+    Admitted through ``media.admit_operator_read`` rather than upload admission,
+    so a local operator or the authenticated operator listener can read
+    diagnostics while uploads are disabled. The tablet listener proves neither
+    and is refused. Cheap by default; ``?verify=1`` additionally re-hashes every
     ready object (``media.verify_integrity``) and reports objects whose bytes
     are missing or no longer match their ID under ``media.integrity``.
     """
     try:
-        media.admit_library(request)
+        media.admit_operator_read(request)
     except media.StoreError as error:
         return _store_error(error)
     store = _media_diagnostics()

@@ -410,6 +410,10 @@ function createHarness(opts = {}) {
         return el;
     }
 
+    const identify = makeElement("div"); identify.setAttribute("id", "identify"); identify.hidden = true;
+    const identifyNumber = makeElement("span"); identifyNumber.setAttribute("id", "identify-number");
+    const identifyLabel = makeElement("span"); identifyLabel.setAttribute("id", "identify-label");
+    const authLogin = makeElement("a"); authLogin.setAttribute("id", "auth-login"); authLogin.hidden = true;
     const documentMock = {
         getElementById(id) {
             if (id === "surface") return canvas;
@@ -419,7 +423,7 @@ function createHarness(opts = {}) {
             if (id === "hud-identity") return hudIdentity;
             if (id === "hud-state") return hudState;
             if (id === "video-unavailable") return videoUnavailable;
-            return null;
+            return elements.find(el => el.attributes.id === id) || null;
         },
         documentElement: {
             clientWidth: opts.width || VP.width,
@@ -442,6 +446,7 @@ function createHarness(opts = {}) {
         innerHeight: opts.height || VP.height,
         devicePixelRatio: opts.dpr !== undefined ? opts.dpr : VP.dpr,
         TabletWallView: view,
+        visualViewport: opts.visualViewport,
         location: {
             protocol: "http:",
             host: "wall.test",
@@ -455,7 +460,7 @@ function createHarness(opts = {}) {
 
     /* Always resolves to a promise: client.js chains `.then` on it. The
      * router defaults to a successful, body-less response (registration). */
-    let fetchImpl = () => ({ ok: true, status: 200 });
+    let fetchImpl = opts.fetch || (() => ({ ok: true, status: 200 }));
     function fetchMock(url, options) {
         fetchLog.push({ url, options });
         return Promise.resolve().then(() => fetchImpl(url, options));
@@ -640,6 +645,7 @@ function createHarness(opts = {}) {
         clearTimeout: sandboxClearTimeout,
         setInterval: sandboxSetInterval,
         clearInterval: sandboxClearInterval,
+        Date: opts.Date || Date,
         performance: {
             now() {
                 return perfNow;
@@ -681,6 +687,12 @@ function createHarness(opts = {}) {
 
     return {
         calls,
+        document: documentMock,
+        ctx,
+        dispose() {
+            for (const timer of timers) sandboxClearTimeout(timer);
+            for (const interval of intervals) sandboxClearInterval(interval);
+        },
         bitmaps,
         warnings,
         fetchLog,
@@ -1004,6 +1016,32 @@ function paintedRects(harness) {
 const tests = [];
 function test(name, fn) {
     tests.push({ name, fn });
+}
+
+for (const [W, H, iw, ih] of [[2000, 1000, 400, 400], [1000, 2000, 1600, 400], [2000, 1000, 1000, 1500]]) {
+    test(`contain fits once across ${W}x${H}, source ${iw}x${ih}`, async () => {
+        const scale = Math.min(W / iw, H / ih);
+        const expected = [(W - iw * scale) / 2, (H - ih * scale) / 2, iw * scale, ih * scale];
+        const tablets = [];
+        for (const x of [0, W / 2]) {
+            const h = await startHarness({ width: W / 2, height: H });
+            h.setFetch(route({ [ASSET_A]: okResponse(assetBlob("A", iw, ih)) }));
+            h.emit(wallFrame({
+                wall: { width: W, height: H },
+                scene: { content: imageContent({ fit: "contain", intrinsicWidth: iw, intrinsicHeight: ih }) },
+                placement: { x, y: 0, w: W / 2, h: H, bezel: ZERO_BEZEL },
+            }));
+            await drain();
+            assertCloseAll(lastDrawImage(h).slice(1), expected, "whole-wall contain rectangle");
+            assertCloseAll(underlayRect(h), [x, 0, W / 2, H], "opaque full slice");
+            const draw = lastIndexOfNamed(h, "drawImage");
+            const style = h.calls.slice(0, draw).filter(c => c.name === "setFillStyle").pop();
+            assert.strictEqual(style.args[0], "#0b1120");
+            tablets.push(h);
+        }
+        assertClose(screenX(wallTransform(tablets[0]), W / 2), W / 2, "left seam");
+        assertClose(screenX(wallTransform(tablets[1]), W / 2), 0, "right seam");
+    });
 }
 
 test("seam mapping: both tablets draw one global cover of the wall", async () => {
@@ -2880,8 +2918,8 @@ function videoRecoveryCommit(harness, overrides) {
 
 async function startVideoHarness(opts) {
     const h = await startHarness(opts);
-    /* The server would have sent welcome and opened the socket. */
     h.socket().readyState = 1;
+    h.emit({ type: "welcome", heartbeat_interval_ms: 5000, protocol: 3 });
     return h;
 }
 
@@ -3453,7 +3491,7 @@ test("video: a wall generation change disposes an armed commit", async () => {
 });
 
 test("playback stop restores the scene the server persisted", async () => {
-    const h = await startHarness(VP);
+    const h = await startVideoHarness(VP);
     h.socket().readyState = 1;
     h.setFetch(route({ [ASSET_A]: okResponse(assetBlob("A", 400, 400)) }));
     h.emit(wallFrame());
@@ -5097,6 +5135,7 @@ test("video recovery: a replaced socket cannot resurrect or freeze playback", as
         "the client reopens its device socket"
     );
     h.socket().readyState = 1;
+    h.emit({ type: "welcome", heartbeat_interval_ms: 5000, protocol: 3 });
 
     /* A queued prepare on the socket that already failed must not start a
      * player again. */
@@ -5356,8 +5395,8 @@ test("client shell: cache versions, HUD markup and the 56 px CSS pill", () => {
     const html = fs.readFileSync(CLIENT_HTML, "utf8");
     const css = fs.readFileSync(CLIENT_CSS, "utf8");
 
-    assert.match(html, /client\.css\?v=4/, "the stylesheet version was bumped");
-    assert.match(html, /client\.js\?v=10/, "the script version was bumped");
+    assert.match(html, /client\.css\?v=5/, "the stylesheet version was bumped");
+    assert.match(html, /client\.js\?v=13/, "the script version was bumped");
     assert.match(html, /id="hud"/, "the HUD has static markup");
     assert.match(html, /id="video-unavailable"/, "the failure notice has static markup");
 
@@ -5377,11 +5416,116 @@ test("client shell: cache versions, HUD markup and the 56 px CSS pill", () => {
     );
 });
 
+test("physical contain uses the supplied global plan over an opaque background", async () => {
+    const h = await startVideoHarness({ width: 800, height: 600 });
+    h.setFetch(route({ [ASSET_A]: okResponse(assetBlob("A", 1280, 720)) }));
+    const plan = view.normalizedSourceToPanel({
+        active_size: [800, 600], bezels: ZERO_BEZEL,
+        center_mm: [0, 0], nudge_mm: [0, 0], mount_angle: 0,
+        bounds: [0, 0, 800, 600], source_size: [1280, 720], fit: "contain",
+    });
+    h.emit({
+        type: "render", mode: "physical", revision: 11, generation: "contain",
+        render_seq: 1, wall: { width: 800, height: 600 },
+        scene: { content: imageContent({ fit: "contain", intrinsicWidth: 1280, intrinsicHeight: 720 }) },
+        calibration: VIDEO_CALIBRATION, plan, slot: null,
+    });
+    await drain();
+    assertCloseAll(lastDrawImage(h).slice(1), [0, 0, 1280, 720], "source stays whole");
+    const expected = view.canvasTransformComponents({
+        backing: [800, 600], rect: [800, 600],
+        calibration: Object.assign({}, VIDEO_CALIBRATION, { panel_width: 800, panel_height: 600 }),
+        panel_from_source: plan.panel_from_source, source_size: [1280, 720],
+    });
+    assertCloseAll(wallTransform(h), expected.matrix, "server plan is authoritative");
+    const style = h.calls.slice(0, lastIndexOfNamed(h, "drawImage")).filter(c => c.name === "setFillStyle").pop();
+    assert.strictEqual(style.args[0], "#0b1120");
+});
+
+test("physical stills restore clipping and use rounded backing ratios", async () => {
+    const h = await startVideoHarness({ width: 801, height: 601, dpr: 1.25 });
+    h.setFetch(route({ [ASSET_A]: okResponse(assetBlob("A", 1280, 720)) }));
+    const frame = {
+        type: "render", mode: "physical", revision: 11, generation: "scale",
+        render_seq: 1, wall: { width: 800, height: 600 },
+        scene: { content: imageContent({ intrinsicWidth: 1280, intrinsicHeight: 720 }) },
+        calibration: VIDEO_CALIBRATION, plan: VIDEO_PLAN, slot: null,
+    };
+    h.emit(frame);
+    await drain();
+    h.reset();
+    h.emit(Object.assign({}, frame, { render_seq: 2 }));
+    await drain();
+    const clip = h.calls.findIndex((c) => c.name === "clip");
+    const save = h.calls.findIndex((c) => c.name === "save");
+    const restore = h.calls.findIndex((c) => c.name === "restore");
+    const fill = h.calls.findIndex((c) => c.name === "fillRect");
+    const draw = h.calls.findIndex((c) => c.name === "drawImage");
+    assert.ok(save < fill && fill < clip && clip < draw && draw < restore);
+    const transform = h.calls.find((c) => c.name === "setTransform").args;
+    assertCloseAll(transform, [1001 / 801, 0, 0, 751 / 601, 0, 0], "rounded backing ratios");
+});
+
+test("visual viewport zoom fences the physical picture and reports the new viewport", async () => {
+    let resize;
+    const visual = { width: 800, height: 600, scale: 1, addEventListener(type, fn) { resize = fn; } };
+    const h = await startVideoHarness({ width: 800, height: 600, visualViewport: visual });
+    h.setFetch(route({ [ASSET_A]: okResponse(assetBlob("A", 1280, 720)) }));
+    const frame = {
+        type: "render", mode: "physical", revision: 11, generation: "zoom",
+        render_seq: 1, wall: { width: 800, height: 600 },
+        scene: { content: imageContent({ intrinsicWidth: 1280, intrinsicHeight: 720 }) },
+        calibration: VIDEO_CALIBRATION, plan: VIDEO_PLAN, slot: null,
+    };
+    h.emit(frame);
+    await drain();
+    h.reset();
+    visual.width = 400; visual.height = 300; visual.scale = 2;
+    resize();
+    assert.ok(h.texts().includes("NEEDS CALIBRATION"));
+    assert.strictEqual(h.named("drawImage").length, 0);
+    const report = h.sent("viewport").pop().viewport;
+    assert.strictEqual(report.width, 400);
+    assert.strictEqual(report.height, 300);
+    h.reset();
+    h.emit(Object.assign({}, frame, { render_seq: 2 }));
+    assert.strictEqual(h.named("drawImage").length, 0);
+});
+
+test("queued physical frames cannot revive a picture after its viewport changes", async () => {
+    const h = await startVideoHarness({ width: 800, height: 600 });
+    h.setFetch(route({ [ASSET_A]: okResponse(assetBlob("A", 1280, 720)) }));
+    const frame = {
+        type: "render", mode: "physical", revision: 11, generation: "resize",
+        render_seq: 1, wall: { width: 800, height: 600 },
+        scene: { content: imageContent({ intrinsicWidth: 1280, intrinsicHeight: 720 }) },
+        calibration: VIDEO_CALIBRATION, plan: VIDEO_PLAN, slot: null,
+    };
+    h.emit(frame);
+    await drain();
+    h.window.innerWidth = 600;
+    h.window.innerHeight = 800;
+    for (const fn of h.listeners.window.resize || []) fn({});
+    h.reset();
+    h.emit(Object.assign({}, frame, { render_seq: 2 }));
+    await drain();
+    assert.strictEqual(h.named("drawImage").length, 0);
+    assert.ok(h.texts().includes("NEEDS CALIBRATION"));
+    h.emit(Object.assign({}, frame, { render_seq: 3, calibration: Object.assign({}, VIDEO_CALIBRATION, {
+        viewport_width: 600, viewport_height: 800,
+    }) }));
+    await drain();
+    assert.ok(h.named("drawImage").length > 0);
+});
+
 /* ------------------------------------------------------------------ */
 /* Runner                                                             */
 /* ------------------------------------------------------------------ */
 
-(async function main() {
+module.exports = { createHarness, startHarness, drain, waitFor, deferred, wallFrame,
+    imageContent, okResponse, assetBlob, route, startVideoHarness, VIDEO_CALIBRATION, VIDEO_PLAN };
+
+if (require.main === module) (async function main() {
     let failed = 0;
     for (const entry of tests) {
         try {

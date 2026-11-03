@@ -6,10 +6,12 @@ import pytest
 from fastapi.testclient import TestClient
 
 import main
-from tabletwall import writer
+from tabletwall import writer, render_status
 
 
 def _clear_state() -> None:
+    render_status.reset()
+    main.identify_commands.clear()
     main.devices.clear()
     main.device_sockets.clear()
     main.controller_sockets.clear()
@@ -72,7 +74,7 @@ def client(isolated_registry) -> Iterator[TestClient]:
     before this fixture starts the app: entering ``TestClient`` runs the
     lifespan, which loads the persisted wall from ``TABLET_WALL_DB``.
     """
-    with TestClient(main.app) as test_client:
+    with TestClient(main.app, base_url="http://127.0.0.1") as test_client:
         yield test_client
 
 

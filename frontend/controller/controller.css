@@ -401,6 +401,7 @@ fieldset { border: 0; padding: 0; margin: 0; }
 .heading-with-meta h2 { font: var(--type-title); letter-spacing: var(--tracking-title); }
 .heading-with-meta .meta { font-size: 11px; white-space: nowrap; }
 .wall-heading button { white-space: nowrap; }
+.wall-heading-actions { display: flex; align-items: center; justify-content: flex-end; flex-wrap: wrap; gap: 6px; }
 
 .actual-content { margin: 20px 2px 0; display: flex; flex-direction: column; gap: 4px; }
 .actual-line { display: flex; gap: 8px; align-items: baseline; flex-wrap: wrap; min-width: 0; }
@@ -987,7 +988,8 @@ dialog p { margin: 8px 0; color: var(--muted); font-size: 12px; line-height: 18p
     .reservations { margin: 12px 4px; }
 
     .center { padding: 16px 12px 18px; overflow: visible; }
-    .wall-heading { align-items: flex-start; gap: 8px; padding: 0 4px; }
+    .wall-heading { align-items: flex-start; flex-wrap: wrap; gap: 8px; padding: 0 4px; }
+    .wall-heading-actions { justify-content: flex-start; }
     .heading-with-meta { display: block; }
     .heading-with-meta h2 { font: 600 22px/26px var(--sans); }
     .heading-with-meta .meta { display: block; font-size: 11px; margin-top: 1px; }

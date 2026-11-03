@@ -23,7 +23,15 @@ assert.equal(geometry.sceneContentType({ scene: { content: { type: " future " } 
 assert.equal(geometry.isSettableContent("image"), false);
 assert.equal(geometry.contentLabel("future"), "Unsupported content: future");
 assert.equal(geometry.deviceCaps({}).image, null);
-assert.equal(geometry.deviceCaps({ caps: [] }).image, false);
+assert.equal(geometry.deviceCaps({ caps: [] }).image, null);
+assert.equal(geometry.deviceCaps({ protocol: 1, caps: ["image"] }).image, false);
+assert.equal(geometry.deviceCaps({ protocol: 1 }).known, true);
+for (const protocol of [2, 3]) {
+    assert.equal(geometry.deviceCaps({ protocol, caps: ["image"] }).image, true);
+    assert.equal(geometry.deviceCaps({ protocol, caps: [] }).image, false);
+    assert.equal(geometry.deviceCaps({ protocol }).known, false);
+}
+assert.equal(geometry.deviceCaps({ protocol: 4, caps: ["image"] }).known, false);
 console.log("Controller module contracts passed");
 load("controller-snapshots.js");
 let savedWall = null;
@@ -207,3 +215,18 @@ healthState.rosterCheckedAt = null;
 health.renderDeviceHealth();
 assert.equal(healthNodes.deviceCount.textContent, "Status unknown");
 assert.equal(healthNodes.wallHealth.textContent, "Tablet status unavailable");
+
+for (const kind of ["logical", "physical"]) {
+    for (const compact of [false, true]) {
+        for (const reveal of [false, true]) {
+            const selected = { selectedId: "Beta", busy: false, draft: { kind }, basePlacements: {}, roster: {} };
+            const selectionNodes = { deviceEmpty: {}, inspectorEmpty: {}, inspectorBody: { hidden: true }, inspectorMissing: {}, btnAddSlot: {}, slotMissingText: {}, deviceCount: {}, wallHealth: {}, btnWallHealth: { dataset: {} }, rosterStatus: { dataset: {} } };
+            const notified = [];
+            const selectionStage = context.window.PhysicalStage.create({ state: selected, el: selectionNodes, deviceRows: new Map(),
+                latestProfile: () => null, deviceLabel: id => id, selectedSlot: () => null, validPair: () => null,
+                compactView: () => compact, showTab: () => {}, selectionChanged: () => notified.push(selected.selectedId) });
+            selectionStage.selectDevice("Beta", { reveal });
+            assert.deepEqual(notified, ["Beta"], "selection actions refresh independently of inspector kind, viewport and reveal");
+        }
+    }
+}

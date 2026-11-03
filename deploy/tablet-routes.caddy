@@ -1,0 +1,92 @@
+	@client_redirect {
+		method GET HEAD
+		path /client
+	}
+	handle @client_redirect {
+		redir * /client/ 308
+	}
+
+	# Exact public tablet surface. No unmatched URL or method is forwarded;
+	# /assets (inventory), /uploads, /media, /diagnostics, rebinding, the operator socket, and all wall
+	# writes are denied. The only auth paths are the exact login form and
+	# logout submission below. Every upstream strips the internal operator
+	# credential, so a forged header from a tablet never reaches the backend.
+	@client {
+		method GET
+		path /client/ /client/index.html /client/client.js /client/client.css /client/view.js /client/ruler.js
+	}
+	handle @client {
+		reverse_proxy 127.0.0.1:{$WALL_BACKEND_PORT:8000} {
+			header_up -X-Tablet-Wall-Operator
+		}
+	}
+
+	@register {
+		method POST
+		path /devices/register
+	}
+	handle @register {
+		reverse_proxy 127.0.0.1:{$WALL_BACKEND_PORT:8000} {
+			header_up -X-Tablet-Wall-Operator
+		}
+	}
+
+	@device_socket {
+		method GET
+		path /ws/device
+	}
+	handle @device_socket {
+		reverse_proxy 127.0.0.1:{$WALL_BACKEND_PORT:8000} {
+			header_up -X-Tablet-Wall-Operator
+		}
+	}
+
+	# App authentication entry points. These are the only public paths when
+	# TABLET_WALL_AUTH_TOKEN is set: the login form (GET) and its submission
+	# (POST), plus sign-out (POST). Every other method or path stays denied.
+	# A direct visit to the login page lands back on the tablet client.
+	@auth_login_bare {
+		method GET
+		path /auth/login
+		not query next=*
+	}
+	handle @auth_login_bare {
+		rewrite * /auth/login?next=%2Fclient%2F
+		reverse_proxy 127.0.0.1:{$WALL_BACKEND_PORT:8000} {
+			header_up -X-Tablet-Wall-Operator
+		}
+	}
+
+	@auth_login {
+		method GET POST
+		path /auth/login
+	}
+	handle @auth_login {
+		reverse_proxy 127.0.0.1:{$WALL_BACKEND_PORT:8000} {
+			header_up -X-Tablet-Wall-Operator
+		}
+	}
+
+	@auth_logout {
+		method POST
+		path /auth/logout
+	}
+	handle @auth_logout {
+		reverse_proxy 127.0.0.1:{$WALL_BACKEND_PORT:8000} {
+			header_up -X-Tablet-Wall-Operator
+		}
+	}
+
+	@asset_bytes {
+		method GET HEAD
+		path_regexp ^/assets/sha256:[0-9a-f]{64}$
+	}
+	handle @asset_bytes {
+		reverse_proxy 127.0.0.1:{$WALL_BACKEND_PORT:8000} {
+			header_up -X-Tablet-Wall-Operator
+		}
+	}
+
+	handle {
+		respond "Forbidden" 403
+	}

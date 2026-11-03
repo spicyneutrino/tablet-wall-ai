@@ -1,6 +1,65 @@
-# Phase 3a hotspot reference (not a production deployment)
+# Run tablets on a laptop hotspot
 
-The intended first trial puts approximately 15–20 tablets on the laptop's
+## Start the HTTP hotspot trial
+
+Enable a NetworkManager Wi-Fi hotspot and connect the tablets to it. Install
+Caddy and firewalld, then run `make hotspot` from the repository root. Stop
+any earlier app instance on port 8000 first.
+
+The launcher detects the active access-point interface, reads its current
+IPv4 address, starts one backend on loopback, and starts a tablet-only Caddy
+listener on the hotspot address. It opens the tablet TCP port in that
+interface's firewalld zone. Desktop authorization may be required. It does
+not change permanent firewall settings or enable a system service.
+
+Wait for **Ready**. Startup checks load the client and its scripts, verify
+`/client` redirects to `/client/`, exercise registration payload validation
+without creating a test device, verify a device WebSocket upgrade, and
+check that operator routes are denied on the tablet listener. Open the
+printed tablet URL on each tablet. Open the printed controller URL only on
+the laptop. Confirm that each real tablet appears online in the controller;
+startup checks cannot drive its browser.
+
+First-launch options are saved for later launches:
+
+```sh
+make hotspot ARGS='--interface ap0 --data-dir /absolute/path/to/wall-data'
+```
+
+The data directory contains `wall.db`, `assets/`, `media/`, `backend.log`, and
+`caddy.log`. Existing files are preserved. To use an existing wall, restore
+a [verified backup](OPERATIONS.md#backups) into a new data directory with
+those names before starting. The launcher does not copy a checkout database
+or migrate another running wall automatically.
+
+The default data directory is `$XDG_DATA_HOME/tablet-wall-ai`, or
+`~/.local/share/tablet-wall-ai`. The settings file is
+`$XDG_CONFIG_HOME/tablet-wall-ai/hotspot.json`, or
+`~/.config/tablet-wall-ai/hotspot.json`. It stores the interface, data
+directory, and ports. The IP address is discovered again on every launch.
+Use `--backend-port` and `--tablet-port` for different ports, or `--config`
+for a separate settings file. The defaults are 8000 and 8080.
+Launchers share a per-user tablet-port lock across settings files, so a
+second configuration cannot rely on a firewall opening owned by another
+running launcher. Lock and firewall recovery records use
+`$XDG_RUNTIME_DIR/tablet-wall-ai`, or `~/.cache/tablet-wall-ai` when unset.
+
+Press Ctrl+C to stop both processes. The launcher removes only the runtime
+firewall opening it added. An existing opening is left alone. Run
+`make hotspot` again after a reboot or hotspot restart; it reapplies the
+runtime firewall opening and checks the current address. Missing hotspots,
+occupied ports, denied firewall authorization, and failed checks produce an
+error instead of a ready message. Logs stay in the data directory.
+
+This HTTP mode serves curated assets on a trusted local hotspot. It requires
+application authentication to be unset and managed uploads to be disabled.
+Automatic screen wake-lock needs HTTPS, so keep screens awake manually.
+The backend and controller remain on loopback. Do not bind the backend to
+`0.0.0.0` to work around a connection problem.
+
+## Use the HTTPS reference
+
+The HTTPS reference puts approximately 15–20 tablets on the laptop's
 hotspot. `hotspot.Caddyfile` uses **two HTTPS origins without DNS**:
 
 | Origin | Access | Proxy policy |
@@ -49,6 +108,12 @@ software does; this directory describes how traffic reaches it.
    strong operator password, save its resulting hash in the environment as
    `WALL_OPERATOR_PASSWORD_HASH` (quote the `$` characters). Never put the
    plaintext password, hash, private CA key, or browser session in the repo.
+   Also create a separate random internal credential of at least 16 characters
+   in private host configuration. Load the same value as
+   `TABLET_WALL_OPERATOR_CREDENTIAL` in the backend terminal and
+   `WALL_OPERATOR_CREDENTIAL` in the Caddy terminal. Operator image-library and
+   diagnostics reads require it even when uploads are disabled. Do not reuse
+   the operator password or print the credential in logs.
 3. Start **one** backend process from the repository root with absolute data
    paths, for example (adjust your storage directory):
 
@@ -61,9 +126,10 @@ software does; this directory describes how traffic reaches it.
    make run                         # defaults to HOST=127.0.0.1
    ```
 
-4. In another terminal with `WALL_HOTSPOT_IP` and the hash exported, run
+4. In another terminal with `WALL_HOTSPOT_IP`, the hash, and the internal
+   `WALL_OPERATOR_CREDENTIAL` exported, run
    `deploy/run-hotspot.sh`. The wrapper rejects a missing, wildcard or
-   non-local hotspot IP, validates the config, then starts Caddy. Do not
+   non-local hotspot IP or missing/short credential, validates the config, then starts Caddy. Do not
    bypass it with a raw `caddy run` on a shared machine.
    Follow Caddy's [local HTTPS instructions](https://caddyserver.com/docs/automatic-https#local-https)
    for locating/trusting its CA root on the laptop and tablets. Verify the
@@ -78,13 +144,12 @@ software does; this directory describes how traffic reaches it.
 
 Managed uploads stay disabled by default. To enable them behind this proxy,
 set the backend's `TABLET_WALL_UPLOAD_MODE=proxy` and an absolute
-`TABLET_WALL_MEDIA_DIR`. Generate a separate random secret of at least 16
-characters and provide the same value as `TABLET_WALL_OPERATOR_CREDENTIAL`
-to the backend and `WALL_OPERATOR_CREDENTIAL` to Caddy. Load it from private
-host configuration in both processes; do not put it in the repository or
-reuse the operator password. Caddy overwrites the internal header only after
+`TABLET_WALL_MEDIA_DIR`. Keep the shared internal credential configured as
+described above. Caddy overwrites the internal header only after
 authentication and strips it on tablet requests. Missing or mismatched
-credentials make upload and media-library requests fail closed.
+credentials make operator reads and upload requests fail closed. The simpler
+HTTP `make hotspot` profile uses a direct loopback operator connection and does
+not need this proxy credential.
 
 **Do not expose `:8000` to the hotspot.** `make run` now binds loopback by
 default; `make run HOST=0.0.0.0` bypasses the proxy and is insecure for this

@@ -105,7 +105,7 @@ Every payload that carries a device uses this exact shape:
 - `protocol` is the last negotiated major (or `null` before a socket connects);
   `caps` is the list advertised by that socket (empty until then). A version-1
   socket does not receive `wall` frames even if it supplies a `caps` query
-  parameter; image support requires **both** protocol 2 and the `image` cap.
+  parameter; image support requires protocol 2 or 3 and the `image` cap.
 
 ## Messages
 
@@ -355,6 +355,14 @@ about which arrangement it meant.
 | `width`      | int > 0                  | Wall width in units.                     |
 | `height`     | int > 0                  | Wall height in units.                    |
 | `placements` | `{device_id: placement}` | Sparse — a device may have no placement. |
+| `sizing` | optional `{mode, padding}` | `mode` is `fixed` or `tablets`; omitted means legacy fixed sizing. Padding is a nonnegative whole number of wall units. |
+
+In `tablets` mode, every layout commit fits the wall around all stored
+placement footprints, including offline and vacant reservations. Placements
+are translated together so their minimum X and Y equal `padding`; sizes,
+bezels, and relative distances are preserved. Width and height enclose those
+footprints plus padding on both sides. An empty layout retains its last
+dimensions. Connections and disconnections do not resize the wall.
 
 ### Scene
 
@@ -373,7 +381,7 @@ together is a different, separately named action (a preset), not an overload of
 ### Named snapshots (Phase 2c)
 
 Layouts and scenes have **separate name spaces**. A saved layout contains
-`{ "width", "height", "placements" }` (including reservations whose tablets
+`{ "width", "height", "placements" }`, plus `sizing` when configured (including reservations whose tablets
 are absent from the roster), never content. A saved scene contains `content`
 only, never placements or a stored URL; its image asset ID, fit and derived
 dimensions remain durable even when the curated file is removed. Snapshot
@@ -475,14 +483,30 @@ The whole state in one read, which is what the controller needs:
 
 ### `PUT /wall`
 
-Layout only. Body may set `width` and/or `height`. `200` returns the new wall
-state. `422` if a dimension is not a positive int.
+Layout only. Body may set `width`, `height`, or
+`sizing: {"mode":"fixed"|"tablets", "padding":0}`. Padding defaults to zero.
+`200` returns the new wall state. `422` if dimensions or sizing are invalid.
+Explicit dimensions return `409` while tablet sizing remains selected; send
+`sizing.mode: "fixed"` in the same request to resume manual dimensions.
+Omitting `sizing` preserves the current mode.
+The equal-cell `POST /wall/auto` action also requires fixed sizing (`409`
+otherwise); tablet-fit packing preserves the existing footprint sizes.
+
+### `POST /wall/pack`
+
+Body is `{"columns": N, "gap": 0}`. Columns defaults to the number of placed
+tablets. Columns must be a positive integer and gap a nonnegative integer.
+The route requires tablet sizing mode (`409` otherwise) and at least one
+placement (`422` otherwise). It packs all stored footprints in visual order,
+top to bottom then left to right, into rows. Footprint sizes and bezels are
+preserved. Packing and refitting are one persisted revision and broadcast;
+the response is the complete wall state. Unplaced tablets are not added.
 
 ### `PUT /scene`
 
 Content only. Body is `{ "content": { "type": … } }`. For an image, send
 `{ "content": { "type": "image", "asset": "sha256:<64 lowercase hex digits>",
-"fit": "cover" } }`; `fit` may be omitted and defaults to `cover`. The server
+"fit": "cover" } }`; `fit` accepts `cover` or `contain`; omitted fit defaults to `cover`. The server
 looks up the asset and derives its intrinsic dimensions. It persists the ID,
 fit and derived dimensions, but not a URL. `200` returns the new wall state;
 `422` for an unknown type, invalid/missing asset, unsupported fit, or unknown
@@ -654,15 +678,16 @@ A version-2 client that advertises `calibration` and/or `image` must:
   "intrinsicHeight": 2160 }`. The server composes the URL; it is not persisted.
   Derived dimensions stay in the persisted scene so a now-missing asset can
   still be identified and rendered as an explicit failure, not silently
-  converted to colour. Only `cover` is currently supported.
-- **Fit** is centered `cover` of the image onto the **entire logical wall**:
-  with image `Iw × Ih` and wall `W × H`, scale by `max(W/Iw, H/Ih)` and centre
-  the overflow. Every tablet then applies the *same* global transform and clips
-  to its own visible rect. Covering the image independently into each tablet's
-  visible rect would destroy the seams, because each tablet would choose a
-  different scale. For transparent PNG pixels, every tablet first paints the
-  same opaque wall background (`#0b1120`), not its individually assigned
-  colour, so alpha cannot open a seam.
+  converted to colour. Both `cover` and `contain` are supported.
+- **Fit** is centered once onto the **entire wall**, never independently
+  onto each tablet. For image `Iw × Ih` and wall `W × H`, `cover` uses
+  `max(W/Iw, H/Ih)` and crops overflow; `contain` uses `min(W/Iw, H/Ih)`
+  and preserves the whole image with letterboxing. Both center the scaled
+  image. Logical tablets apply the same global rectangle then clip to their
+  visible rect. Physical plans use the same fit onto the wall bounds before
+  mapping to each panel. Every tablet paints the opaque wall background (`#0b1120`) beneath
+  the image, including letterboxes and transparent source pixels. The fit is
+  persisted and survives scene recall and restart. Unknown fits are rejected.
 - A device that has not advertised the `image` capability receives the **same**
   generation, revision and placement but `scene.content` is rewritten to
   `{ "type": "color" }` in its own `wall` frame, without an asset URL. The
@@ -761,18 +786,66 @@ viewport-only update.
 `schema 2` adds `display_profiles` and `calibrations`, both immutable by
 `(device_id, revision)`. Existing logical documents are adapted at read time
 and are never rewritten by the migration; new physical layouts are stored as
-`{"schema":2,"kind":"physical","bounds":…,"slots":…}`. The database version is
+`{"schema":2,"kind":"physical","bounds":…,"slots":…}`, with optional `sizing`.
+Physical sizing uses `fixed` or `tablets` and finite nonnegative padding in
+millimetres. Tablet mode encloses every slot's rotated body at `center+nudge`,
+including bezels and nonparticipating slots, without translating the slots.
+An empty layout keeps its bounds. Computed bounds must remain finite and
+positive. Sizing is preserved on restart and named-layout recall; a legacy
+snapshot without sizing restores fixed behavior. Physical layout writes that
+omit sizing preserve an existing physical sizing configuration.
+
+Configuration responses include `referenced_displays` and
+`referenced_calibrations` for physical slots. These carry the exact immutable
+revisions used by the layout, even when newer measurements also exist.
+
+The database version is
 `PRAGMA user_version`; a future version, a missing required table or a damaged
 active wall row refuses startup.
 
 ### HTTP configuration API
 
+The integrated still-image operator read model, render acknowledgements,
+device lifecycle, grids, ruler review, and readiness routes are specified in
+[docs/OPERATOR-PROTOCOL.md](docs/OPERATOR-PROTOCOL.md).
+
 | Route | Meaning |
 | --- | --- |
-| `GET /api/v3/config` | schema, revision, generation, layout, displays, calibrations and an `ETag` |
+| `GET /api/v3/config` | schema, revision, generation, tagged layout, actual projected scene, displays, calibrations, model assignments and an `ETag` |
+| `GET /api/v3/images` | operator-admitted merged curated/managed still-image inventory, including with uploads disabled |
+| `PUT /api/v3/scene` | change static content with `If-Match`, stop an experimental presentation, return actual config and ETag |
 | `PUT /api/v3/displays/{device_id}` | append a display profile revision |
 | `PUT /api/v3/calibrations/{device_id}` | append a calibration for an existing profile revision |
-| `PUT /api/v3/layout` | atomically replace the active arrangement with a physical one |
+| `PUT /api/v3/layout` | atomically replace the active arrangement with a measured physical layout |
+| `PUT /api/v3/logical-layout` | atomically replace a complete logical arrangement: width, height, placements and optional sizing |
+| `POST /api/v3/layout/clear` | explicitly clear active entries in the current layout kind; requires `{"confirm":true}` and `If-Match` |
+
+The image inventory response is `{"images":[...]}`. Each row has `id`, `name`,
+`width`, `height`, `url`, `thumbnail_url`, and `source` (`curated` or `managed`).
+Duplicate content IDs appear once, with managed metadata preferred. Videos and
+their poster objects are excluded. Reading this operator inventory does not
+enable uploads or expose the inventory on the tablet listener.
+
+For v3 scene writes, send only `{"content":{"type":"image","asset":"sha256:...",
+"fit":"cover"}}` (or `contain`). The projected config scene contains derived
+`url`, `intrinsicWidth`, and `intrinsicHeight`; these are read-only and must be
+removed before constructing an input command. Echoing the projected descriptor
+is rejected with `422`. Image resolution can yield to other requests, so the
+ETag is checked again immediately before commit. Physical scene readback uses
+the actual v3 layout and content, never a synthetic logical colour wall.
+
+Every cross-kind v3 Apply or recall saves the previous complete layout in the
+same transaction and returns its name as `previous_layout_saved`. A failed
+copy or wall write leaves disk, memory, revision and notifications unchanged.
+Default empty Apply refuses to erase a populated wall; the explicit clear
+command retains its current kind, bounds and content. Named recall is an
+explicit replacement and may restore a saved empty arrangement.
+
+Calibration writes may include `viewport_guard: true`. Guided ruler saves use
+this flag to require an online device with matching live CSS dimensions, DPR,
+orientation and display mode; an offline or changed viewport returns `409`
+without creating a revision. The flag is a command option, not persisted
+calibration data. Manual/imported calibration writes retain the default `false`.
 
 Every write requires `If-Match` with the current config ETag: `428` when it is
 absent, `412` when it is stale, `409` for a semantic conflict. The check runs

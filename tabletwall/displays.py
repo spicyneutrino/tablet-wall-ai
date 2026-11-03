@@ -150,13 +150,16 @@ def save_calibration(
     return cast(dict[str, Any], calibration(device, revision))
 
 
-def copy_records(source_id: str, target_id: str) -> dict[str, int]:
+def copy_records(
+    source_id: str, target_id: str, *, revision_offsets: tuple[int, int] | None = None
+) -> dict[str, int]:
     """Copy every profile and calibration revision from one device to another.
 
     Origin migration gives a physical tablet a new ID; a saved slot names
-    revisions, so the rows keep their revision numbers under the new ID. The
+    revisions, so rows retain their revision numbers unless offsets are supplied. The
     source rows are never touched (they stay the history older layouts name).
-    A target that already has rows of its own is refused rather than merged.
+    Offsets append after an automatically profiled target's existing revisions.
+    Without offsets, a target with its own records is refused.
     """
     source, target = _device(source_id), _device(target_id)
     with persist._connection() as connection:
@@ -166,22 +169,23 @@ def copy_records(source_id: str, target_id: str) -> dict[str, int]:
         )
         if not connection.execute(count, (source, source)).fetchone()[0]:
             return {"profiles": 0, "calibrations": 0}
-        if connection.execute(count, (target, target)).fetchone()[0]:
+        if revision_offsets is None and connection.execute(count, (target, target)).fetchone()[0]:
             raise DisplayError("the new device already has display records")
+        profile_offset, calibration_offset = revision_offsets or (0, 0)
         profiles = connection.execute(
-            "INSERT INTO display_profiles SELECT ?, revision, active_width_mm, "
+            "INSERT INTO display_profiles SELECT ?, revision + ?, active_width_mm, "
             "active_height_mm, bezel_left_mm, bezel_top_mm, bezel_right_mm, "
             "bezel_bottom_mm, panel_pixels_width, panel_pixels_height, label, "
             "provenance, created_at FROM display_profiles WHERE device_id = ?",
-            (target, source),
+            (target, profile_offset, source),
         ).rowcount
         calibrations = connection.execute(
-            "INSERT INTO calibrations SELECT ?, revision, profile_revision, "
+            "INSERT INTO calibrations SELECT ?, revision + ?, profile_revision + ?, "
             "viewport_width, viewport_height, dpr, orientation, mode, quarter_turn, "
             "panel_offset_x_mm, panel_offset_y_mm, mm_per_css_x, mm_per_css_y, "
             "anchor_edge, uncertainty_mm, method, created_at "
             "FROM calibrations WHERE device_id = ?",
-            (target, source),
+            (target, calibration_offset, profile_offset, source),
         ).rowcount
     return {"profiles": profiles, "calibrations": calibrations}
 
@@ -331,3 +335,21 @@ def _calibration_row(row: Any) -> dict[str, Any] | None:
         "method": str(row[15]),
         "created_at": str(row[16]),
     }
+
+
+def histories() -> tuple[dict[str, dict[int, dict[str, Any]]], dict[str, dict[int, dict[str, Any]]]]:
+    """All revisions for transactional lifecycle plans and durable digests."""
+    profiles: dict[str, dict[int, dict[str, Any]]] = {}
+    calibrations: dict[str, dict[int, dict[str, Any]]] = {}
+    with persist._connection() as connection:
+        profile_keys = connection.execute("SELECT device_id, revision FROM display_profiles ORDER BY device_id, revision").fetchall()
+        calibration_keys = connection.execute("SELECT device_id, revision FROM calibrations ORDER BY device_id, revision").fetchall()
+    for device_id, revision in profile_keys:
+        value = profile(device_id, revision)
+        if value is not None:
+            profiles.setdefault(device_id, {})[revision] = value
+    for device_id, revision in calibration_keys:
+        value = calibration(device_id, revision)
+        if value is not None:
+            calibrations.setdefault(device_id, {})[revision] = value
+    return profiles, calibrations

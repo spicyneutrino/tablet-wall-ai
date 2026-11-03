@@ -49,6 +49,12 @@ Rules: every placeholder must be replaced before use; a leftover
 `/REPLACE/...` in a live unit is a failed deploy, not a warning. Keep the two
 origins byte-for-byte what the browser sends, including scheme and port.
 
+When either deployment origin is configured, the backend admits HTTP and
+WebSocket Host headers only for those configured hosts and loopback addresses.
+Foreign, missing, and ambiguous hosts are refused before routing. Unconfigured
+development keeps its existing host behavior. This check does not authenticate
+a tablet or replace the operator Origin and credential checks.
+
 ## Running the service
 
 1. Decide **user unit vs system unit yourself** (see the header of
@@ -84,6 +90,64 @@ origins byte-for-byte what the browser sends, including scheme and port.
 5. The backend stays on loopback (`--host 127.0.0.1`); the proxy is the only
    thing meant to be reachable. Re-run the ingress checks from
    [README.md](README.md) after any binding, proxy or origin change.
+
+## Health, readiness, and join QR
+
+All three routes are operator-admitted through the same check as
+`/diagnostics`, independently of upload mode. The tablet listener refuses
+them, and they return `Cache-Control: no-store`.
+
+- `GET /healthz` answers the small, machine-readable readiness contract:
+  `ready`, `schema` and `schema_expected`, `generation`, `revision`, device
+  counts, and `storage_readable`. It contains no filesystem path and no
+  secret. `503` means storage could not be read or the schema does not match;
+  the body still says which. The probe opens the database read-only and does
+  not create or migrate it.
+- `GET /api/v3/readiness` is the operator projection behind the readiness
+  card. It reports the exact configured tablet URL
+  (`TABLET_WALL_TABLET_ORIGIN` plus `/client/`), the local QR image route, the
+  Wi-Fi name only when the launcher supplied one,
+  the active security mode and upload mode, data paths, selected content and
+  whether its bytes resolve, backup recency, the last recorded restore
+  rehearsal, and explicit OS-managed wake/fullscreen advice. Missing values
+  are `null` with `known: false` or `recorded: false`; nothing is inferred.
+- `GET /api/v3/join-qr` renders the same tablet URL as a PNG for the
+  controller. It encodes no credential and is not device pairing: a tablet
+  still registers and opens its own socket.
+
+`TABLET_WALL_BACKUP_DIR` turns backup recency on. A snapshot is recorded only
+when that directory holds a `manifest.json` (one level down is allowed).
+There is no writable endpoint for either. To record a successful restore
+rehearsal, write the completion time yourself after the drill passes:
+
+```sh
+printf '{"completed_utc":"%s"}\n' "$(date -u +%Y-%m-%dT%H:%M:%SZ)" \
+  > "$TABLET_WALL_BACKUP_DIR/restore-rehearsal.json"
+```
+
+Readiness then shows that value and `recorded: true`; absent or malformed, it
+stays unrecorded.
+
+## Logs
+
+`make hotspot` writes `backend.log` and `caddy.log` under the data directory.
+The launcher pipes each child through a size-bounded rotating writer: one
+active file of at most 1,000,000 bytes plus two archives (`backend.log.1`,
+`backend.log.2`), the same for Caddy. Output chunks are read at a fixed size,
+so even an unterminated line cannot grow launcher memory or the disk. The log
+paths and startup diagnostics do not change. Stopping the launcher terminates
+the children before joining their readers, so Ctrl+C remains prompt.
+If a reader or log write fails, startup and supervision report the failed log
+path and stop the child processes. Check free disk space and permissions before
+restarting; a live child blocked behind a failed log reader is not healthy.
+
+The systemd reference above uses the journal instead. Bound it in
+`/etc/systemd/journald.conf` with `SystemMaxUse=` and `MaxRetentionSec=`, or
+in a drop-in; the repository does not install or change journald. A journal
+limit is a documented configuration, not a claim that a live host enforces it.
+
+The one-page start/join/check/image/grid/blank/stop/backup/restore procedure is
+[IMAGE-WALL-RUNBOOK.md](IMAGE-WALL-RUNBOOK.md).
 
 ## Backups
 
@@ -159,7 +223,10 @@ retention window are **open decisions** below.
 4. Check the wall: active layout and scene recall, curated images resolve,
    tablets re-register, `deploy/smoke.sh` still passes.
 5. Record how long the whole drill took; that number is your real recovery
-   time.
+   time. If the drill passed, also record the completion time in
+   `restore-rehearsal.json` as described in
+   [Health, readiness, and join QR](#health-readiness-and-join-qr). A drill you
+   did not record is not shown as a rehearsal.
 
 `deploy/drill.py` rehearses the whole cycle (populate, backup while running,
 restore to new targets, boot, compare) on a throwaway instance; see
@@ -204,4 +271,6 @@ history leak.
 - CA lifecycle: key custody, rotation, what happens on device replacement;
 - user vs system unit, service account, and any hardening flags;
 - the server shape: name, DNS, certificates, operator exposure, firewall;
-- log rotation and how long journal output is kept.
+- journal retention on a systemd host. The hotspot launcher's own
+  `backend.log`/`caddy.log` rotation is bounded in code; a service host still
+  chooses its journald limits.

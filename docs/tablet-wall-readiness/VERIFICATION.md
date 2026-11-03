@@ -1,0 +1,465 @@
+# Verification record
+
+This record describes checks performed during implementation. It does not replace
+the roadmap acceptance criteria or establish real-tablet results.
+
+| Unit | Revision | Executable evidence | Result and limits |
+| --- | --- | --- | --- |
+| Python baseline | `0ff56e3` Python sources | `.venv/bin/python -m pytest -q` | 1,177 passed, three deprecation warnings, 109.30 s. Temporary test data; no tablet evidence. |
+| Protocol 3 capability warning | `5a9cc29` | `node tests/controller_image_capability.test.js`; all ten `tests/*.test.js` suites | Pass. Fifty roster combinations, missing devices, and colour scenes. Independent reviewer also ran the new test against baseline and observed the intended failure. Rendered acceptance remains open. |
+| Protocol capability documentation | `ef99cb8` | Source and protocol comparison | Protocol 2 or 3 plus the image capability is required. Capability does not establish successful rendering. |
+| Physical image capability fence | `abb9c42` | Three new cases failed before the change with `type: image` instead of `type: color`; `tests/test_v3.py` (12 passed), `tests/test_wall.py` and `tests/test_hub_failures.py` (99 passed); Ruff | Pass. No image descriptor or plan is sent without advertised image support. No physical screen was observed. |
+| Operator diagnostics and tablet sign-in admission | `15e21f6`, whitespace cleanup `981b2db` | Root field/deployment/ingress/auth selection: 99 passed. Independent Sol High review: 109 focused tests, 161 raw-path/method denial probes, 100 admission cases, duplicate credential stripping and Origin/session/redirect checks against temporary Caddy/backend processes | Pass for local HTTP behavior. Uploads can remain disabled while an operator reads diagnostics. Tablet routes admit exact login/logout methods and continue to deny operator paths. Deployed TLS and real hardware were not tested. |
+| Capability summaries and prepared-image delivery | `18afa5c`, `3f9beee` | Controller module/capability/sizing checks passed. Prepared-image denial cases failed `True is False` before the new guard. V3, model, and playback HTTP selection: 52 passed afterward | Pass. The rotation fixture now represents an image-capable client and retains its geometry/history assertions. Experimental playback tests do not establish usable tablet playback. |
+| Actual scene and merged image inventory | `7a73cbe` | Root operator-image/v3/model selection: 56 passed; worker's broader selection: 145 passed, Ruff and mypy passed | API foundation passes. Complete runtime read model, compatibility guard, and rendered UI remain open. |
+| V3 static scene takes presentation ownership | `8ef4510` | New test first observed an active session remaining after static selection; operator-image/playback HTTP selection: 47 passed after the fix | API foundation passes. `PUT /api/v3/scene` stops the experimental presentation after commit; the operator UI migration remains open. |
+| Image-state foundation regression | `6b5f8fd` | Complete Python suite: 1,213 passed, three dependency deprecation warnings, 93.94 s | Pass at this checkpoint, before later fit/layout/helper/client integration. |
+| Global whole-image fit | `90cc8d6`, existing background preserved in `955179f` | Root: 78 client cases and 102 asset/fit/operator-image cases passed. Worker: 194 relevant Python cases passed, Ruff and mypy passed | Fit foundation passes; preview agreement and client capability integration remain open. |
+| Cross-kind return points and empty-Apply guard | `805ce16` | New checks first exposed eight failures, including a late write persisting on disk. Fourteen transition cases pass; v3/model/transition selection: 45 passed; earlier adjacent selection: 268 passed; Ruff and mypy pass | Software boundary passes. Explicit clear is separate; real-device arrangement recall remains open. |
+| Proxy operator-read configuration | `7dbf04b` | Three launcher cases failed before the guard; deployment/ingress/field selection: 41 passed afterward; shell syntax valid | Reference TLS proxy now requires its shared internal credential before launch. Trusted HTTP direct-loopback profile does not need it. No live deployment changed. |
+| Render, arrangement and lifecycle planning helpers | `7610ff3`, `9f2fc09`, `2662242` | Root repeated 144 grid/render and 95 lifecycle cases successfully | Helpers pass focused checks; actual route/socket/transaction wiring remains open and is under independent review. |
+| Tablet reporting, Identify, recovery and rulers | `15d36d4` | All current Node suites passed at root. Worker reports 148 client cases and private desktop/tablet/mobile browser checks; protocol extensions used explicit WebSocket fixtures | Actual private-backend logical contain rendering passed. New server transport and integrated operator flow remain open. Browser artifacts are outside the checkout in readiness-program/client/. |
+| Calibration trust and diagnostic image helpers | `7c2b3d0` | Root repeated 82 calibration/pattern cases; worker Ruff/mypy passed and inspected a generated grid | Helpers pass focused checks; publication, route wiring, and physical accuracy remain open. |
+| Complete foundation/helper/client checkpoint | `7c2b3d0` | Complete Python suite: 1,562 passed, three dependency deprecations, 78.80 s; JUnit `/tmp/tablet-wall-foundation-7c2b3d0.xml`. All Node suites passed; Ruff passed; mypy passed for 40 source files | Green software checkpoint before backend composition and unified-console integration. This does not close end-to-end acceptance. |
+
+## Integrated software checkpoint
+
+These checks supersede the earlier statements that route/socket composition
+was pending. They do not close the full-journey or hardware gates.
+
+| Unit | Revision | Executable evidence | Result and limits |
+| --- | --- | --- | --- |
+| Unified operator console and canonical evidence | `5b7c729`, `16ee0cd`, `50cc0b8` | All JavaScript suites; canonical state/token, independent monotonic age, cleared Identify, and offline VM fixture checks | Pass. Original worker browser evidence used fixtures for routes that were absent on its base. Those fixture checks are not integrated acceptance. |
+| Composed operator routes and sockets | `b791dfe` | 278 worker-focused tests, including 45 composition cases. Root later repeated 384 helper/composition tests | Pass. Layout, labels, Identify/retry/reconnect, grid, snapshots, rebind, test patterns, historical pins, and transaction rollback are wired. |
+| Operations and page protections | `705dbb3` through `ef06e87` | Root 52 readiness/health/CSP/offline checks. Worker backup drill, QR independently decoded, log retention/long-line/EOF checks | Pass for temporary HTTP loopback checks. Actual mounted routes are exercised in the operator composition tests. Readiness UI acceptance and deployed TLS remain separate. |
+| Independent helper review corrections | `8c3356a` | Regression checks failed before fixes; 384 focused cases afterward. Common layout validation replaces duplicated lifecycle geometry checks while retaining snapshot extensions | Model CSS scale cannot become measured through panel provenance; model hints cannot bypass manual fences; malformed reports and unrepresentable grid/ruler/pattern arithmetic are refused. Offline telemetry cannot size a new reservation. |
+| Complete integrated Python checkpoint | `8c3356a` | `.venv/bin/python -m pytest -q --junitxml=/tmp/tablet-wall-integrated-8c3356a.xml` | **1,684 passed**, three dependency deprecations, 85.21 s. All current Node suites, production Ruff, and mypy for 46 source files passed. |
+| Fresh server review corrections | `9d91591` | New managed-file availability and socket/legacy regressions failed before fixes; 232 server/image/render/recovery/protocol tests passed afterward | Metadata is assigned before handshake awaits; late legacy controllers cannot observe a fake physical wall; missing managed bytes report unavailable without changing durable ETags. Experimental loop failures now become a visible failed state with bounded logging; this does not establish working video. |
+| Actual browser image confirmation | `9d91591` | Private Uvicorn, temporary data, actual `client.js`, real WebSocket acknowledgements, desktop 1600×1000 and 390×844 / 800×600 views | Pass after fixing two remaining wall-clock callers. Header, stage, and roster agree on current display; no page errors or horizontal overflow. Artifacts at `/var/home/oak/.local/share/tablet-wall-ai/readiness-program/root-browser/`. Only one logical tablet was exercised here. |
+| Explicit ruler decisions and pinned trust details | `7a2c6cc`, `2ee4659` | Root 171 route/calibration/composition checks, all 16 Node suites, production Ruff and mypy for 47 files. Repeated actual mounted-app browser journey passed 30 assertions at 1600×1000 and 390×844 | Keep supplied is nonmutating; Use ruler prepares a new calibration revision; input/viewport changes invalidate the decision; old profile and layout pins survive. Canonical pinned health, inset assumption, and both sides of the scale discrepancy appear in the tablet card. Artifacts `/tmp/twr12-operator-io4xhxq4/`; only deliberate invalid-span 422s appeared. Physical accuracy remains unverified. |
+| Complete calibration-integrated checkpoint | `2ee4659` Python sources | `.venv/bin/python -m pytest -q --junitxml=/tmp/tablet-wall-calibration-integrated.xml` | **1,739 passed**, three dependency deprecations, 86.13 s. All 16 JavaScript suites, production Ruff, and mypy for 47 source files passed. Fresh review and remaining four-tablet/readiness/efficiency acceptance are still open. |
+| Efficiency baseline | measured application `8c3356a`, harness `d4473c7` | [Method, measurements, raw artifacts and dispositions](EFFICIENCY.md). Root repeated four harness checks plus the atomic-grid route regression; scoped harness Ruff passes | Five interleaved rounds for one/four actual browser clients, accepted paint acknowledgements, 300-second console request/log window, and separate profiling run. The 2×2 apply produced one revision and broadcast. No optimisation or hardware/capacity claim. Current code has later review fixes; recorded timings describe the pinned measured application, not a fresh measurement of every later commit. |
+| Security and operations red-team corrections | `4dace75` | New configured-Host matrix, injected ENOSPC with a live child, startup log-failure checks, production Ruff, and mypy for 47 files. Complete Python run `/tmp/tablet-wall-host-guard-final.xml`: **1,763 passed**, three dependency deprecations, 84.72 s | Configured foreign/ambiguous hosts are refused before HTTP/WS routing; unconfigured development is unchanged. Test fixtures use admitted loopback URLs rather than a production `testserver` exception. Logging failure stops supervision with an actionable error. Private actual Uvicorn/browser check rejects foreign Host with 400 and retains valid paint/consistent desktop/mobile status. |
+| Fresh-shell operator recovery dry run | `4dace75` | Private actual wall stopped; all `TABLET_WALL_*` variables removed from the backup-tool subprocess environment; explicit source paths; backup, verify, and restore to new targets each returned 0 | Runbook now supplies source paths and creates backup/restore parent directories. The first restore attempt exposed the missing parent-directory step; the corrected dry run passed. Referenced curated bytes and revision were preserved. No live restore, service cutover, host reboot, or tablet rejoin was performed. Evidence in readiness-program/root-browser/checks.json. |
+| Fresh calibration review corrections | `bbbbb0d` | Thirteen offset/revision regressions failed before the fix. Then 244 calibration/grid/composition cases and 184 focused cases passed; production Ruff and mypy for 47 files passed | Manual nonzero offsets remain in the health projection and prevent full-panel agreement; oversized profile revisions return 422 before SQLite lookup. A private actual tablet browser entered fullscreen, saved a translated manual calibration, and the operator card showed the retained 10 mm offset and coverage warning with `full_panel: false`, `ok: false`. Evidence in readiness-program/root-browser/explicit-offset-health.png and checks.json. |
+
+`ruff check .` was also tried and found 46 existing issues in simulator,
+test-fixture, and optical-tool files outside the production lint target. The
+repository's required `ruff check main.py tabletwall deploy` passes. Those
+unrelated files were not changed to make this feature's checks green.
+
+## Final operator integration checkpoint
+
+The following results supersede earlier pending statements about the integrated
+operator journey. Independent re-review of the final corrections is still open.
+
+- Integrated `bb48ce1` as `2bb6499`. The readiness card reads the mounted API,
+  preserves unknown/error states, and separates a recorded manifest from a
+  verified restore. Worker evidence had 77 checks but used a selection refresh
+  workaround and left rebind blocked. Those two flows were not accepted then.
+- `68c955c` preserves model-source history for same-hardware rebind using only
+  unambiguous historical profile/scale snapshots. It refuses missing or
+  conflicting source metadata and respects the model DPR fence. Focused checks
+  passed. Its first full run retained an offline-origin scan failure caused by
+  a dummy QR validation URL; the final correction uses the actual operator origin.
+- Fresh independent review at `68c955c` passed 670 Python cases, all 17 Node
+  suites, production Ruff and mypy for 47 files, and the adapted Host/logging
+  security and recovery probes. It nevertheless **failed** on wrong-device
+  actions in logical/compact views and an obsolete displayed QR after changing
+  the tablet origin. Report `/tmp/tablet-review-68c955c-lm1qjl9p/REVIEW.md`.
+- Root corrected those findings and the registration/reconciliation race.
+  The selection notification runs independently of inspector visibility; label
+  responses cannot replace another selection's edit baseline. New registration
+  publishes a durable-config update after commit. A runtime event interrupting
+  a read queues a new read. Own in-flight writes retain their response handling.
+  The QR image source changes with the encoded tablet URL; old pixels stay
+  hidden until the current image loads. Retry also requests a new image.
+- `.venv/bin/python -m pytest -q
+  --junitxml=/tmp/tablet-wall-final-software.xml` passed **1,782 tests**, three
+  dependency deprecations, 85.43 s. All **17** `tests/*.test.js` suites passed.
+  `.venv/bin/python -m ruff check main.py tabletwall deploy` passed.
+  `.venv/bin/python -m mypy` passed for **47** source files.
+- Actual private Uvicorn and four Chromium tablet contexts at 1024×768 CSS px,
+  DPR 2, passed **106 checks**. Operator views were 1600×1000, 390×844, and 200%
+  CSS zoom. The driver used the real routes, sockets and shipped client rather
+  than backend fixtures. Logical and physical 2×2/1×4, global Fill/Fit including
+  sampled letterbox pixels, current acknowledgements, induced image failure and
+  retry, Identify/expiry, labels, Remove, Forget, re-registration, cross-kind
+  saves/recalls, replacement, and recall of both saved kinds after replacement
+  passed. List, keyboard and stage selection changed only the intended label in
+  both layout kinds and both viewport sizes. No Refresh status workaround or
+  model reconfirmation workaround was used. No unexpected page exceptions or
+  failed network requests remained; the deliberately aborted image is excluded.
+- Journey artifacts and rerunnable driver are at
+  `/var/home/oak/.local/share/tablet-wall-ai/readiness-program/final-qa/20261101T120950Z/`.
+  `results.json` contains checks and empty failure lists; `screenshots/` and
+  `videos/` retain the actual run. Earlier failed runs are retained in sibling
+  timestamped directories. Their failures include a real own-write ETag race,
+  and two driver errors (assuming a model label contained a short ID and using
+  CSP-disallowed string evaluation), both corrected before the passing run.
+- `.venv/bin/python /tmp/tablet-wall-qr-refresh-check.py` started a private
+  backend, decoded the displayed QR with independent `zxing-cpp`, restarted the
+  backend at the same operator origin with a changed tablet origin, clicked
+  Refresh readiness and decoded the new displayed pixels. Both addresses
+  matched their corresponding text. Evidence `/tmp/tablet-wall-qr-refresh-wj8xo99d/`.
+
+All owned servers and browsers were stopped. These are software browser checks,
+not measurements of panels, bezels, physical seams, sleep, battery, or optical
+synchronisation. Hardware, installed TLS/auth composition, host reboot, and
+real-device soak remain unverified. Experimental video tests are not evidence
+of usable tablet video.
+
+### Additional phone-width and content checks
+
+The same 106-check four-tablet journey was repeated with the operator initially
+at 390×844 and restored to that width after the explicit selection matrix. It
+passed with no page exceptions, unexpected failed requests, or remaining
+workarounds. Artifacts are in
+`/var/home/oak/.local/share/tablet-wall-ai/readiness-program/final-qa/20261101T135445Z-mobile/`.
+The embedded selection matrix deliberately also visits desktop width; this is
+not a claim that every assertion was executed only at phone width.
+
+A further actual-app check found that generated Black wall / Wall-sized grid
+controls expected fixture-only nested metadata while the mounted route returns
+a flat image DTO. The handler now consumes the canonical result and adds the
+published metadata to its local library before selecting the scene. This avoids
+requiring another refresh or briefly marking the new pattern unavailable. The
+new `node tests/operator_content.test.js` fails against the old handler and
+passes after the correction. Before-fix failure is retained at
+`/tmp/tablet-wall-pattern-regression-before.log`. All 18 JavaScript suites pass.
+
+The launcher now prints `/controller/physical.html`, the primary operator
+surface, in both preflight and Ready output. The README and image-wall runbook
+now name the actual tabs and controls, the two layout kinds, Fill/Fit, QR card,
+and recovery scope. `.venv/bin/python -m pytest -q tests/test_hotspot.py` passed
+29 cases. Production Ruff and mypy for 47 source files pass. No network settings,
+service, or live installation was changed.
+
+The added private-backend content/recovery run passed 17 behavioral checks plus
+one recorded recovery-time observation. It exercised Tablet colours, Black wall,
+Restore previous content, long Unicode labels with reduced motion, keyboard
+tabs and Preview/Cancel, targeted Reconnect, hidden-state exclusion, and
+hidden/offline recovery after a server restart without reloading the client.
+It also generated and painted the measured wall grid from the actual **Wall**
+tab, checked that logical calibration is disabled in measured mode, inspected
+visible control names and a keyboard focus outline, and exercised an actual
+401/sign-in form round trip after enabling auth on a restarted private backend.
+The client retained its identity. This tests loopback auth behavior, not the
+installed TLS/proxy deployment. Evidence and the rerunnable driver are in
+`/var/home/oak/.local/share/tablet-wall-ai/readiness-program/final-qa/20261101T140548Z-recovery/`.
+No operator page exceptions remained. Earlier driver errors are retained in
+sibling runs; they included wrong tab/DTO assumptions and an unaccepted native
+confirmation, not additional accepted product results. Owned servers and
+browsers were stopped after every run.
+
+The content/recovery driver was repeated with stronger paint predicates requiring
+`current: true` and the accepted token's generation, revision and asset to match
+the current config, in addition to `state: displayed`. All 17 behaviors plus the
+recorded timing observation passed again. Evidence is in
+`/var/home/oak/.local/share/tablet-wall-ai/readiness-program/final-qa/20261101T140721Z-recovery-current-token/`.
+This supersedes the weaker displayed-state-only recovery predicate above.
+
+Fresh independent review **passed `0529eaa`**. It repeated the full 106-check
+journey and 168 focused Python cases, all 17 then-current Node suites, 24 extra
+actual-browser race assertions, and 15 sync event-order cases. Delayed label
+responses preserved both untouched and edited selection fields; interrupted
+config reads refreshed without a workaround; delayed/failed QR image responses
+kept old pixels hidden and Retry fetched current independently decoded pixels.
+The exact-source report is `/tmp/tablet-review-0529eaa-pxDG5e/REVIEW.md`.
+Later generated-pattern/entry-point changes are under a separate bounded review.
+
+A further keyboard-only four-client check reproduced focus returning to `body`
+when Move earlier/later disabled the control at the ordering boundary. The
+handler now focuses the other enabled direction at that boundary. The same
+actual-browser check passes at both first and last positions. Sampled computed
+text colours for the active task tab, topbar note and grid heading exceed
+4.5:1 contrast. This is a sample, not a WCAG conformance claim. Before-fix
+artifacts are in `final-qa/20261101T141043Z-keyboard/`; passing results and
+screenshot are in `final-qa/20261101T141121Z-keyboard/` under the same
+readiness-program directory. No backend or library state from the live wall was
+used. All owned processes were stopped.
+
+### Evidence retention and coverage audit
+
+Copies of the final Python JUnit/log, original QR refresh probe and decoded-image
+bundle, and fresh independent review report now live in durable local storage:
+`/var/home/oak/.local/share/tablet-wall-ai/readiness-program/final-evidence/`.
+`run-provenance.json` records the named application commit and SHA-256 of each
+run's driver. Some runs occurred before committing their already-tested source;
+those entries say so explicitly. The frozen independent review additionally
+verified every tracked blob against its reviewed commit.
+
+The 106-check journey did not click generated patterns. Its pass therefore did
+not establish that acceptance item. The actual extra check found the DTO mismatch
+and the fix is `f2a8c5f`. The passing generated-grid control is under **Wall →
+Colours and continuity checks**; the older raw result label saying “Content” is
+incorrect. The elapsed recovery observation measures repaint after restoring a
+software-offline context and a private backend, not OS freeze detection or Wi-Fi
+radio recovery. The later stronger predicate also requires a matching current
+accepted token.
+
+The read-only coverage audit is preserved at
+`readiness-program/reviews/acceptance-audit-0529eaa.md`. Its bounded missing
+acceptance assertions are being collected by portable feature/accessibility
+runners. Its hardware requirement for programme-level software completion is
+rejected in [TRACKING.md](TRACKING.md); ROADMAP §2.2 remains authoritative.
+
+### Generated-pattern inventory ordering
+
+The bounded independent review of `f2a8c5f` found a P2 race: an inventory read
+started before publishing a pattern could return later and overwrite the local
+merge, falsely marking the available active image unavailable. The backend scene
+was unchanged. Report `/tmp/tablet-review-f2a8c5f-qcGx0P/REVIEW.md` retains the
+actual-browser and deterministic reproductions.
+
+The content module now versions inventory mutations. Reads begun before a
+publication cannot replace its local inventory or overwrite its status with an
+obsolete failure. The canonical-pattern Node test was extended to delay an empty
+older inventory response; it failed with the active pattern ID instead of null
+before the fix and passes after it. All 18 Node suites pass. Root adapted the
+independent actual-browser probe to hold and release the real response; the
+active pattern stayed available and backend readback retained `contain` and
+`available: true`. Passing evidence is in
+`readiness-program/final-qa/20261101T141818Z-inventory-race/`.
+
+The fresh independent narrow recheck **passed `b8a07fa`**. It ran all 18 Node
+suites and additional probes for delayed inventory successes and errors, normal
+subsequent empty/populated refreshes, current-error reporting and loading-state
+release. The keyboard boundary fallback was also inspected: a successful move
+has at least two rows, so the opposite direction is enabled. No actionable
+correctness or simplicity findings remained in this delta. The review did not
+repeat the full browser journey or Python suite. Its result is retained in
+`readiness-program/reviews/inventory-focus-b8a07fa.md`.
+
+### Portable accessibility acceptance and focus corrections
+
+Integrated worker commit `bf49166` as `a3ae097`, owning only the portable
+`simulator/browser/operator_accessibility.py` runner and its
+[acceptance report](ACCESSIBILITY-ACCEPTANCE.md). Its actual app run passed
+80/82 and retained two P2 failures: Remove from wall and Delete saved arrangement
+left keyboard focus on body. Parent corrected these paths while retaining
+another control that the operator deliberately focused during the request.
+Remove falls back to the selected tablet row; deleting the last saved arrangement
+focuses its name input, and surviving rows provide a neighbouring enabled action.
+
+`.venv/bin/python simulator/browser/operator_accessibility.py --artifacts
+/var/home/oak/.local/share/tablet-wall-ai/readiness-program/final-qa/20261101-accessibility-root-fixed`
+then passed **82/82** checks. All 18 Node suites and scoped runner Ruff pass.
+The actual browser matrix covers normal, 200% CSS zoom and separately enlarged
+root text at 1600×1000 and 390×844; keyboard Apply/Cancel, native confirmations,
+first/last reorder, nudge, tab arrows, polling and roster focus retention,
+Unicode labels, error live regions, visible names, and computed text contrast
+for enabled primary, health, chip, hint and readiness/error states. The minimum
+sample is 4.5174534575546:1. This is bounded accessibility evidence, not a full
+WCAG or assistive-technology speech certification. Private data removal is
+recorded true, and owned processes stopped. The source was tested before the
+focus-fix commit; the report retains that source-identity qualification.
+
+Fresh independent recheck **passed `7806530`** after freezing its source. The
+portable runner passed 82/82; supplemental actual-browser assertions passed
+23/23 for target identity/visibility/enabled state, empty and surviving rows,
+cancel/error paths and preserving another selected tablet/input/tab after late
+responses. Evidence is in `final-qa/20261101-independent-7806530-review/` and
+`final-qa/20261101-independent-7806530-edge-verified/` under readiness-program.
+The original portable focus assertions only excluded BODY; parent tightened them
+to the chosen usable target. Production behavior is unchanged by that test edit.
+The scoped review found no remaining correctness issue. Private data and owned
+processes were cleaned up. Summary `reviews/removal-focus-7806530.md`.
+
+### Portable feature acceptance and authoritative model suggestion
+
+Integrated worker `5cb7a53` as `c3dab2b`, owning only
+`simulator/browser/readiness_acceptance.py` and its
+[feature acceptance report](FEATURE-ACCEPTANCE.md). Its original 180-pass run
+retained one failed acceptance case and two findings: the controller recomputed
+model suggestions from raw telemetry that config projection omitted, and the
+file picker advertised WebP while uploads refused it.
+
+Parent now renders the server's canonical `model_suggestions`, filtered through
+the current catalogue. It does not assign or confirm a model implicitly. The
+picker now advertises only JPEG/PNG. The runner waits for the asynchronous
+suggestion and explicitly verifies both advertising and forced unsupported-type
+rejection. Its startup health-timeout path also stops its private child.
+
+`.venv/bin/python simulator/browser/readiness_acceptance.py --artifacts
+/var/home/oak/.local/share/tablet-wall-ai/readiness-program/final-evidence/acceptance-root-fixed`
+passed **183 checks, zero failures and zero findings**. Source/driver SHA and
+run-identity qualifications are in the report. The root inspected prompt/upload
+screenshots. This closes the missing bounded feature assertions, subject to final
+independent review. The run exercises the actual image A→B/reload, marked-border
+Fit/Fill and visible resolution arithmetic, uploads/progress/rejection, inactive
+experimental playback after a dismissed confirmation, legacy measured-wall
+fence, named image failure/retry and empty/offline wall, restart-persistent label,
+Identify number/name and timing, nonmutating replacement preview/revision maps,
+return-point names, one-revision ordered grids, model confirmation/provenance and
+viewport fence, and the complete start→health→Black wall→stop→backup→verify→restore
+new paths→boot sequence. Existing transaction, capability, geometry, ruler and
+security tests and the retained 106-check journey cover the complementary rows.
+No hardware, installed TLS/proxy, host reboot or soak conclusion follows.
+
+The stricter accessibility runner was also repeated at the committed `528b24c`
+with usable target identity/visibility/enabled assertions. All **82/82** passed;
+private-data removal is true. Evidence `final-qa/20261101-accessibility-strict-targets/`
+under readiness-program. Its driver SHA-256 is
+`d57f340205793ca935c0f3e0b735f0c74f2a05c2ca757cf0bf3eb3c48ea64e12`.
+
+### Final combined test checkpoint at `47dd0c3`
+
+`.venv/bin/python -m pytest -q --junitxml=/var/home/oak/.local/share/tablet-wall-ai/readiness-program/final-evidence/final-software.xml`
+passed **1,782 tests**, three dependency deprecation warnings, 85.83 s. The log
+is beside the JUnit as `final-software.log`. All **18** Node suites pass.
+Production Ruff plus both portable runners pass; mypy passes for **47** source
+files. This checkpoint includes the final model-suggestion and upload-picker
+production fixes. The final independent review is still pending; hardware is
+not part of this software test count.
+
+### Final independent acceptance and software completion
+
+Fresh read-only Sol High review **passed frozen application `29148ec`**. It
+repeated the portable feature driver: **183 checks, zero failures, zero findings**.
+Application SHA and driver hash match. All 376 tracked blobs matched the
+reviewed archive after execution. The reviewer ran all **18 Node suites**,
+**192 focused Python tests**, production Ruff with both portable runners, and
+mypy for **47 files**. It inspected the production-identical full-suite JUnit
+with **1,782 passing tests**, prior reviews, accessibility and efficiency evidence.
+It did not repeat the full Python suite, accessibility matrix or benchmark.
+
+[Final review](reviews/FINAL-SOFTWARE-REVIEW.md) records the verdict and limits.
+Complete durable evidence is copied to
+`/var/home/oak/.local/share/tablet-wall-ai/readiness-program/final-evidence/independent-29148ec/`.
+The original directory is `/tmp/tablet-wall-review-291-Obzr1U-evidence/`.
+The driver hash is
+`d016d76047d45213fd2822486c02e23c53fafdb55983fd436824c0d0ad9c48b0`.
+
+The driver's broad `ERR_ABORTED` and `ERR_CONNECTION_REFUSED` filtering is a
+known evidence limit. Raw results retain three loopback API refusals during
+the intentional-restart journey. This run is not used as a clean-network gate.
+The earlier clean 106-check journeys and strict 82-check accessibility run
+provide that evidence separately. No acceptance-blocking false pass was proven.
+Owned server PIDs were absent and owned ports closed after the run.
+
+**Software complete under ROADMAP §2.2:** TWR-01 through TWR-14 and TWR-16
+accepted, TWR-15 explicitly deferred for trusted profile A. No proven software
+review blocker remains. The subsequent closure commit changes documentation
+only, not the reviewed application. **Milestone complete remains open** for
+TWR-17. No measured-panel precision, Safari, installed TLS/proxy, host reboot,
+OS sleep, powered soak, hardware capacity or dependable-video claim follows.
+
+### TWR-17 preparation reconciliation after software acceptance
+
+DeepSeek Flash's read-only hardware-preparation review at `2e5aca4` found two
+different checklists, a nonexistent §12.6 reference, and an aggregate trial record
+that the cited kit schema could not express. The parent reconciled these into
+[one canonical 21-row checklist](HARDWARE-ACCEPTANCE.md) and a separate
+[operator JSON template](TWR-17-TRIAL-RECORD.template.json). All template rows
+remain not run; unknown metadata and measured tolerances stay null. The existing
+kit schema is unchanged and still governs individual tool reports.
+
+The procedure now links backup/restore to explicit new trial paths and separate
+launcher configuration/ports, records the exact integration-branch commit and
+changed-origin identities, defines profile-A host reboot as manual relaunch, and
+gives second-peer ingress URLs. H8 retains twenty actual Wi-Fi trials and requires
+correct-image timing separately from the existing transport-only harness. The
+2 mm seam target and two-hour still observation remain unchanged. No new ruler
+measurement is a prerequisite. Authentication remains not run for profile A.
+
+Private rehearsal at
+`readiness-program/hardware-prep/20261101T164451Z/checks.json` verified the existing
+independent-review snapshot, restored it to new temporary targets with actual
+image bytes, and checked the package-module launcher invocation and arguments.
+Checklist/template row parity, all-not-run/nonclaim invariants, valid JSON and
+local links passed. Two preparation-command mistakes were observed and corrected:
+`deploy/hotspot.py` needed `-m deploy.hotspot`, and the restore target parent needed
+an explicit mkdir. Temporary restored data was removed. No hotspot command, real
+endpoint, panel, live data, service, firewall or reboot was exercised.
+
+This is preparation documentation, not new application behavior or hardware
+acceptance. TWR-17 and issue #19 remain open; software acceptance at `29148ec`
+is unchanged. Fresh review of this preparation delta is pending.
+
+### Independent fresh-shell release rehearsal
+
+DeepSeek Flash independently **passed** the runbook at `2e5aca4`
+(application-identical to reviewed `29148ec`). Its report and raw logs are
+preserved at `readiness-program/release-procedure/deepseek-2e5aca4/`, copied
+from `/tmp/opencode/twr-runbook-thloFQ/`.
+
+Actual private-loopback checks covered fresh-shell `env -i` backup/verify/restore,
+restored boot and image bytes; normal health plus unreadable-DB and schema-mismatch
+503/recovery; unknown readiness fields and read-only backup projection; missing
+curated-image detection/recovery; excluded unused content; and the 29-check
+restore drill. Tampered-snapshot verify/restore failed safely with zero targets
+created, as did restore into environment-configured targets. Paths containing
+spaces worked. The generated Caddy configuration passed validation and the
+launcher's startup checks on loopback. Fifteen operator-route variants, including
+health/readiness/QR, returned 403 through the tablet listener even with a forged
+operator header; allowed client/assets remained available. No defect was found.
+
+The report retains three non-blocking limits: diagnostics verification is nested
+under `media.integrity` and its successful empty-upload result proves no image
+bytes; a later restore to environment-named paths is deliberately refused even
+if no service is running; startup checks probe fewer denied routes than this
+manual rehearsal, though the catch-all denied all tested paths. These observations
+do not establish a product failure or justify unrelated application changes.
+
+The actual hotspot launcher, real firewall ownership/Ctrl+C, browser, TLS/auth
+proxy composition, host reboot and hardware were not exercised. All owned
+processes stopped and listeners closed. The full suites, browser feature run,
+accessibility matrix and efficiency benchmark were not repeated. TWR-17 remains
+unrun. The independent review of the separate preparation-document delta is
+still pending.
+
+### Preparation record field corrections
+
+Fresh DeepSeek review of `c4ff5ce` independently passed command runnability,
+new-path restore, all links/anchors and draft/nonclaim invariants, but retained
+two P2 documentation findings: required network/device/measurement facts lacked
+explicit fields, and H11/H16 template summaries differed from the canonical rows.
+Three P3 clarifications covered absorbed model/mixed-device checks, hotspot
+reactivation after reboot and the network case/count rule. Original report is
+preserved at `readiness-program/hardware-prep/review-c4ff5ce/REPORT.md`.
+
+Parent added explicit network fields and exact JSON shapes for device entries,
+performed observations, millimetre measurements and the planned network cohort.
+Planning is separate from observations. The duplicate `trials` counter is removed;
+actual H8 count is the `trial_results` length. Every template requirement now
+matches its canonical checklist sentence verbatim. H11 calls out hotspot
+reactivation; the two absorbed checks are mapped explicitly. The twenty-trial
+minimum is total across the declared cohort/cases, representing every model;
+the existing harness produces twenty entries per named-device invocation and
+all results are retained. These clarify the procedure, not measured outcomes.
+
+`readiness-program/hardware-prep/record-contract-corrections/checks.json` records
+an executable old/new contract comparison: `c4ff5ce` fails the new field/parity
+checks; corrected files pass. Every JSON example parses, all 21 IDs match in
+order, requirements match exactly, network/example shapes and local links exist,
+all observations remain null/not run and hardware claims remain false. The
+network harness `--help` confirms `--case` and the documented arguments. No
+runtime application code, hardware, firewall or live data changed. Fresh narrow
+independent review of the corrected record is pending.
+
+### Hardware-preparation recheck and final wording fixes
+
+Fresh independent DeepSeek review of `d8ccbac` **closed all five findings** from
+`c4ff5ce`. It independently confirmed 21/21 exact requirements, field/example
+shapes, removal of the duplicate counter, network case/count semantics, links,
+active-hotspot prerequisite and every draft/nonclaim invariant. It found no
+safety or command blocker. Report is preserved at
+`readiness-program/hardware-prep/review-d8ccbac/REPORT.md`.
+
+The review retained two minor wording/example inconsistencies. Parent changed
+“observed null while not run” to “until an observation exists”, explicitly keeping
+inconclusive measurements. The generic observation now has `measurements: []`;
+a separate measurement-entry shape is used only for actual measurements.
+`readiness-program/hardware-prep/final-wording-checks.json` records the parent
+check: five JSON examples parse without duplicate keys; the old placeholder
+check fails as expected; corrected generic observations are empty; all 21
+requirements still match; all actual template observations remain null/not run;
+local links resolve. These final wording edits were checked by the parent and
+were not sent through another independent review cycle.
+
+Preparation documentation and the separate operator-record template are ready
+for a real trial. They do not claim the trial happened. No application code or
+runtime configuration changed after software acceptance at `29148ec`. No full
+suite was repeated for these documentation-only edits. TWR-17, issue #19 and
+the overall milestone remain open for actual signed hardware observations.

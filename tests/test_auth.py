@@ -13,7 +13,7 @@ import main
 from tabletwall import auth
 
 TOKEN = "test-only-shared-token-with-at-least-32-bytes"
-ORIGIN = "http://testserver"
+ORIGIN = "http://127.0.0.1"
 BEARER = {"Authorization": f"Bearer {TOKEN}"}
 
 
@@ -129,9 +129,9 @@ def test_browser_login_sets_cookie_and_allows_normal_browser_routes(secured, dev
     assert TOKEN not in cookie
     assert secured.get("/client/").status_code == 200
     assert secured.post("/devices/register", json=device_payload, headers={"Origin": ORIGIN}).status_code == 200
-    with secured.websocket_connect("/ws/device?device_id=" + device_payload["device_id"], headers={"Origin": ORIGIN}) as socket:
+    with secured.websocket_connect("ws://127.0.0.1" + ("/ws/device?device_id=" + device_payload["device_id"]), headers={"Origin": ORIGIN}) as socket:
         assert socket.receive_json()["type"] == "welcome"
-    with secured.websocket_connect("/ws/controller", headers={"Origin": ORIGIN}) as socket:
+    with secured.websocket_connect("ws://127.0.0.1/ws/controller", headers={"Origin": ORIGIN}) as socket:
         assert socket.receive_json()["type"] == "snapshot"
 
 
@@ -143,7 +143,7 @@ def test_https_cookie_is_secure(monkeypatch):
         assert client.get("/wall").status_code == 200
 
 
-@pytest.mark.parametrize("origin", [None, "https://attacker.invalid", "null", "http://testserver:80"])
+@pytest.mark.parametrize("origin", [None, "https://attacker.invalid", "null", "http://127.0.0.1:80"])
 def test_cookie_writes_require_exact_same_origin(secured, origin):
     assert login(secured).status_code == 303
     before = secured.get("/wall").json()
@@ -155,7 +155,7 @@ def test_cookie_writes_require_exact_same_origin(secured, origin):
 @pytest.mark.parametrize("path", ["/ws/device", "/ws/controller", "/ws/unknown"])
 def test_sockets_require_auth_before_upgrade(secured, path):
     with pytest.raises(WebSocketDenialResponse) as denied:
-        with secured.websocket_connect(path):
+        with secured.websocket_connect("ws://127.0.0.1" + (path)):
             pass
     assert denied.value.status_code == 401
     assert main.device_sockets == {}
@@ -187,23 +187,23 @@ def test_cookie_socket_requires_same_origin(secured, origin, path):
     login(secured)
     headers = {} if origin is None else {"Origin": origin}
     with pytest.raises(WebSocketDenialResponse) as denied:
-        with secured.websocket_connect(path, headers=headers):
+        with secured.websocket_connect("ws://127.0.0.1" + (path), headers=headers):
             pass
     assert denied.value.status_code == 403
 
 
 def test_bearer_socket_and_existing_operator_guard(secured, monkeypatch):
-    with secured.websocket_connect("/ws/controller", headers=BEARER) as socket:
+    with secured.websocket_connect("ws://127.0.0.1/ws/controller", headers=BEARER) as socket:
         assert socket.receive_json()["type"] == "snapshot"
     monkeypatch.setenv(main.OPERATOR_ORIGIN_ENV, "https://operator.wall.test")
     assert secured.put("/wall", json={"width": 4001}, headers=BEARER).status_code == 403
     with pytest.raises(WebSocketDenialResponse) as denied:
-        with secured.websocket_connect("/ws/controller", headers=BEARER):
+        with secured.websocket_connect("ws://127.0.0.1/ws/controller", headers=BEARER):
             pass
     assert denied.value.status_code == 403
     headers = {**BEARER, "Origin": "https://operator.wall.test"}
     assert secured.put("/wall", json={"width": 4001}, headers=headers).status_code == 200
-    with secured.websocket_connect("/ws/controller", headers=headers) as socket:
+    with secured.websocket_connect("ws://127.0.0.1/ws/controller", headers=headers) as socket:
         assert socket.receive_json()["type"] == "snapshot"
 
 
@@ -279,5 +279,5 @@ def test_empty_auth_setting_preserves_default_behavior(client, monkeypatch):
     monkeypatch.setenv(auth.TOKEN_ENV, "")
     assert client.get("/wall").status_code == 200
     assert client.get("/client/").status_code == 200
-    with client.websocket_connect("/ws/controller") as socket:
+    with client.websocket_connect("ws://127.0.0.1/ws/controller") as socket:
         assert socket.receive_json()["type"] == "snapshot"

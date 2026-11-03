@@ -14,17 +14,19 @@ import contextlib
 import hashlib
 import ipaddress
 import json
+import logging
 import os
 import re
 import shutil
 import time
 import uuid
 from collections.abc import Callable
+from dataclasses import asdict
 from contextlib import asynccontextmanager
 from copy import deepcopy
-from math import sqrt
+from math import isfinite, sqrt
 from pathlib import Path
-from typing import Any
+from typing import Literal, Any
 from urllib.parse import urlsplit
 
 from fastapi import (
@@ -45,6 +47,9 @@ from starlette.datastructures import Headers
 # ``monkeypatch.setattr(main.hub, "HEARTBEAT_TIMEOUT_S", ...)``.
 from tabletwall import hub as hub
 from tabletwall.auth import AuthMiddleware
+from tabletwall import operability
+from tabletwall.routes import calibration_check, health as health_routes
+from tabletwall.security_headers import ConfiguredHostMiddleware, SecurityHeadersMiddleware
 from tabletwall.hub import (
     _broadcast,
     _broadcast_offline,
@@ -78,7 +83,9 @@ from tabletwall.protocol import (
 # Curated still-image assets (PROTOCOL.md "Still images"): the directory scan,
 # content IDs, and byte-verified serving behind ``GET /assets``.
 from tabletwall import assets, clock, displays, geometry, media, media_video, playback
-from tabletwall import persist, workers
+from tabletwall import layouts, operator_images, persist, workers, tablet_models
+from tabletwall import device_lifecycle, grid, operator_state, render_status, test_pattern
+from tabletwall import sizing as wall_sizing
 from tabletwall import writer as writers
 from tabletwall.media_limits import (
     MAX_SOURCE_BYTES,
@@ -108,6 +115,10 @@ from tabletwall.persist import (
 # and must keep mutating what the running app uses.
 from tabletwall.state import (
     _device_record,
+    current_mapping,
+    render_mapping,
+    validated_viewport,
+    identify_commands,
     device_changes,
     checkpoint_devices,
     checkpoint_loop,
@@ -116,6 +127,7 @@ from tabletwall.state import (
     _fresh_wall,
     _is_online,
     _new_generation,
+    _project_scene,
     _touch_device,
     _viewport_matches,
     _wall_state,
@@ -190,6 +202,12 @@ async def lifespan(_: FastAPI):
         try:
             yield
         finally:
+            for identify_task in list(_identify_tasks):
+                identify_task.cancel()
+            for identify_task in list(_identify_tasks):
+                with contextlib.suppress(asyncio.CancelledError):
+                    await identify_task
+            _identify_tasks.clear()
             checkpoint_task = _roster_checkpoint_task
             _roster_checkpoint_task = None
             if checkpoint_task is not None:
@@ -242,6 +260,10 @@ class DeviceRegistration(BaseModel):
     # Diagnostic only (R5): a value outside WAKE_LOCK_STATES is dropped rather
     # than rejected, so a bad report can never keep a tablet off the wall.
     wake_lock: Any = None
+    screen_width: int | None = Field(default=None, gt=0, le=MAX_DEVICE_DIMENSION)
+    screen_height: int | None = Field(default=None, gt=0, le=MAX_DEVICE_DIMENSION)
+    screen_dpr: float | None = Field(default=None, gt=0, le=10, allow_inf_nan=False)
+    platform_family: Literal["ios", "android", "other"] | None = None
 
     @field_validator("device_type")
     @classmethod
@@ -274,6 +296,7 @@ class WallUpdate(BaseModel):
 
     width: int | None = None
     height: int | None = None
+    sizing: dict[str, Any] | None = None
 
     model_config = ConfigDict(extra="forbid")
 
@@ -284,6 +307,16 @@ class WallUpdate(BaseModel):
         # which FastAPI turns into a 422.
         if value is not None and value <= 0:
             raise ValueError("width and height must be positive integers")
+        return value
+
+    @field_validator("sizing")
+    @classmethod
+    def valid_sizing(cls, value: dict[str, Any] | None) -> dict[str, Any] | None:
+        if value is not None:
+            normalized = wall_sizing.validate_sizing(value, logical=True)
+            if normalized is None:
+                raise ValueError("sizing requires mode fixed/tablets and a non-negative whole-unit padding")
+            return normalized
         return value
 
 
@@ -306,6 +339,7 @@ class SceneContent(BaseModel):
     type: str
     asset: str | None = None
     fit: str | None = None
+    background: str | None = None
 
     model_config = ConfigDict(extra="forbid")
 
@@ -323,10 +357,19 @@ class SceneContent(BaseModel):
     @classmethod
     def supported_fit(cls, value: str | None) -> str | None:
         # Raises ValueError for anything the renderer cannot honour; only
-        # ``cover`` exists today (PROTOCOL.md "Still images").
+        # centered ``cover`` and ``contain`` (PROTOCOL.md "Still images").
         if value is not None and value not in SUPPORTED_FITS:
-            raise ValueError("only the cover fit is supported")
+            raise ValueError("only cover and contain fits are supported")
         return value
+
+    @field_validator("background")
+    @classmethod
+    def supported_background(cls, value: str | None) -> str | None:
+        if value is None:
+            return None
+        if not re.fullmatch(r"#[0-9a-fA-F]{6}", value):
+            raise ValueError("background must be #rrggbb")
+        return value.lower()
 
     @model_validator(mode="after")
     def validate_variant(self) -> "SceneContent":
@@ -339,8 +382,8 @@ class SceneContent(BaseModel):
                 # Resolved here so the scene is persisted with the fit it
                 # will actually be rendered with, never an implied one.
                 self.fit = DEFAULT_FIT
-        elif self.asset is not None or self.fit is not None:
-            raise ValueError(f"{self.type} content takes neither asset nor fit")
+        elif self.asset is not None or self.fit is not None or "background" in self.model_fields_set:
+            raise ValueError(f"{self.type} content takes no asset, fit, or background")
         return self
 
 
@@ -400,36 +443,92 @@ class WallAutoCommand(BaseModel):
         return value
 
 
+class WallPackCommand(BaseModel):
+    columns: int | None = Field(default=None, ge=1)
+    gap: int = 0
+
+    model_config = ConfigDict(extra="forbid")
+
+    @field_validator("columns", "gap", mode="before")
+    @classmethod
+    def whole_number(cls, value: Any) -> Any:
+        if isinstance(value, bool) or not isinstance(value, (int, float)) or not isfinite(value) or not float(value).is_integer():
+            raise ValueError("columns and gap must be whole numbers")
+        return int(value)
+
+    @field_validator("gap")
+    @classmethod
+    def nonnegative_gap(cls, value: int) -> int:
+        if value < 0:
+            raise ValueError("gap must be non-negative")
+        return value
+
+
 # ---------------------------------------------------------------------------
 # commit boundary (PROTOCOL.md "Persistence")
 # ---------------------------------------------------------------------------
 
 
-def _commit_wall(change: Callable[[dict[str, Any]], None]) -> None:
+def _commit_wall(
+    change: Callable[[dict[str, Any]], None], *, backup_layout_name: str | None = None
+) -> None:
     """Persist a wall change, and only then let it into memory.
 
     ``change`` applies one logical mutation to a wall-state dict. It runs
-    first on a **detached copy** of the live state, whose revision is bumped
-    and whose row is written; only once that write has committed does the same
-    ``change`` run on the live ``wall`` — mutated in place, because ``wall``
-    is re-exported through ``main`` and tests hold its identity — with the
-    same revision bump.
+    first on a detached copy, including derived tablet-fit bounds. Its row
+    is written before that complete proposal replaces the live contents.
+    The ``wall`` dict retains its identity for modules that hold it.
 
     The ordering is the whole point: if ``save_state`` raises, nothing has
     touched memory yet, so the live state, the database, and what subscribers
     have been told all still agree, the route fails loudly as a 5xx, and no
     broadcast follows (PROTOCOL.md "A commit happens before notification, so
     a controller is never told about state that would not survive a
-    restart"). Every wall-mutating route commits through here.
+    restart"). Layout and scene routes use this boundary; lifecycle routes use
+    ``_commit_lifecycle`` to include roster and history writes in their commit.
     """
     proposed = deepcopy(wall)
     change(proposed)
+    try:
+        _fit_wall_layout(proposed["layout"])
+    except ValueError as error:
+        raise HTTPException(status_code=422, detail=str(error)) from error
     proposed["revision"] += 1
-    save_state(proposed)
+    with persist.transaction():
+        if backup_layout_name is not None:
+            if not save_layout(backup_layout_name, wall["layout"]):
+                raise HTTPException(status_code=409, detail="could not save the previous layout")
+        save_state(proposed)
 
     # Reached only when the write committed.
-    change(wall)
-    wall["revision"] += 1
+    wall.clear()
+    wall.update(proposed)
+
+
+def _fit_wall_layout(layout: dict[str, Any]) -> None:
+    if layout.get("kind") == "physical":
+        wall_sizing.fit_physical(layout, displays.profile)
+    else:
+        wall_sizing.fit_logical(layout)
+
+
+def _replace_layout(layout: dict[str, Any], *, allow_empty: bool = False) -> str | None:
+    try:
+        proposed = layouts.normalize(layout, profile_for=displays.profile,
+                                     calibration_for=displays.calibration)
+    except ValueError as error:
+        raise HTTPException(status_code=422, detail=str(error)) from error
+    if layouts.entries(wall["layout"]) and not layouts.entries(proposed) and not allow_empty:
+        raise HTTPException(status_code=409, detail="Empty layout would remove every tablet; use Clear wall explicitly")
+    backup = None
+    if layouts.kind(wall["layout"]) != layouts.kind(proposed):
+        backup = "Before " + layouts.kind(proposed) + " " + uuid.uuid4().hex[:12]
+
+    def apply(target: dict[str, Any]) -> None:
+        target["layout"] = proposed
+
+    _commit_wall(apply, backup_layout_name=backup)
+    return backup
 
 
 def _snapshot_name(raw: str) -> str:
@@ -456,7 +555,9 @@ def _valid_saved_layout(saved: Any) -> bool:
     Accept the same placement shape we persist, including vacant reservations;
     the roster is deliberately irrelevant here.
     """
-    if not isinstance(saved, dict) or set(saved) != {"width", "height", "placements"}:
+    if not isinstance(saved, dict) or set(saved) - {"width", "height", "placements", "sizing"} or not {"width", "height", "placements"}.issubset(saved):
+        return False
+    if "sizing" in saved and wall_sizing.validate_sizing(saved["sizing"], logical=True) is None:
         return False
     if any(type(saved[k]) is not int or saved[k] <= 0 for k in ("width", "height")):
         return False
@@ -492,18 +593,16 @@ def _valid_saved_content(saved: Any) -> bool:
     kind = saved.get("type")
     if kind in ("color", "calibration"):
         return set(saved) == {"type"}
-    if kind != "image" or set(saved) != {
-        "type", "asset", "fit", "intrinsicWidth", "intrinsicHeight"
-    }:
+    required = {"type", "asset", "intrinsicWidth", "intrinsicHeight"}
+    if kind != "image" or not required <= set(saved) or set(saved) - required - {"fit", "background"}:
         return False
     return (
-        isinstance(saved["asset"], str)
-        and _is_asset_id(saved["asset"])
-        and saved["fit"] in SUPPORTED_FITS
-        and type(saved["intrinsicWidth"]) is int
-        and saved["intrinsicWidth"] > 0
-        and type(saved["intrinsicHeight"]) is int
-        and saved["intrinsicHeight"] > 0
+        isinstance(saved["asset"], str) and _is_asset_id(saved["asset"])
+        and saved.get("fit", "cover") in SUPPORTED_FITS
+        and ("background" not in saved or isinstance(saved["background"], str)
+             and re.fullmatch(r"#[0-9a-f]{6}", saved["background"]) is not None)
+        and type(saved["intrinsicWidth"]) is int and saved["intrinsicWidth"] > 0
+        and type(saved["intrinsicHeight"]) is int and saved["intrinsicHeight"] > 0
     )
 
 
@@ -519,6 +618,8 @@ app.include_router(assets_router)
 
 app.include_router(devices_router)
 app.include_router(diagnostics_router)
+app.include_router(health_routes.create_router())
+app.include_router(calibration_check.create_router())
 
 
 class RevalidatedStaticFiles(StaticFiles):
@@ -764,7 +865,22 @@ async def operator_origin_guard(request: Request, call_next):
     return await call_next(request)
 
 
+def _deployment_hosts() -> set[str] | None:
+    origins = [_origin_env_state(name) for name in (OPERATOR_ORIGIN_ENV, TABLET_ORIGIN_ENV)]
+    if all(state == _ORIGIN_UNSET for state, _origin in origins):
+        return None
+    hosts = {"127.0.0.1", "localhost", "::1"}
+    for _state, origin in origins:
+        if origin is not None:
+            host = urlsplit(origin).hostname
+            if host is not None:
+                hosts.add(host.lower().rstrip("."))
+    return hosts
+
+
 app.add_middleware(AuthMiddleware)
+app.add_middleware(ConfiguredHostMiddleware, allowed_hosts=_deployment_hosts)
+app.add_middleware(SecurityHeadersMiddleware)
 
 
 @app.get("/operator-config")
@@ -878,6 +994,7 @@ async def device_register(device: DeviceRegistration):
             "height": device.height,
             "type": device.device_type,
             "color": existing["color"] if existing is not None else None,
+            "label": existing.get("label") if existing is not None else None,
             "protocol": existing.get("protocol") if existing is not None else None,
             "caps": list(existing.get("caps") or []) if existing is not None else [],
             "number": existing.get("number") if existing is not None else None,
@@ -894,7 +1011,19 @@ async def device_register(device: DeviceRegistration):
         wake_lock = _wake_lock_value(device.wake_lock)
         if wake_lock is not None:
             record["wake_lock"] = wake_lock
+        for key in ("screen_width", "screen_height", "screen_dpr", "platform_family"):
+            value = getattr(device, key)
+            if value is not None:
+                record[key] = value
+            elif existing is not None and key in existing:
+                record[key] = existing[key]
         devices[device_id] = record
+        current_assignment = tablet_models.assignments().get(device_id)
+        assignment_created = current_assignment is None
+        if current_assignment is None and displays.latest_profile(device_id) is not None:
+            current_assignment = tablet_models.assign(device_id, "manual")
+        if current_assignment is None:
+            tablet_models.assign(device_id, "auto")
         # Stamp the monotonic contact reading too; presence expiry uses it.
         _touch_device(device_id)
         released = _ensure_device_number(device_id, device.number)
@@ -906,6 +1035,8 @@ async def device_register(device: DeviceRegistration):
     record = _device_record(device_id)
 
     await _broadcast({"type": "device_updated", "device": record})
+    if existing is None or assignment_created:
+        await hub._broadcast_config_updated()
 
     return {
         "registered": True,
@@ -952,35 +1083,11 @@ async def change_color(device_id: str, command: ColorCommand):
 
 @app.delete("/devices/{device_id}")
 async def delete_device(device_id: str):
-    _require_logical_wall()
     key = _parse_device_id(device_id)
     if key is None or key not in devices:
         raise HTTPException(status_code=404, detail="Unknown device")
-
-    dropped_placement = key in wall["layout"]["placements"]
-    with device_changes():
-        if dropped_placement:
-            def apply(target: dict[str, Any]) -> None:
-                target["layout"]["placements"].pop(key, None)
-
-            _commit_wall(apply)
-        record = devices.pop(key)
-    websocket = device_sockets.pop(key, None)
-
-    if websocket is not None:
-        with contextlib.suppress(Exception):
-            await websocket.close(code=WS_CLOSE_NORMAL)
-        await _broadcast_offline(key, record["last_seen"])
-
-    # device_offline says "its socket is gone"; device_removed says "drop the
-    # tile". A controller that did not issue the DELETE needs the second one,
-    # otherwise it keeps rendering a device that no longer exists.
-    await _broadcast({"type": "device_removed", "device_id": key})
-
-    if dropped_placement:
-        await _broadcast_wall()
-
-    return {"removed": True, "device_id": key}
+    result = await _forget_device(key, device_lifecycle.ForgetCommand(remove_active=True, saved_layouts="keep"))
+    return {"removed": True, "device_id": key, **({"remaining_saved": result} if result else {})}
 
 
 class RebindCommand(BaseModel):
@@ -997,93 +1104,21 @@ class RebindCommand(BaseModel):
 
 @app.post("/devices/{device_id}/rebind")
 async def rebind_device(device_id: str, command: RebindCommand):
-    """Move a lost identity's placement/slot, display records and number.
-
-    A tablet that changed origin (http to https, new host) lost its
-    localStorage and registered as a new device. The operator points that new
-    registration at the id the wall still remembers. The old id must be
-    offline: this is a hand-over, never a way to take a live tablet's place.
-    Saved layouts keep naming the old id; recall one and save it again.
-    """
-    new_id = _parse_device_id(device_id)
-    if new_id is None or new_id not in devices:
+    key = _parse_device_id(device_id)
+    if key is None:
         raise HTTPException(status_code=404, detail="Unknown device")
-    old_id = str(command.replaces)
-    if old_id == new_id:
-        raise HTTPException(status_code=422, detail="replaces must be a different device")
-    if _is_online(old_id):
-        raise HTTPException(status_code=409, detail="The replaced device is online")
-
-    layout = wall["layout"]
-    physical = layout.get("kind") == "physical"
-    held = layout["slots"] if physical else layout["placements"]
-    if old_id not in devices and old_id not in held:
-        raise HTTPException(status_code=404, detail="Unknown device to replace")
-    if new_id in held:
-        raise HTTPException(status_code=409, detail="The new device is already placed")
-
-    old_record = devices.get(old_id)
-    number = command.number
-    if number is None and old_record is not None:
-        number = old_record.get("number")
-    if number is not None and any(
-        other.get("number") == number
-        for key, other in devices.items()
-        if key not in (old_id, new_id)
-    ):
-        raise HTTPException(status_code=409, detail="That display number is in use")
-
-    moved = old_id in held
-    record = devices[new_id]
-    renumbered = number is not None and record.get("number") != number
-    try:
-        with device_changes():
-            copied = displays.copy_records(old_id, new_id)
-            if moved:
-                def apply(target: dict[str, Any]) -> None:
-                    bucket = target["layout"]["slots" if physical else "placements"]
-                    entry = bucket.pop(old_id)
-                    if not physical:
-                        entry["device_id"] = new_id
-                    bucket[new_id] = entry
-
-                _commit_wall(apply)
-            if number is not None:
-                record["number"] = number
-            devices.pop(old_id, None)
-    except displays.DisplayError as error:
-        raise HTTPException(status_code=409, detail=str(error)) from error
-
-    # Stop the old cohort before any socket can observe the committed rebind.
-    await _abort_playback("rebind")
-    stale_socket = device_sockets.pop(old_id, None)
-    live_socket = device_sockets.get(new_id)
-
-    if stale_socket is not None:
-        with contextlib.suppress(Exception):
-            await stale_socket.close(code=WS_CLOSE_NORMAL)
-    if old_record is not None:
-        await _broadcast({"type": "device_removed", "device_id": old_id})
-    await _broadcast({"type": "device_updated", "device": _device_record(new_id)})
-    if moved:
-        await _broadcast_wall()
-    if renumbered and live_socket is not None:
-        # A tablet learns its number only from `welcome`; a normal close makes
-        # it reconnect (4409 would park it on the takeover screen).
-        with contextlib.suppress(Exception):
-            await live_socket.close(code=WS_CLOSE_NORMAL)
-
-    return {
-        "rebound": True,
-        "device_id": new_id,
-        "replaces": old_id,
-        "number": record.get("number"),
-        "placed": moved,
-        "display_records": copied,
-    }
-
-
-
+    command_v3 = device_lifecycle.RebindApply(
+        replaces=str(command.replaces), hardware="same_hardware", active=True,
+        saved_layouts=[], transfer_label=True, number=command.number,
+        new_connection_id=devices.get(key, {}).get("connection_id") if key in device_sockets else None,
+    )
+    plan = await _apply_rebind(key, command_v3)
+    return {"rebound": True, "device_id": key, "replaces": str(command.replaces),
+            "number": plan.preview.number_after, "placed": plan.preview.affected_active,
+            "display_records": {"profiles": len(plan.preview.profile_revision_map),
+                                "calibrations": len(plan.preview.calibration_revision_map)},
+            **({"remaining_saved": [asdict(item) for item in plan.preview.untouched_saved]}
+               if plan.preview.untouched_saved else {})}
 
 
 # ---------------------------------------------------------------------------
@@ -1109,10 +1144,34 @@ async def put_wall(update: WallUpdate):
     # restart (PROTOCOL.md "Persistence").
     def apply(target: dict[str, Any]) -> None:
         layout = target["layout"]
+        current_sizing = wall_sizing.sizing_config(layout)
+        next_sizing = update.sizing or current_sizing
+        if next_sizing["mode"] == "tablets" and (update.width is not None or update.height is not None):
+            raise HTTPException(status_code=409, detail="manual dimensions require fixed sizing mode")
         if update.width is not None:
             layout["width"] = update.width
         if update.height is not None:
             layout["height"] = update.height
+        if update.sizing is not None:
+            layout["sizing"] = deepcopy(update.sizing)
+
+    _commit_wall(apply)
+    await _broadcast_wall()
+    return _wall_state()
+
+
+@app.post("/wall/pack")
+async def pack_wall(command: WallPackCommand):
+    _require_logical_wall()
+    layout = wall["layout"]
+    if wall_sizing.sizing_config(layout)["mode"] != "tablets":
+        raise HTTPException(status_code=409, detail="packing requires tablet sizing mode")
+    if not layout["placements"]:
+        raise HTTPException(status_code=422, detail="there are no placed tablets to pack")
+    columns = command.columns or len(layout["placements"])
+
+    def apply(target: dict[str, Any]) -> None:
+        wall_sizing.pack_logical(target["layout"], columns, command.gap)
 
     _commit_wall(apply)
     await _broadcast_wall()
@@ -1121,38 +1180,11 @@ async def put_wall(update: WallUpdate):
 
 @app.put("/scene")
 async def put_scene(update: SceneUpdate):
+    _require_logical_wall()
     # Content only: the layout is untouched, the revision bumps, the new
     # state is committed, and only then is it broadcast — same ordering as
     # ``PUT /wall`` above.
-    content = update.content
-    if content.type == "image":
-        # Managed uploads are indexed, so check them first; only an unknown
-        # managed ID falls back to the curated scan. Intrinsic dimensions come
-        # from the published record or the file this scan just validated —
-        # never from the caller.
-        assert content.asset is not None
-        managed = await asyncio.to_thread(media.find_object, content.asset)
-        if managed is not None:
-            asset_id, width, height = managed["id"], managed["width"], managed["height"]
-        else:
-            asset = await asyncio.to_thread(assets.find, content.asset)
-            if asset is None:
-                # Well-formed ID, no such asset: an invalid *body*, so 422 and
-                # nothing is committed (PROTOCOL.md "PUT /scene").
-                raise HTTPException(status_code=422, detail="Unknown asset")
-            asset_id, width, height = asset.id, asset.width, asset.height
-        # Persisted: ID, fit, and the derived dimensions. Deliberately no URL
-        # — it is composed from the ID on the way out, so it can never go
-        # stale in the database (PROTOCOL.md "Still images").
-        scene_content: dict[str, Any] = {
-            "type": "image",
-            "asset": asset_id,
-            "fit": content.fit,
-            "intrinsicWidth": width,
-            "intrinsicHeight": height,
-        }
-    else:
-        scene_content = {"type": content.type}
+    scene_content = await _resolve_scene_content(update.content)
 
     def apply(target: dict[str, Any]) -> None:
         target["scene"]["content"] = scene_content
@@ -1257,6 +1289,8 @@ async def wall_auto(command: WallAutoCommand | None = None):
     release or move the conflicting reservations explicitly and retry.
     """
     _require_logical_wall()
+    if wall_sizing.sizing_config(wall["layout"])["mode"] == "tablets":
+        raise HTTPException(status_code=409, detail="Equal-cell tiling requires fixed sizing; use /wall/pack to preserve tablet sizes")
     online = [device_id for device_id in list(devices) if _is_online(device_id)]
     count = len(online)
 
@@ -1370,6 +1404,7 @@ async def put_saved_layout(name: str, replace: bool = Query(default=False)):
     canonical = _snapshot_name(name)
     if not save_layout(canonical, deepcopy(wall["layout"]), replace=replace):
         raise HTTPException(status_code=409, detail="Layout name already exists")
+    await hub._broadcast_config_updated()
     return {"saved": True, "name": canonical}
 
 
@@ -1406,6 +1441,10 @@ async def recall_saved_layout(name: str):
         layout["width"] = saved["width"]
         layout["height"] = saved["height"]
         layout["placements"] = deepcopy(saved["placements"])
+        if "sizing" in saved:
+            layout["sizing"] = deepcopy(saved["sizing"])
+        else:
+            layout.pop("sizing", None)
 
     _commit_wall(apply)
     await _broadcast_wall()
@@ -1416,13 +1455,13 @@ async def recall_saved_layout(name: str):
 async def delete_saved_layout(name: str):
     """Drop a saved layout: ``200`` ``{"deleted": true, "name"}``, else ``404``.
 
-    The wall is not involved, so deleting a snapshot changes no revision and
-    broadcasts nothing.
+    Deleting a snapshot changes no wall revision. V3 controllers refetch config.
     """
     _require_logical_wall()
     canonical = _snapshot_name(name)
     if not delete_layout(canonical):
         raise HTTPException(status_code=404, detail="Unknown layout")
+    await hub._broadcast_config_updated()
     return {"deleted": True, "name": canonical}
 
 
@@ -1460,6 +1499,7 @@ async def put_saved_scene(name: str, replace: bool = Query(default=False)):
     content.pop("url", None)
     if not save_scene(canonical, content, replace=replace):
         raise HTTPException(status_code=409, detail="Scene name already exists")
+    await hub._broadcast_config_updated()
     return {"saved": True, "name": canonical}
 
 
@@ -1474,6 +1514,7 @@ async def recall_saved_scene(name: str):
     disappeared stays the explicit broken scene it already is rather than
     failing the recall (``PUT /scene`` is where an unknown asset is a 422).
     """
+    _require_logical_wall()
     canonical = _snapshot_name(name)
     try:
         saved = load_scene(canonical)
@@ -1497,12 +1538,12 @@ async def delete_saved_scene(name: str):
     """Drop a saved scene: ``200`` ``{"deleted": true, "name"}``, else ``404``.
 
     Deleting a snapshot never touches the active scene — the wall keeps
-    showing whatever it was showing — so no revision moves and nothing is
-    broadcast.
+    showing whatever it was showing. V3 controllers refetch config.
     """
     canonical = _snapshot_name(name)
     if not delete_scene(canonical):
         raise HTTPException(status_code=404, detail="Unknown scene")
+    await hub._broadcast_config_updated()
     return {"deleted": True, "name": canonical}
 
 
@@ -1726,11 +1767,40 @@ class CalibrationCommand(BaseModel):
     anchor_edge: str
     uncertainty_mm: float = 0
     method: str = Field(min_length=1, max_length=80)
+    viewport_guard: bool = False
 
 
 class PhysicalLayoutCommand(BaseModel):
-    bounds: dict[str, float]
+    bounds: dict[str, Any]
     slots: dict[str, dict[str, Any]]
+    sizing: dict[str, Any] | None = None
+
+    model_config = ConfigDict(extra="forbid")
+
+    @field_validator("sizing")
+    @classmethod
+    def valid_sizing(cls, value: dict[str, Any] | None) -> dict[str, Any] | None:
+        if value is not None:
+            normalized = wall_sizing.validate_sizing(value)
+            if normalized is None:
+                raise ValueError("sizing requires mode fixed/tablets and finite non-negative padding")
+            return normalized
+        return value
+
+
+class LogicalLayoutCommand(BaseModel):
+    width: int = Field(gt=0, strict=True)
+    height: int = Field(gt=0, strict=True)
+    placements: dict[str, dict[str, Any]]
+    sizing: dict[str, Any] | None = None
+
+    model_config = ConfigDict(extra="forbid")
+
+
+class ClearLayoutCommand(BaseModel):
+    confirm: bool = Field(strict=True)
+
+    model_config = ConfigDict(extra="forbid")
 
 
 def _config_payload() -> dict[str, Any]:
@@ -1744,21 +1814,66 @@ def _config_payload() -> dict[str, Any]:
             "kind": "logical", "width": layout["width"], "height": layout["height"],
             "placements": layout["placements"],
         }
-    return {
+    if "sizing" in layout:
+        layout_state["sizing"] = deepcopy(layout["sizing"])
+    payload = {
         "schema": 2,
         "revision": wall["revision"],
         "generation": wall["generation"],
         "layout": layout_state,
+        "scene": _project_scene(wall["scene"]),
         "displays": displays.list_profiles(),
         "calibrations": displays.list_calibrations(),
+        "tablet_models": tablet_models.BUILTINS,
+        "tablet_assignments": tablet_models.assignments(),
     }
+    if layout.get("kind") == "physical":
+        profiles = []
+        calibrations = []
+        for device_id, slot in layout["slots"].items():
+            profile = displays.profile(device_id, slot["profile_revision"])
+            calibration = displays.calibration(device_id, slot["calibration_revision"])
+            if profile is not None:
+                profiles.append(profile)
+            if calibration is not None:
+                calibrations.append(calibration)
+        payload["referenced_displays"] = profiles
+        payload["referenced_calibrations"] = calibrations
+    if payload["scene"]["content"].get("type") == "image":
+        payload["scene"]["content"].setdefault("fit", "cover")
+        payload["scene"]["content"].setdefault("background", "#0b1120")
+        payload["scene"]["content"]["available"] = operability.asset_available(
+            payload["scene"]["content"]["asset"])
+    payload["operator_state_version"] = 1
+    payload["layout"].setdefault("sizing", {"mode": "fixed", "padding": 0})
+    payload.setdefault("referenced_displays", [])
+    payload.setdefault("referenced_calibrations", [])
+    payload["device_labels"] = {key: record.get("label") for key, record in sorted(devices.items())}
+    payload["snapshots"] = operator_state.snapshots(_valid_any_layout, _valid_saved_content)
+    payload["capabilities"] = {"layout_kinds": ["logical", "physical"], "fits": ["cover", "contain"],
+        "render_ack": True, "identify": True, "image_contain": True, "grid": True,
+        "test_patterns": ["grid", "black"], "uploads": media.upload_mode() in ("loopback", "proxy"),
+        "diagnostics": True,
+        "login_supported": bool(os.environ.get("TABLET_WALL_AUTH_TOKEN"))}
+    active = _presentation_active()
+    payload["runtime"] = operator_state.runtime(presentation_active=active,
+        presentation_state=_playback_session.state if active and _playback_session else "static")
+    return payload
+
+
+def _valid_any_layout(value: Any) -> bool:
+    if not isinstance(value, dict):
+        return False
+    try:
+        layouts.normalize(value, profile_for=displays.profile, calibration_for=displays.calibration)
+        return True
+    except (ValueError, TypeError, KeyError):
+        return False
 
 
 def _config_etag(payload: dict[str, Any] | None = None) -> str:
     payload = payload if payload is not None else _config_payload()
-    return hashlib.sha256(
-        json.dumps(payload, sort_keys=True, separators=(",", ":")).encode()
-    ).hexdigest()[:32]
+    return operator_state.durable_etag(payload)
 
 
 def _require_config_etag(request: Request) -> None:
@@ -1779,22 +1894,98 @@ async def get_config_v3():
     )
 
 
+@app.get("/api/v3/images")
+def get_images_v3(request: Request):
+    try:
+        media.admit_operator_read(request)
+    except media.StoreError as error:
+        return _store_error(error)
+    return JSONResponse(
+        content={"images": operator_images.list_images()},
+        headers={"Cache-Control": "no-store"},
+    )
+
+
+async def _resolve_scene_content(content: SceneContent) -> dict[str, Any]:
+    if content.type != "image":
+        return {"type": content.type}
+    assert content.asset is not None
+    managed = await asyncio.to_thread(media.find_object, content.asset)
+    if managed is not None:
+        asset_id, width, height = managed["id"], managed["width"], managed["height"]
+    else:
+        asset = await asyncio.to_thread(assets.find, content.asset)
+        if asset is None:
+            raise HTTPException(status_code=422, detail="Unknown asset")
+        asset_id, width, height = asset.id, asset.width, asset.height
+    return {
+        "type": "image",
+        "asset": asset_id,
+        "fit": content.fit,
+        **({"background": content.background} if content.background is not None else {}),
+        "intrinsicWidth": width,
+        "intrinsicHeight": height,
+    }
+
+
+@app.put("/api/v3/scene")
+async def put_scene_v3(update: SceneUpdate, request: Request):
+    _require_config_etag(request)
+    scene_content = await _resolve_scene_content(update.content)
+    # Resolution yields to other requests; fence the actual commit as well.
+    _require_config_etag(request)
+
+    def apply(target: dict[str, Any]) -> None:
+        target["scene"]["content"] = scene_content
+
+    _commit_wall(apply)
+    await _abort_playback("static scene selected")
+    await _broadcast_wall()
+    return await get_config_v3()
+
+
+class TabletAssignmentCommand(BaseModel):
+    model_config = ConfigDict(extra="forbid", strict=True)
+    mode: Literal["auto", "explicit", "manual"]
+    model_id: str | None = None
+
+
+@app.put("/api/v3/tablet-assignments/{device_id}")
+async def put_tablet_assignment(device_id: UUID4, command: TabletAssignmentCommand, request: Request):
+    _require_config_etag(request)
+    key = str(device_id)
+    model_id = command.model_id
+    if command.mode == "auto":
+        model_id = None
+    try:
+        with persist.transaction():
+            assignment = tablet_models.assign(key, command.mode, model_id)
+    except (ValueError, displays.DisplayError) as error:
+        raise HTTPException(status_code=422, detail=str(error)) from error
+    await _abort_playback("mapping changed")
+    await _broadcast_wall()
+    return {"assignment": assignment, "suggestions": tablet_models.match(devices.get(key, {})), "etag": _config_etag()}
+
+
 @app.put("/api/v3/displays/{device_id}")
 async def put_display_v3(device_id: str, command: ProfileCommand, request: Request):
     _require_config_etag(request)
     try:
-        profile = displays.save_profile(
-            device_id,
-            active_width_mm=command.active_width_mm,
-            active_height_mm=command.active_height_mm,
-            bezels=command.bezels,
-            panel_pixels=command.panel_pixels,
-            label=command.label,
-            provenance=command.provenance,
-        )
+        with persist.transaction():
+            profile = displays.save_profile(
+                device_id,
+                active_width_mm=command.active_width_mm,
+                active_height_mm=command.active_height_mm,
+                bezels=command.bezels,
+                panel_pixels=command.panel_pixels,
+                label=command.label,
+                provenance=command.provenance,
+            )
+            tablet_models.assign(device_id, "manual")
     except displays.DisplayError as error:
         raise HTTPException(status_code=422, detail=str(error)) from error
     await _abort_playback("mapping changed")
+    await _broadcast_wall()
     return {"display": profile, "etag": _config_etag()}
 
 
@@ -1803,91 +1994,113 @@ async def put_calibration_v3(
     device_id: str, command: CalibrationCommand, request: Request
 ):
     _require_config_etag(request)
+    if command.viewport_guard:
+        record = devices.get(device_id)
+        if record is None or not _is_online(device_id) or not _viewport_matches(
+            command.model_dump(), record.get("viewport") or {}
+        ):
+            raise HTTPException(
+                status_code=409,
+                detail="Tablet is offline or its viewport changed. Capture its viewport again and repeat the ruler measurement.",
+            )
     try:
-        saved = displays.save_calibration(
-            device_id,
-            profile_revision=command.profile_revision,
-            viewport_width=command.viewport_width,
-            viewport_height=command.viewport_height,
-            dpr=command.dpr,
-            orientation=command.orientation,
-            mode=command.mode,
-            quarter_turn=command.quarter_turn,
-            panel_offset_mm=(command.panel_offset_mm[0], command.panel_offset_mm[1]),
-            mm_per_css=(command.mm_per_css[0], command.mm_per_css[1]),
-            anchor_edge=command.anchor_edge,
-            uncertainty_mm=command.uncertainty_mm,
-            method=command.method,
-        )
-    except displays.DisplayError as error:
+        with persist.transaction():
+            saved = displays.save_calibration(
+                device_id,
+                profile_revision=command.profile_revision,
+                viewport_width=command.viewport_width,
+                viewport_height=command.viewport_height,
+                dpr=command.dpr,
+                orientation=command.orientation,
+                mode=command.mode,
+                quarter_turn=command.quarter_turn,
+                panel_offset_mm=(command.panel_offset_mm[0], command.panel_offset_mm[1]),
+                mm_per_css=(command.mm_per_css[0], command.mm_per_css[1]),
+                anchor_edge=command.anchor_edge,
+                uncertainty_mm=command.uncertainty_mm,
+                method=command.method,
+            )
+            tablet_models.remember_calibration(device_id, saved)
+            tablet_models.assign(device_id, "manual")
+    except (displays.DisplayError, ValueError) as error:
         raise HTTPException(status_code=422, detail=str(error)) from error
     await _abort_playback("mapping changed")
+    await _broadcast_wall()
     return {"calibration": saved, "etag": _config_etag()}
+
+
+async def _layout_response(previous_layout_saved: str | None) -> JSONResponse:
+    await _abort_playback("layout changed")
+    if wall["layout"].get("kind") == "physical":
+        for socket in list(controller_sockets):
+            if controller_protocols.get(socket, 1) != 3:
+                controller_sockets.discard(socket)
+                controller_protocols.pop(socket, None)
+                with contextlib.suppress(Exception):
+                    await socket.close(code=WS_CLOSE_UNSUPPORTED_PROTOCOL)
+    await _broadcast_wall()
+    payload = _config_payload()
+    etag = _config_etag(payload)
+    return JSONResponse(
+        content={**payload, "etag": etag, "previous_layout_saved": previous_layout_saved},
+        headers={"ETag": etag, "Cache-Control": "no-store"},
+    )
 
 
 @app.put("/api/v3/layout")
 async def put_physical_layout_v3(command: PhysicalLayoutCommand, request: Request):
-    """Atomically replace the active arrangement with a physical one."""
     _require_config_etag(request)
-    bounds = command.bounds
-    for field in ("x", "y", "width", "height"):
-        if not isinstance(bounds.get(field), (int, float)):
-            raise HTTPException(status_code=422, detail=f"bounds.{field} is required")
-    if bounds["width"] <= 0 or bounds["height"] <= 0:
-        raise HTTPException(status_code=422, detail="bounds must be positive")
-    for device_id, slot in command.slots.items():
-        if _parse_device_id(device_id) is None:
-            raise HTTPException(status_code=422, detail="slot device_id must be a UUID4")
-        for field in ("center_x_mm", "center_y_mm", "mount_angle",
-                      "nudge_x_mm", "nudge_y_mm"):
-            if not isinstance(slot.get(field), (int, float)):
-                raise HTTPException(status_code=422, detail=f"slot {field} is required")
-        profile_revision = slot.get("profile_revision")
-        calibration_revision = slot.get("calibration_revision")
-        if not isinstance(profile_revision, int) or displays.profile(device_id, profile_revision) is None:
-            raise HTTPException(status_code=422, detail="slot profile does not exist")
-        calibration = displays.calibration(device_id, calibration_revision) if isinstance(calibration_revision, int) else None
-        if calibration is None or calibration["profile_revision"] != profile_revision:
-            raise HTTPException(
-                status_code=422,
-                detail="slot calibration does not exist for its profile",
-            )
-        if not isinstance(slot.get("participating", True), bool):
-            raise HTTPException(status_code=422, detail="slot participating is a boolean")
+    layout = {"kind": "physical", "bounds": command.bounds, "slots": command.slots}
+    if command.sizing is not None:
+        layout["sizing"] = command.sizing
+    elif wall["layout"].get("kind") == "physical" and "sizing" in wall["layout"]:
+        layout["sizing"] = wall["layout"]["sizing"]
+    previous = _replace_layout(layout)
+    return await _layout_response(previous)
 
-    def apply(target: dict[str, Any]) -> None:
-        target["layout"] = {
-            "kind": "physical",
-            "bounds": {
-                "x": float(bounds["x"]), "y": float(bounds["y"]),
-                "width": float(bounds["width"]), "height": float(bounds["height"]),
-            },
-            "slots": deepcopy(command.slots),
-        }
 
-    _commit_wall(apply)
-    await _abort_playback("layout changed")
-    # A cached logical controller cannot represent a physical wall: close it
-    # with the upgrade code instead of letting it issue fenced writes.
-    for socket in list(controller_sockets):
-        if controller_protocols.get(socket, 1) != 3:
-            controller_sockets.discard(socket)
-            controller_protocols.pop(socket, None)
-            with contextlib.suppress(Exception):
-                await socket.close(code=WS_CLOSE_UNSUPPORTED_PROTOCOL)
-    await _broadcast_wall()
-    payload = _config_payload()
-    return {**payload, "etag": _config_etag(payload)}
+@app.put("/api/v3/logical-layout")
+async def put_logical_layout_v3(command: LogicalLayoutCommand, request: Request):
+    _require_config_etag(request)
+    layout = command.model_dump(exclude_none=True)
+    previous = _replace_layout(layout)
+    return await _layout_response(previous)
+
+
+@app.post("/api/v3/layout/clear")
+async def clear_layout_v3(command: ClearLayoutCommand, request: Request):
+    _require_config_etag(request)
+    if not command.confirm:
+        raise HTTPException(status_code=422, detail="Clear wall requires explicit confirmation")
+    layout = deepcopy(wall["layout"])
+    layout["slots" if layouts.kind(layout) == "physical" else "placements"] = {}
+    previous = _replace_layout(layout, allow_empty=True)
+    return await _layout_response(previous)
+
+
+@app.get("/api/v3/logical-layouts")
+async def list_logical_layouts_v3():
+    return _snapshot_layout_listing("logical")
+
+
+@app.post("/api/v3/logical-layouts/{name}/recall")
+async def recall_logical_layout_v3(name: str, request: Request):
+    _require_config_etag(request)
+    try:
+        saved = load_layout(_snapshot_name(name))
+    except (ValueError, json.JSONDecodeError):
+        raise HTTPException(status_code=422, detail="Saved layout is invalid") from None
+    if saved is None:
+        raise HTTPException(status_code=404, detail="Unknown logical layout")
+    if not isinstance(saved, dict) or not _valid_saved_layout(saved):
+        raise HTTPException(status_code=422, detail="Saved logical layout is invalid")
+    previous = _replace_layout(saved, allow_empty=True)
+    return await _layout_response(previous)
 
 
 @app.get("/api/v3/layouts")
 async def list_physical_layouts_v3():
-    entries = [
-        {"name": name, "layout": layout}
-        for name, layout in load_layouts()
-        if isinstance(layout, dict) and layout.get("kind") == "physical"
-    ]
-    return {"layouts": entries}
+    return _snapshot_layout_listing("physical")
 
 
 @app.put("/api/v3/layouts/{name}")
@@ -1900,33 +2113,23 @@ async def save_physical_layout_v3(
     canonical = _snapshot_name(name)
     if not save_layout(canonical, deepcopy(wall["layout"]), replace=replace):
         raise HTTPException(status_code=409, detail="Layout name already exists")
-    return {"saved": True, "name": canonical}
+    return await _snapshot_response(saved=True, name=canonical)
 
 
 @app.post("/api/v3/layouts/{name}/recall")
 async def recall_physical_layout_v3(name: str, request: Request):
     _require_config_etag(request)
     canonical = _snapshot_name(name)
-    saved = load_layout(canonical)
+    try:
+        saved = load_layout(canonical)
+    except (ValueError, json.JSONDecodeError):
+        raise HTTPException(status_code=422, detail="Saved layout is invalid") from None
     if saved is None:
         raise HTTPException(status_code=404, detail="Unknown layout")
     if not isinstance(saved, dict) or saved.get("kind") != "physical":
         raise HTTPException(status_code=422, detail="not a physical layout")
-
-    def apply(target: dict[str, Any]) -> None:
-        target["layout"] = deepcopy(saved)
-
-    _commit_wall(apply)
-    await _abort_playback("layout changed")
-    for socket in list(controller_sockets):
-        if controller_protocols.get(socket, 1) != 3:
-            controller_sockets.discard(socket)
-            controller_protocols.pop(socket, None)
-            with contextlib.suppress(Exception):
-                await socket.close(code=WS_CLOSE_UNSUPPORTED_PROTOCOL)
-    await _broadcast_wall()
-    payload = _config_payload()
-    return {**payload, "etag": _config_etag(payload)}
+    previous = _replace_layout(saved, allow_empty=True)
+    return await _layout_response(previous)
 
 
 @app.delete("/api/v3/layouts/{name}")
@@ -1935,7 +2138,416 @@ async def delete_physical_layout_v3(name: str, request: Request):
     canonical = _snapshot_name(name)
     if not delete_layout(canonical):
         raise HTTPException(status_code=404, detail="Unknown layout")
-    return {"deleted": True, "name": canonical}
+    return await _snapshot_response(deleted=True, name=canonical)
+
+
+def _presentation_active() -> bool:
+    return _playback_session is not None and _playback_session.state != "stopped"
+
+
+def _lifecycle_inputs(new_id: str | None = None) -> device_lifecycle.LifecycleInputs:
+    profiles, calibrations = displays.histories()
+    digests = persist.snapshot_digests("layout")
+    values = dict(base_etag=_config_etag(), roster=deepcopy(devices),
+        active_layout=deepcopy(wall["layout"]),
+        saved_layouts={name: device_lifecycle.SavedLayout(digests[name], value)
+                       for name, value in load_layouts()},
+        connections={key: devices[key]["connection_id"] for key in device_sockets if key in devices},
+        profiles=profiles, calibrations=calibrations, assignments=tablet_models.assignments(),
+        model_history=persist.load_meta("tablet_model_calibrations") or {})
+    if new_id is not None:
+        return device_lifecycle.RebindInputs(new_id=new_id, **values)
+    return device_lifecycle.LifecycleInputs(**values)
+
+
+def _lifecycle_error(error: device_lifecycle.LifecycleError) -> HTTPException:
+    return HTTPException(status_code=error.status, detail=error.detail)
+
+
+def _commit_lifecycle(roster: dict[str, Any], layout: dict[str, Any], *, active_changed: bool,
+                      rebind: device_lifecycle.RebindPlan | None = None) -> None:
+    proposed = deepcopy(wall)
+    with persist.transaction():
+        if rebind is not None:
+            copied = rebind.measurements
+            if copied is not None:
+                displays.copy_records(rebind.delete_roster_id, rebind.preview.new_id,
+                    revision_offsets=(copied.profile_offset, copied.calibration_offset))
+                tablet_models.copy_assignment(rebind.delete_roster_id, rebind.preview.new_id,
+                    copied.profile_offset, copied.calibration_offset)
+            for name, saved in rebind.selected_snapshots.items():
+                if not save_layout(name, saved, replace=True):
+                    raise HTTPException(status_code=409, detail="snapshot replacement failed")
+        if active_changed:
+            proposed["layout"] = deepcopy(layout)
+            _fit_wall_layout(proposed["layout"])
+            proposed["revision"] += 1
+            save_state(proposed)
+        persist.save_devices(roster)
+    devices.clear()
+    devices.update(roster)
+    if active_changed:
+        wall.clear()
+        wall.update(proposed)
+
+
+async def _forget_device(key: str, command: device_lifecycle.ForgetCommand) -> list[dict[str, Any]]:
+    try:
+        plan = device_lifecycle.plan_forget(key, command, _lifecycle_inputs())
+    except device_lifecycle.LifecycleError as error:
+        raise _lifecycle_error(error) from error
+    roster = deepcopy(devices)
+    roster.pop(key, None)
+    _commit_lifecycle(roster, plan.active_layout, active_changed=plan.active_changed)
+    render_status.clear(key)
+    identify_commands.pop(key, None)
+    await _abort_playback("device forgotten")
+    await _broadcast({"type": "device_removed", "device_id": key})
+    if plan.active_changed:
+        await _broadcast_wall()
+    else:
+        await hub._broadcast_config_updated()
+    return [asdict(item) for item in plan.remaining_saved]
+
+
+async def _apply_rebind(key: str, command: device_lifecycle.RebindApply) -> device_lifecycle.RebindPlan:
+    try:
+        inputs = _lifecycle_inputs(key)
+        assert isinstance(inputs, device_lifecycle.RebindInputs)
+        plan = device_lifecycle.plan_rebind(command, inputs)
+    except device_lifecycle.LifecycleError as error:
+        raise _lifecycle_error(error) from error
+    roster = deepcopy(devices)
+    roster.pop(plan.delete_roster_id, None)
+    roster[key] = plan.target_record
+    _commit_lifecycle(roster, plan.active_layout, active_changed=plan.preview.affected_active, rebind=plan)
+    render_status.replace(plan.delete_roster_id, key)
+    identify_commands.pop(plan.delete_roster_id, None)
+    identify_commands.pop(key, None)
+    await _abort_playback("rebind")
+    await _broadcast({"type": "device_removed", "device_id": plan.delete_roster_id})
+    await _broadcast({"type": "device_updated", "device": _device_record(key)})
+    if plan.preview.affected_active:
+        await _broadcast_wall()
+    else:
+        await hub._broadcast_config_updated()
+    socket = device_sockets.get(key)
+    if socket is not None:
+        with contextlib.suppress(Exception):
+            await socket.close(code=WS_CLOSE_NORMAL)
+    return plan
+
+
+@app.patch("/api/v3/devices/{device_id}")
+async def label_device_v3(device_id: UUID4, command: device_lifecycle.LabelCommand, request: Request):
+    _require_config_etag(request)
+    key = str(device_id)
+    if key not in devices:
+        raise HTTPException(status_code=404, detail="Unknown device")
+    roster = deepcopy(devices)
+    roster[key]["label"] = command.label
+    _commit_lifecycle(roster, wall["layout"], active_changed=False)
+    await hub._broadcast_config_updated()
+    await hub._broadcast_device_status(key, presentation_active=_presentation_active())
+    return await get_config_v3()
+
+
+@app.get("/api/v3/devices/{device_id}/impact")
+async def device_impact_v3(device_id: UUID4):
+    try:
+        return asdict(device_lifecycle.preview_impact(str(device_id), _lifecycle_inputs()))
+    except device_lifecycle.LifecycleError as error:
+        raise _lifecycle_error(error) from error
+
+
+@app.delete("/api/v3/devices/{device_id}/placement")
+@app.post("/api/v3/devices/{device_id}/remove")
+async def remove_device_v3(device_id: UUID4, request: Request):
+    _require_config_etag(request)
+    try:
+        plan = device_lifecycle.plan_remove(str(device_id), _lifecycle_inputs())
+    except device_lifecycle.LifecycleError as error:
+        raise _lifecycle_error(error) from error
+    _commit_lifecycle(deepcopy(devices), plan.active_layout, active_changed=plan.active_changed)
+    if plan.active_changed:
+        await _abort_playback("device removed from wall")
+        await _broadcast_wall()
+    return await get_config_v3()
+
+
+@app.delete("/api/v3/devices/{device_id}")
+async def forget_device_v3(device_id: UUID4, command: device_lifecycle.ForgetCommand, request: Request):
+    _require_config_etag(request)
+    remaining = await _forget_device(str(device_id), command)
+    return await _snapshot_response(notify=False, removed=True, device_id=str(device_id), remaining_saved=remaining)
+
+
+@app.post("/api/v3/devices/{device_id}/rebind/preview")
+async def preview_rebind_v3(device_id: UUID4, command: device_lifecycle.RebindCommand, request: Request):
+    _require_config_etag(request)
+    try:
+        inputs = _lifecycle_inputs(str(device_id))
+        assert isinstance(inputs, device_lifecycle.RebindInputs)
+        return asdict(device_lifecycle.preview_rebind(command, inputs))
+    except device_lifecycle.LifecycleError as error:
+        raise _lifecycle_error(error) from error
+
+
+@app.post("/api/v3/devices/{device_id}/rebind")
+async def rebind_v3(device_id: UUID4, command: device_lifecycle.RebindApply, request: Request):
+    _require_config_etag(request)
+    plan = await _apply_rebind(str(device_id), command)
+    return await _snapshot_response(notify=False, rebound=True, rebind=asdict(plan.preview))
+
+
+_identify_tasks: set[asyncio.Task[Any]] = set()
+
+
+async def _identify_expiry(key: str, command: dict[str, Any]) -> None:
+    await asyncio.sleep(max(0, command["expires_mono"] - time.monotonic()))
+    record = devices.get(key)
+    socket = device_sockets.get(key)
+    if (identify_commands.get(key) is command and record and socket
+            and record.get("connection_id") == command["connection_id"]
+            and wall["generation"] == command["generation"]):
+        identify_commands.pop(key, None)
+        await _send_wall_to_device(key, socket, record)
+        await hub._broadcast_device_status(key, presentation_active=_presentation_active())
+
+
+def _owned_device(key: str, *, capability: str | None = None) -> tuple[dict[str, Any], WebSocket]:
+    if key not in devices:
+        raise HTTPException(status_code=404, detail="Unknown device")
+    socket = device_sockets.get(key)
+    if socket is None:
+        raise HTTPException(status_code=409, detail={"code": "offline", "message": "Tablet is offline"})
+    record = devices[key]
+    if capability and (record.get("protocol") != 3 or capability not in (record.get("caps") or [])):
+        raise HTTPException(status_code=409, detail={"code": "unsupported_client", "message": "Upgrade tablet client"})
+    return record, socket
+
+
+@app.post("/api/v3/devices/{device_id}/identify")
+async def identify_device_v3(device_id: UUID4, request: Request,
+                             command: device_lifecycle.IdentifyCommand = device_lifecycle.IdentifyCommand()):
+    _require_config_etag(request)
+    key = str(device_id)
+    record, socket = _owned_device(key, capability="identify")
+    now = _now_ms()
+    command_state = {"command_id": uuid.uuid4().hex, "connection_id": record["connection_id"],
+        "generation": wall["generation"], "state": "queued", "duration_ms": command.duration_ms,
+        "expires_mono": time.monotonic() + command.duration_ms / 1000,
+        "expires_ms": now + command.duration_ms}
+    identify_commands[key] = command_state
+    frame = {"type": "identify", "command_id": command_state["command_id"],
+        "connection_id": command_state["connection_id"], "generation": wall["generation"],
+        "server_ms": now, "expires_ms": command_state["expires_ms"], "duration_ms": command.duration_ms,
+        "remaining_ms": float(command.duration_ms), "label": record.get("label"), "number": record.get("number")}
+    def stamp(target: dict[str, Any]) -> None:
+        target["remaining_ms"] = device_lifecycle.identify_remaining_ms(
+            command_state["expires_mono"], time.monotonic(), command.duration_ms)
+        target["server_ms"] = _now_ms()
+        if (device_sockets.get(key) is not socket or identify_commands.get(key) is not command_state
+                or wall["generation"] != command_state["generation"]):
+            target["remaining_ms"] = 0
+    await _send_to(socket, frame, stamp=stamp)
+    task = asyncio.create_task(_identify_expiry(key, command_state))
+    _identify_tasks.add(task)
+    task.add_done_callback(_identify_tasks.discard)
+    await hub._broadcast_device_status(key, presentation_active=_presentation_active())
+    return await get_config_v3()
+
+
+@app.post("/api/v3/devices/{device_id}/retry-image")
+async def retry_image_v3(device_id: UUID4, request: Request):
+    _require_config_etag(request)
+    record, socket = _owned_device(str(device_id), capability="render_ack")
+    await _send_wall_to_device(str(device_id), socket, record)
+    await hub._broadcast_device_status(str(device_id), presentation_active=_presentation_active())
+    return await get_config_v3()
+
+
+@app.post("/api/v3/devices/{device_id}/reconnect")
+async def reconnect_device_v3(device_id: UUID4, request: Request):
+    _require_config_etag(request)
+    record, socket = _owned_device(str(device_id))
+    render_status.disconnect(str(device_id), record["connection_id"])
+    identify_commands.pop(str(device_id), None)
+    await socket.close(code=WS_CLOSE_NORMAL)
+    return await get_config_v3()
+
+
+def _grid_inputs(command: grid.GridCommand) -> grid.GridInputs:
+    profiles, calibrations = displays.histories()
+    assignments = tablet_models.assignments()
+    ids = set(devices) | set(layouts.entries(wall["layout"]))
+    return grid.GridInputs(active_layout=wall["layout"], base_etag=_config_etag(), devices=[
+        grid.GridDevice(device_id=key, online=_is_online(key),
+            connection_id=devices.get(key, {}).get("connection_id") if key in device_sockets else None,
+            viewport=devices.get(key, {}).get("viewport"), profiles=profiles.get(key, {}),
+            calibrations=calibrations.get(key, {}), model=grid.confirmed_model(
+                tablet_models.pinned_assignment(key, calibrations.get(key, {}).get(command.physical_revisions[key].calibration_revision))
+                if key in command.physical_revisions else assignments.get(key)))
+        for key in ids])
+
+
+def _grid_error(error: grid.GridError) -> HTTPException:
+    return HTTPException(status_code=error.status, detail={"code": error.code, "message": str(error),
+        "conflicts": error.conflicts})
+
+
+@app.post("/api/v3/grid/preview")
+async def preview_grid_v3(request: Request, payload: dict[str, Any]):
+    _require_config_etag(request)
+    try:
+        command = grid.GridCommand.from_payload(payload)
+        return grid.build_grid(command, _grid_inputs(command))
+    except grid.GridError as error:
+        raise _grid_error(error) from error
+
+
+@app.post("/api/v3/grid")
+async def apply_grid_v3(request: Request, payload: dict[str, Any]):
+    _require_config_etag(request)
+    try:
+        command = grid.GridCommand.from_payload(payload)
+        inputs = _grid_inputs(command)
+        preview = grid.build_grid(command, inputs)
+        _require_config_etag(request)
+        grid.validate_guards(command.guards, grid.connection_guards(_grid_inputs(command), command.device_ids))
+        previous = _replace_layout(preview["layout"])
+    except grid.GridError as error:
+        raise _grid_error(error) from error
+    return await _layout_response(previous)
+
+
+def _snapshot_layout_listing(kind: str) -> dict[str, Any]:
+    summaries = {row["name"]: row for row in operator_state.snapshots(_valid_any_layout, _valid_saved_content)["layouts"]}
+    return {"layouts": [{**summaries[name], "layout": value} for name, value in load_layouts()
+        if not summaries[name]["valid"] or layouts.kind(value) == kind]}
+
+
+async def _snapshot_response(*, notify: bool = True, **metadata: Any) -> JSONResponse:
+    if notify:
+        await hub._broadcast_config_updated()
+    payload = _config_payload()
+    etag = _config_etag(payload)
+    return JSONResponse({**payload, **metadata, "etag": etag}, headers={"ETag": etag, "Cache-Control": "no-store"})
+
+
+@app.put("/api/v3/logical-layouts/{name}")
+async def save_logical_layout_v3(name: str, request: Request, replace: bool = Query(default=False)):
+    _require_config_etag(request)
+    if layouts.kind(wall["layout"]) != "logical":
+        raise HTTPException(status_code=409, detail="the active layout is physical")
+    canonical = _snapshot_name(name)
+    if not save_layout(canonical, deepcopy(wall["layout"]), replace=replace):
+        raise HTTPException(status_code=409, detail="Layout name already exists")
+    return await _snapshot_response(saved=True, name=canonical)
+
+
+@app.delete("/api/v3/logical-layouts/{name}")
+async def delete_logical_layout_v3(name: str, request: Request):
+    _require_config_etag(request)
+    canonical = _snapshot_name(name)
+    rows = dict(load_layouts())
+    if canonical not in rows:
+        raise HTTPException(status_code=404, detail="Unknown layout")
+    if _valid_any_layout(rows[canonical]) and layouts.kind(rows[canonical]) != "logical":
+        raise HTTPException(status_code=409, detail="not a logical layout")
+    delete_layout(canonical)
+    return await _snapshot_response(deleted=True, name=canonical)
+
+
+@app.get("/api/v3/scenes")
+async def list_scenes_v3():
+    summaries = {row["name"]: row for row in operator_state.snapshots(_valid_any_layout, _valid_saved_content)["scenes"]}
+    return {"scenes": [{**summaries[name], "content": value} for name, value in load_scenes()]}
+
+
+@app.put("/api/v3/scenes/{name}")
+async def save_scene_v3(name: str, request: Request, replace: bool = Query(default=False)):
+    _require_config_etag(request)
+    canonical = _snapshot_name(name)
+    if not save_scene(canonical, deepcopy(wall["scene"]["content"]), replace=replace):
+        raise HTTPException(status_code=409, detail="Scene name already exists")
+    return await _snapshot_response(saved=True, name=canonical)
+
+
+@app.delete("/api/v3/scenes/{name}")
+async def delete_scene_v3(name: str, request: Request):
+    _require_config_etag(request)
+    canonical = _snapshot_name(name)
+    if not delete_scene(canonical):
+        raise HTTPException(status_code=404, detail="Unknown scene")
+    return await _snapshot_response(deleted=True, name=canonical)
+
+
+@app.post("/api/v3/scenes/{name}/recall")
+async def recall_scene_v3(name: str, request: Request):
+    _require_config_etag(request)
+    try:
+        saved = load_scene(_snapshot_name(name))
+    except (ValueError, json.JSONDecodeError):
+        raise HTTPException(status_code=422, detail="Saved scene is invalid") from None
+    if saved is None:
+        raise HTTPException(status_code=404, detail="Unknown scene")
+    if not _valid_saved_content(saved):
+        raise HTTPException(status_code=422, detail="Saved scene is invalid")
+    content = SceneContent(**{key: saved[key] for key in ("type", "asset", "fit", "background") if key in saved})
+    return await put_scene_v3(SceneUpdate(content=content), request)
+
+
+class TestPatternCommand(BaseModel):
+    model_config = ConfigDict(extra="forbid", strict=True)
+    pattern: Literal["grid", "black"]
+
+
+def _publish_pattern(data: bytes) -> str:
+    """Publish immutable bytes into the existing curated store without following links."""
+    directory = assets.asset_dir()
+    os.makedirs(directory, exist_ok=True)
+    directory_fd = os.open(directory, os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW)
+    name = "wall-pattern-" + hashlib.sha256(data).hexdigest() + ".png"
+    temporary = ".pattern-" + uuid.uuid4().hex
+    try:
+        fd = os.open(temporary, os.O_WRONLY | os.O_CREAT | os.O_EXCL | os.O_NOFOLLOW, 0o600, dir_fd=directory_fd)
+        with os.fdopen(fd, "wb") as stream:
+            stream.write(data)
+            stream.flush()
+            os.fsync(stream.fileno())
+        try:
+            os.link(temporary, name, src_dir_fd=directory_fd, dst_dir_fd=directory_fd, follow_symlinks=False)
+        except FileExistsError:
+            existing_fd = os.open(name, os.O_RDONLY | os.O_NOFOLLOW, dir_fd=directory_fd)
+            with os.fdopen(existing_fd, "rb") as stream:
+                if stream.read(len(data) + 1) != data:
+                    raise HTTPException(status_code=409, detail="Generated pattern path contains different bytes")
+        os.fsync(directory_fd)
+    finally:
+        with contextlib.suppress(FileNotFoundError):
+            os.unlink(temporary, dir_fd=directory_fd)
+        os.close(directory_fd)
+    return "sha256:" + hashlib.sha256(data).hexdigest()
+
+
+@app.post("/api/v3/test-pattern")
+async def test_pattern_v3(command: TestPatternCommand, request: Request):
+    _require_config_etag(request)
+    if command.pattern == "grid" and layouts.kind(wall["layout"]) != "physical":
+        raise HTTPException(status_code=422, detail="grid requires a physical layout")
+    bounds = deepcopy(wall["layout"].get("bounds"))
+    try:
+        generated = await asyncio.to_thread(test_pattern.generate_test_pattern, command.pattern, bounds=bounds)
+    except test_pattern.PatternError as error:
+        raise HTTPException(status_code=422, detail=str(error)) from error
+    _require_config_etag(request)
+    asset_id = _publish_pattern(generated.data)
+    asset = assets.find(asset_id)
+    if asset is None:
+        raise HTTPException(status_code=500, detail="Generated pattern failed curated validation")
+    return {**asset.entry(), "width": asset.width, "height": asset.height, "source": "curated",
+            "thumbnail_url": asset.entry()["url"], "metadata": generated.metadata, "etag": _config_etag()}
 
 
 # ---------------------------------------------------------------------------
@@ -1981,6 +2593,7 @@ def _physical_plan_for(
         return None, None
     profile = displays.profile(device_id, int(slot["profile_revision"]))
     calibration = displays.calibration(device_id, int(slot["calibration_revision"]))
+    calibration = tablet_models.effective(device_id, calibration, record.get("viewport") or {})
     if (
         profile is None
         or calibration is None
@@ -2005,6 +2618,9 @@ def _physical_plan_for(
             "status": "valid", "revision": calibration["revision"],
             "viewport_width": calibration["viewport_width"],
             "viewport_height": calibration["viewport_height"],
+            "dpr": calibration["dpr"],
+            "orientation": calibration["orientation"],
+            "mode": calibration["mode"],
             "quarter_turn": calibration["quarter_turn"],
             "panel_offset_mm": calibration["panel_offset_mm"],
             "mm_per_css": calibration["mm_per_css"],
@@ -2101,6 +2717,8 @@ async def _send_prepare(
     descriptor = _asset_descriptor(pending.asset)
     if descriptor is None:
         return False
+    if descriptor.get("kind") != "video" and "image" not in record.get("caps", ()):
+        return False
     plan, calibration = _physical_plan_for(
         device_id, record, descriptor["intrinsicWidth"], descriptor["intrinsicHeight"]
     )
@@ -2119,7 +2737,7 @@ async def _send_prepare(
         "type": "prepare",
         **pending.as_frame(),
         **session.lineage(),
-        "asset": descriptor,
+        "asset": {**descriptor, **({"fit": "cover", "background": "#0b1120"} if descriptor.get("kind") != "video" else {})},
         "plan": plan,
         "calibration": calibration,
         "connection_id": connection_id,
@@ -2284,13 +2902,14 @@ async def _abort_playback(reason: str) -> None:
 
 
 async def _playback_loop() -> None:
+    last_fault_log = float("-inf")
     while True:
         await asyncio.sleep(0.1)
         try:
             if _server_clock is not None and _server_clock.check_suspend():
                 await _abort_playback("host suspend")
             session = _playback_session
-            if session is None:
+            if session is None or session.state in ("stopped", "failed"):
                 continue
             _revoke_missing_leases(session)
             actions = playback.tick(session, _now_ms())
@@ -2311,8 +2930,21 @@ async def _playback_loop() -> None:
                     await _broadcast_playback()
         except asyncio.CancelledError:
             raise
-        except Exception:
-            continue
+        except Exception as error:
+            now = time.monotonic()
+            if now - last_fault_log >= 60:
+                logging.getLogger(__name__).error(
+                    "Experimental playback loop failed (%s)", type(error).__name__
+                )
+                last_fault_log = now
+            session = _playback_session
+            if session is not None and session.state not in ("stopped", "failed"):
+                session.state = "failed"
+                session.blocked_reason = "Internal experimental playback error. Stop and return to still images."
+                session.pending = None
+                with contextlib.suppress(Exception):
+                    await _send_terminal_hold(session)
+                    await _broadcast_playback()
 
 
 class PlaylistCommand(BaseModel):
@@ -2570,6 +3202,8 @@ def _claim_device_socket(
     the new page never saw, so the revocation is synchronous.
     """
     _revoke_playback_lease(device_id, record.get("connection_id"))
+    render_status.clear(device_id)
+    identify_commands.pop(device_id, None)
     replaced = device_sockets.get(device_id)
     device_sockets[device_id] = websocket
     return replaced
@@ -2606,20 +3240,49 @@ async def _device_loop(websocket: WebSocket, device_id: str) -> None:
             return
 
         text = message.get("text")
-        if not text:
+        if not text or len(text.encode("utf-8")) > 4096:
             continue
         try:
             payload = json.loads(text)
         except ValueError:
             continue  # unrecognised frames are ignored, not fatal
 
-        if isinstance(payload, dict) and payload.get("type") == "clock_sample":
+        if isinstance(payload, dict) and payload.get("type") == "render_ack":
+            record = devices.get(device_id)
+            if (record is not None and record.get("protocol") == 3
+                    and "render_ack" in (record.get("caps") or [])
+                    and device_sockets.get(device_id) is websocket):
+                mapping, _, _ = current_mapping(device_id, record)
+                identifying = operator_state.identify_status(device_id)
+                if identifying and identifying["active"] and payload.get("status") == "displayed":
+                    continue
+                if render_status.accept(device_id, owned_connection_id=record.get("connection_id"),
+                        report=text, generation=wall["generation"], revision=wall["revision"],
+                        mapping=render_mapping(mapping, record, experimental=_presentation_active())):
+                    _touch_device(device_id)
+                    await hub._broadcast_device_status(device_id, presentation_active=_presentation_active())
+        elif isinstance(payload, dict) and payload.get("type") == "identify_status":
+            command = identify_commands.get(device_id)
+            if (command is not None and device_sockets.get(device_id) is websocket
+                    and payload.get("command_id") == command["command_id"]
+                    and payload.get("connection_id") == command["connection_id"]
+                    and wall["generation"] == command["generation"]
+                    and payload.get("status") in ("shown", "cleared")
+                    and command["state"] != "cleared"
+                    and time.monotonic() < command["expires_mono"]):
+                command["state"] = payload["status"]
+                if command["state"] == "cleared":
+                    identify_commands.pop(device_id, None)
+                    await _send_wall_to_device(device_id, websocket, devices[device_id])
+                await hub._broadcast_device_status(device_id, presentation_active=_presentation_active())
+        elif isinstance(payload, dict) and payload.get("type") == "clock_sample":
             sample_id = payload.get("id")
             c0 = payload.get("c0")
             if (
                 isinstance(sample_id, str)
                 and isinstance(c0, (int, float))
                 and not isinstance(c0, bool)
+                and isfinite(c0)
                 and device_sockets.get(device_id) is websocket
                 and device_id in devices
             ):
@@ -2761,19 +3424,20 @@ async def _device_loop(websocket: WebSocket, device_id: str) -> None:
                 and device_sockets.get(device_id) is websocket
                 and device_id in devices
             ):
-                try:
-                    devices[device_id]["viewport"] = {
-                        "width": float(viewport["width"]),
-                        "height": float(viewport["height"]),
-                        "dpr": float(viewport["dpr"]),
-                        "orientation": int(viewport["orientation"]),
-                        "mode": str(viewport["mode"]),
-                    }
-                except (KeyError, TypeError, ValueError):
+                previous_viewport = devices[device_id].get("viewport")
+                validated = validated_viewport(viewport)
+                if validated is None:
                     continue
+                devices[device_id]["viewport"] = validated
                 record = devices[device_id]
                 if record.get("protocol") == 3:
+                    changed = previous_viewport != record.get("viewport")
+                    if changed:
+                        _revoke_playback_lease(device_id, record.get("connection_id"))
                     await _send_wall_to_device(device_id, websocket, record)
+                    await hub._broadcast_device_status(device_id, presentation_active=_presentation_active())
+                    if changed and _playback_session is not None:
+                        await _playback_after_reconnect(_playback_session, device_id)
 
 
 @app.websocket("/ws/device")
@@ -2787,6 +3451,7 @@ async def ws_device(
     dpr: str | None = Query(default=None, max_length=32),
     orientation: str | None = Query(default=None, max_length=8),
     mode: str | None = Query(default=None, max_length=16),
+    visual_scale: str | None = Query(default=None, max_length=32),
 ):
     # Accept first so a browser can observe the protocol's custom close codes
     # (a rejected handshake would only ever surface as 1006 to the client).
@@ -2816,24 +3481,27 @@ async def ws_device(
         _touch_device(key)
         released = _ensure_device_number(key)
     replaced = _claim_device_socket(key, websocket, record)
-    for old_id in released:
-        if old_id in devices:
-            await _broadcast({"type": "device_updated", "device": _device_record(old_id)})
     record["protocol"] = negotiated
     record["caps"] = _parse_caps(caps)
     record["connection_id"] = uuid.uuid4().hex
-    if w is not None and h is not None and dpr is not None and orientation is not None and mode is not None:
-        try:
-            record["viewport"] = {
-                "width": float(w), "height": float(h), "dpr": float(dpr),
-                "orientation": int(orientation), "mode": str(mode),
-            }
-        except (TypeError, ValueError):
-            record.pop("viewport", None)
+    viewport = validated_viewport({"width": w, "height": h, "dpr": dpr,
+        "orientation": orientation, "mode": mode, "visual_scale": visual_scale or "1"}, query=True)
+    if viewport is not None:
+        record["viewport"] = viewport
+    else:
+        record.pop("viewport", None)
+    owned_connection_id = record["connection_id"]
 
     if replaced is not None and replaced is not websocket:
         with contextlib.suppress(Exception):
             await replaced.close(code=WS_CLOSE_REPLACED)
+
+    for old_id in released:
+        if old_id in devices:
+            await _broadcast({"type": "device_updated", "device": _device_record(old_id)})
+    if device_sockets.get(key) is not websocket:
+        await websocket.close(code=WS_CLOSE_REPLACED)
+        return
 
     connection = writers.attach(websocket)
     try:
@@ -2850,6 +3518,7 @@ async def ws_device(
             welcome["number"] = record.get("number")
         elif negotiated == 3:
             welcome["protocol"] = 3
+            welcome["connection_id"] = owned_connection_id
             welcome["server_caps"] = list(SERVER_CAPS_V3)
             welcome["number"] = record.get("number")
         await connection.send(welcome)
@@ -2880,7 +3549,9 @@ async def ws_device(
         # Revoke before the first await: a playback tick queued on the loop
         # must not see a ready lease for a socket that has already gone.
         if device_sockets.get(key) is websocket:
-            _revoke_playback_lease(key, record.get("connection_id"))
+            _revoke_playback_lease(key, owned_connection_id)
+            render_status.disconnect(key, owned_connection_id)
+            identify_commands.pop(key, None)
         await writers.detach(websocket)
         if device_sockets.get(key) is websocket:
             device_sockets.pop(key, None)
@@ -2907,7 +3578,7 @@ async def ws_controller(
     await websocket.accept()
 
     negotiated = _parse_protocol(protocol)
-    if negotiated is None:
+    if negotiated is None or (negotiated != 3 and wall["layout"].get("kind") == "physical"):
         await websocket.close(code=WS_CLOSE_UNSUPPORTED_PROTOCOL)
         return
 

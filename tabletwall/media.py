@@ -901,6 +901,24 @@ def admit_upload(request: Any) -> None:
             raise StoreError(403, "forwarded headers are not accepted in loopback mode")
 
 
+def admit_operator_read(request: Any) -> None:
+    """Refuse an operator read unless this exact request proves operator access.
+
+    Independent of upload admission, so storage diagnostics stay readable while
+    uploads are disabled. The authenticated operator listener proves access with
+    the internal credential Caddy overwrites after operator authentication; a
+    direct local caller proves it with a loopback transport peer and no forwarded
+    headers. The tablet listener has neither proof, so it is refused.
+    """
+    if request.headers.getlist(CREDENTIAL_HEADER):
+        _check_proxy_credential(request)
+        return
+    if not _loopback_peer(request):
+        raise StoreError(403, "operator access requires a loopback transport peer")
+    if _forwarded(request.headers):
+        raise StoreError(403, "forwarded requests require the operator credential")
+
+
 def admit_library(request: Any) -> None:
     """Refuse a library read unless it comes from the operator path.
 

@@ -11,7 +11,7 @@ from typing import Any
 import anyio
 from fastapi import WebSocket
 
-from tabletwall import displays
+from tabletwall import operator_state, render_status, tablet_models
 from tabletwall import writer as writers
 from tabletwall.protocol import (
     HEARTBEAT_TIMEOUT_S,
@@ -22,6 +22,9 @@ from tabletwall.protocol import (
 )
 from tabletwall.state import (
     _render_frame,
+    _device_record,
+    measurement_for,
+    identify_commands,
     _seconds_since_last_seen,
     _wall_frame,
     _wall_state,
@@ -84,29 +87,23 @@ async def _broadcast_offline(device_id: str, last_seen: str) -> None:
 
 
 def _measurement_for(device_id: str) -> tuple[dict[str, Any] | None, dict[str, Any] | None]:
-    layout = wall["layout"]
-    if layout.get("kind") != "physical":
-        return None, None
-    slot = layout["slots"].get(device_id)
-    if slot is None:
-        return None, None
-    return (
-        displays.profile(device_id, int(slot["profile_revision"])),
-        displays.calibration(device_id, int(slot["calibration_revision"])),
-    )
+    return measurement_for(device_id)
 
 
 async def _send_wall_to_device(
     device_id: str, websocket: WebSocket, record: dict[str, Any]
 ) -> None:
     """Send the current wall or v3 render frame to one device socket."""
+    if device_sockets.get(device_id) is not websocket:
+        return
     try:
         if record.get("protocol") == 3:
             profile, calibration = _measurement_for(device_id)
-            await _send(
-                websocket,
-                _render_frame(device_id, record, profile, calibration),
-            )
+            calibration = tablet_models.effective(device_id, calibration, record.get("viewport") or {})
+            frame = _render_frame(device_id, record, profile, calibration)
+            if "token" in frame:
+                render_status.expect(device_id, render_status.RenderToken(**frame["token"]))
+            await _send(websocket, frame)
         else:
             await _send(websocket, _wall_frame(device_id, record))
     except Exception:
@@ -116,6 +113,8 @@ async def _send_wall_to_device(
         # tablet forever — the device task's own finally block skips the
         # broadcast once somebody else owns the slot.
         if device_sockets.get(device_id) is websocket:
+            render_status.disconnect(device_id, record.get("connection_id", ""))
+            identify_commands.pop(device_id, None)
             device_sockets.pop(device_id, None)
             with contextlib.suppress(Exception):
                 await websocket.close(code=WS_CLOSE_NORMAL)
@@ -188,6 +187,8 @@ async def _sweep_once() -> None:
         if age is not None and age <= timeout:
             continue  # it came back while we were working through the list
 
+        render_status.disconnect(device_id, devices.get(device_id, {}).get("connection_id", ""))
+        identify_commands.pop(device_id, None)
         device_sockets.pop(device_id, None)
         with contextlib.suppress(Exception):
             await websocket.close(code=WS_CLOSE_HEARTBEAT_TIMEOUT)
@@ -205,3 +206,32 @@ async def _sweep_loop() -> None:
         # Sleep first and re-read the interval on every pass: tests patch it.
         await asyncio.sleep(SWEEP_INTERVAL_S)
         await _sweep_once()
+
+
+async def _broadcast_device_status(device_id: str, *, presentation_active: bool = False) -> None:
+    status = operator_state.device_status(device_id, presentation_active=presentation_active)
+    device = _device_record(device_id) if device_id in devices else {"device_id": device_id}
+    frame = {"type": "device_updated", "device": {**device, **status}}
+    for socket in list(controller_sockets):
+        if controller_protocols.get(socket) != 3:
+            continue
+        try:
+            await _send(socket, frame)
+        except Exception:
+            controller_sockets.discard(socket)
+            controller_protocols.pop(socket, None)
+            with contextlib.suppress(Exception):
+                await socket.close(code=WS_CLOSE_NORMAL)
+
+
+async def _broadcast_config_updated() -> None:
+    for socket in list(controller_sockets):
+        if controller_protocols.get(socket) != 3:
+            continue
+        try:
+            await _send(socket, {"type": "config_updated", "generation": wall["generation"], "revision": wall["revision"]})
+        except Exception:
+            controller_sockets.discard(socket)
+            controller_protocols.pop(socket, None)
+            with contextlib.suppress(Exception):
+                await socket.close(code=WS_CLOSE_NORMAL)

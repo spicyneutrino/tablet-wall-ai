@@ -11,13 +11,8 @@
     const API_DIAGNOSTICS = "/diagnostics";
     const REQUEST_TIMEOUT_MS = 10000;
     const PLAYBACK_POLL_MS = 1000;
-    const SVG_NS = "http://www.w3.org/2000/svg";
-    const STAGE_W = 720;
-    const STAGE_H = 480;
-    const STAGE_MARGIN = 28;
     const DRAG_THRESHOLD_PX = 3;
     const HISTORY_LIMIT = 80;
-    const UUID4_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
     const WAKE_LOCK_TEXT = {
         held: "Wake lock held",
         released: "Wake lock released",
@@ -78,6 +73,12 @@
         boundsWidth: document.getElementById("bounds-width"),
         boundsHeight: document.getElementById("bounds-height"),
         boundsNote: document.getElementById("bounds-note"),
+        boundsMode: document.getElementById("bounds-mode"),
+        boundsPadding: document.getElementById("bounds-padding"),
+        sizingMsg: document.getElementById("sizing-msg"),
+        packColumns: document.getElementById("pack-columns"),
+        packGap: document.getElementById("pack-gap"),
+        btnPackTablets: document.getElementById("btn-pack-tablets"),
         btnLayoutsRefresh: document.getElementById("btn-layouts-refresh"),
         layoutSaveForm: document.getElementById("layout-save-form"),
         layoutName: document.getElementById("layout-name"),
@@ -137,16 +138,6 @@
         diagIntegrity: document.getElementById("diag-integrity"),
         diagIntegrityText: document.getElementById("diag-integrity-text"),
         diagProblems: document.getElementById("diag-problems"),
-        rebindForm: document.getElementById("rebind-form"),
-        rebindNew: document.getElementById("rebind-new"),
-        rebindReplaces: document.getElementById("rebind-replaces"),
-        rebindNumber: document.getElementById("rebind-number"),
-        rebindNewNote: document.getElementById("rebind-new-note"),
-        rebindReplacesNote: document.getElementById("rebind-replaces-note"),
-        rebindNumberNote: document.getElementById("rebind-number-note"),
-        rebindSummary: document.getElementById("rebind-summary"),
-        rebindMsg: document.getElementById("rebind-msg"),
-        btnRebind: document.getElementById("btn-rebind"),
         btnLayoutSave: document.getElementById("btn-layout-save"),
         layoutMsg: document.getElementById("layout-msg"),
         savedLayouts: document.getElementById("saved-layouts"),
@@ -215,6 +206,14 @@
     };
 
     const state = {
+        scene: null,
+        operatorConfig: null,
+        capabilities: {},
+        readiness: {},
+        deviceLabels: {},
+        snapshots: {},
+        gridPreview: null,
+        readFence: window.OperatorState.readFence(),
         etag: null,
         etagState: "missing",
         revision: null,
@@ -226,7 +225,10 @@
         draft: null,
         displays: [],
         calibrations: [],
+        tabletModels: {},
+        tabletAssignments: {},
         roster: {},
+        rosterRefreshPromise: null,
         rosterCheckedAt: null,
         rosterError: null,
         rosterLoading: false,
@@ -269,12 +271,13 @@
         diagnosticsState: "pending",
         diagnosticsError: null,
         diagnosticsLoading: false,
-        rebindBusy: false,
         tabDecided: false,
         tabName: null,
         tabScroll: {},
         playbackSettled: false
     };
+
+    let operatorContent = null, operatorGrid = null, operatorDevices = null, operatorReadiness = null, operatorSync = null;
 
     const profileCache = new Map();
     const calibrationCache = new Map();
@@ -498,7 +501,7 @@
                 kind: "warn"
             };
         }
-        return { text: "calib r" + calibration.revision + " valid", kind: "ok" };
+        return { text: "calib r" + calibration.revision + " saved", kind: "ok" };
     }
 
     function validPair(id) {
@@ -509,17 +512,33 @@
         return { profile: profile, calibration: calibration };
     }
 
+    function hasUnsavedEdits() {
+        return isDirty() || state.profileDirty || state.calDirty
+            || operatorContent && operatorContent.dirty() || operatorDevices && operatorDevices.dirty();
+    }
+
     function isDirty() {
+        if (state.gridPreview) return true;
         if (!state.base || !state.draft) return false;
         return layoutSignature(state.base) !== layoutSignature(state.draft);
     }
 
+    function sizingError() {
+        if (!state.draft || state.draft.kind !== "physical" || state.draft.sizing.mode !== "tablets"
+                || Object.keys(state.draft.slots).length === 0) return null;
+        return window.PhysicalSizing.fitBounds(
+            state.draft.slots, profileFor, state.draft.sizing.padding
+        ).error || null;
+    }
+
     function layoutSignature(layout) {
         if (!layout) return "";
+        if (layout.kind === "logical") return JSON.stringify({ kind: "logical", width: layout.width, height: layout.height, placements: Object.entries(layout.placements || {}).sort(), sizing: layout.sizing });
         const bounds = layout.bounds || {};
         const slots = layout.slots || {};
         return JSON.stringify({
             bounds: [bounds.x, bounds.y, bounds.width, bounds.height],
+            sizing: layout.sizing || { mode: "fixed", padding: 0 },
             slots: Object.keys(slots).sort().map(function (id) {
                 const slot = slots[id];
                 return [
@@ -540,32 +559,6 @@
     function selectedSlot() {
         if (!state.draft || !state.selectedId) return null;
         return state.draft.slots[state.selectedId] || null;
-    }
-
-    function physicalFromConfig(layout) {
-        if (layout && layout.kind === "physical") {
-            const bounds = normalizeBounds(layout.bounds);
-            const slots = layout.slots && typeof layout.slots === "object"
-                ? clone(layout.slots) : {};
-            return { kind: "physical", bounds: bounds, slots: slots };
-        }
-        const width = layout && num(layout.width) > 0 ? Number(layout.width) : 1200;
-        const height = layout && num(layout.height) > 0 ? Number(layout.height) : 800;
-        return {
-            kind: "physical",
-            bounds: { x: 0, y: 0, width: width, height: height },
-            slots: {}
-        };
-    }
-
-    function normalizeBounds(bounds) {
-        const source = bounds || {};
-        return {
-            x: finiteOr(source.x, 0),
-            y: finiteOr(source.y, 0),
-            width: finiteOr(source.width, 1200) > 0 ? finiteOr(source.width, 1200) : 1200,
-            height: finiteOr(source.height, 800) > 0 ? finiteOr(source.height, 800) : 800
-        };
     }
 
     function bodyMetrics(profile) {
@@ -596,21 +589,8 @@
         };
     }
 
-    function niceStep(target) {
-        if (!Number.isFinite(target) || target <= 0) return 50;
-        const exponent = Math.floor(Math.log10(target));
-        const base = Math.pow(10, exponent);
-        const fraction = target / base;
-        let picked;
-        if (fraction <= 1) picked = 1;
-        else if (fraction <= 2) picked = 2;
-        else if (fraction <= 5) picked = 5;
-        else picked = 10;
-        return picked * base;
-    }
-
     function deviceLabel(id, profile) {
-        return profile && profile.label ? profile.label : "Tablet " + shortId(id);
+        return state.deviceLabels[id] || state.roster[id] && state.roster[id].label || (profile && profile.label ? profile.label : "Tablet " + shortId(id));
     }
 
     function deviceNumber(id) {
@@ -649,7 +629,6 @@
     function deviceEntries() {
         const ids = new Set();
         Object.keys(state.roster).forEach(function (id) { ids.add(id); });
-        state.displays.forEach(function (profile) { ids.add(profile.device_id); });
         [state.base, state.draft].forEach(function (layout) {
             if (layout && layout.slots) {
                 Object.keys(layout.slots).forEach(function (id) { ids.add(id); });
@@ -661,8 +640,8 @@
             const profile = latestProfile(id);
             entries.push({
                 id: id,
-                profile: profile,
-                calibration: latestCalibration(id),
+                profile: state.base && state.base.slots[id] ? profileFor(id, state.base.slots[id].profile_revision) : profile,
+                calibration: state.base && state.base.slots[id] ? calibrationFor(id, state.base.slots[id].calibration_revision) : latestCalibration(id),
                 slot: state.draft && state.draft.slots ? state.draft.slots[id] || null : null,
                 placement: state.draft && state.draft.placements
                     ? state.draft.placements[id] || null : null,
@@ -794,24 +773,11 @@
         showTab(state.tabName || readStoredTab() || "show", { persist: false });
     }
 
-    function activePlaybackSession() {
-        const status = state.playback;
-        const name = status && typeof status.state === "string"
-            ? status.state : "stopped";
-        return Boolean(status) && name !== "stopped" && name !== "unknown";
-    }
-
-    function physicalSlotCount() {
-        const slots = state.base && state.base.slots ? state.base.slots : {};
-        return Object.keys(slots).length;
-    }
-
     function maybeChooseInitialTab() {
         if (state.tabDecided) return;
-        if (!state.configLoaded || !state.playbackSettled) return;
+        if (!state.configLoaded) return;
         state.tabDecided = true;
-        const name = activePlaybackSession() || physicalSlotCount() > 0
-            ? "show" : "tablet";
+        const name = "show";
         showTab(name, { persist: false });
     }
 
@@ -928,12 +894,13 @@
                 return where ? where + ": " + msg : msg;
             }).join("; ");
         }
-        if (typeof detail === "object") return JSON.stringify(detail);
+        if (typeof detail === "object") return (detail.message || detail.code || "Request conflict") + (detail.conflicts ? ": " + JSON.stringify(detail.conflicts) : "");
         return String(detail);
     }
 
     async function api(method, path, body, options) {
         const settings = options || {};
+        const configAtSend = state.operatorConfig;
         const init = { method: method, headers: { "Accept": "application/json" } };
         if (body !== undefined) {
             init.headers["Content-Type"] = "application/json";
@@ -941,6 +908,7 @@
         }
         if (settings.etag) {
             if (!state.etag) throw new ApiError(428, "No configuration ETag is loaded.");
+            if (state.etagState === "stale") throw new ApiError(412, "Reload the configuration before saving.");
             init.headers["If-Match"] = state.etag;
         }
         if (settings.ifMatch) {
@@ -973,6 +941,11 @@
         if (!response.ok) {
             throw new ApiError(response.status, detailFromPayload(payload, response.status));
         }
+        const current = state.operatorConfig;
+        if (method !== "GET" && payload && payload.layout && current && current !== configAtSend
+                && (current.etag === payload.etag || current.etag !== init.headers["If-Match"])) {
+            return Object.assign({}, payload, current);
+        }
         return payload;
     }
 
@@ -984,7 +957,34 @@
         if (!config || typeof config !== "object") {
             throw new Error("The server returned an empty configuration.");
         }
+        if (!config.layout || !["logical", "physical", undefined].includes(config.layout.kind)
+                || config.operator_state_version !== undefined && config.operator_state_version !== 1) {
+            state.etagState = "stale";
+            showError("Unsupported operator configuration. Update the console before editing; no replacement layout has been created.");
+            el.layoutKindNote.textContent = "Configuration upgrade required. The current layout cannot be edited by this console version.";
+            syncDraftUi();
+            if (operatorContent) operatorContent.render();
+            if (operatorDevices) operatorDevices.render();
+            return;
+        }
+        const firstConfig = !state.configLoaded;
         const settings = options || {};
+        const keepDraft = settings.preserveDraft && state.configLoaded && hasUnsavedEdits();
+        const oldDraft = state.draft, oldBase = state.base, oldEtag = state.etag;
+        const conflicting = keepDraft && settings.remote && config.etag !== oldEtag;
+        state.readFence.event();
+        config = window.OperatorState.observeConfig(config, performance.now());
+        state.operatorConfig = config;
+        state.scene = config.scene || null;
+        state.capabilities = config.capabilities || {};
+        // Readiness comes from GET /api/v3/readiness, not this config snapshot.
+        // A config seed only fills the gap until the first real read succeeds.
+        if (!state.readinessFetchedAt) {
+            state.readiness = config.readiness || config.runtime && config.runtime.readiness || {};
+        }
+        state.deviceLabels = config.device_labels || {};
+        state.snapshots = config.snapshots || {};
+        if (config.runtime && config.runtime.devices) state.roster = config.runtime.devices;
         state.etag = typeof config.etag === "string" && config.etag ? config.etag : null;
         state.etagState = state.etag ? "current" : "missing";
         state.revision = config.revision === undefined ? null : config.revision;
@@ -993,15 +993,20 @@
         state.configLoaded = true;
         state.displays = Array.isArray(config.displays) ? config.displays : [];
         state.calibrations = Array.isArray(config.calibrations) ? config.calibrations : [];
+        state.tabletModels = config.tablet_models || {};
+        state.tabletAssignments = config.tablet_assignments || {};
         state.displays.forEach(rememberProfile);
         state.calibrations.forEach(rememberCalibration);
+        (config.referenced_displays || []).forEach(rememberProfile);
+        (config.referenced_calibrations || []).forEach(rememberCalibration);
         state.basePlacements = config.layout && config.layout.kind !== "physical"
             && config.layout.placements && typeof config.layout.placements === "object"
             ? clone(config.layout.placements) : {};
-        state.base = physicalFromConfig(config.layout);
+        state.base = window.OperatorState.layoutDraft(config.layout);
         restorePlaybackExclusions();
-        state.draft = clone(state.base);
-        if (settings.resetHistory !== false) {
+        state.draft = keepDraft ? oldDraft : clone(state.base);
+        if (conflicting) { state.base = oldBase; state.etag = oldEtag; state.etagState = "stale"; }
+        if (settings.resetHistory !== false && !keepDraft) {
             state.undo = [];
             state.redo = [];
         }
@@ -1012,42 +1017,34 @@
             state.calDirty = false;
         }
         ensureSelection();
-        hideConflict();
+        if (settings.resetForms && !keepDraft) { if (operatorContent) operatorContent.discard(); if (operatorDevices) operatorDevices.discard(); }
+        if (conflicting) showConflict("Configuration changed while you were editing. Your draft is retained with its original ETag. Reload to discard it and review current state.");
+        else hideConflict();
+        state.rosterCheckedAt = new Date().toISOString();
         renderAll();
         maybeChooseInitialTab();
+        if (firstConfig) announce("Wall configuration loaded. Image display is confirmed separately for each tablet.", "info");
     }
 
     function ensureSelection() {
-        const ids = new Set();
-        Object.keys(state.roster).forEach(function (id) { ids.add(id); });
-        state.displays.forEach(function (profile) { ids.add(profile.device_id); });
-        if (state.draft && state.draft.slots) {
-            Object.keys(state.draft.slots).forEach(function (id) { ids.add(id); });
-        }
+        const ids = new Set(Object.keys(state.roster));
+        Object.keys(window.OperatorState.entries(state.draft)).forEach(id => ids.add(id));
         if (state.selectedId && ids.has(state.selectedId)) return;
-        const slotIds = state.draft && state.draft.slots
-            ? Object.keys(state.draft.slots).sort() : [];
-        if (slotIds.length) {
-            state.selectedId = slotIds[0];
-        } else if (state.displays.length) {
-            state.selectedId = state.displays.slice().sort(function (a, b) {
-                return a.device_id.localeCompare(b.device_id);
-            })[0].device_id;
-        } else {
-            const rosterIds = Object.keys(state.roster).sort();
-            state.selectedId = rosterIds.length ? rosterIds[0] : null;
-        }
+        state.selectedId = Array.from(ids).sort(compareDeviceIds)[0] || null;
     }
 
     async function loadConfig() {
         if (state.busy) return false;
         state.busy = true;
         syncDraftUi();
+        const ticket = state.readFence.start();
         try {
             const results = await Promise.all([
                 api("GET", API_CONFIG),
                 api("GET", API_DEVICES)
             ]);
+            if (!state.readFence.accept(ticket)) return false;
+            state.gridPreview = null;
             state.roster = results[1] && typeof results[1] === "object" ? results[1] : {};
             state.rosterCheckedAt = new Date().toISOString();
             state.rosterError = null;
@@ -1068,9 +1065,9 @@
 
     async function reloadConfigWithConfirm() {
         if (state.busy) return;
-        const hasUnsaved = isDirty() || state.profileDirty || state.calDirty;
+        const hasUnsaved = hasUnsavedEdits();
         if (hasUnsaved && !window.confirm(
-            "Reload the configuration and discard the unapplied draft and unsaved measurement fields?"
+            "Reload the configuration and discard unapplied layout changes, image selection and unsaved tablet fields?"
         )) {
             return;
         }
@@ -1080,10 +1077,14 @@
     function renderAll() {
         syncMeta();
         syncDraftUi();
+        if (operatorContent) { operatorContent.render(); operatorContent.detectUploads(); }
         renderDeviceList();
         renderStage();
         populateDeviceCard(false);
         renderPlayback();
+        if (operatorGrid) operatorGrid.render();
+        if (operatorDevices) operatorDevices.render();
+        if (operatorReadiness) operatorReadiness.render();
     }
 
     function syncMeta() {
@@ -1110,11 +1111,11 @@
         }
 
         if (state.layoutKind === "physical") {
-            el.layoutKindNote.textContent = "Editing the committed physical layout. Apply sends bounds and every slot in one write.";
-            el.boundsNote.textContent = "The committed layout uses these bounds. Values are millimetres.";
+            el.layoutKindNote.textContent = "Measured wall (mm). Pinned measurements; model dimensions remain approximate.";
+            el.boundsNote.textContent = "Values describe the draft in millimetres. Apply layout to save changes.";
         } else if (state.layoutKind === "logical") {
-            el.layoutKindNote.textContent = "The active wall is still logical. This draft starts from its dimensions; applying it replaces the logical layout with a physical one.";
-            el.boundsNote.textContent = "The active wall is logical, so its dimensions only seed this draft. Check the millimetre values before applying.";
+            el.layoutKindNote.textContent = "Logical wall (unit-based). No millimetre conversion. Change kind explicitly in Layout & size.";
+            el.boundsNote.textContent = "Physical bounds are unavailable for a logical layout. Use Layout & size in Wall or the labelled compatibility editor.";
         } else {
             el.layoutKindNote.textContent = "No wall configuration is loaded.";
             el.boundsNote.textContent = "";
@@ -1122,12 +1123,25 @@
     }
 
     function syncBoundsInputs() {
+        document.querySelector(".bounds-card").hidden = !state.draft || state.draft.kind !== "physical";
         if (!state.draft || !state.draft.bounds) return;
         const bounds = state.draft.bounds;
         setInputValue(el.boundsX, formatNumber(bounds.x, 3));
         setInputValue(el.boundsY, formatNumber(bounds.y, 3));
         setInputValue(el.boundsWidth, formatNumber(bounds.width, 3));
         setInputValue(el.boundsHeight, formatNumber(bounds.height, 3));
+        el.boundsMode.value = state.draft.sizing.mode;
+        setInputValue(el.boundsPadding, formatNumber(state.draft.sizing.padding, 3));
+        const fitted = state.draft.sizing.mode === "tablets";
+        el.boundsPadding.closest(".field").hidden = !fitted;
+        el.btnPackTablets.closest(".pack-row").hidden = !fitted;
+        [el.boundsX, el.boundsY, el.boundsWidth, el.boundsHeight].forEach(function (input) {
+            input.readOnly = fitted;
+            input.setAttribute("aria-readonly", fitted ? "true" : "false");
+        });
+        el.boundsMode.disabled = state.busy;
+        el.boundsPadding.disabled = state.busy;
+        el.btnPackTablets.disabled = state.busy || !fitted;
     }
 
     function syncLocalDraftActions() {
@@ -1136,6 +1150,7 @@
     }
 
     function syncDraftUi() {
+        renderCalibrationHelper();
         if (!state.draft) {
             el.draftFlag.textContent = "No draft";
             el.draftFlag.dataset.dirty = "false";
@@ -1143,6 +1158,9 @@
             el.btnCancel.disabled = true;
             el.btnUndo.disabled = true;
             el.btnRedo.disabled = true;
+            el.boundsMode.disabled = true;
+            el.boundsPadding.disabled = true;
+            el.btnPackTablets.disabled = true;
             syncLocalDraftActions();
             updateSavedButtons();
             syncInspector();
@@ -1154,7 +1172,7 @@
         if (dirty) {
             el.draftFlag.textContent = "Unapplied changes";
             el.draftFlag.dataset.dirty = "true";
-        } else if (state.layoutKind === "physical") {
+        } else if (state.base) {
             el.draftFlag.textContent = "Matches the committed layout";
             el.draftFlag.dataset.dirty = "false";
         } else {
@@ -1162,13 +1180,16 @@
             el.draftFlag.dataset.dirty = "false";
         }
 
-        el.btnApply.disabled = state.busy || !state.etag || (!dirty && state.layoutKind === "physical");
+        const emptyPhysical = state.draft.kind === "physical" && Object.keys(state.draft.slots).length === 0;
+        el.btnApply.disabled = state.busy || !state.etag || state.etagState !== "current" || !!sizingError()
+            || !dirty || (emptyPhysical && !state.gridPreview);
+        el.btnApply.title = emptyPhysical ? "This arrangement has no tablets. Use an explicit Remove action to clear a slot." : "Apply the entire previewed layout once";
         el.btnCancel.disabled = state.busy || !dirty;
         el.btnUndo.disabled = state.busy || state.undo.length === 0;
         el.btnRedo.disabled = state.busy || state.redo.length === 0;
         el.btnReload.disabled = state.busy;
         el.btnProfileSave.disabled = state.busy;
-        el.btnCalibrationSave.disabled = state.busy;
+        el.btnCalibrationSave.disabled = state.busy || rulerSaveBlocked();
         el.btnLayoutSave.disabled = state.busy || !state.etag;
         el.btnLayoutsRefresh.disabled = state.busy;
         el.btnConflictReload.disabled = state.busy;
@@ -1189,13 +1210,23 @@
     }
 
     function afterDraftChange() {
+        if (state.draft && state.draft.kind === "physical" && state.draft.sizing.mode === "tablets"
+                && !(state.drag && state.drag.moved)) {
+            const result = window.PhysicalSizing.fitBounds(
+                state.draft.slots, profileFor, state.draft.sizing.padding
+            );
+            if (result.bounds) state.draft.bounds = result.bounds;
+            if (result.error) setMsg(el.sizingMsg, result.error, "err");
+            else if (result.bounds) clearMsg(el.sizingMsg);
+            else setMsg(el.sizingMsg, "Add tablets to fit the wall. The last wall bounds are kept.", "info");
+        }
         syncDraftUi();
         renderStage();
         renderPlaybackPreflight(playbackPreflight());
     }
 
     function mutateDraft(mutator) {
-        if (!state.draft || state.busy) return false;
+        if (!state.draft || state.draft.kind !== "physical" || state.gridPreview || state.busy) return false;
         const before = clone(state.draft);
         mutator(state.draft);
         if (layoutSignature(before) === layoutSignature(state.draft)) return false;
@@ -1224,6 +1255,7 @@
 
     function cancelDraft() {
         if (!state.draft || !state.base || state.busy) return;
+        if (state.gridPreview && operatorGrid) { operatorGrid.cancel(); return; }
         const before = clone(state.draft);
         state.draft = clone(state.base);
         state.drag = null;
@@ -1233,19 +1265,26 @@
     }
 
     async function applyLayout() {
-        if (!state.draft || !state.etag || state.busy) return;
+        if (!state.draft || !state.etag || state.busy || state.etagState !== "current") return;
+        if (state.gridPreview && operatorGrid) { await operatorGrid.apply(); return; }
+        if (state.draft.kind !== "physical" || Object.keys(state.draft.slots).length === 0) {
+            showError("An empty measured draft cannot be applied. Use a deliberate Remove action to clear an active slot."); return;
+        }
         clearError();
         setBusy(true);
         try {
             const body = {
                 bounds: clone(state.draft.bounds),
-                slots: clone(state.draft.slots)
+                slots: clone(state.draft.slots),
+                sizing: clone(state.draft.sizing)
             };
             const payload = await api("PUT", API_LAYOUT, body, { etag: true });
             ingestConfig(payload, { resetHistory: true });
+            await loadLayouts();
             clearError();
             hideConflict();
-            announce("Layout applied at revision " + (state.revision === null ? "?" : state.revision) + ".", "ok");
+            announce("Layout applied at revision " + (state.revision === null ? "?" : state.revision) + "."
+                + (payload.previous_layout_saved ? " Previous logical layout saved as " + payload.previous_layout_saved + "." : ""), "ok");
         } catch (error) {
             handleWriteError(error, null);
         } finally {
@@ -1265,7 +1304,8 @@
     const {
         addSelectedDevice, deleteSelectedSlot, endDrag, nudgeSelected, onPointerCancel, onPointerDown, onPointerMove, onPointerUp, renderDeviceHealth, renderDeviceList, renderStage, rotateSelected, selectDevice, syncInspector
     } = window.PhysicalStage.create({
-        DRAG_THRESHOLD_PX, STAGE_H, STAGE_MARGIN, STAGE_W, SVG_NS, WAKE_LOCK_TEXT, afterDraftChange, announce, bodyMetrics, calibrationFor, calibrationStatus, clearMsg, clone, compactView, deviceEntries, deviceLabel, deviceNumber, deviceRows, el, finiteOr, formatNumber, isOnline, latestProfile, mutateDraft, niceStep, numberedLabel, populateDeviceCard, profileFor, pushUndo, renderRebindOptions, roundTo, selectedSlot, setInputValue, shortId, showError, showTab, state, syncTabDots, validPair
+        selectionChanged: () => { if (operatorDevices) operatorDevices.render(); },
+        DRAG_THRESHOLD_PX, WAKE_LOCK_TEXT, afterDraftChange, announce, bodyMetrics, calibrationFor, calibrationStatus, clearMsg, clone, compactView, deviceEntries, deviceLabel, deviceNumber, deviceRows, el, finiteOr, formatNumber, isOnline, latestProfile, mutateDraft, numberedLabel, populateDeviceCard, profileFor, pushUndo, roundTo, selectedSlot, setInputValue, shortId, showError, showTab, state, syncTabDots, validPair
     });
 
     function bindNumberInput(input, write, validate) {
@@ -1391,6 +1431,9 @@
     }
 
     function buildCalibrationBody() {
+        if (!el.calOrientation.value || !["tab", "fullscreen", "standalone"].includes(el.calMode.value)) {
+            throw new ValidationError("Choose the tablet orientation and mode.");
+        }
         const orientation = Number(el.calOrientation.value);
         if ([0, 90, 180, 270].indexOf(orientation) === -1) {
             throw new ValidationError("Orientation must be 0, 90, 180 or 270 degrees.");
@@ -1421,6 +1464,7 @@
             ],
             anchor_edge: anchor,
             uncertainty_mm: requireNonNegative("Uncertainty", el.calUncertainty),
+            ...(el.calMethod.value.trim() === "ruler-measured" ? { viewport_guard: true } : {}),
             method: requireText("Method", el.calMethod, 1, 80)
         };
     }
@@ -1472,32 +1516,15 @@
         state.profileDirty = false;
     }
 
-    function orientationNow() {
-        if (window.screen && window.screen.orientation
-            && typeof window.screen.orientation.angle === "number") {
-            const angle = ((Math.round(window.screen.orientation.angle) % 360) + 360) % 360;
-            if ([0, 90, 180, 270].indexOf(angle) !== -1) return angle;
-        }
-        const legacy = Number(window.orientation);
-        return [0, 90, 180, 270].indexOf(legacy) !== -1 ? legacy : 0;
-    }
-
-    function modeNow() {
-        if (window.matchMedia
-            && window.matchMedia("(display-mode: fullscreen)").matches) return "fullscreen";
-        if (document.fullscreenElement) return "fullscreen";
-        if (window.matchMedia
-            && window.matchMedia("(display-mode: standalone)").matches) return "standalone";
-        return "tab";
+    function fillViewport(viewport) {
+        setInputValue(el.calViewportWidth, viewport ? viewport.width : "");
+        setInputValue(el.calViewportHeight, viewport ? viewport.height : "");
+        setInputValue(el.calDpr, viewport ? viewport.dpr : "");
+        el.calOrientation.value = viewport ? String(viewport.orientation) : "";
+        el.calMode.value = viewport ? viewport.mode : "";
     }
 
     function fillCalibrationForm(calibration, profile) {
-        const viewportWidth = window.innerWidth || 1;
-        const viewportHeight = window.innerHeight || 1;
-        const dpr = window.devicePixelRatio || 1;
-        const activeWidth = profile ? finiteOr(profile.active_width_mm, 0) : 0;
-        const activeHeight = profile ? finiteOr(profile.active_height_mm, 0) : 0;
-
         if (calibration) {
             setInputValue(el.calProfileRevision, formatNumber(calibration.profile_revision, 0));
             setInputValue(el.calViewportWidth, formatNumber(calibration.viewport_width, 3));
@@ -1516,23 +1543,184 @@
         } else {
             setInputValue(el.calProfileRevision, profile
                 ? formatNumber(profile.revision, 0) : "");
-            setInputValue(el.calViewportWidth, formatNumber(viewportWidth, 3));
-            setInputValue(el.calViewportHeight, formatNumber(viewportHeight, 3));
-            setInputValue(el.calDpr, formatNumber(dpr, 4));
-            setSelectValue(el.calOrientation, orientationNow());
-            setSelectValue(el.calMode, modeNow());
+            fillViewport(window.PhysicalCalibration.selectedViewport(state.roster, state.selectedId));
             setSelectValue(el.calQuarterTurn, 0);
             setSelectValue(el.calAnchorEdge, "top-left");
-            setInputValue(el.calOffsetX, "0");
-            setInputValue(el.calOffsetY, "0");
-            setInputValue(el.calMmCssX, activeWidth > 0
-                ? formatNumber(activeWidth / viewportWidth, 6) : "");
-            setInputValue(el.calMmCssY, activeHeight > 0
-                ? formatNumber(activeHeight / viewportHeight, 6) : "");
-            setInputValue(el.calUncertainty, "0");
+            setInputValue(el.calOffsetX, "");
+            setInputValue(el.calOffsetY, "");
+            setInputValue(el.calMmCssX, "");
+            setInputValue(el.calMmCssY, "");
+            setInputValue(el.calUncertainty, "");
             setInputValue(el.calMethod, "manual");
         }
         state.calDirty = false;
+    }
+
+    const rulerReview = new window.PhysicalCalibration.RulerReview();
+
+    function rulerInputs() {
+        const measurements = {};
+        ["x", "y"].forEach(function (axis) {
+            measurements[axis] = {
+                mm: document.getElementById("cal-ruler-mm-" + axis).value,
+                px: document.getElementById("cal-ruler-span-" + axis).value,
+                error: document.getElementById("cal-ruler-error-" + axis).value
+            };
+        });
+        return measurements;
+    }
+
+    function rulerContext() {
+        const viewport = window.PhysicalCalibration.selectedViewport(state.roster, state.selectedId);
+        const revision = Number(el.calProfileRevision.value);
+        const profile = profileFor(state.selectedId, revision);
+        if (!profile) throw new Error("The selected profile revision is unavailable. Reload the tablet measurements.");
+        const bodies = window.PhysicalCalibration.rulerCheckBodies(state.selectedId, revision,
+            Number(el.calQuarterTurn.value), viewport, rulerInputs());
+        return { viewport: viewport, bodies: bodies, key: JSON.stringify({ bodies: bodies, viewport: viewport, profile: profile }) };
+    }
+
+    function rulerSaveBlocked() {
+        const measurements = rulerInputs();
+        if (rulerReview.status === "idle" && !measurements.x.mm && !measurements.y.mm
+            && el.calMethod.value.trim() !== "ruler-measured") return false;
+        try { return !rulerReview.canSave(rulerContext().key); }
+        catch (_) { return true; }
+    }
+
+    function invalidateRuler() {
+        rulerReview.invalidate();
+        document.getElementById("cal-ruler-decision").hidden = true;
+        if (rulerReview.status === "stale") {
+            const preview = document.getElementById("cal-ruler-preview");
+            preview.hidden = false;
+            preview.textContent = "Measurement or mapping changed. Check the current ruler measurements again before saving.";
+        }
+        el.btnCalibrationSave.disabled = state.busy || rulerSaveBlocked();
+    }
+
+    async function checkRuler() {
+        if (state.busy || rulerReview.status === "checking") return;
+        let context;
+        try {
+            context = rulerContext();
+            rulerReview.begin(context.key);
+            state.calDirty = true;
+            syncTabDots();
+            const preview = document.getElementById("cal-ruler-preview");
+            preview.hidden = false;
+            preview.textContent = "Checking both CSS axes. Nothing has been saved.";
+            document.getElementById("cal-ruler-decision").hidden = true;
+            renderCalibrationHelper();
+            const results = await Promise.all(context.bodies.map(function (body) {
+                return api("POST", "/api/v3/calibration-check", body);
+            }));
+            if (rulerContext().key !== context.key || !rulerReview.accept(context.key, results)) return;
+            preview.textContent = "";
+            results.forEach(function (result) {
+                const section = document.createElement("section");
+                const heading = document.createElement("h4");
+                heading.textContent = result.axis.toUpperCase() + " CSS axis maps to native panel "
+                    + result.profile.native_axis + " at quarter turn " + result.profile.quarter_turn;
+                section.appendChild(heading);
+                const derived = result.derived;
+                const comparison = result.comparison;
+                [
+                    "Full labelled span " + result.inputs.span_px + " CSS px. Measured "
+                        + result.inputs.span_mm + " ± " + result.inputs.span_error_mm + " mm.",
+                    "Derived " + formatNumber(derived.mm_per_css, 8) + " ± "
+                        + formatNumber(derived.mm_per_css_uncertainty, 8) + " mm/CSS. " + derived.quality_label + ".",
+                    "Supplied full panel " + result.profile.native_axis + " " + formatNumber(comparison.supplied_mm, 3)
+                        + " mm from profile r" + result.profile.revision + ". Ruler-implied usable panel extent "
+                        + formatNumber(comparison.implied_mm, 3) + " ± "
+                        + formatNumber(result.extrapolated_uncertainty.measured_mm, 3) + " mm.",
+                    result.decision.required ? "Disagreement. Choose explicitly below." : "Within the propagated comparison tolerance."
+                ].forEach(function (text) {
+                    const p = document.createElement("p");
+                    p.textContent = text;
+                    section.appendChild(p);
+                });
+                preview.appendChild(section);
+            });
+            const note = document.createElement("p");
+            note.textContent = "Both axes are measured separately. Browser insets can make the usable viewport smaller than the full panel, especially in tab or standalone mode. Review panel offsets below. No values were averaged or saved. Existing layout pins stay unchanged.";
+            preview.appendChild(note);
+            document.getElementById("cal-ruler-decision").hidden = false;
+            preview.focus();
+        } catch (error) {
+            if (context && rulerReview.key !== context.key) return;
+            invalidateRuler();
+            setMsg(el.calibrationMsg, errorDetail(error), "err");
+        } finally { renderCalibrationHelper(); }
+    }
+
+    function decideRuler(choice) {
+        if (state.busy) return;
+        try {
+            const context = rulerContext();
+            if (rulerReview.key !== context.key) throw new Error("The tablet or measurement changed. Check again.");
+            rulerReview.decide(choice);
+            document.getElementById("cal-ruler-decision").hidden = true;
+            if (choice === "use_ruler") {
+                fillViewport(context.viewport);
+                const results = rulerReview.results;
+                setInputValue(el.calMmCssX, results[0].derived.mm_per_css);
+                setInputValue(el.calMmCssY, results[1].derived.mm_per_css);
+                setInputValue(el.calUncertainty, Math.max(...results.map(function (result) {
+                    return result.extrapolated_uncertainty.measured_mm;
+                })));
+                setInputValue(el.calMethod, "ruler-measured");
+                state.calDirty = true;
+                setMsg(el.calibrationMsg, "Ruler chosen. Review offsets and Save calibration to create a new revision. Supplied profile and existing layout pins stay unchanged.", "info");
+                renderCalibrationHelper();
+                el.btnCalibrationSave.focus();
+            } else if (choice === "keep_supplied") {
+                setMsg(el.calibrationMsg, "Supplied measurements kept. Nothing was written; the profile and existing mapping stay unchanged. No ruler scale will be saved.", "ok");
+                document.getElementById("cal-use-ruler").focus();
+            } else {
+                document.getElementById("cal-ruler-mm-x").value = "";
+                document.getElementById("cal-ruler-mm-y").value = "";
+                invalidateRuler();
+                setMsg(el.calibrationMsg, "Measure each line again using its current labelled span, then check both axes.", "info");
+                document.getElementById("cal-ruler-mm-x").focus();
+            }
+            syncTabDots();
+        } catch (error) {
+            invalidateRuler();
+            setMsg(el.calibrationMsg, errorDetail(error), "err");
+        }
+        renderCalibrationHelper();
+    }
+
+    function renderCalibrationHelper() {
+        const v = window.PhysicalCalibration.selectedViewport(state.roster, state.selectedId);
+        document.getElementById("cal-live-viewport").textContent = v
+            ? "Selected tablet: " + v.width + " × " + v.height + " CSS px · DPR " + v.dpr + " · " + v.orientation + "° · " + v.mode
+            : "Waiting for the selected tablet’s online viewport at 100% zoom. Advanced manual entry is available.";
+        document.getElementById("cal-use-viewport").disabled = !v || state.busy;
+        document.getElementById("cal-use-ruler").disabled = !v || state.busy || rulerReview.status === "checking";
+        if (rulerReview.key && ["checking", "review", "prepared"].includes(rulerReview.status)) {
+            try { if (rulerContext().key !== rulerReview.key) invalidateRuler(); }
+            catch (_) { invalidateRuler(); }
+        }
+        el.btnCalibrationSave.disabled = state.busy || rulerSaveBlocked();
+    }
+
+    async function loadRulerAddress() {
+        const link = document.getElementById("cal-ruler-link");
+        const note = document.getElementById("cal-ruler-address-note");
+        try {
+            const config = await api("GET", "/operator-config");
+            const url = window.PhysicalCalibration.rulerUrl(config.tablet_origin);
+            if (!url) throw new Error("No tablet origin");
+            link.href = url;
+            link.textContent = url;
+            link.hidden = false;
+            document.getElementById("cal-copy-ruler").hidden = false;
+            note.textContent = "Open this address on the selected tablet in its existing browser identity.";
+        } catch (_) {
+            note.textContent = "Set the server’s tablet origin to a tablet-reachable HTTP(S) address. A loopback address works only on this computer.";
+        }
     }
 
     function updateDeviceCardHeadings() {
@@ -1567,9 +1755,7 @@
             el.calibrationCurrent.textContent = "Save a profile before saving a calibration.";
             el.calibrationCurrent.dataset.kind = "warn";
         } else if (!calibration) {
-            el.calibrationCurrent.textContent = "No calibration saved. Defaults use this browser window ("
-                + (window.innerWidth || "?") + " × " + (window.innerHeight || "?")
-                + " CSS px) and profile revision " + profile.revision + ".";
+            el.calibrationCurrent.textContent = "No calibration saved. Use the tablet ruler or enter measured calibration values manually.";
             el.calibrationCurrent.dataset.kind = "warn";
         } else if (calibration.profile_revision !== profile.revision) {
             el.calibrationCurrent.textContent = "Newest calibration is revision "
@@ -1581,7 +1767,7 @@
             el.calibrationCurrent.textContent = "Newest calibration is revision "
                 + calibration.revision + " for profile revision "
                 + calibration.profile_revision + " · " + status.text + ".";
-            el.calibrationCurrent.dataset.kind = "ok";
+            el.calibrationCurrent.dataset.kind = status.kind;
         }
     }
 
@@ -1600,8 +1786,37 @@
         const calibration = latestCalibration(id);
         const changed = state.formDeviceId !== id || force;
 
+        if (changed) {
+            rulerReview.reset();
+            document.getElementById("cal-ruler-preview").hidden = true;
+            document.getElementById("cal-ruler-decision").hidden = true;
+            document.getElementById("cal-ruler-error-x").value = "";
+            document.getElementById("cal-ruler-error-y").value = "";
+            document.getElementById("cal-ruler-mm-x").value = "";
+            document.getElementById("cal-ruler-mm-y").value = "";
+            document.getElementById("cal-ruler-span-x").value = "200";
+            document.getElementById("cal-ruler-span-y").value = "200";
+        }
         updateDeviceCardHeadings();
         updateCurrentLines();
+        const modelSelect = document.getElementById("tablet-model");
+        const assignment = state.tabletAssignments[id] || { mode: "auto" };
+        if (changed || !modelSelect.options.length) {
+            modelSelect.textContent = "";
+            [["", "Choose a confirmed model or manual measurements"], ["manual", "Manual measurements"]].concat(
+                Object.keys(state.tabletModels).map(function (key) { return [key, state.tabletModels[key].label]; })
+            ).forEach(function (item) {
+                const option = document.createElement("option");
+                option.value = item[0]; option.textContent = item[1]; modelSelect.appendChild(option);
+            });
+            modelSelect.value = assignment.mode === "explicit" ? assignment.model_id : assignment.mode === "manual" ? "manual" : "";
+        }
+        const record = state.roster[id] || {};
+        const matches = (record.model_suggestions || []).filter(function (key) { return state.tabletModels[key]; });
+        document.getElementById("tablet-model-status").textContent = matches.length === 1
+            ? "Looks like " + state.tabletModels[matches[0]].label + ". Choose that model and Confirm only after checking the hardware. Screen signature is a suggestion, not proof."
+            : matches.length ? "Ambiguous screen signature." : "Unknown screen signature.";
+        renderCalibrationHelper();
 
         if (changed || !state.profileDirty) fillProfileForm(profile);
         if (changed || !state.calDirty) fillCalibrationForm(calibration, profile);
@@ -1638,6 +1853,8 @@
             state.etag = payload.etag;
             state.etagState = "current";
             replaceDisplay(payload.display);
+            state.tabletAssignments[id] = { mode: "manual", model_id: null };
+            document.getElementById("tablet-model").value = "manual";
             state.profileDirty = false;
             fillProfileForm(payload.display);
             setInputValue(el.calProfileRevision, String(payload.display.revision));
@@ -1665,6 +1882,7 @@
 
         let body;
         try {
+            if (rulerSaveBlocked()) throw new ValidationError("Check the current ruler measurements and choose Use ruler before saving. Keep supplied writes nothing.");
             body = buildCalibrationBody();
         } catch (error) {
             setMsg(el.calibrationMsg, errorDetail(error), "err");
@@ -1687,6 +1905,8 @@
             state.etag = payload.etag;
             state.etagState = "current";
             replaceCalibration(payload.calibration);
+            state.tabletAssignments[id] = { mode: "manual", model_id: null };
+            document.getElementById("tablet-model").value = "manual";
             state.calDirty = false;
             fillCalibrationForm(payload.calibration, latestProfile(id));
             updateDeviceCardHeadings();
@@ -2224,7 +2444,7 @@
     });
 
     /* ---------------------------------------------------------------- *
-     * Field check: diagnostics and rebinding
+     * Field check: diagnostics
      * ---------------------------------------------------------------- */
 
     function diagChip() {
@@ -2352,7 +2572,7 @@
             state.diagnosticsState = forbidden ? "forbidden" : "error";
             state.diagnosticsError = errorDetail(error);
             setMsg(el.diagMsg, forbidden
-                ? "Diagnostics are unavailable while uploads are disabled."
+                ? "Diagnostics access was refused. Check the operator admission configuration; uploads do not need to be enabled."
                 : "Could not load diagnostics: " + state.diagnosticsError, "err");
         } finally {
             state.diagnosticsLoading = false;
@@ -2385,264 +2605,14 @@
         setMsg(el.diagMsg, "Diagnostics report downloaded. Review it before sharing.", "ok");
     }
 
-    async function refreshRoster() {
-        if (state.rosterLoading) return;
-        state.rosterLoading = true;
-        if (el.btnRosterRefresh) el.btnRosterRefresh.disabled = true;
-        try {
-            const roster = await api("GET", API_DEVICES);
-            state.roster = roster;
-            state.rosterCheckedAt = new Date().toISOString();
-            state.rosterError = null;
-            ensureSelection();
-            renderDeviceList();
-            syncInspector();
-            renderPlayback();
-        } catch (error) {
-            state.rosterError = errorDetail(error);
-        } finally {
-            state.rosterLoading = false;
-            if (el.btnRosterRefresh) el.btnRosterRefresh.disabled = false;
-            renderDeviceHealth();
-        }
+    function refreshRoster() {
+        if (!state.rosterRefreshPromise) state.rosterRefreshPromise = fetchRoster();
+        return state.rosterRefreshPromise;
     }
 
-    function rebindOldEntries() {
-        return deviceEntries().filter(function (entry) {
-            return entry.baseSlot || entry.basePlacement;
-        });
-    }
-
-    function rebindNewEntries() {
-        return deviceEntries().filter(function (entry) {
-            return !entry.baseSlot && !entry.basePlacement && state.roster[entry.id];
-        });
-    }
-
-    function rebindOptionText(id) {
-        const profile = latestProfile(id);
-        return numberTag(id) + " · " + deviceLabel(id, profile)
-            + " · " + (isOnline(id) ? "online" : "offline")
-            + " · " + id;
-    }
-
-    function fillRebindSelect(select, entries, placeholder) {
-        if (!select) return;
-        const previous = select.value;
-        clearChildren(select);
-        const first = document.createElement("option");
-        first.value = "";
-        first.textContent = entries.length === 0 ? placeholder : "Choose a tablet";
-        select.appendChild(first);
-        entries.forEach(function (entry) {
-            const option = document.createElement("option");
-            option.value = entry.id;
-            option.textContent = rebindOptionText(entry.id);
-            select.appendChild(option);
-        });
-        if (previous && entries.some(function (entry) { return entry.id === previous; })) {
-            select.value = previous;
-        } else {
-            select.value = "";
-        }
-        select.disabled = state.rebindBusy;
-    }
-
-    function renderRebindOptions() {
-        if (!el.rebindNew || !el.rebindReplaces) return;
-        const oldEntries = rebindOldEntries();
-        const newEntries = rebindNewEntries();
-        fillRebindSelect(el.rebindNew, newEntries,
-            "No unplaced registration. Open /client/ on the new tablet, then reload this page.");
-        fillRebindSelect(el.rebindReplaces, oldEntries,
-            "No tablet is on the saved wall yet.");
-
-        if (el.rebindNewNote) {
-            el.rebindNewNote.textContent = newEntries.length === 0
-                ? "The new tablet must register first; its picker shows the full id."
-                : "Pick the registration that is not on the saved wall. Full id is in the option.";
-        }
-        if (el.rebindReplacesNote) {
-            el.rebindReplacesNote.textContent = oldEntries.length === 0
-                ? "Add a tablet to the wall and apply the layout first."
-                : "The replaced tablet must be offline before the hand-over.";
-        }
-        updateRebindSummary();
-    }
-
-    function onRebindOldChange() {
-        const oldId = el.rebindReplaces ? el.rebindReplaces.value : "";
-        const number = oldId ? deviceNumber(oldId) : null;
-        if (el.rebindNumber) {
-            el.rebindNumber.value = oldId && number !== null ? String(number) : "";
-        }
-        updateRebindSummary();
-    }
-
-    function updateRebindSummary() {
-        if (el.btnRebind) el.btnRebind.disabled = true;
-        if (!el.rebindSummary) return;
-        const newId = el.rebindNew ? el.rebindNew.value : "";
-        const oldId = el.rebindReplaces ? el.rebindReplaces.value : "";
-        if (!newId || !oldId) {
-            el.rebindSummary.hidden = true;
-            el.rebindSummary.textContent = "";
-            return;
-        }
-
-        const oldProfile = latestProfile(oldId);
-        const newProfile = latestProfile(newId);
-        const oldNumber = deviceNumber(oldId);
-        const rawNumber = el.rebindNumber ? el.rebindNumber.value.trim() : "";
-        const nextNumber = rawNumber === "" ? null : Number(rawNumber);
-        const oldOnline = isOnline(oldId);
-        const newPlaced = Boolean(
-            (state.base && state.base.slots && state.base.slots[newId])
-            || Boolean(state.basePlacements[newId])
-        );
-        const numberOwner = Number.isInteger(nextNumber)
-            ? Object.keys(state.roster).find(function (id) {
-                return id !== oldId && id !== newId && deviceNumber(id) === nextNumber;
-            }) : null;
-
-        const parts = [
-            "Rebind " + numberedLabel(newId, newProfile) + " over "
-                + numberedLabel(oldId, oldProfile) + "."
-        ];
-        if (oldOnline) {
-            parts.push("The replaced tablet is online; disconnect it from /client/ first.");
-        }
-        if (newPlaced) {
-            parts.push("The new registration is already on the saved wall.");
-        }
-        const slot = state.base && state.base.slots ? state.base.slots[oldId] : null;
-        const placement = state.basePlacements[oldId] || null;
-        parts.push(slot
-            ? "Its saved physical slot moves to the new id."
-            : placement
-                ? "Its saved logical placement moves to the new id."
-                : "No saved placement moves; the display number still transfers.");
-        if (numberOwner) {
-            parts.push("Display number #" + nextNumber + " is already used by "
-                + numberedLabel(numberOwner, latestProfile(numberOwner)) + ".");
-        } else if (oldNumber !== null && nextNumber === oldNumber) {
-            parts.push("Display number #" + oldNumber + " stays with the tablet.");
-        } else if (oldNumber !== null && Number.isInteger(nextNumber)) {
-            parts.push("Display number changes from #" + oldNumber + " to #" + nextNumber + ".");
-        } else if (Number.isInteger(nextNumber)) {
-            parts.push("Display number becomes #" + nextNumber + ".");
-        }
-        parts.push("Saved layouts keep the old id; recall and save them again afterwards.");
-        parts.push("New id " + newId + " · old id " + oldId + ".");
-
-        el.rebindSummary.textContent = parts.join(" ");
-        el.rebindSummary.hidden = false;
-        const blocked = oldOnline || newPlaced || Boolean(numberOwner)
-            || !/^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(newId);
-        el.rebindSummary.dataset.kind = blocked ? "warn" : "";
-        if (el.btnRebind) el.btnRebind.disabled = state.rebindBusy || blocked;
-
-        if (el.rebindNumberNote) {
-            if (oldNumber === null) {
-                el.rebindNumberNote.textContent = Number.isInteger(nextNumber)
-                    ? "New display number #" + nextNumber + "." : "Choose a display number.";
-            } else if (nextNumber === oldNumber) {
-                el.rebindNumberNote.textContent = "Keep #" + oldNumber + ".";
-            } else if (Number.isInteger(nextNumber)) {
-                el.rebindNumberNote.textContent = "Move from #" + oldNumber
-                    + " to #" + nextNumber + ".";
-            } else {
-                el.rebindNumberNote.textContent = "Keep #" + oldNumber + " or enter a new number.";
-            }
-        }
-    }
-
-    async function submitRebind(event) {
-        event.preventDefault();
-        if (state.rebindBusy) return;
-        clearMsg(el.rebindMsg);
-        const newId = (el.rebindNew ? el.rebindNew.value : "").trim().toLowerCase();
-        const replaces = (el.rebindReplaces ? el.rebindReplaces.value : "").trim().toLowerCase();
-        if (!UUID4_RE.test(newId)) {
-            setMsg(el.rebindMsg, "Choose the new registration.", "err");
-            if (el.rebindNew) el.rebindNew.focus();
-            return;
-        }
-        if (!UUID4_RE.test(replaces)) {
-            setMsg(el.rebindMsg, "Choose the tablet this registration replaces.", "err");
-            if (el.rebindReplaces) el.rebindReplaces.focus();
-            return;
-        }
-        if (newId === replaces) {
-            setMsg(el.rebindMsg, "The new registration and the replaced tablet must differ.", "err");
-            return;
-        }
-        if (isOnline(replaces)) {
-            setMsg(el.rebindMsg,
-                "The replaced tablet is online. Close /client/ on that tablet, then try again.", "err");
-            return;
-        }
-        if ((state.base && state.base.slots && state.base.slots[newId])
-                || state.basePlacements[newId]) {
-            setMsg(el.rebindMsg,
-                "The new registration is already on the saved wall; choose an unplaced tablet.", "err");
-            return;
-        }
-        const body = { replaces: replaces };
-        const rawNumber = el.rebindNumber ? el.rebindNumber.value.trim() : "";
-        if (rawNumber !== "") {
-            const number = Number(rawNumber);
-            if (!Number.isInteger(number) || number < 1 || number > 512) {
-                setMsg(el.rebindMsg, "The display number must be a whole number from 1 to 512.", "err");
-                if (el.rebindNumber) el.rebindNumber.focus();
-                return;
-            }
-            body.number = number;
-        }
-
-        const oldProfile = latestProfile(replaces);
-        const newProfile = latestProfile(newId);
-        const accepted = window.confirm(
-            "Rebind \"" + numberedLabel(newId, newProfile) + "\" (" + newId + ") over \""
-            + numberedLabel(replaces, oldProfile) + "\" (" + replaces + ")?\n\n"
-            + "The replaced tablet must stay offline. Its saved wall slot and display number move to the new registration. "
-            + "Saved layouts keep the old id and must be recalled and saved again."
-        );
-        if (!accepted) return;
-
-        state.rebindBusy = true;
-        if (el.btnRebind) {
-            el.btnRebind.disabled = true;
-            el.btnRebind.textContent = "Rebinding…";
-        }
-        try {
-            const result = await api("POST", "/devices/" + encodeURIComponent(newId) + "/rebind", body);
-            const number = result && result.number !== undefined && result.number !== null
-                ? " Display number #" + result.number + "." : "";
-            setMsg(el.rebindMsg, "Rebound " + numberedLabel(newId, newProfile)
-                + " over " + numberedLabel(replaces, oldProfile) + "." + number
-                + " Recall and save any saved layouts that name the old id.", "ok");
-            announce("Tablet rebound.", "ok");
-            state.selectedId = newId;
-            if (el.rebindNumber) el.rebindNumber.value = "";
-            if (!isDirty() && !state.profileDirty && !state.calDirty) {
-                await loadConfig();
-            } else {
-                await refreshRoster();
-            }
-            renderRebindOptions();
-        } catch (error) {
-            setMsg(el.rebindMsg, errorDetail(error), "err");
-            announce("Rebind failed.", "err");
-        } finally {
-            state.rebindBusy = false;
-            renderRebindOptions();
-            if (el.btnRebind) {
-                el.btnRebind.disabled = false;
-                el.btnRebind.textContent = "Rebind tablet";
-            }
-            updateRebindSummary();
-        }
+    async function fetchRoster() {
+        try { if (operatorSync) await operatorSync.reconcile(true); }
+        finally { state.rosterRefreshPromise = null; renderAll(); }
     }
 
     /* ---------------------------------------------------------------- *
@@ -2651,14 +2621,16 @@
 
     async function loadLayouts() {
         try {
-            const payload = await api("GET", API_LAYOUTS);
-            state.savedLayouts = payload && Array.isArray(payload.layouts)
-                ? payload.layouts : [];
+            const results = await Promise.all([api("GET", API_LAYOUTS), api("GET", "/api/v3/logical-layouts")]);
+            state.savedLayouts = (results[0].layouts || []).concat((results[1].layouts || []).map(function (entry) {
+                return Object.assign({}, entry, { logical: true });
+            }));
         } catch (error) {
             state.savedLayouts = [];
             setMsg(el.layoutMsg, "Could not load saved layouts: " + errorDetail(error), "err");
         }
         renderSavedLayouts();
+        if (operatorDevices) operatorDevices.render();
     }
 
     function renderSavedLayouts() {
@@ -2679,7 +2651,8 @@
             name.textContent = entry.name;
             const meta = document.createElement("span");
             meta.className = "saved-meta";
-            meta.textContent = slotCount + (slotCount === 1 ? " tablet" : " tablets")
+            meta.textContent = entry.logical ? "Logical wall · " + Object.keys(layout.placements || {}).length + " tablets"
+                : slotCount + (slotCount === 1 ? " tablet" : " tablets")
                 + " · " + formatNumber(bounds.width, 1) + " × "
                 + formatNumber(bounds.height, 1) + " mm";
             info.appendChild(name);
@@ -2692,9 +2665,10 @@
             recall.type = "button";
             recall.className = "btn btn-sm";
             recall.textContent = "Recall";
-            recall.disabled = state.busy || !state.etag;
+            recall.dataset.invalid = String(entry.valid === false || entry.invalid === true);
+            recall.disabled = state.busy || !state.etag || recall.dataset.invalid === "true";
             recall.addEventListener("click", function () {
-                recallLayout(entry.name);
+                recallLayout(entry.name, entry.logical);
             });
 
             const remove = document.createElement("button");
@@ -2703,7 +2677,7 @@
             remove.textContent = "Delete";
             remove.disabled = state.busy || !state.etag;
             remove.addEventListener("click", function () {
-                deleteLayout(entry.name);
+                deleteLayout(entry.name, entry.logical);
             });
 
             actions.appendChild(recall);
@@ -2718,8 +2692,15 @@
     function updateSavedButtons() {
         const buttons = el.savedLayouts.querySelectorAll("button");
         for (let index = 0; index < buttons.length; index += 1) {
-            buttons[index].disabled = state.busy || !state.etag;
+            buttons[index].disabled = state.busy || !state.etag || state.etagState !== "current" || buttons[index].dataset.invalid === "true";
         }
+    }
+
+    async function refreshSnapshotConfig() {
+        state.readFence.event();
+        const ticket = state.readFence.start();
+        const config = await api("GET", API_CONFIG);
+        if (state.readFence.accept(ticket)) ingestConfig(config, { preserveDraft: true });
     }
 
     async function saveLayout(event) {
@@ -2733,10 +2714,7 @@
             el.layoutName.focus();
             return;
         }
-        if (state.layoutKind !== "physical") {
-            setMsg(el.layoutMsg, "Apply the physical draft first; there is no committed physical layout to save.", "err");
-            return;
-        }
+
         if (isDirty()) {
             setMsg(el.layoutMsg, "Apply or cancel the unapplied draft before saving the committed layout.", "err");
             return;
@@ -2746,13 +2724,14 @@
         try {
             const payload = await api(
                 "PUT",
-                API_LAYOUTS + "/" + encodeURIComponent(name),
+                (state.layoutKind === "logical" ? "/api/v3/logical-layouts" : API_LAYOUTS) + "/" + encodeURIComponent(name),
                 undefined,
                 { etag: true }
             );
             el.layoutName.value = payload && payload.name ? payload.name : name;
             setMsg(el.layoutMsg, "Saved layout \"" + (payload && payload.name ? payload.name : name) + "\".", "ok");
-            announce("Saved physical layout " + (payload && payload.name ? payload.name : name) + ".", "ok");
+            announce("Saved " + state.layoutKind + " layout " + (payload && payload.name ? payload.name : name) + ".", "ok");
+            await refreshSnapshotConfig();
             await loadLayouts();
         } catch (error) {
             handleWriteError(error, el.layoutMsg);
@@ -2761,7 +2740,7 @@
         }
     }
 
-    async function recallLayout(name) {
+    async function recallLayout(name, logical) {
         if (state.busy) return;
         if (!state.etag) {
             setMsg(el.layoutMsg, "No configuration ETag is loaded; reload the page.", "err");
@@ -2770,19 +2749,21 @@
         if (isDirty() && !window.confirm("Recall \"" + name + "\" and discard the unapplied draft?")) {
             return;
         }
+        if ((logical ? "logical" : "physical") !== state.layoutKind && !window.confirm("Recall “" + name + "” and switch layout kind? The server must save a named safety copy of the current arrangement. The image stays unchanged.")) return;
         clearError();
         setBusy(true);
         try {
             const payload = await api(
                 "POST",
-                API_LAYOUTS + "/" + encodeURIComponent(name) + "/recall",
+                (logical ? "/api/v3/logical-layouts" : API_LAYOUTS) + "/" + encodeURIComponent(name) + "/recall",
                 undefined,
                 { etag: true }
             );
             ingestConfig(payload, { resetHistory: true });
             hideConflict();
             clearError();
-            announce("Recalled physical layout " + name + ".", "ok");
+            announce("Recalled " + (logical ? "logical" : "physical") + " layout " + name + "." + (payload.previous_layout_saved ? " Previous arrangement saved as “" + payload.previous_layout_saved + "”." : ""), "ok");
+            await loadLayouts();
         } catch (error) {
             handleWriteError(error, el.layoutMsg);
         } finally {
@@ -2790,25 +2771,34 @@
         }
     }
 
-    async function deleteLayout(name) {
+    async function deleteLayout(name, logical) {
         if (state.busy) return;
+        const focused = document.activeElement;
+        const focusIndex = Array.from(el.savedLayouts.querySelectorAll(".saved-row")).indexOf(focused.closest(".saved-row"));
         if (!window.confirm("Delete saved layout \"" + name + "\"?")) return;
         clearError();
         setBusy(true);
         try {
             await api(
                 "DELETE",
-                API_LAYOUTS + "/" + encodeURIComponent(name),
+                (logical ? "/api/v3/logical-layouts" : API_LAYOUTS) + "/" + encodeURIComponent(name),
                 undefined,
                 { etag: true }
             );
             setMsg(el.layoutMsg, "Deleted layout \"" + name + "\".", "ok");
-            announce("Deleted physical layout " + name + ".", "ok");
+            announce("Deleted saved layout " + name + ".", "ok");
+            await refreshSnapshotConfig();
             await loadLayouts();
         } catch (error) {
             handleWriteError(error, el.layoutMsg);
         } finally {
             setBusy(false);
+            if (focusIndex >= 0 && document.activeElement === document.body) {
+                const rows = el.savedLayouts.querySelectorAll(".saved-row");
+                const row = rows[Math.min(focusIndex, rows.length - 1)];
+                const target = row && row.querySelector("button:not(:disabled)") || el.layoutName;
+                target.focus();
+            }
         }
     }
 
@@ -2911,7 +2901,60 @@
         el.btnNudgeYMinus.addEventListener("click", function () { nudgeSelected(0, -1); });
         el.btnNudgeYPlus.addEventListener("click", function () { nudgeSelected(0, 1); });
         el.btnAddSlot.addEventListener("click", addSelectedDevice);
-
+        document.getElementById("apply-tablet-model").addEventListener("click", async function () {
+            if (!state.selectedId || state.busy) return;
+            if (state.profileDirty || state.calDirty) {
+                setMsg(el.profileMsg, "Save or discard your measurement changes before applying a tablet model.", "err");
+                return;
+            }
+            const id = state.selectedId;
+            const choice = document.getElementById("tablet-model").value;
+            if (!choice) { setMsg(el.profileMsg, "Choose the actual model explicitly or use manual measurements. Automatic matches are suggestions.", "info"); return; }
+            if (choice !== "manual" && !window.confirm("Confirm this tablet is “" + (state.tabletModels[choice] && state.tabletModels[choice].label || choice) + "”? Model measurements remain approximate.")) return;
+            await refreshRoster();
+            if (state.profileDirty || state.calDirty) {
+                setMsg(el.profileMsg, "Save or discard your measurement changes before applying a tablet model.", "err");
+                return;
+            }
+            if (state.etagState !== "current" || state.busy) return;
+            const revision = state.revision;
+            const generation = state.generation;
+            setBusy(true);
+            let modelApplied = false;
+            try {
+                const result = await api("PUT", "/api/v3/tablet-assignments/" + encodeURIComponent(id),
+                    { mode: choice === "manual" ? "manual" : "explicit", model_id: choice === "manual" ? null : choice }, { etag: true });
+                modelApplied = true;
+                if (!result || !result.etag) throw new Error("The server did not return a configuration ETag.");
+                state.etag = result.etag;
+                const config = await api("GET", API_CONFIG);
+                if (config.etag !== result.etag || config.revision !== revision || config.generation !== generation
+                        || state.revision !== revision || state.generation !== generation
+                        || state.etag !== result.etag || state.etagState !== "current"
+                        || state.profileDirty || state.calDirty) {
+                    showConflict("The configuration changed while applying the tablet model.");
+                    return;
+                }
+                state.tabletAssignments = config.tablet_assignments || {};
+                state.displays = config.displays || [];
+                state.calibrations = config.calibrations || [];
+                state.displays.forEach(rememberProfile); state.calibrations.forEach(rememberCalibration);
+                setBusy(false);
+                const pair = validPair(id);
+                if (pair && state.draft && state.draft.slots[id]) {
+                    mutateDraft(function (draft) {
+                        draft.slots[id].profile_revision = pair.profile.revision;
+                        draft.slots[id].calibration_revision = pair.calibration.revision;
+                    });
+                }
+                populateDeviceCard(true); afterDraftChange();
+                announce("Tablet model choice applied.", "ok");
+            } catch (error) {
+                if (modelApplied) showConflict("The tablet model was applied, but its configuration could not be refreshed.");
+                handleWriteError(error, el.profileMsg);
+            }
+            finally { setBusy(false); }
+        });
         bindSlotField(el.slotCenterX, "center_x_mm");
         bindSlotField(el.slotCenterY, "center_y_mm");
         bindSlotField(el.slotAngle, "mount_angle");
@@ -2938,6 +2981,74 @@
             state.draft.bounds.height = value;
             return true;
         }, function (value) { return value > 0; });
+        el.boundsMode.addEventListener("change", function () {
+            if (!state.draft) return;
+            const mode = el.boundsMode.value === "tablets" ? "tablets" : "fixed";
+            if (mode === "tablets" && Object.keys(state.draft.slots).length) {
+                const fit = window.PhysicalSizing.fitBounds(
+                    state.draft.slots, profileFor, state.draft.sizing.padding
+                );
+                if (fit.error) {
+                    el.boundsMode.value = state.draft.sizing.mode;
+                    setMsg(el.sizingMsg, fit.error, "err");
+                    announce(fit.error, "err");
+                    return;
+                }
+            }
+            mutateDraft(function (draft) { draft.sizing.mode = mode; });
+            if (mode === "fixed") clearMsg(el.sizingMsg);
+        });
+        bindNumberInput(el.boundsPadding, function (value) {
+            if (!state.draft || state.draft.sizing.padding === value) return false;
+            state.draft.sizing.padding = value;
+            return true;
+        }, function (value) { return value >= 0; });
+
+        el.btnPackTablets.addEventListener("click", function () {
+            if (!state.draft || state.busy) return;
+            let columns;
+            let gap;
+            try {
+                columns = requireInteger("Columns", el.packColumns, 1);
+                gap = requireNonNegative("Gap", el.packGap);
+            } catch (error) {
+                setMsg(el.sizingMsg, errorDetail(error), "err");
+                announce(errorDetail(error), "err");
+                return;
+            }
+            const orderedSlots = {};
+            Object.keys(state.draft.slots).sort().forEach(function (id) {
+                orderedSlots[id] = state.draft.slots[id];
+            });
+            const result = window.PhysicalSizing.packSlots(
+                orderedSlots, profileFor, columns, gap, state.draft.sizing.padding
+            );
+            if (result.error) {
+                setMsg(el.sizingMsg, result.error, "err");
+                announce(result.error, "err");
+                return;
+            }
+            if (!result.bounds) {
+                setMsg(el.sizingMsg, "Add tablets before packing the wall.", "info");
+                announce("Add tablets before packing the wall.");
+                return;
+            }
+            const changed = mutateDraft(function (draft) {
+                draft.slots = result.slots;
+                if (draft.sizing.mode === "tablets") {
+                    draft.bounds = result.bounds;
+                } else {
+                    Object.keys(draft.slots).forEach(function (id) {
+                        draft.slots[id].center_x_mm += draft.bounds.x;
+                        draft.slots[id].center_y_mm += draft.bounds.y;
+                    });
+                }
+            });
+            if (changed) {
+                clearMsg(el.sizingMsg);
+                announce("Packed " + Object.keys(result.slots).length + " tablets.", "ok");
+            }
+        });
 
         el.stageSvg.addEventListener("pointerdown", onPointerDown);
         el.stageSvg.addEventListener("pointermove", onPointerMove, { passive: false });
@@ -2962,11 +3073,29 @@
 
         el.profileForm.addEventListener("submit", saveProfile);
         el.calibrationForm.addEventListener("submit", saveCalibration);
+        document.getElementById("cal-use-viewport").addEventListener("click", function () {
+            const v = window.PhysicalCalibration.selectedViewport(state.roster, state.selectedId);
+            if (!v || state.busy) return;
+            fillViewport(v);
+            invalidateRuler();
+            state.calDirty = true;
+            syncTabDots();
+            setMsg(el.calibrationMsg, "Tablet viewport copied. Review measurements before saving.", "info");
+        });
+        document.getElementById("cal-copy-ruler").addEventListener("click", async function () {
+            const copied = await copyText(document.getElementById("cal-ruler-link").href);
+            setMsg(el.calibrationMsg, copied ? "Ruler address copied." : "Copy failed. Copy the visible address manually.", copied ? "ok" : "err");
+        });
+        document.getElementById("cal-use-ruler").addEventListener("click", checkRuler);
+        [["cal-keep-supplied", "keep_supplied"], ["cal-accept-ruler", "use_ruler"], ["cal-measure-again", "remeasure"]].forEach(function (item) {
+            document.getElementById(item[0]).addEventListener("click", function () { decideRuler(item[1]); });
+        });
         el.profileForm.addEventListener("input", function () {
             state.profileDirty = true;
             syncTabDots();
         });
         el.calibrationForm.addEventListener("input", function () {
+            invalidateRuler();
             state.calDirty = true;
             syncTabDots();
         });
@@ -2975,6 +3104,7 @@
             syncTabDots();
         });
         el.calibrationForm.addEventListener("change", function () {
+            invalidateRuler();
             state.calDirty = true;
             syncTabDots();
         });
@@ -3038,7 +3168,7 @@
 
         if (el.btnPlaybackStart) {
             el.btnPlaybackStart.addEventListener("click", function () {
-                playbackAction("start");
+                if (document.getElementById("experimental-opt-in").checked && window.confirm("Start experimental playback? This replaces the static image presentation. Tablet playback is not validated.")) playbackAction("start");
             });
         }
         if (el.btnTopbarStart) {
@@ -3102,10 +3232,6 @@
                 loadDiagnostics(true);
             });
         }
-        if (el.rebindForm) el.rebindForm.addEventListener("submit", submitRebind);
-        if (el.rebindNew) el.rebindNew.addEventListener("change", updateRebindSummary);
-        if (el.rebindReplaces) el.rebindReplaces.addEventListener("change", onRebindOldChange);
-        if (el.rebindNumber) el.rebindNumber.addEventListener("input", updateRebindSummary);
 
         if (el.btnCopySelectedId) {
             el.btnCopySelectedId.addEventListener("click", async function () {
@@ -3126,10 +3252,11 @@
 
         document.addEventListener("keydown", onKeyDown);
         document.addEventListener("visibilitychange", function () {
-            if (document.visibilityState !== "hidden") refreshPlayback();
+            if (document.visibilityState !== "hidden") { refreshRoster(); if (document.getElementById("experimental-opt-in").checked) refreshPlayback(); }
         });
         window.addEventListener("online", function () {
-            refreshPlayback();
+            refreshRoster();
+            if (document.getElementById("experimental-opt-in").checked) refreshPlayback();
         });
     }
 
@@ -3137,28 +3264,48 @@
         if (state.playbackTimer !== null) return;
         state.playbackTimer = window.setInterval(function () {
             if (document.visibilityState === "hidden") return;
+            if (state.operatorConfig) {
+                const signature = JSON.stringify(Object.keys(window.OperatorState.entries(state.operatorConfig.layout))
+                    .map(id => [id, window.OperatorState.tabletState(state.operatorConfig, id, performance.now()).status]));
+                if (signature !== state.evidenceSignature) { state.evidenceSignature = signature; renderAll(); }
+            }
             if (state.playbackBusy || state.playbackFetching) return;
-            refreshPlayback();
+            if (document.getElementById("experimental-opt-in").checked) refreshPlayback();
         }, PLAYBACK_POLL_MS);
     }
 
     function init() {
+        const labelFor = id => numberedLabel(id, latestProfile(id));
+        operatorContent = window.OperatorContent.create({ state, api, ingestConfig, renderStage, announce, showConflict, isDirty });
+        operatorGrid = window.OperatorGrid.create({ state, api, labelFor, validPair, profileFor, calibrationFor, ingestConfig, renderStage, syncDraftUi, isDirty, announce, showConflict });
+        operatorDevices = window.OperatorDevices.create({ state, api, labelFor, profileFor, calibrationFor, ingestConfig, refreshRoster, showConflict, isDirty, announce });
+        operatorReadiness = window.OperatorReadiness.create({ state, api, copyText });
+        operatorSync = window.OperatorSync.create({ state, api, ingestConfig, renderAll, showConflict, isDirty: hasUnsavedEdits });
+        document.getElementById("open-tablet-measurements").addEventListener("click", () => { showTab("system", { persist: true }); document.getElementById("measurement-details").open = true; document.getElementById("tablet-model").focus(); });
+        state.onParticipation = (id, participating) => mutateDraft(draft => { draft.slots[id].participating = participating; });
+        document.getElementById("open-wall-images").addEventListener("click", () => { showTab("show", { persist: true }); document.getElementById("image-select").focus(); });
+        document.getElementById("experimental-opt-in").addEventListener("change", event => {
+            document.getElementById("experimental-controls").hidden = !event.target.checked;
+            if (event.target.checked) { loadLibrary(true); loadPlaylist(); refreshPlayback(); }
+        });
+        window.addEventListener("resize", () => { renderDeviceHealth(); renderStage(); });
+        window.addEventListener("pagehide", () => { operatorSync.destroy(); operatorContent.destroy(); clearInterval(state.playbackTimer); });
+        operatorReadiness.load();
         const storedTab = readStoredTab();
         if (storedTab) {
             showTab(storedTab, { persist: false });
             state.tabDecided = true;
         }
         bindEvents();
+        loadRulerAddress();
         syncMeta();
         syncDraftUi();
         renderPlaylist();
         renderPlayback();
         renderDiagnostics();
-        loadConfig();
+        operatorSync.start();
+        operatorContent.refresh();
         loadLayouts();
-        loadLibrary(true);
-        loadPlaylist();
-        refreshPlayback();
         loadDiagnostics(false);
         startPlaybackPolling();
     }
