@@ -1,6 +1,6 @@
 # Tablet-wall experience roadmap
 
-Status: proposed work, not implemented. Prepared 2026-11-02 against `beca736ce524ba4f4ef32cb5c03743cd23081847`.
+Plan prepared 2026-11-02 against `beca736ce524ba4f4ef32cb5c03743cd23081847`. Implementation, regression verification, and independent review are complete for the supervised, images-only controller. See the [current status](EXPERIENCE-STATUS.md) for evidence and limits.
 
 The goal is a controller that feels designed for operating a tablet wall: recognizable images, connected tablets and spatial arrangements lead each task. Setup machinery and exceptional recovery controls appear when needed. This follow-up addresses composition and usability; the previous software approval remains evidence for its recorded version, not approval of this visual direction.
 
