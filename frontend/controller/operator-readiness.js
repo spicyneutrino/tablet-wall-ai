@@ -89,7 +89,6 @@
         const layout = body && stringOrNull(wall.layout);
         const layoutText = layout ? LAYOUT_LABEL[layout] || "Not reported: unrecognised layout " + JSON.stringify(layout)
             : body === null ? "Unknown: live wall state unavailable." : "Not reported";
-        const wallText = layoutText;
 
         const transport = body && stringOrNull(security.transport);
         const authentication = body && stringOrNull(security.authentication);
@@ -123,7 +122,7 @@
             ["Wi-Fi", wifi.known === true && stringOrNull(wifi.name)
                 ? stringOrNull(wifi.name)
                 : "Not reported. Join the same network as the wall server."],
-            ["Layout", wallText],
+            ["Layout", layoutText],
             ["Security transport", transport ? transport.toUpperCase() : "Not reported"],
             ["Authentication", authentication === "disabled"
                 ? "None. Trusted local hotspot only."

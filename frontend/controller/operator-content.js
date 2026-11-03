@@ -7,16 +7,17 @@ window.OperatorContent = {
         const gallery = new Map();
         let retainMessage = false, shownRevision = null;
         const message = (text, retain = false) => { shownRevision = null; retainMessage = retain; $("image-message").textContent = text; };
+        const commandMessage = label => label + " applied. Tablet reports are in the header and Issues.";
         function renderShownStatus() {
             if (!shownRevision) return;
             const config = state.operatorConfig, label = shownRevision.image ? "Image" : "Content";
             let text;
             if (!config || state.rosterError || state.etagState !== "current") {
-                text = label + " applied. Status is stale; refresh to check tablet reports.";
+                text = label + " applied. Tablet reports may be stale; refresh status in the header or Issues.";
             } else if (config.generation !== shownRevision.generation || config.revision !== shownRevision.revision) {
                 text = "Wall content or arrangement changed after this command. Review current state.";
             } else {
-                text = label + " applied. Tablet reports are in the header and Issues.";
+                text = commandMessage(label);
             }
             $("image-message").textContent = text;
         }
@@ -57,21 +58,21 @@ window.OperatorContent = {
                     const item = document.createElement("li"); item.className = "image-choice"; item.dataset.assetId = image.id;
                     const button = document.createElement("button"); button.type = "button"; button.className = "image-choice-button";
                     const thumbnail = document.createElement("img"); thumbnail.alt = ""; thumbnail.loading = "lazy";
-                    const name = document.createElement("span"), dimensions = document.createElement("span");
-                    name.className = "image-choice-name"; dimensions.className = "image-choice-dimensions";
+                    const name = document.createElement("span");
+                    name.className = "image-choice-name";
                     const appliedNote = document.createElement("span"); appliedNote.className = "sr-only";
-                    button.append(thumbnail, name, dimensions); item.append(button, appliedNote); list.append(item);
+                    button.append(thumbnail, name); item.append(button, appliedNote); list.append(item);
                     button.addEventListener("click", () => choose(image.id));
                     thumbnail.addEventListener("error", () => { item.dataset.thumbnail = "unavailable"; thumbnail.hidden = true; });
-                    row = { item, button, thumbnail, name, dimensions, appliedNote }; gallery.set(image.id, row);
+                    row = { item, button, thumbnail, name, appliedNote }; gallery.set(image.id, row);
                 }
                 row.item.hidden = !image.name.toLocaleLowerCase().includes(search);
-                row.item.dataset.selected = String(selectionDirty && image.id === selected);
-                row.button.setAttribute("aria-pressed", String(selectionDirty && image.id === selected)); row.button.disabled = busy;
+                const inspected = selectionDirty && image.id === selected;
+                row.button.setAttribute("aria-pressed", String(inspected)); row.button.disabled = busy;
                 const applied = Boolean(state.scene && state.scene.content.type === "image" && state.scene.content.asset === image.id);
                 row.item.dataset.applied = String(applied);
                 row.button.setAttribute("aria-label", "Preview " + image.name);
-                row.appliedNote.textContent = applied ? "Applied to the wall" : "";
+                row.appliedNote.textContent = applied ? "Applied configuration. This image is the saved wall content; tablet reports are separate." : "";
                 if (applied) {
                     if (!row.appliedNote.id) row.appliedNote.id = "image-applied-" + image.id.replace(/[^a-zA-Z0-9_-]/g, "_");
                     row.button.setAttribute("aria-describedby", row.appliedNote.id);
@@ -79,23 +80,31 @@ window.OperatorContent = {
                 if (row.thumbnail.getAttribute("src") !== image.thumbnail_url) row.thumbnail.src = image.thumbnail_url;
                 const thumbnailScale = Math.min(160 / image.width, 160 / image.height);
                 row.thumbnail.width = Math.max(1, Math.round(image.width * thumbnailScale)); row.thumbnail.height = Math.max(1, Math.round(image.height * thumbnailScale));
-                row.name.textContent = image.name; row.dimensions.textContent = image.width + " × " + image.height + " px";
+                row.name.textContent = image.name;
             });
         }
         function render() {
             const content = state.scene && state.scene.content || {};
             const active = images.find(item => item.id === content.asset);
             state.activeImageUnavailableId = inventoryReady && content.type === "image" && !active ? content.asset : null;
-            const appliedText = content.type === "image"
-                ? (active ? active.name : content.name || content.asset) + " · " + (content.fit === "contain" ? "Show whole image" : "Fill wall")
-                    + (content.available === false || content.availability === "unavailable" || state.activeImageUnavailableId ? " · Unavailable" : "")
-                : content.type === "color" ? "Tablet colours" : content.type === "calibration" ? "Calibration pattern" : "No content";
+            let appliedText;
+            if (content.type === "image") {
+                const width = active ? active.width : content.intrinsicWidth;
+                const height = active ? active.height : content.intrinsicHeight;
+                const size = Number.isFinite(width) && Number.isFinite(height) ? " · " + width + " × " + height : "";
+                const unavailable = content.available === false || content.availability === "unavailable" || state.activeImageUnavailableId ? " · Unavailable" : "";
+                appliedText = (active ? active.name : content.name || content.asset) + " · "
+                    + (content.fit === "contain" ? "Show whole image" : "Fill wall") + size + unavailable;
+            } else {
+                appliedText = content.type === "color" ? "Tablet colours" : content.type === "calibration" ? "Calibration pattern" : "No content";
+            }
             $("stage-applied-content").textContent = (selectionDirty && !state.viewLive ? "Applied: " : "· ") + appliedText;
+
             const selector = $("image-select"), image = images.find(item => item.id === selected);
             const key = JSON.stringify([images.map(item => [item.id, item.name]), !image && selected]);
             if (selector.dataset.key !== key) {
                 selector.replaceChildren(new Option(images.length ? "Choose an image" : "No images in the library", ""));
-                images.forEach(item => selector.add(new Option(item.name + " · " + item.width + " × " + item.height, item.id)));
+                images.forEach(item => selector.add(new Option(item.name, item.id)));
                 if (selected && !image) selector.add(new Option("Unavailable selected image", selected));
                 selector.dataset.key = key;
             }
@@ -111,9 +120,12 @@ window.OperatorContent = {
             $("restore-image").disabled = busy || !previous || state.etagState !== "current";
             $("refresh-images").disabled = loading;
             const chosen = selectedContent();
-            $("image-title").textContent = selectionDirty && image ? image.name : "No image selected";
+            const draftName = image ? image.name : savedScene ? savedScene.name || "Saved scene" : null;
+            $("image-title").textContent = selectionDirty && draftName ? draftName
+                : selectionDirty && selected ? "Selected image unavailable" : "Choose an image";
             $("image-details").textContent = selectionDirty && image ? image.width + " × " + image.height + " source px"
-                : selectionDirty && selected ? "Selected image is unavailable. Refresh the library or choose a replacement. Your selection and geometry are retained." : "Choose an image to preview it.";
+                : selectionDirty && savedScene ? "Saved scene preview. Showing applies its content."
+                    : selectionDirty && selected ? "Selected image is unavailable. Refresh the library or choose a replacement. Your selection and geometry are retained." : "Select a library image to preview it.";
             const thumbnail = $("image-thumbnail"); thumbnail.hidden = !image;
             if (image && thumbnail.getAttribute("src") !== image.thumbnail_url) thumbnail.src = image.thumbnail_url;
             const transform = chosen && state.base && window.OperatorState.fitTransform(state.base, chosen);
@@ -160,7 +172,7 @@ window.OperatorContent = {
                     shownRevision = result && result.generation !== undefined && result.revision !== undefined
                         ? { generation: result.generation, revision: result.revision, image: content.type === "image" } : null;
                     if (shownRevision) renderShownStatus();
-                    else message((content.type === "image" ? "Image" : "Content") + " applied. Waiting for current tablet reports.");
+                    else message(commandMessage(content.type === "image" ? "Image" : "Content"));
                 }
                 announce("Content applied. Current tablet reports confirm display separately.");
                 return true;
@@ -211,7 +223,10 @@ window.OperatorContent = {
             finally { $("images-check-connection").disabled = false; render(); }
         });
         $("image-select").addEventListener("change", event => choose(event.target.value));
-        $("image-fit").addEventListener("change", event => { if (!selected && !savedScene) { event.target.value = fit; return; } choose(selected, event.target.value); });
+        $("image-fit").addEventListener("change", event => {
+            if (!selectionDirty || !selected) { event.target.value = fit; return; }
+            choose(selected, event.target.value);
+        });
         $("image-search").addEventListener("input", renderGallery);
         $("refresh-images").addEventListener("click", refresh);
         $("show-image").addEventListener("click", () => show(selectedContent(), { scene: savedScene, guard: baseEtag || state.etag }));

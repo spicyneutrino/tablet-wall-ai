@@ -36,13 +36,15 @@ const content = context.window.OperatorContent.create({ state, renderStage() {},
     assert.equal(calls[2].body.content.asset, image.id, "the generated flat image DTO is shown without fixture-only aliases");
     assert.equal(calls[2].body.content.fit, "contain");
     assert.equal(state.activeImageUnavailableId, null, "the new pattern is inventoried before its scene is shown");
-    assert.ok(!node("active-image").textContent.includes("Unavailable"));
-    assert.ok(node("active-image").textContent.includes("black.png"));
+    assert.ok(!node("stage-applied-content").textContent.includes("Unavailable"));
+    assert.ok(node("stage-applied-content").textContent.includes("black.png"));
+    assert.equal(node("image-title").textContent, "Choose an image", "the inspector does not repeat applied content");
+    assert.equal(node("image-message").textContent, "Image applied. Tablet reports are in the header and Issues.");
     releaseInventory({ images: [] });
     await refresh;
     assert.equal(state.activeImageUnavailableId, null, "an older inventory read cannot erase a published pattern");
-    assert.ok(node("active-image").textContent.includes("black.png"));
-    assert.ok(!node("active-image").textContent.includes("Unavailable"));
+    assert.ok(node("stage-applied-content").textContent.includes("black.png"));
+    assert.ok(!node("stage-applied-content").textContent.includes("Unavailable"));
     let resolveOutput, waitForResolution = false;
     const next = { ...image, id: "sha256:next", name: "next.png" };
     const racing = context.window.OperatorContent.create({ state, renderStage() {}, announce() {}, showConflict() {},
