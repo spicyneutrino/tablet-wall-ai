@@ -273,7 +273,7 @@ def entry_recovery(rig):
     client.set_viewport_size({"width": 900, "height": 1280})
     cdp.send("Emulation.setPageScaleFactor", {"pageScaleFactor": 1})
     expect(client.locator("#calibration-recovery")).to_be_hidden(timeout=15000)
-    expect(p.locator("#wall-health")).to_contain_text("4 of 4 report current image", timeout=15000)
+    expect(p.locator("#wall-health")).to_contain_text("4 of 4 showing the current image", timeout=15000)
     rig.check(
         True,
         "Restoring calibrated viewport removes DOM recovery and requires fresh current paints",
@@ -464,7 +464,7 @@ STATE_CONTRAST = r"""() => {
  return [...document.querySelectorAll('#stage-identities li,#stage-svg .operator-body-outline,#stage-svg .logical-resize,:focus-visible')].filter(e=>e.checkVisibility()).map(e=>{
   const s=getComputedStyle(e),svg=e.closest('svg');
   if(e.matches('#stage-identities li')){const bg=backdrop(e);return {kind:'svg-text',text:e.textContent,foreground:s.color,background:bg,ratio:ratio(s.color,bg),threshold:4.5};}
-  if(e.matches('.operator-body-outline,.logical-resize'))return {kind:'svg-nontext',id:e.closest('.slot').dataset.deviceId,foreground:e.matches('.logical-resize')?s.fill:s.stroke,background:'#0b1120',ratio:ratio(e.matches('.logical-resize')?s.fill:s.stroke,'#0b1120'),threshold:3};
+  if(e.matches('.operator-body-outline,.logical-resize'))return {kind:'svg-nontext',id:e.closest('.slot').dataset.deviceId,foreground:e.matches('.logical-resize')?s.fill:s.stroke,background:'#262119',ratio:ratio(e.matches('.logical-resize')?s.fill:s.stroke,'#262119'),threshold:3};
   if(e.matches('.slot')){const b=getComputedStyle(e.querySelector('.operator-body-outline'));return {kind:'svg-focus',foreground:b.stroke,background:backdrop(e),width:parseFloat(b.strokeWidth),ratio:ratio(b.stroke,backdrop(e)),threshold:3};}
   const outer=backdrop(e.parentElement);return {kind:'focus-ring',id:e.id,foreground:s.outlineColor,background:outer,width:parseFloat(s.outlineWidth),style:s.outlineStyle,ratio:ratio(s.outlineColor,outer),threshold:3};
  });
@@ -747,7 +747,7 @@ def responsive(rig):
     reopened = rig.tablets[3].context.new_page()
     reopened.goto(rig.base + "/client/")
     rig.tablets[3] = reopened
-    expect(p.locator("#wall-health")).to_contain_text("4 of 4 report current image", timeout=15000)
+    expect(p.locator("#wall-health")).to_contain_text("4 of 4 showing the current image", timeout=15000)
     rig.check(
         reopened.evaluate("localStorage.getItem('tablet-wall-device-id')") == ids[3],
         "Keyboard recovery retains tablet storage identity",

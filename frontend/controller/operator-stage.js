@@ -57,9 +57,18 @@
             const room = Math.max(1, Math.floor((width - 12) / (size * 0.6)));
             label.textContent = text.length > room ? text.slice(0, Math.max(1, room - 1)) + "…" : text;
             label.setAttribute("font-size", size / scale);
-            label.setAttribute("stroke-width", 3 / scale);
+            label.setAttribute("stroke-width", 0);
             label.setAttribute("x", Number(label.dataset.x) + 6 / scale);
             label.setAttribute("y", Number(label.dataset.y) + (size + 4) / scale);
+            const bg = label.previousElementSibling;
+            if (bg && bg.classList && bg.classList.contains("operator-slot-label-bg")) {
+                const textWidth = typeof label.getComputedTextLength === "function" ? label.getComputedTextLength() : label.textContent.length * size * 0.6 / scale;
+                bg.setAttribute("x", Number(label.dataset.x) + 3 / scale);
+                bg.setAttribute("y", Number(label.dataset.y) + 1.5 / scale);
+                bg.setAttribute("width", textWidth + 6 / scale);
+                bg.setAttribute("height", (size + 5) / scale);
+                bg.setAttribute("rx", 2 / scale);
+            }
         });
     }
     const fits = new WeakMap();
@@ -141,7 +150,7 @@
         wallClip.append(node("rect", b)); defs.append(wallClip);
         const panelClip = node("clipPath", { id: "operator-panel-clip", clipPathUnits: "userSpaceOnUse" });
         const hatch = node("pattern", { id: "operator-occlusion", width: 9, height: 9, patternUnits: "userSpaceOnUse" });
-        hatch.append(node("path", { d: "M-2 2L2-2 M0 9L9 0 M7 11L11 7", stroke: "var(--stage-line)", "stroke-width": 1 }));
+        hatch.append(node("path", { d: "M-2 2L2-2 M0 9L9 0 M7 11L11 7", stroke: "var(--stage-line)", "stroke-width": 1, "stroke-opacity": 0.4 }));
         defs.append(hatch, panelClip); view.append(defs);
         const world = node("g", { transform: "translate(" + offX + " " + offY + ") scale(" + scale + ")" });
         view.append(world);
@@ -177,14 +186,15 @@
                     + (estimate.upscale > 1.1 ? " · " + estimate.upscale.toFixed(1) + "× upscale" : ""));
             } else outline.append(node("circle", { cx: panel.cx, cy: panel.cy, r: 8 / scale, fill: "none", stroke: "var(--stage-selected)", "stroke-width": 2 / scale }));
             if (!preview && status.status === "offline" && !panel.missing) {
-                outline.append(rect(panel.body, { class: "offline-reservation", opacity: 0.5 }));
-                outline.append(rect(panel.body, { fill: "url(#operator-occlusion)", opacity: 0.35 }));
+                outline.append(rect(panel.body, { class: "offline-reservation", opacity: 0.18 }));
+                outline.append(rect(panel.body, { fill: "url(#operator-occlusion)", opacity: 0.28 }));
             }
             if (!panel.missing) {
                 const label = labelFor ? labelFor(panel.id) : "";
                 if (label) {
+                    outline.append(node("rect", { class: "operator-slot-label-bg", fill: "var(--stage)", opacity: 0.82 }));
                     outline.append(node("text", { x: panel.active.x + 6 / scale, y: panel.active.y + 15 / scale,
-                        class: "operator-slot-label", "font-size": 11 / scale, "stroke-width": 3 / scale,
+                        class: "operator-slot-label", "font-size": 11 / scale, "stroke-width": 0,
                         "data-label": label, "data-x": panel.active.x, "data-y": panel.active.y,
                         "data-width": panel.active.width, "data-height": panel.active.height,
                         "aria-hidden": "true" }, label));

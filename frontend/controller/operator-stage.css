@@ -1,7 +1,10 @@
 .wall-stage { display: grid; gap: 1rem; }
 .wall-head { display: flex; flex-wrap: wrap; align-items: center; gap: .5rem 1rem; }
-.wall-head h2 { flex: 1 1 auto; }
+.wall-head h2 { flex: 1 1 auto; font-size: 1.75rem; letter-spacing: -.02em; }
 .stage-mode { display: flex; flex-wrap: wrap; align-items: center; gap: .5rem; }
+.stage-mode > strong { font-size: .75rem; letter-spacing: .06em; text-transform: uppercase; color: var(--muted); }
+.stage-applied-content { font-size: .875rem; }
+.stage-dimensions { font-variant-numeric: tabular-nums; }
 .wall-head > .technical-details { flex-basis: 100%; }
 .physical-meta { display: flex; flex-wrap: wrap; gap: .5rem 1rem; }
 .etag-meta code { overflow-wrap: anywhere; }

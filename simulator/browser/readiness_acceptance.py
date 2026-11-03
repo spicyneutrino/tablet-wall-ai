@@ -999,7 +999,7 @@ def phase_failure():
 
     wait_until(one_failed, "the aborted image load did not surface as a failed render", timeout=30)
     health = page.locator("#wall-health").inner_text()
-    check("3 of 4 report current image" in health,
+    check("3 of 4 showing the current image" in health,
           "TWR-06 A1 the header counts three of four after one induced image failure: " + health)
     select_tablet(page, target["id"])
     name = page.locator("#tablet-action-name").inner_text()
@@ -1013,14 +1013,14 @@ def phase_failure():
     target["context"].unroute("**/assets/**")
     page.locator("#tablet-retry-image").click()
     wait_painted(marked)
-    check("4 of 4 report current image" in page.locator("#wall-health").inner_text(),
+    check("4 of 4 showing the current image" in page.locator("#wall-health").inner_text(),
           "TWR-06 A1 Retry returns the failed tablet to four of four showing")
 
     offline = tablets[3]
     offline["page"].close()
     wait_until(lambda: device(config(), offline["id"]).get("online") is False,
                "closed tablet did not report offline")
-    wait_until(lambda: "3 of 4 report current image" in page.locator("#wall-health").inner_text(),
+    wait_until(lambda: "3 of 4 showing the current image" in page.locator("#wall-health").inner_text(),
                "offline tablet is still counted as showing")
     check("1 offline" in page.locator("#wall-health").inner_text(),
           "TWR-06 A8 the header explains the offline member instead of silently dropping it")
@@ -1029,7 +1029,7 @@ def phase_failure():
     wait_until(lambda: offline["page"].locator("#status").get_attribute("data-state") == "connected",
                "reopened tablet did not reconnect")
     wait_painted(marked)
-    check("4 of 4 report current image" in page.locator("#wall-health").inner_text(),
+    check("4 of 4 showing the current image" in page.locator("#wall-health").inner_text(),
           "TWR-06 A8 the offline member rejoins the showing count after recovery")
 
 

@@ -232,7 +232,7 @@
             const errors = $("readiness-errors");
             errors.hidden = !model.errors.length;
             errors.textContent = model.errors.length
-                ? "Server reported: " + model.errors.join(" · ")
+                ? "Tablet joining is unavailable. " + model.errors.join(" · ")
                 : "";
 
             const advice = $("readiness-advice");

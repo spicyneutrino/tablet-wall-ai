@@ -16,7 +16,7 @@
 <a class="skip skip-controls" href="#rail-tabs">Skip to controls</a>
 
 <header class="topbar">
-    <h1 class="brand">Tablet wall</h1>
+    <h1 class="brand"><svg class="brand-mark" viewBox="0 0 16 16" aria-hidden="true" focusable="false"><rect width="7" height="7" rx="1" fill="currentColor"></rect><rect x="9" width="7" height="7" rx="1" fill="currentColor"></rect><rect y="9" width="7" height="7" rx="1" fill="currentColor"></rect><rect x="9" y="9" width="7" height="7" rx="1" fill="var(--accent)"></rect></svg>Tablet wall</h1>
     <div class="wall-summary"><span id="connected-summary">Checking connections…</span><button type="button" class="wall-health" id="btn-wall-health" data-kind="info" data-action="btn-wall-health">
                 <span id="wall-health">Checking tablet status…</span>
                 <span class="health-action">Issues</span>
@@ -629,7 +629,7 @@
             <p class="form-msg" id="layout-msg" role="status" aria-live="polite" hidden></p>
             <p class="form-msg" id="layouts-status" role="status" hidden></p>
 
-        </section><section class="saved-scenes task-section" aria-labelledby="saved-scenes-title"><h3 id="saved-scenes-title">Saved scenes</h3><p>Keep the applied image or test content and its Fit / Fill choice. Arrangements are saved separately.</p><ul id="saved-scenes" class="saved-list" aria-label="Saved scenes"></ul><form id="scene-save-form" data-form="scene-save-form"><label class="field" for="scene-name">Scene name<input class="inp" id="scene-name" maxlength="64" autocomplete="off" data-field="scene-name"></label><button type="submit" class="btn" id="scene-save" data-action="scene-save">Save applied scene</button></form><button type="button" class="btn" id="scenes-refresh" data-action="scenes-refresh">Refresh scenes</button><p id="scene-message" role="status"></p></section><section class="return-point task-section" id="return-point" hidden><h3>Return point saved</h3><p id="return-point-name"></p><button type="button" class="btn" id="return-point-recall" data-action="return-point-recall">Recall return point</button></section></section></div>
+        </section><section class="saved-scenes task-section" aria-labelledby="saved-scenes-title"><div class="sec-head"><h3 id="saved-scenes-title">Saved scenes</h3><button type="button" class="btn btn-ghost btn-sm" id="scenes-refresh" data-action="scenes-refresh">Refresh scenes</button></div><p>Keep the applied image or test content and its Fit / Fill choice. Arrangements are saved separately.</p><ul id="saved-scenes" class="saved-list" aria-label="Saved scenes"></ul><form id="scene-save-form" data-form="scene-save-form"><label class="field" for="scene-name">Scene name<input class="inp" id="scene-name" maxlength="64" autocomplete="off" data-field="scene-name"></label><button type="submit" class="btn" id="scene-save" data-action="scene-save">Save applied scene</button></form><p id="scene-message" role="status"></p></section><section class="return-point task-section" id="return-point" hidden><h3>Return point saved</h3><p id="return-point-name"></p><button type="button" class="btn" id="return-point-recall" data-action="return-point-recall">Recall return point</button></section></section></div>
     </div>
     <div id="wall-context-park" hidden><section class="card stage-card wall-stage" aria-labelledby="stage-title">
             <div class="wall-head">
@@ -639,7 +639,7 @@
 
             <div class="stage-scroll" id="stage-scroll" tabindex="0" role="region" aria-label="Wall preview and tablet selection">
                 <svg class="stage-svg" id="stage-svg" viewBox="0 0 720 480" role="group" aria-label="Wall. Select a tablet and drag it, or use the arrow keys to nudge the selected tablet."></svg>
-            </div><button type="button" class="btn stage-technical-toggle" id="show-stage-technical-inline">Stage technical details</button>
+            </div><p class="stage-key" id="stage-key" hidden></p><button type="button" class="btn stage-technical-toggle" id="show-stage-technical-inline">Stage technical details</button>
 
             <section class="arrangement-review task-section" id="manual-arrangement-review" hidden><h3>Review the current wall and your proposal</h3><p id="manual-review-summary" tabindex="-1"></p><details class="technical-details"><summary>Exact geometry and pins</summary><pre class="form-comparison" id="manual-review-details"></pre></details><button type="button" class="btn" id="manual-review-keep" data-action="manual-review-keep">Keep my arrangement against this wall</button></section>
             <p class="hint" id="stage-quality-summary"></p>

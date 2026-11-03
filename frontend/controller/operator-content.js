@@ -34,7 +34,7 @@ window.OperatorContent = {
             if (savedScene && savedScene.content.type !== "image") return savedScene.content;
             const image = images.find(item => item.id === selected);
             return image ? { type: "image", asset: image.id, url: image.url, intrinsicWidth: image.width,
-                intrinsicHeight: image.height, fit, background: savedScene && savedScene.content.background || "#0b1120" } : null;
+                intrinsicHeight: image.height, fit, background: savedScene && savedScene.content.background || "#262119" } : null;
         }
         function select(id, nextFit = fit) {
             if (!selectionDirty) baseEtag = state.etag;
@@ -72,6 +72,7 @@ window.OperatorContent = {
                 const applied = Boolean(state.scene && state.scene.content.type === "image" && state.scene.content.asset === image.id);
                 row.item.dataset.applied = String(applied);
                 row.button.setAttribute("aria-label", "Preview " + image.name);
+                row.button.title = image.name;
                 row.appliedNote.textContent = applied ? "Applied configuration. This image is the saved wall content; tablet reports are separate." : "";
                 if (applied) {
                     if (!row.appliedNote.id) row.appliedNote.id = "image-applied-" + image.id.replace(/[^a-zA-Z0-9_-]/g, "_");

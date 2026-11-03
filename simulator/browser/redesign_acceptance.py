@@ -1070,7 +1070,7 @@ def first_wall(rig):
         "Select supplied image",
     )
     rig.click("#show-image", "Show image")
-    expect(p.locator("#wall-health")).to_contain_text("4 of 4 report current image", timeout=15000)
+    expect(p.locator("#wall-health")).to_contain_text("4 of 4 showing the current image", timeout=15000)
     current = rig.config()
     renders = {id: row["render"] for id, row in current["runtime"]["devices"].items()}
     rig.check(
@@ -1111,7 +1111,7 @@ def first_wall(rig):
     rig.viewport_shots("two-by-two-review")
     rig.click("#btn-apply")
     expect(p.locator("#stage-mode-label")).to_have_text("Applied configuration", timeout=15000)
-    expect(p.locator("#wall-health")).to_contain_text("4 of 4 report current image", timeout=15000)
+    expect(p.locator("#wall-health")).to_contain_text("4 of 4 showing the current image", timeout=15000)
     rig.check(
         rig.config()["scene"] == before["scene"],
         "Additional 2 by 2 Apply changes only arrangement",
@@ -1308,7 +1308,7 @@ def image_negatives(rig):
         client.route("**/media/**", lambda route: route.abort("connectionreset"))
         rig.click("#show-image")
         expect(p.locator("#wall-health")).to_contain_text(
-            "3 of 4 report current image", timeout=15000
+            "3 of 4 showing the current image", timeout=15000
         )
         failed = rig.config()
         rig.check(
@@ -1324,7 +1324,7 @@ def image_negatives(rig):
         rig.click(f'.dev-pick[data-device-id="{rig.manifest["clients"][0]["id"]}"]')
         rig.click("#tablet-retry-image")
         expect(p.locator("#wall-health")).to_contain_text(
-            "4 of 4 report current image", timeout=15000
+            "4 of 4 showing the current image", timeout=15000
         )
         after = rig.config()
         rig.check(
@@ -1464,7 +1464,7 @@ def recovery(rig):
     rig.click("#tablet-identify")
     expect(client.locator("#identify")).to_be_visible()
     expect(client.locator("#identify")).to_be_hidden(timeout=10000)
-    expect(p.locator("#wall-health")).to_contain_text("4 of 4 report current image", timeout=15000)
+    expect(p.locator("#wall-health")).to_contain_text("4 of 4 showing the current image", timeout=15000)
     rig.check(
         True,
         "Identify overlay expires independently and fresh unobscured reports return",
@@ -1489,7 +1489,7 @@ def recovery(rig):
     reopened = client.context.new_page()
     reopened.goto(rig.base + "/client/")
     rig.tablets[0] = reopened
-    expect(p.locator("#wall-health")).to_contain_text("4 of 4 report current image", timeout=15000)
+    expect(p.locator("#wall-health")).to_contain_text("4 of 4 showing the current image", timeout=15000)
     rig.check(
         reopened.evaluate("localStorage.getItem('tablet-wall-device-id')") == ids[0],
         "Independent context storage preserves reconnect identity",
@@ -1510,7 +1510,7 @@ def recovery(rig):
             fatal=False,
         )
     reopened.set_viewport_size({"width": 900, "height": 1280})
-    expect(p.locator("#wall-health")).to_contain_text("4 of 4 report current image", timeout=15000)
+    expect(p.locator("#wall-health")).to_contain_text("4 of 4 showing the current image", timeout=15000)
     with rig.fault(
         "owned private backend restart; transient socket/network failures expected",
         [(r"127\.0\.0\.1", ["network"])],
@@ -1518,7 +1518,7 @@ def recovery(rig):
         rig.stop_server()
         rig.start_server()
         expect(p.locator("#wall-health")).to_contain_text(
-            "4 of 4 report current image", timeout=25000
+            "4 of 4 showing the current image", timeout=25000
         )
     fresh = rig.config()
     rig.check(

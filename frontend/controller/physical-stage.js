@@ -34,12 +34,21 @@ window.PhysicalStage = {
                 statusFor: id => state.rosterError ? { status: "stale", text: "Status stale · refresh the operator connection" } : window.OperatorState.tabletState(config, id, performance.now()),
                 selectedId: state.selectedId, runtime: config.runtime, preview, editable: state.tabName === "show" && !state.gridPreview && !state.viewLive && !state.previewContent,
                 resolutionNode: document.getElementById("stage-resolution") });
+            const stageKey = document.getElementById("stage-key");
+            if (stageKey) {
+                const bounds = window.OperatorState.bounds(layout);
+                const placed = window.OperatorStage.panels(layout, profileFor).filter(panel => !panel.missing && panel.slot.participating !== false);
+                const area = placed.reduce((sum, panel) => sum + panel.active.width * panel.active.height, 0);
+                const share = bounds.width && bounds.height ? Math.min(100, Math.round(area * 100 / (bounds.width * bounds.height))) : 0;
+                stageKey.hidden = !(share > 0 && share < 100);
+                stageKey.textContent = placed.length + (placed.length === 1 ? " tablet covers " : " tablets cover ") + share + "% of the wall. Hatched area has no tablet.";
+            }
             const summary = document.getElementById("stage-identities") || document.createElement("details");
             if (!summary.id) {
                 summary.id = "stage-identities";
                 summary.className = "stage-identities";
                 summary.innerHTML = "<summary>Tablet identities and status</summary><ul></ul>";
-                el.stageSvg.parentElement.insertAdjacentElement("afterend", summary);
+                (document.getElementById("stage-key") || el.stageSvg.parentElement).insertAdjacentElement("afterend", summary);
             }
             if (summary.dataset.presentation !== presentation) {
                 summary.open = presentation === "tablets";
@@ -279,13 +288,13 @@ window.PhysicalStage = {
                 const result = window.OperatorState.aggregate(state.operatorConfig, performance.now());
                 const stale = !!state.rosterError;
                 const paint = result.total
-                    ? (stale ? "Current image evidence unavailable" : result.showing + " of " + result.total + " report current image")
+                    ? (stale ? "Current image evidence unavailable" : result.showing + " of " + result.total + " showing the current image")
                     : "No tablets on the wall";
                 el.wallHealth.textContent = (stale ? "Status stale · " : "") + paint;
                 el.btnWallHealth.dataset.kind = stale || result.states.some(item => !["displayed", "offline", "excluded"].includes(item.status)) ? "warn" : "info";
                 const compact = typeof window.matchMedia === "function" && window.matchMedia("(max-width: 36rem)").matches;
-                if (compact) el.wallHealth.textContent = (stale ? "Stale · " : "") + (result.total ? result.showing + "/" + result.total : "No wall");
-                el.btnWallHealth.setAttribute("aria-label", (stale ? "Status stale. " : "") + (result.total ? result.showing + " of " + result.total + " tablets report the current image. Issues." : "No tablets on the wall. Issues."));
+                if (compact) el.wallHealth.textContent = (stale ? "Stale · " : "") + (result.total ? result.showing + "/" + result.total + " showing image" : "No wall");
+                el.btnWallHealth.setAttribute("aria-label", (stale ? "Status stale. " : "") + (result.total ? result.showing + " of " + result.total + " tablets showing the current image. Issues." : "No tablets on the wall. Issues."));
                 const online = Object.values(state.roster).filter(device => device.online).length;
                 el.deviceCount.textContent = online + " online · " + Object.keys(state.roster).length + " registered";
                 el.rosterStatus.textContent = stale ? "Status stale. " + state.rosterError + ". Refresh status to retry."
@@ -367,7 +376,11 @@ window.PhysicalStage = {
                 const status = current ? current.text : online ? "Connected · not on the wall" : "Offline";
                 row.number.textContent = numberTag(entry.id);
                 row.name.textContent = entry.label;
-                row.meta.textContent = (current ? "" : (online ? "Connected · " : "Offline · ")) + status + " · " + size;
+                const compactRoster = typeof window.matchMedia === "function" && window.matchMedia("(max-width: 36rem)").matches;
+                const baseStatus = current ? current.text : online ? "Connected" : "Offline";
+                row.meta.textContent = compactRoster
+                    ? baseStatus + (entry.placement ? " · " + formatNumber(entry.placement.w, 0) + " × " + formatNumber(entry.placement.h, 0) : "")
+                    : (current ? "" : (online ? "Connected · " : "Offline · ")) + status + " · " + size;
                 row.item.dataset.status = current ? current.status : online ? "online" : "offline";
                 row.pick.setAttribute("aria-label", numberedLabel(entry.id) + ", " + status);
                 row.add.hidden = !!(entry.slot || entry.placement); row.add.disabled = state.busy;

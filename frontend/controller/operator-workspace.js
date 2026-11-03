@@ -74,7 +74,7 @@ window.OperatorWorkspace = {
             const summary = $("arrange-review-summary");
             if (summary) summary.textContent = hasPreview ? "Apply changes geometry only. The applied image stays unchanged."
                 : arrangement ? "Grid choices are local. Preview arrangement before applying. The diagram still shows the live wall."
-                : "No arrangement changes are pending. Adjust positions or preview a grid to begin.";
+                : "No pending changes. Adjust positions or preview a grid.";
             if (!arrangement && document.activeElement === $("btn-cancel")) $("task-arrange").focus({ preventScroll: true });
             $("btn-cancel").hidden = !arrangement;
             $("wall-empty").hidden = !state.configLoaded || hasPreview || !!state.base && Object.keys(window.OperatorState.entries(state.base)).length > 0;

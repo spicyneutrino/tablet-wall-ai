@@ -64,7 +64,7 @@ assert.equal(result.width, 966, "available width excludes parent padding and fie
 assert.equal(parseFloat(field.style.inlineSize), 968, "field shrink-wraps the SVG and its border");
 assert.equal(result.width / result.height, 720 / 370);
 assert.equal(Number(label.getAttribute("font-size")) * Math.hypot(label.getScreenCTM().a, label.getScreenCTM().b), 12);
-assert.equal(Number(label.getAttribute("stroke-width")) * label.getScreenCTM().a, 3, "halo is screen-space too");
+assert.equal(Number(label.getAttribute("stroke-width")), 0, "the solid label chip replaces the glyph halo");
 
 win.innerHeight = 600;
 navigation.getClientRects = () => [];
