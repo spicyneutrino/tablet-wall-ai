@@ -28,7 +28,7 @@ body[data-stage-mode="live"] .wall-stage:has(.wall-empty:not([hidden])) :is(.sta
 .offline-reservation { fill: var(--stage); }
 .logical-resize { fill: var(--stage-text); stroke: var(--stage); vector-effect: non-scaling-stroke; stroke-width: 1px; cursor: nwse-resize; }
 .stage-foot { display: grid; gap: .75rem; }
-.stage-scale { color: var(--muted); font-size: .875rem; }
+.stage-dimensions { color: var(--muted); font-size: .875rem; }
 .stage-legend { display: flex; flex-wrap: wrap; gap: .75rem 1rem; padding: 0; list-style: none; color: var(--muted); font-size: .875rem; }
 .lg { display: flex; gap: .5rem; align-items: center; }
 .lg > span { display: inline-block; inline-size: 1rem; block-size: .75rem; border: 1px solid var(--control); background: var(--stage); }

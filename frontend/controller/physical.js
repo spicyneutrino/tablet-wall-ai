@@ -50,7 +50,7 @@
         conflictText: document.getElementById("conflict-text"),
         btnConflictReload: document.getElementById("btn-conflict-reload"),
         stageSvg: document.getElementById("stage-svg"),
-        stageScale: document.getElementById("stage-scale"),
+        stageScale: document.getElementById("stage-dimensions"),
         deviceCount: document.getElementById("device-count"),
         wallHealth: document.getElementById("wall-health"),
         btnWallHealth: document.getElementById("btn-wall-health"),
