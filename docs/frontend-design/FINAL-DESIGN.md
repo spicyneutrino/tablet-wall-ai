@@ -174,6 +174,7 @@ The SVG labels use screen-space sizing. They target 11–13 CSS px after both th
 - Header 56px: brand, `0/4` (aria-label “0 of 4 report current image”), Issues. No connected summary.
 - Fixed bottom navigation 56px + safe area; content padding-bottom accounts for it.
 - Images: stage first, then a pinned action bar (Fit / Show / Discard) that appears only while a preview or draft exists, then the horizontal library strip, then details. Do not interrupt this sequence with diagnostics.
+- The phone wall is full-bleed to the screen edges. Its height is the aspect-correct maximum for the wall ratio; a 1.855:1 wall at 390px width is about 200px tall. Do not crop or rotate the wall to make the phone preview taller.
 - The stage height budget is `100dvh − 56px header − 56px bottom nav − safe area − 56px action bar − gaps` while a preview exists. When no preview exists, the action bar is absent and the stage may use its height.
 - The action bar is fixed above the bottom nav: `position: fixed; inset-inline: 0; inset-block-end: calc(56px + env(safe-area-inset-bottom)); z-index: 35; background: var(--surface); border-block-start: 1px solid var(--border);` with content padding-bottom accounting for it. It contains Fit, Show, Discard, and View preview when a retained draft is viewing applied. The stage aspect ratio is preserved as this budget changes; the wall is never cropped to make the bar fit.
 - Arrange: stage first, preset row, one commit bar; advanced controls in a disclosure.

@@ -473,3 +473,11 @@ body[data-task="arrange"].show-stage-details #stage-identities { display: block;
 @media (max-width: 48rem) {
     .arrange-tools .stage-technical-toggle { display: none; }
 }
+
+@media (max-width: 48rem) {
+    .wall-stage-slot { margin-inline: -1rem; }
+    .wall-stage-slot .wall-head,
+    .wall-stage-slot .stage-technical-toggle,
+    .wall-stage-slot .stage-details { margin-inline: 1rem; }
+    .wall-stage-slot .stage-scroll { border-inline: 0; border-radius: 0; }
+}
