@@ -36,12 +36,37 @@ const content = context.window.OperatorContent.create({ state, renderStage() {},
     assert.equal(calls[2].body.content.asset, image.id, "the generated flat image DTO is shown without fixture-only aliases");
     assert.equal(calls[2].body.content.fit, "contain");
     assert.equal(state.activeImageUnavailableId, null, "the new pattern is inventoried before its scene is shown");
-    assert.ok(!node("active-image").textContent.includes("Unavailable"));
-    assert.ok(node("active-image").textContent.includes("black.png"));
+    assert.ok(!node("stage-applied-content").textContent.includes("Unavailable"));
+    assert.ok(node("stage-applied-content").textContent.includes("black.png"));
+    assert.equal(node("image-title").textContent, "Choose an image", "the inspector does not repeat applied content");
+    assert.equal(node("image-message").textContent, "Image applied. Tablet reports are in the header and Issues.");
     releaseInventory({ images: [] });
     await refresh;
     assert.equal(state.activeImageUnavailableId, null, "an older inventory read cannot erase a published pattern");
-    assert.ok(node("active-image").textContent.includes("black.png"));
-    assert.ok(!node("active-image").textContent.includes("Unavailable"));
+    assert.ok(node("stage-applied-content").textContent.includes("black.png"));
+    assert.ok(!node("stage-applied-content").textContent.includes("Unavailable"));
+    let resolveOutput, waitForResolution = false;
+    const next = { ...image, id: "sha256:next", name: "next.png" };
+    const racing = context.window.OperatorContent.create({ state, renderStage() {}, announce() {}, showConflict() {},
+        resolveOutput() { return waitForResolution ? new Promise(resolve => { resolveOutput = resolve; }) : true; },
+        ingestConfig(config) { state.scene = config.scene; },
+        async api(method, path, body) {
+            if (path === "/api/v3/images") return { images: [image, next] };
+            if (path === "/api/v3/scene") return { scene: { content: body.content } };
+            throw new Error("unexpected route " + path);
+        } });
+    await racing.refresh();
+    await node("image-select").change({ target: { value: image.id } });
+    waitForResolution = true;
+    const showing = racing.showSelected();
+    racing.previewScene({ name: "Later", content: { type: "image", asset: next.id } }, state.etag);
+    resolveOutput(true); await showing;
+    assert.equal(state.scene.content.asset, image.id, "Show retains the image captured when the command was requested");
+    assert.equal(state.previewContent.asset, next.id, "completion after draft resolution retains a newer image choice");
+    assert.equal(racing.dirty(), true);
+    const choosing = node("image-select").change({ target: { value: image.id } });
+    racing.previewScene({ name: "Later again", content: { type: "image", asset: next.id } }, state.etag);
+    resolveOutput(true); await choosing;
+    assert.equal(state.previewContent.asset, next.id, "a delayed preview choice cannot replace a newer choice");
     console.log("Generated pattern canonical DTO, publication/read ordering and scene application passed");
 })().catch(error => { console.error(error); process.exitCode = 1; });

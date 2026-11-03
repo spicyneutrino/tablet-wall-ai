@@ -764,15 +764,15 @@ def phase_content(return_name: str):
     first = image_id("first.png")
     marked = image_id("marked.png")
     show_image(page, first, "cover")
-    active = page.locator("#active-image").inner_text()
-    check("first.png" in active and "Fill" in active and "2000 × 1400 px" in active,
-          "TWR-04 A1 image A is named in the console with its fill and source size")
+    active = page.locator("#stage-applied-content").inner_text()
+    check("first.png" in active and "Fill wall" in active and "2000 × 1400" in page.locator("#stage-dimensions").inner_text(),
+          "TWR-04 A1 image A is named in the console with its fill and wall size")
     wait_painted(first)
 
     show_image(page, marked, "contain")
-    active = page.locator("#active-image").inner_text()
-    check("marked.png" in active and "Fit whole image" in active and "2000 × 1000 px" in active,
-          "TWR-04 A1 image B is named in the console with its fit and source size")
+    active = page.locator("#stage-applied-content").inner_text()
+    check("marked.png" in active and "Show whole image" in active and "2000 × 1000" in page.locator("#stage-dimensions").inner_text(),
+          "TWR-04 A1 image B is named in the console with its fit and wall size")
     check(config()["scene"]["content"].get("fit") == "contain",
           "TWR-04 A1 image B is committed with the selected fit")
     wait_painted(marked)
@@ -783,9 +783,9 @@ def phase_content(return_name: str):
     wait_until(lambda: "online" in page.locator("#device-count").inner_text(),
                "console did not recover after reload")
     tab(page, "Wall")
-    wait_until(lambda: "marked.png" in page.locator("#active-image").inner_text(),
+    wait_until(lambda: "marked.png" in page.locator("#stage-applied-content").inner_text(),
                "reload did not show image B")
-    check("Fit whole image" in page.locator("#active-image").inner_text(),
+    check("Show whole image" in page.locator("#stage-applied-content").inner_text(),
           "TWR-04 A1 reload still names image B with Fit")
     check(config()["scene"]["content"].get("asset") == marked,
           "TWR-04 A1 reload still reads image B from the committed scene")
@@ -999,7 +999,7 @@ def phase_failure():
 
     wait_until(one_failed, "the aborted image load did not surface as a failed render", timeout=30)
     health = page.locator("#wall-health").inner_text()
-    check("3 of 4 showing" in health,
+    check("3 of 4 showing the current image" in health,
           "TWR-06 A1 the header counts three of four after one induced image failure: " + health)
     select_tablet(page, target["id"])
     name = page.locator("#tablet-action-name").inner_text()
@@ -1013,14 +1013,14 @@ def phase_failure():
     target["context"].unroute("**/assets/**")
     page.locator("#tablet-retry-image").click()
     wait_painted(marked)
-    check("4 of 4 showing" in page.locator("#wall-health").inner_text(),
+    check("4 of 4 showing the current image" in page.locator("#wall-health").inner_text(),
           "TWR-06 A1 Retry returns the failed tablet to four of four showing")
 
     offline = tablets[3]
     offline["page"].close()
     wait_until(lambda: device(config(), offline["id"]).get("online") is False,
                "closed tablet did not report offline")
-    wait_until(lambda: "3 of 4 showing" in page.locator("#wall-health").inner_text(),
+    wait_until(lambda: "3 of 4 showing the current image" in page.locator("#wall-health").inner_text(),
                "offline tablet is still counted as showing")
     check("1 offline" in page.locator("#wall-health").inner_text(),
           "TWR-06 A8 the header explains the offline member instead of silently dropping it")
@@ -1029,7 +1029,7 @@ def phase_failure():
     wait_until(lambda: offline["page"].locator("#status").get_attribute("data-state") == "connected",
                "reopened tablet did not reconnect")
     wait_painted(marked)
-    check("4 of 4 showing" in page.locator("#wall-health").inner_text(),
+    check("4 of 4 showing the current image" in page.locator("#wall-health").inner_text(),
           "TWR-06 A8 the offline member rejoins the showing count after recovery")
 
 

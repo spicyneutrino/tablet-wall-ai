@@ -82,8 +82,10 @@ function factsText(nodes) {
     assert.equal(known.status.kind, "ok");
     assert.match(known.status.text, /does not prove a tablet is displaying the wall/);
     const joined = known.facts.map(pair => pair.join(" = ")).join(" | ");
-    for (const expected of ["Wall-Net", "Measured millimetres (physical)", "revision 7",
-        "generation gen-7", "schema 3", "HTTP", "None. Trusted local hotspot only.",
+    const layoutFact = known.facts.find(pair => pair[0] === "Layout");
+    assert.equal(layoutFact[0], "Layout");
+    assert.equal(layoutFact[1], "Measured millimetres (physical)", "the default Layout fact names layout only");
+    for (const expected of ["Wall-Net", "Measured millimetres (physical)", "HTTP", "None. Trusted local hotspot only.",
         "Disabled; use the configured image folder", "Trusted local hotspot",
         "A still image is selected", "1 online of 2 registered", "Readable",
         "2026-11-01T10:00:00Z — a snapshot was recorded on disk",
@@ -91,6 +93,11 @@ function factsText(nodes) {
         "Referenced content only.", "Only current matching paint reports count"]) {
         assert.ok(joined.includes(expected), "missing " + expected);
     }
+    assert.ok(!joined.includes("revision 7") && !joined.includes("generation gen-7") && !joined.includes("schema 3"),
+        "default readiness facts stay operator-facing; revision details live with the wall");
+    const logical = view({ wall: { layout: "logical", revision: 9, generation: "gen-9", schema: 4 } });
+    const logicalLayout = logical.facts.find(pair => pair[0] === "Layout");
+    assert.equal(logicalLayout[1], "Logical units", "revision, generation and schema are not part of the Layout fact");
     assert.equal(known.errors.length, 0);
     assert.deepEqual(known.advice, ["The server cannot wake a tablet."]);
     assert.equal(known.paths.length, 4);

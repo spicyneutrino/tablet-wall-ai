@@ -1,0 +1,33 @@
+@font-face {
+    font-family: "Schibsted Grotesk";
+    src: url("fonts/SchibstedGrotesk-wght.ttf") format("truetype");
+    font-style: normal;
+    font-weight: 400 900;
+    font-display: swap;
+}
+
+:root {
+    color-scheme: light;
+    --bg: #efece4;
+    --surface: #faf8f2;
+    --surface-raised: #f3f0e8;
+    --hover: #f0ece4;
+    --disabled-bg: #e7e1d5;
+    --backdrop: rgb(30 26 21 / 60%);
+    --text: #2d2822;
+    --muted: #5c564d;
+    --border: #d8d3c7;
+    --control: #67645d;
+    --accent: #8f4014;
+    --selected: #f5e5d7;
+    --success: #246344;
+    --attention: #795500;
+    --error: #a12a24;
+    --stage: #22252a;
+    --stage-text: #f2f0ea;
+    --stage-selected: #ffc084;
+    --stage-line: #8a8e95;
+    --font: "Schibsted Grotesk", system-ui, -apple-system, sans-serif;
+    --radius: 6px;
+    --page-pad: 2rem;
+}

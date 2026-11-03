@@ -1,0 +1,167 @@
+"use strict";
+const assert = require("node:assert/strict");
+const fs = require("node:fs");
+const vm = require("node:vm");
+const model = require("../frontend/controller/operator-state.js");
+
+function element(tag) {
+    return {
+        tagName: tag, dataset: {}, attrs: {}, children: [], listeners: {},
+        value: "", hidden: false, disabled: false, textContent: "", className: "",
+        width: 0, height: 0, src: "",
+        addEventListener(type, fn) { this.listeners[type] = fn; this[type] = fn; },
+        focus() { document.activeElement = this; },
+        replaceChildren(...items) { this.children = items; },
+        append(...items) { this.children.push(...items); },
+        add(item) { this.children.push(item); },
+        remove() { this.removed = true; },
+        setAttribute(key, value) { this.attrs[key] = String(value); },
+        getAttribute(key) { return Object.prototype.hasOwnProperty.call(this.attrs, key) ? this.attrs[key] : null; },
+        removeAttribute(key) { delete this.attrs[key]; }
+    };
+}
+
+const nodes = new Map();
+const document = {
+    activeElement: null,
+    getElementById(id) {
+        if (!nodes.has(id)) nodes.set(id, element(id));
+        return nodes.get(id);
+    },
+    createElement: tag => element(tag)
+};
+function node(id) { return document.getElementById(id); }
+function Option(text, value) { this.text = text; this.value = value; }
+
+const token = { connection_id: "c", generation: "g", revision: 2, render_seq: 1, mapping_revision: "m", asset: "a" };
+const config = { generation: "g", revision: 2, layout: { kind: "logical", width: 100, height: 100, placements: { t: {} } },
+    scene: { content: { type: "image", asset: "a", fit: "cover" } }, runtime: { devices: { t: { online: true, protocol: 3,
+        caps: ["render_ack"], mapping: { state: "ready" }, render: { state: "loading" } } } } };
+const state = { layoutKind: "logical", etag: "e", etagState: "current", capabilities: {}, scene: { content: { type: "color" } }, base: config.layout };
+const images = ["a", "b"].map(id => ({ id, name: id, width: 100, height: 100, thumbnail_url: "/" + id }));
+let failInventory = false, release;
+const context = vm.createContext({ window: { OperatorState: model }, document, Option, performance: { now: () => 100 } });
+vm.runInContext(fs.readFileSync(require.resolve("../frontend/controller/operator-content.js"), "utf8"), context);
+const content = context.window.OperatorContent.create({ state, renderStage() {}, announce() {}, showConflict() {},
+    ingestConfig(result) { state.operatorConfig = result; state.scene = result.scene; },
+    async api(method, path) {
+        if (path === "/api/v3/images") { if (failInventory) throw Error("network"); return { images }; }
+        if (path === "/api/v3/scene") return release ? await new Promise(resolve => { release.resolve = resolve; }) : config;
+        throw Error(path);
+    } });
+(async () => {
+    await content.refresh(); content.render();
+    assert.equal(content.dirty(), false, "loading Images must not create a draft");
+    assert.equal(node("show-image").disabled, true, "Show needs a draft");
+    assert.equal(node("image-fit").disabled, true, "Fit needs a draft");
+    assert.equal(node("image-select").value, "");
+    assert.equal(node("image-title").textContent, "Choose an image");
+    assert.equal(node("image-details").textContent, "Select a library image to preview it.");
+
+    node("image-fit").value = "contain";
+    node("image-fit").change({ target: node("image-fit") });
+    assert.equal(node("image-fit").value, "cover", "changing Fit with no draft restores the control");
+    assert.equal(content.dirty(), false);
+
+    const rows = node("image-gallery").children;
+    assert.equal(rows.length, 2);
+    const cardA = rows.find(row => row.dataset.assetId === "a"), cardB = rows.find(row => row.dataset.assetId === "b");
+    const buttonA = cardA.children[0], buttonB = cardB.children[0];
+    assert.equal(buttonA.children.find(child => child.className === "image-choice-name").textContent, "a");
+    assert.equal(buttonA.children.some(child => child.className === "image-choice-dimensions"), false,
+        "library cards show filename only, not dimensions");
+    assert.equal(buttonA.attrs["aria-pressed"], "false");
+    assert.equal(cardA.dataset.selected, undefined, "selection uses one outline marker, not a duplicate badge");
+    assert.equal(node("stage-applied-content").textContent, "Tablet colours");
+
+    await buttonA.click();
+    assert.equal(content.dirty(), true, "clicking a library image creates a draft");
+    assert.equal(buttonA.attrs["aria-pressed"], "true");
+    assert.equal(cardA.dataset.selected, undefined);
+    assert.equal(node("image-title").textContent, "a");
+    assert.equal(node("image-details").textContent, "100 × 100 source px");
+    assert.equal(node("show-image").disabled, false);
+    assert.equal(node("image-fit").disabled, false);
+    assert.equal(node("stage-applied-content").textContent, "Applied: Tablet colours",
+        "the stage mode area keeps the applied content while a draft exists");
+
+    content.discard();
+    assert.equal(content.dirty(), false);
+    assert.equal(buttonA.attrs["aria-pressed"], "false");
+    assert.equal(node("image-title").textContent, "Choose an image");
+    assert.equal(node("image-details").textContent, "Select a library image to preview it.");
+    assert.equal(node("show-image").disabled, true);
+    assert.equal(node("image-fit").disabled, true);
+
+    assert.equal(node("image-discard").hidden, true); assert.equal(node("restore-image").hidden, true);
+    await node("image-select").change({ target: { value: "a" } });
+    assert.equal(node("image-discard").hidden, false);
+    assert.equal(node("image-rebuild").hidden, true, "a current preview needs no Rebuild");
+    state.etag = "changed"; content.render();
+    assert.equal(node("image-rebuild").hidden, false, "a stale-base draft exposes Rebuild");
+    state.etag = "e";
+    node("image-discard").focus();
+    await content.showSelected();
+    assert.equal(document.activeElement, node("image-search"));
+    assert.equal(node("image-discard").hidden, true); assert.equal(node("restore-image").hidden, false);
+    assert.equal(content.dirty(), false); assert.equal(node("image-select").value, "");
+    assert.equal(node("show-image").disabled, true); assert.equal(node("image-fit").disabled, true);
+    assert.equal(node("image-message").textContent, "Image applied. Tablet reports are in the header and Issues.");
+    assert.equal(buttonA.attrs["aria-pressed"], "false", "a completed Show clears the rust draft outline");
+    assert.equal(cardA.dataset.applied, "true", "the applied marker remains when no draft exists");
+    const appliedNote = cardA.children[1];
+    assert.match(appliedNote.textContent, /Applied configuration/);
+    assert.match(appliedNote.textContent, /tablet reports are separate/);
+    assert.equal(buttonA.attrs["aria-describedby"], appliedNote.id, "the applied marker has an accessible description");
+    assert.match(node("stage-applied-content").textContent, /a · Fill wall/);
+    assert.equal(node("stage-applied-content").textContent.includes("source px"), false);
+
+    const confirm = "Image applied. Tablet reports are in the header and Issues.";
+    const render = config.runtime.devices.t.render;
+    Object.assign(render, { state: "displayed", current: true, expected_token: token, accepted_token: { ...token }, age_ms: 0, observed_mono: 100 });
+    content.render(); assert.equal(node("image-message").textContent, confirm);
+    render.accepted_token = { ...token, revision: 1 }; content.render();
+    assert.equal(node("image-message").textContent, confirm, "stale tablet evidence stays in the header and Issues");
+    render.state = "failed"; content.render();
+    assert.equal(node("image-message").textContent, confirm, "tablet failures are not enumerated in the inspector");
+    config.runtime.devices.t.mapping.state = "needs_calibration"; content.render();
+    assert.equal(node("image-message").textContent, confirm, "mapping failures are not enumerated in the inspector");
+    config.runtime.devices.t.mapping.state = "ready";
+    config.runtime.devices.t.online = false; content.render();
+    assert.equal(node("image-message").textContent, confirm, "offline tablets are not enumerated in the inspector");
+    assert.doesNotMatch(node("image-message").textContent, /offline|failed|failure|cannot confirm|stale/i);
+    config.runtime.devices.t.online = true; config.revision = 3; content.render();
+    assert.match(node("image-message").textContent, /changed after this command/);
+    config.revision = 2; content.render();
+    assert.equal(node("image-message").textContent, confirm);
+
+    state.etagState = "stale"; content.render();
+    assert.match(node("image-message").textContent, /^Image applied\. Tablet reports may be stale/);
+    state.etagState = "current";
+    state.rosterError = "offline"; content.render();
+    assert.match(node("image-message").textContent, /stale/);
+    state.rosterError = null; content.render();
+    assert.equal(node("image-message").textContent, confirm);
+
+    failInventory = true; await content.refresh(); content.render(); assert.match(node("image-message").textContent, /library unavailable/);
+    await node("image-select").change({ target: { value: "a" } }); await content.showSelected(); content.render();
+    assert.match(node("image-message").textContent, /library unavailable/, "a retained library error survives a later command");
+    failInventory = false; await content.refresh();
+    await node("image-select").change({ target: { value: "a" } }); release = {};
+    const pending = content.showSelected(); await new Promise(resolve => setImmediate(resolve));
+    content.previewScene({ name: "new", content: { type: "image", asset: "b" } }, "e");
+    release.resolve(config); await pending;
+    assert.equal(state.previewContent.asset, "b"); assert.equal(content.dirty(), true); assert.equal(node("image-discard").hidden, false);
+    assert.equal(node("image-title").textContent, "b");
+    assert.equal(node("image-details").textContent, "100 × 100 source px");
+    assert.match(node("stage-applied-content").textContent, /^Applied: a · Fill wall$/,
+        "the inspector shows draft facts and the stage mode area shows applied content");
+    assert.equal(buttonA.attrs["aria-pressed"], "false", "Show cleared the draft it submitted");
+    assert.equal(buttonB.attrs["aria-pressed"], "true", "a newer draft keeps its own rust outline");
+    assert.equal(cardA.dataset.applied, "true", "Show moves the applied marker to the submitted image");
+    node("image-discard").focus(); content.discard(); assert.equal(document.activeElement, node("image-search"));
+    assert.equal(content.dirty(), false); assert.equal(node("image-select").value, "");
+    assert.equal(cardA.dataset.applied, "true", "Discard never removes the applied marker");
+    assert.equal(buttonB.attrs["aria-pressed"], "false", "Discard removes the rust outline");
+    console.log("Content status, applied/draft ownership, command feedback, error retention and draft races passed");
+})().catch(error => { console.error(error); process.exitCode = 1; });

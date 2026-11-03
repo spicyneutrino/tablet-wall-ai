@@ -21,6 +21,16 @@
 		}
 	}
 
+	@client_icon {
+		method GET HEAD
+		path /client/favicon.svg
+	}
+	handle @client_icon {
+		reverse_proxy 127.0.0.1:{$WALL_BACKEND_PORT:8000} {
+			header_up -X-Tablet-Wall-Operator
+		}
+	}
+
 	@register {
 		method POST
 		path /devices/register

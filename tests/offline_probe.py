@@ -83,7 +83,8 @@ def crawl(instance: drill.Instance) -> dict:
             references = parser.urls
         elif path.endswith(".css"):
             references = [a or b for a, b in CSS_URL.findall(text)]
-        for host in SCHEME_URL.findall(text):
+        executable_text = path.endswith(("/", ".html", ".js", ".css", ".svg"))
+        for host in SCHEME_URL.findall(text) if executable_text else []:
             if host not in NAMESPACES and host != own_host:
                 foreign.append(f"{path}: {host}")
         for reference in references:

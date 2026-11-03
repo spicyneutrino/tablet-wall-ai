@@ -1,29 +1,19 @@
 "use strict";
 
 (function () {
-    const API_CONFIG = "/api/v3/config";
-    const API_DEVICES = "/devices";
     const API_LAYOUT = "/api/v3/layout";
     const API_LAYOUTS = "/api/v3/layouts";
     const API_PLAYLIST = "/api/v3/playlist";
     const API_PLAYBACK = "/api/v3/playback";
     const API_MEDIA = "/media";
     const API_DIAGNOSTICS = "/diagnostics";
-    const REQUEST_TIMEOUT_MS = 10000;
     const PLAYBACK_POLL_MS = 1000;
     const DRAG_THRESHOLD_PX = 3;
     const HISTORY_LIMIT = 80;
-    const WAKE_LOCK_TEXT = {
-        held: "Wake lock held",
-        released: "Wake lock released",
-        unsupported: "Wake lock unsupported",
-        insecure: "Wake lock insecure",
-        denied: "Wake lock denied"
-    };
     const MIN_DWELL_MS = 1000;
     const MAX_DWELL_MS = 600000;
     const TAB_STORAGE_KEY = "tablet-wall-console-tab-v1";
-    const TAB_NAMES = ["show", "tablet", "content", "system"];
+    const TAB_NAMES = ["tablet", "show", "content", "saved", "system"];
     const COMPACT_MEDIA = typeof window.matchMedia === "function"
         ? window.matchMedia("(max-width: 719px)") : null;
 
@@ -60,7 +50,7 @@
         conflictText: document.getElementById("conflict-text"),
         btnConflictReload: document.getElementById("btn-conflict-reload"),
         stageSvg: document.getElementById("stage-svg"),
-        stageScale: document.getElementById("stage-scale"),
+        stageScale: document.getElementById("stage-dimensions"),
         deviceCount: document.getElementById("device-count"),
         wallHealth: document.getElementById("wall-health"),
         btnWallHealth: document.getElementById("btn-wall-health"),
@@ -160,8 +150,6 @@
         btnNudgeXPlus: document.getElementById("btn-nudge-x-plus"),
         btnNudgeYMinus: document.getElementById("btn-nudge-y-minus"),
         btnNudgeYPlus: document.getElementById("btn-nudge-y-plus"),
-        btnApplyLocal: document.getElementById("btn-apply-local"),
-        btnCancelLocal: document.getElementById("btn-cancel-local"),
         inspectorMissing: document.getElementById("inspector-missing"),
         slotMissingText: document.getElementById("slot-missing-text"),
         btnAddSlot: document.getElementById("btn-add-slot"),
@@ -206,31 +194,12 @@
     };
 
     const state = {
-        scene: null,
-        operatorConfig: null,
-        capabilities: {},
         readiness: {},
-        deviceLabels: {},
-        snapshots: {},
         gridPreview: null,
-        readFence: window.OperatorState.readFence(),
-        etag: null,
-        etagState: "missing",
-        revision: null,
-        generation: null,
-        layoutKind: null,
-        configLoaded: false,
         base: null,
         basePlacements: {},
         draft: null,
-        displays: [],
-        calibrations: [],
-        tabletModels: {},
-        tabletAssignments: {},
-        roster: {},
         rosterRefreshPromise: null,
-        rosterCheckedAt: null,
-        rosterError: null,
         rosterLoading: false,
         savedLayouts: [],
         selectedId: null,
@@ -277,20 +246,46 @@
         playbackSettled: false
     };
 
-    let operatorContent = null, operatorGrid = null, operatorDevices = null, operatorReadiness = null, operatorSync = null;
+    let confirmingModels = false, modelBatchReview = null, modelReviewVersion = 0;
+    let operatorContent = null, operatorGrid = null, operatorDevices = null, operatorReadiness = null, workspace = null;
+    const tabletForms = window.OperatorForms.create();
+    const session = window.OperatorSession.create({ onConflict: showConflict, isDirty });
+    const authorityFields = {
+        operatorConfig: view => view.config,
+        scene: view => view.config && view.config.scene,
+        capabilities: view => view.config && view.config.capabilities || {},
+        deviceLabels: view => view.config && view.config.device_labels || {},
+        snapshots: view => view.config && view.config.snapshots || {},
+        roster: view => view.roster,
+        rosterError: view => view.rosterError,
+        connectionText: view => view.transportText,
+        connectionVersions: view => view.connectionVersions,
+        rosterCheckedAt: view => view.rosterCheckedAt,
+        etag: view => view.etag,
+        etagState: view => state.draftConflict ? "stale" : view.etagState,
+        revision: view => view.config && view.config.revision,
+        generation: view => view.config && view.config.generation,
+        layoutKind: view => view.config && view.config.layout.kind,
+        configLoaded: view => !!view.config,
+        displays: view => view.config && view.config.displays || [],
+        calibrations: view => view.config && view.config.calibrations || [],
+        tabletModels: view => view.config && view.config.tablet_models || {},
+        tabletAssignments: view => view.config && view.config.tablet_assignments || {}
+    };
+    for (const [key, read] of Object.entries(authorityFields)) {
+        delete state[key];
+        Object.defineProperty(state, key, { get: () => read(session.view()) });
+    }
+
+    let compositionBusy = false;
+    delete state.busy;
+    Object.defineProperty(state, "busy", { get: () => compositionBusy || session.view().busy, set: value => { compositionBusy = value; } });
 
     const profileCache = new Map();
     const calibrationCache = new Map();
     const deviceRows = new Map();
 
-    class ApiError extends Error {
-        constructor(status, detail) {
-            super(detail);
-            this.name = "ApiError";
-            this.status = status;
-            this.detail = detail;
-        }
-    }
+    const ApiError = window.OperatorSession.ApiError;
 
     class ValidationError extends Error {
         constructor(message) {
@@ -513,8 +508,8 @@
     }
 
     function hasUnsavedEdits() {
-        return isDirty() || state.profileDirty || state.calDirty
-            || operatorContent && operatorContent.dirty() || operatorDevices && operatorDevices.dirty();
+        return isDirty() || tabletForms.dirty() || state.playlistDirty
+            || !!operatorContent && operatorContent.dirty() || !!operatorGrid && operatorGrid.dirty();
     }
 
     function isDirty() {
@@ -589,8 +584,30 @@
         };
     }
 
+    function placementOrder(id) {
+        const layout = state.base || state.draft;
+        if (!layout) return null;
+        const source = layout.kind === "logical" ? (layout.placements || {}) : (layout.slots || layout.placements || {});
+        const items = Object.entries(source).map(function (entry) {
+            return { id: entry[0], x: Number(entry[1] && (entry[1].x ?? entry[1].center_x_mm) || 0), y: Number(entry[1] && (entry[1].y ?? entry[1].center_y_mm) || 0), h: Number(entry[1] && (entry[1].h ?? entry[1].active_height_mm) || 0) };
+        });
+        const heights = items.map(function (item) { return item.h; }).filter(function (value) { return value > 0; }).sort(function (left, right) { return left - right; });
+        const median = heights.length ? heights[Math.floor(heights.length / 2)] : 0;
+        const tolerance = layout.kind === "physical" ? 50 : Math.max(1, median * 0.4);
+        items.sort(function (left, right) {
+            return Math.floor(left.y / tolerance) - Math.floor(right.y / tolerance) || left.x - right.x || left.id.localeCompare(right.id);
+        });
+        const index = items.findIndex(function (item) { return item.id === id; });
+        return index === -1 ? null : index + 1;
+    }
+
     function deviceLabel(id, profile) {
-        return state.deviceLabels[id] || state.roster[id] && state.roster[id].label || (profile && profile.label ? profile.label : "Tablet " + shortId(id));
+        const explicit = state.deviceLabels[id] || state.roster[id] && state.roster[id].label;
+        if (explicit) return explicit;
+        const number = deviceNumber(id);
+        if (number) return "Tablet " + number;
+        const screen = placementOrder(id);
+        return screen ? "Screen " + screen : "Unplaced tablet";
     }
 
     function deviceNumber(id) {
@@ -614,11 +631,14 @@
 
     function numberTag(id) {
         const number = deviceNumber(id);
-        return number === null ? "#–" : "#" + number;
+        if (number !== null) return "#" + number;
+        const screen = placementOrder(id);
+        return screen ? "S" + screen : "—";
     }
 
     function numberedLabel(id, profile) {
-        return numberTag(id) + " · " + deviceLabel(id, profile);
+        const label = deviceLabel(id, profile), number = deviceNumber(id);
+        return label === "Tablet " + number ? label : label + (number ? " · Tablet " + number : "");
     }
 
     function isOnline(id) {
@@ -683,9 +703,10 @@
 
     function tabEntries() {
         return [
-            { name: "show", tab: el.tabShow, panel: el.panelShow },
-            { name: "tablet", tab: el.tabTablet, panel: el.panelTablet },
             { name: "content", tab: el.tabContent, panel: el.panelContent },
+            { name: "tablet", tab: el.tabTablet, panel: el.panelTablet },
+            { name: "show", tab: el.tabShow, panel: el.panelShow },
+            { name: "saved", tab: document.getElementById("tab-saved"), panel: document.getElementById("panel-saved") },
             { name: "system", tab: el.tabSystem, panel: el.panelSystem }
         ];
     }
@@ -709,6 +730,12 @@
     }
 
     function showTab(name, options) {
+        return workspace ? workspace.open(name, options) : commitTask(name, options);
+    }
+
+    function resolveOutput(reason, except) { return workspace ? workspace.resolve(reason, except) : Promise.resolve(true); }
+
+    function commitTask(name, options) {
         const settings = options || {};
         const entries = tabEntries();
         const resolved = name;
@@ -738,9 +765,12 @@
             state.tabDecided = true;
         }
         if (settings.focus) {
-            try { target.tab.focus({ preventScroll: true }); }
-            catch (error) { target.tab.focus(); }
+            const heading = target.panel.querySelector(".task-title") || target.tab;
+            heading.focus({ preventScroll: true });
         }
+        if (workspace) workspace.render();
+        if (changed) renderStage();
+        if (changed && name === "saved") { loadLayouts(); loadScenes(); }
         return true;
     }
 
@@ -766,18 +796,18 @@
         if (next === null) return;
 
         event.preventDefault();
-        showTab(entries[next].name, { focus: true, persist: true });
+        Promise.resolve(showTab(entries[next].name, { persist: true })).then(opened => { if (opened) entries[next].tab.focus(); });
     }
 
     function onCompactChange() {
-        showTab(state.tabName || readStoredTab() || "show", { persist: false });
+        showTab(state.tabName || readStoredTab() || "content", { persist: false });
     }
 
     function maybeChooseInitialTab() {
         if (state.tabDecided) return;
         if (!state.configLoaded) return;
         state.tabDecided = true;
-        const name = "show";
+        const name = Object.keys(window.OperatorState.entries(state.base)).length ? "content" : "tablet";
         showTab(name, { persist: false });
     }
 
@@ -789,6 +819,8 @@
         if (el.tabContentDot) {
             el.tabContentDot.hidden = !state.playlistDirty;
         }
+        if (el.tabTablet) el.tabTablet.setAttribute("aria-label", el.tabTabletDot && !el.tabTabletDot.hidden ? "Tablets, unsaved changes" : "Tablets");
+        if (el.tabContent) el.tabContent.setAttribute("aria-label", el.tabContentDot && !el.tabContentDot.hidden ? "Images, playlist draft" : "Images");
     }
 
     function syncTopbarTransport() {
@@ -846,9 +878,9 @@
 
     function showConflict(detail) {
         el.conflictText.textContent = detail
-            + " Your draft is kept. Reload the configuration to continue; reloading discards the draft after you confirm.";
+            + " Local edits are retained. Review the relevant comparison or rebuild the preview before applying. Reload asks before discarding wall edits.";
         el.conflictPanel.hidden = false;
-        state.etagState = "stale";
+        state.draftConflict = isDirty() || !!operatorGrid && operatorGrid.dirty() || !!operatorContent && operatorContent.dirty();
         syncMeta();
         syncDraftUi();
     }
@@ -881,149 +913,48 @@
      * HTTP
      * ---------------------------------------------------------------- */
 
-    function detailFromPayload(payload, status) {
-        if (!payload || payload.detail === undefined) return "HTTP " + status;
-        const detail = payload.detail;
-        if (typeof detail === "string") return detail;
-        if (Array.isArray(detail)) {
-            return detail.map(function (item) {
-                if (typeof item === "string") return item;
-                if (!item || typeof item !== "object") return String(item);
-                const where = Array.isArray(item.loc) ? item.loc.join(".") : "";
-                const msg = item.msg || JSON.stringify(item);
-                return where ? where + ": " + msg : msg;
-            }).join("; ");
-        }
-        if (typeof detail === "object") return (detail.message || detail.code || "Request conflict") + (detail.conflicts ? ": " + JSON.stringify(detail.conflicts) : "");
-        return String(detail);
+    function api(method, path, body, options) {
+        return session.request(method, path, body, options);
     }
-
-    async function api(method, path, body, options) {
-        const settings = options || {};
-        const configAtSend = state.operatorConfig;
-        const init = { method: method, headers: { "Accept": "application/json" } };
-        if (body !== undefined) {
-            init.headers["Content-Type"] = "application/json";
-            init.body = JSON.stringify(body);
-        }
-        if (settings.etag) {
-            if (!state.etag) throw new ApiError(428, "No configuration ETag is loaded.");
-            if (state.etagState === "stale") throw new ApiError(412, "Reload the configuration before saving.");
-            init.headers["If-Match"] = state.etag;
-        }
-        if (settings.ifMatch) {
-            init.headers["If-Match"] = settings.ifMatch;
-        }
-
-        let timer = null;
-        if (typeof AbortController === "function") {
-            const controller = new AbortController();
-            init.signal = controller.signal;
-            timer = setTimeout(function () { controller.abort(); }, REQUEST_TIMEOUT_MS);
-        }
-
-        let response;
-        try {
-            response = await fetch(path, init);
-        } catch (error) {
-            throw new ApiError(0, error && error.name === "AbortError"
-                ? "request timed out" : "server unreachable");
-        } finally {
-            if (timer) clearTimeout(timer);
-        }
-
-        let payload = null;
-        try {
-            payload = await response.json();
-        } catch (error) {
-            payload = null;
-        }
-        if (!response.ok) {
-            throw new ApiError(response.status, detailFromPayload(payload, response.status));
-        }
-        const current = state.operatorConfig;
-        if (method !== "GET" && payload && payload.layout && current && current !== configAtSend
-                && (current.etag === payload.etag || current.etag !== init.headers["If-Match"])) {
-            return Object.assign({}, payload, current);
-        }
-        return payload;
-    }
-
-    /* ---------------------------------------------------------------- *
-     * Configuration load and draft lifecycle
-     * ---------------------------------------------------------------- */
 
     function ingestConfig(config, options) {
-        if (!config || typeof config !== "object") {
-            throw new Error("The server returned an empty configuration.");
+        session.ingest(config, options || {});
+        if (config.previous_layout_saved) { showReturnPoint(config); loadLayouts(); }
+    }
+
+    function observeSession(view, settings = {}) {
+        if (!view.uncertain && document.activeElement === document.getElementById("refresh-command-status")) {
+            document.querySelector('[role="tabpanel"]:not([hidden]) .task-title').focus({ preventScroll: true });
         }
-        if (!config.layout || !["logical", "physical", undefined].includes(config.layout.kind)
-                || config.operator_state_version !== undefined && config.operator_state_version !== 1) {
-            state.etagState = "stale";
-            showError("Unsupported operator configuration. Update the console before editing; no replacement layout has been created.");
-            el.layoutKindNote.textContent = "Configuration upgrade required. The current layout cannot be edited by this console version.";
-            syncDraftUi();
-            if (operatorContent) operatorContent.render();
-            if (operatorDevices) operatorDevices.render();
-            return;
+        document.getElementById("command-uncertainty").hidden = !view.uncertain;
+        if (!view.config) { renderAll(); return; }
+        if (settings.runtime) { renderAll(); return; }
+        const config = view.config, firstConfig = !state.base;
+        const dirty = isDirty(), keepDraft = settings.preserveDraft && dirty;
+        const conflict = keepDraft && settings.remote && state.draftBaseEtag !== config.etag;
+        if (!keepDraft) {
+            state.base = window.OperatorState.layoutDraft(config.layout);
+            state.basePlacements = clone(config.layout.placements || {});
+            state.draft = clone(state.base);
+            state.draftBaseEtag = config.etag;
+            state.draftConflict = false;
+            state.undo = []; state.redo = [];
+            state.gridPreview = null;
+            state.viewLive = false;
         }
-        const firstConfig = !state.configLoaded;
-        const settings = options || {};
-        const keepDraft = settings.preserveDraft && state.configLoaded && hasUnsavedEdits();
-        const oldDraft = state.draft, oldBase = state.base, oldEtag = state.etag;
-        const conflicting = keepDraft && settings.remote && config.etag !== oldEtag;
-        state.readFence.event();
-        config = window.OperatorState.observeConfig(config, performance.now());
-        state.operatorConfig = config;
-        state.scene = config.scene || null;
-        state.capabilities = config.capabilities || {};
-        // Readiness comes from GET /api/v3/readiness, not this config snapshot.
-        // A config seed only fills the gap until the first real read succeeds.
-        if (!state.readinessFetchedAt) {
-            state.readiness = config.readiness || config.runtime && config.runtime.readiness || {};
-        }
-        state.deviceLabels = config.device_labels || {};
-        state.snapshots = config.snapshots || {};
-        if (config.runtime && config.runtime.devices) state.roster = config.runtime.devices;
-        state.etag = typeof config.etag === "string" && config.etag ? config.etag : null;
-        state.etagState = state.etag ? "current" : "missing";
-        state.revision = config.revision === undefined ? null : config.revision;
-        state.generation = config.generation === undefined ? null : config.generation;
-        state.layoutKind = config.layout && config.layout.kind ? config.layout.kind : null;
-        state.configLoaded = true;
-        state.displays = Array.isArray(config.displays) ? config.displays : [];
-        state.calibrations = Array.isArray(config.calibrations) ? config.calibrations : [];
-        state.tabletModels = config.tablet_models || {};
-        state.tabletAssignments = config.tablet_assignments || {};
+        if (conflict) state.draftConflict = true;
         state.displays.forEach(rememberProfile);
         state.calibrations.forEach(rememberCalibration);
         (config.referenced_displays || []).forEach(rememberProfile);
         (config.referenced_calibrations || []).forEach(rememberCalibration);
-        state.basePlacements = config.layout && config.layout.kind !== "physical"
-            && config.layout.placements && typeof config.layout.placements === "object"
-            ? clone(config.layout.placements) : {};
-        state.base = window.OperatorState.layoutDraft(config.layout);
+        if (!state.readinessFetchedAt) state.readiness = config.readiness || {};
         restorePlaybackExclusions();
-        state.draft = keepDraft ? oldDraft : clone(state.base);
-        if (conflicting) { state.base = oldBase; state.etag = oldEtag; state.etagState = "stale"; }
-        if (settings.resetHistory !== false && !keepDraft) {
-            state.undo = [];
-            state.redo = [];
-        }
-        state.drag = null;
-        if (settings.resetForms) {
-            state.formDeviceId = null;
-            state.profileDirty = false;
-            state.calDirty = false;
-        }
         ensureSelection();
-        if (settings.resetForms && !keepDraft) { if (operatorContent) operatorContent.discard(); if (operatorDevices) operatorDevices.discard(); }
-        if (conflicting) showConflict("Configuration changed while you were editing. Your draft is retained with its original ETag. Reload to discard it and review current state.");
-        else hideConflict();
-        state.rosterCheckedAt = new Date().toISOString();
-        renderAll();
-        maybeChooseInitialTab();
-        if (firstConfig) announce("Wall configuration loaded. Image display is confirmed separately for each tablet.", "info");
+        if (conflict) showConflict("The wall changed. Your arrangement preview and its original guard are retained. Review the live wall, then rebuild or discard the preview.");
+        else if (!state.draftConflict) hideConflict();
+        renderAll(); maybeChooseInitialTab();
+        if (firstConfig) announce(Object.keys(window.OperatorState.entries(state.base)).length ? "Wall connected. Review current tablet reports."
+            : Object.values(state.roster).some(device => device.online) ? "Wall connected. Arrange connected tablets." : "Wall connected. Add tablets to begin.");
     }
 
     function ensureSelection() {
@@ -1034,38 +965,26 @@
     }
 
     async function loadConfig() {
-        if (state.busy) return false;
-        state.busy = true;
-        syncDraftUi();
-        const ticket = state.readFence.start();
         try {
-            const results = await Promise.all([
-                api("GET", API_CONFIG),
-                api("GET", API_DEVICES)
-            ]);
-            if (!state.readFence.accept(ticket)) return false;
+            tabletForms.clear();
+            state.formDeviceId = null;
+            state.profileDirty = false; state.calDirty = false;
+            if (operatorContent) operatorContent.discard();
             state.gridPreview = null;
-            state.roster = results[1] && typeof results[1] === "object" ? results[1] : {};
-            state.rosterCheckedAt = new Date().toISOString();
-            state.rosterError = null;
-            ingestConfig(results[0], { resetHistory: true, resetForms: true });
-            clearError();
-            announce("Loaded wall revision " + (state.revision === null ? "?" : state.revision) + ".", "ok");
-            return true;
-        } catch (error) {
-            const detail = errorDetail(error);
-            showError("Could not load the configuration: " + detail);
-            announce("Could not load the configuration.", "err");
-            return false;
-        } finally {
-            state.busy = false;
-            syncDraftUi();
-        }
+            state.draftConflict = false;
+            state.draft = state.base ? clone(state.base) : null;
+            if (operatorGrid) operatorGrid.reset();
+            await session.refresh();
+            const config = session.view().config;
+            if (!config) throw new Error("Configuration unavailable.");
+            observeSession(session.view());
+            clearError(); return true;
+        } catch (error) { showError(error.message); return false; }
     }
 
     async function reloadConfigWithConfirm() {
         if (state.busy) return;
-        const hasUnsaved = hasUnsavedEdits();
+        const hasUnsaved = isDirty() || tabletForms.dirty() || operatorContent.dirty() || operatorGrid.dirty();
         if (hasUnsaved && !window.confirm(
             "Reload the configuration and discard unapplied layout changes, image selection and unsaved tablet fields?"
         )) {
@@ -1077,14 +996,18 @@
     function renderAll() {
         syncMeta();
         syncDraftUi();
-        if (operatorContent) { operatorContent.render(); operatorContent.detectUploads(); }
+        if (operatorContent) operatorContent.render();
         renderDeviceList();
         renderStage();
-        populateDeviceCard(false);
+        populateDeviceCard();
         renderPlayback();
         if (operatorGrid) operatorGrid.render();
         if (operatorDevices) operatorDevices.render();
         if (operatorReadiness) operatorReadiness.render();
+        if (workspace) workspace.render();
+        renderLogicalEditor();
+        const colourSubject = document.getElementById("diagnostic-colour-subject");
+        if (colourSubject) colourSubject.textContent = state.selectedId ? "Selected · " + numberedLabel(state.selectedId) : "Select a tablet in Tablets.";
     }
 
     function syncMeta() {
@@ -1111,11 +1034,11 @@
         }
 
         if (state.layoutKind === "physical") {
-            el.layoutKindNote.textContent = "Measured wall (mm). Pinned measurements; model dimensions remain approximate.";
+            el.layoutKindNote.textContent = "Measured arrangement · millimetres. Model dimensions remain approximate.";
             el.boundsNote.textContent = "Values describe the draft in millimetres. Apply layout to save changes.";
         } else if (state.layoutKind === "logical") {
-            el.layoutKindNote.textContent = "Logical wall (unit-based). No millimetre conversion. Change kind explicitly in Layout & size.";
-            el.boundsNote.textContent = "Physical bounds are unavailable for a logical layout. Use Layout & size in Wall or the labelled compatibility editor.";
+            el.layoutKindNote.textContent = "Quick arrangement · relative screen shapes. Use Match real sizes for measured continuity.";
+            el.boundsNote.textContent = "Physical bounds are unavailable for a logical layout. Use the relative arrangement fields in Arrange.";
         } else {
             el.layoutKindNote.textContent = "No wall configuration is loaded.";
             el.boundsNote.textContent = "";
@@ -1144,11 +1067,6 @@
         el.btnPackTablets.disabled = state.busy || !fitted;
     }
 
-    function syncLocalDraftActions() {
-        if (el.btnApplyLocal) el.btnApplyLocal.disabled = el.btnApply.disabled;
-        if (el.btnCancelLocal) el.btnCancelLocal.disabled = el.btnCancel.disabled;
-    }
-
     function syncDraftUi() {
         renderCalibrationHelper();
         if (!state.draft) {
@@ -1161,15 +1079,14 @@
             el.boundsMode.disabled = true;
             el.boundsPadding.disabled = true;
             el.btnPackTablets.disabled = true;
-            syncLocalDraftActions();
             updateSavedButtons();
             syncInspector();
             syncTabDots();
             return;
         }
 
-        const dirty = isDirty();
-        if (dirty) {
+        const dirty = isDirty(), inputDirty = operatorGrid && operatorGrid.dirty();
+        if (dirty || inputDirty) {
             el.draftFlag.textContent = "Unapplied changes";
             el.draftFlag.dataset.dirty = "true";
         } else if (state.base) {
@@ -1184,7 +1101,7 @@
         el.btnApply.disabled = state.busy || !state.etag || state.etagState !== "current" || !!sizingError()
             || !dirty || (emptyPhysical && !state.gridPreview);
         el.btnApply.title = emptyPhysical ? "This arrangement has no tablets. Use an explicit Remove action to clear a slot." : "Apply the entire previewed layout once";
-        el.btnCancel.disabled = state.busy || !dirty;
+        el.btnCancel.disabled = state.busy || !dirty && !inputDirty;
         el.btnUndo.disabled = state.busy || state.undo.length === 0;
         el.btnRedo.disabled = state.busy || state.redo.length === 0;
         el.btnReload.disabled = state.busy;
@@ -1194,7 +1111,6 @@
         el.btnLayoutsRefresh.disabled = state.busy;
         el.btnConflictReload.disabled = state.busy;
 
-        syncLocalDraftActions();
         syncBoundsInputs();
         updateSavedButtons();
         syncInspector();
@@ -1220,13 +1136,30 @@
             else if (result.bounds) clearMsg(el.sizingMsg);
             else setMsg(el.sizingMsg, "Add tablets to fit the wall. The last wall bounds are kept.", "info");
         }
+        if (state.draft && !(state.drag && state.drag.moved)) window.OperatorState.fitLogical(state.draft);
         syncDraftUi();
         renderStage();
+        renderLogicalEditor();
+        if (operatorGrid) operatorGrid.render();
+        if (workspace) workspace.render();
         renderPlaybackPreflight(playbackPreflight());
     }
 
+    function canManualEdit() {
+        if (operatorGrid && operatorGrid.dirty()) { showError("Finish or discard the grid proposal before adjusting individual positions."); return false; }
+        if (operatorContent && operatorContent.dirty()) { showError("Show or discard the image preview before adjusting the arrangement."); return false; }
+        return true;
+    }
+
+    function beginManual() {
+        if (operatorGrid) operatorGrid.freezeSelection();
+        if (!isDirty()) state.draftBaseEtag = state.etag;
+        state.viewLive = false;
+    }
+
     function mutateDraft(mutator) {
-        if (!state.draft || state.draft.kind !== "physical" || state.gridPreview || state.busy) return false;
+        if (!state.draft || state.gridPreview || state.busy || !canManualEdit()) return false;
+        beginManual();
         const before = clone(state.draft);
         mutator(state.draft);
         if (layoutSignature(before) === layoutSignature(state.draft)) return false;
@@ -1236,7 +1169,7 @@
     }
 
     function undoDraft() {
-        if (state.busy || state.drag || state.undo.length === 0) return;
+        if (state.busy || state.drag || state.undo.length === 0 || !canManualEdit()) return;
         const current = clone(state.draft);
         state.draft = state.undo.pop();
         state.redo.push(current);
@@ -1245,7 +1178,7 @@
     }
 
     function redoDraft() {
-        if (state.busy || state.drag || state.redo.length === 0) return;
+        if (state.busy || state.drag || state.redo.length === 0 || !canManualEdit()) return;
         const current = clone(state.draft);
         state.draft = state.redo.pop();
         state.undo.push(current);
@@ -1254,32 +1187,28 @@
     }
 
     function cancelDraft() {
-        if (!state.draft || !state.base || state.busy) return;
-        if (state.gridPreview && operatorGrid) { operatorGrid.cancel(); return; }
-        const before = clone(state.draft);
-        state.draft = clone(state.base);
-        state.drag = null;
-        pushUndo(before);
-        afterDraftChange();
-        announce("Draft restored from the committed layout.");
+        if (state.busy) return;
+        observeSession(session.view());
+        if (operatorGrid) operatorGrid.cancel();
+        announce("Arrangement discarded. The live wall is unchanged.");
     }
 
     async function applyLayout() {
         if (!state.draft || !state.etag || state.busy || state.etagState !== "current") return;
         if (state.gridPreview && operatorGrid) { await operatorGrid.apply(); return; }
-        if (state.draft.kind !== "physical" || Object.keys(state.draft.slots).length === 0) {
+        if (state.draft.kind === "physical" && Object.keys(state.draft.slots).length === 0) {
             showError("An empty measured draft cannot be applied. Use a deliberate Remove action to clear an active slot."); return;
         }
         clearError();
         setBusy(true);
         try {
-            const body = {
-                bounds: clone(state.draft.bounds),
-                slots: clone(state.draft.slots),
-                sizing: clone(state.draft.sizing)
-            };
-            const payload = await api("PUT", API_LAYOUT, body, { etag: true });
+            const body = state.draft.kind === "physical" ? {
+                bounds: clone(state.draft.bounds), slots: clone(state.draft.slots), sizing: clone(state.draft.sizing)
+            } : { width: state.draft.width, height: state.draft.height,
+                placements: clone(state.draft.placements), sizing: clone(state.draft.sizing) };
+            const payload = await api("PUT", state.draft.kind === "physical" ? API_LAYOUT : "/api/v3/logical-layout", body, { ifMatch: state.draftBaseEtag });
             ingestConfig(payload, { resetHistory: true });
+            showReturnPoint(payload);
             await loadLayouts();
             clearError();
             hideConflict();
@@ -1302,11 +1231,90 @@
      * ---------------------------------------------------------------- */
 
     const {
-        addSelectedDevice, deleteSelectedSlot, endDrag, nudgeSelected, onPointerCancel, onPointerDown, onPointerMove, onPointerUp, renderDeviceHealth, renderDeviceList, renderStage, rotateSelected, selectDevice, syncInspector
+        addSelectedDevice, deleteSelectedSlot, endDrag, nudgeSelected, onPointerCancel, onPointerDown, onPointerMove, onPointerUp, renderDeviceHealth, renderDeviceList, renderStage: drawStage, rotateSelected, selectDevice, syncInspector
     } = window.PhysicalStage.create({
-        selectionChanged: () => { if (operatorDevices) operatorDevices.render(); },
-        DRAG_THRESHOLD_PX, WAKE_LOCK_TEXT, afterDraftChange, announce, bodyMetrics, calibrationFor, calibrationStatus, clearMsg, clone, compactView, deviceEntries, deviceLabel, deviceNumber, deviceRows, el, finiteOr, formatNumber, isOnline, latestProfile, mutateDraft, numberedLabel, populateDeviceCard, profileFor, pushUndo, roundTo, selectedSlot, setInputValue, shortId, showError, showTab, state, syncTabDots, validPair
+        selectionChanged: () => {
+            if (operatorDevices) operatorDevices.render(); renderLogicalEditor();
+            if (state.tabName === "show") document.getElementById("arrange-custom").open = true;
+        },
+        DRAG_THRESHOLD_PX, afterDraftChange, announce, bodyMetrics, calibrationFor, beginManual, canManualEdit, clearMsg, clone, deviceEntries, deviceLabel, deviceNumber, deviceRows, el, finiteOr, formatNumber, isOnline, latestProfile, mutateDraft, numberTag, numberedLabel, populateDeviceCard, profileFor, pushUndo, roundTo, selectedSlot, setInputValue, showError, showTab, state, syncTabDots, validPair
     });
+
+    const logicalFields = new Map();
+    function renderLogicalEditor() {
+        const box = document.getElementById("logical-editor"), draft = state.draft;
+        if (!box) return;
+        box.hidden = !draft || draft.kind !== "logical";
+        if (box.hidden) return;
+        const placement = draft.placements[state.selectedId];
+        for (const [field, input] of logicalFields) {
+            const value = placement && (field.startsWith("bezel-") ? placement.bezel[field.slice(6)] : placement[field]);
+            input.disabled = !placement || !!state.gridPreview;
+            if (document.activeElement !== input) input.value = value === undefined ? "" : value;
+            input.dataset.deviceId = state.selectedId || "";
+        }
+        for (const [id, value] of [["logical-width", draft.width], ["logical-height", draft.height],
+            ["logical-padding", draft.sizing.padding], ["logical-mode", draft.sizing.mode]]) {
+            const input = document.getElementById(id);
+            if (document.activeElement !== input) input.value = value;
+        }
+        for (const id of ["logical-width", "logical-height"]) document.getElementById(id).readOnly = draft.sizing.mode === "tablets";
+        document.getElementById("logical-message").textContent = placement ? "Editing " + numberedLabel(state.selectedId) + ". Apply arrangement writes all reviewed geometry once." : "Select a placed tablet to edit its position and size.";
+    }
+
+    function bindLogicalEditor() {
+        const fields = document.getElementById("logical-fields");
+        for (const [field, name] of [["x", "X"], ["y", "Y"], ["w", "Width"], ["h", "Height"],
+            ["bezel-top", "Top bezel"], ["bezel-right", "Right bezel"], ["bezel-bottom", "Bottom bezel"], ["bezel-left", "Left bezel"]]) {
+            const label = document.createElement("label"); label.className = "field";
+            label.textContent = name + " (relative units)";
+            const input = document.createElement("input"); input.className = "inp"; input.type = "number"; input.step = "1";
+            input.id = "logical-" + field; input.dataset.field = field; label.htmlFor = input.id;
+            label.append(input); fields.append(label); logicalFields.set(field, input);
+            input.addEventListener("change", () => {
+                const id = input.dataset.deviceId, value = Number(input.value);
+                if (!input.value || !Number.isInteger(value) || ((field === "w" || field === "h") ? value < 1 : field.startsWith("bezel-") && value < 0)) { markInvalid(input, true); return; }
+                markInvalid(input, false);
+                mutateDraft(draft => {
+                    const p = draft.placements[id];
+                    if (!p) return;
+                    if (field.startsWith("bezel-")) p.bezel[field.slice(6)] = value; else p[field] = value;
+                });
+            });
+        }
+        for (const [id, field] of [["logical-width", "width"], ["logical-height", "height"], ["logical-padding", "padding"], ["logical-mode", "mode"]]) {
+            document.getElementById(id).addEventListener("change", event => {
+                const value = field === "mode" ? event.target.value : Number(event.target.value);
+                if (field !== "mode" && (!Number.isInteger(value) || value < (field === "padding" ? 0 : 1))) { markInvalid(event.target, true); return; }
+                markInvalid(event.target, false);
+                mutateDraft(draft => { if (["mode", "padding"].includes(field)) draft.sizing[field] = value; else draft[field] = value; });
+            });
+        }
+        document.getElementById("logical-rotate").addEventListener("click", rotateSelected);
+        for (const id of ["tile", "pack"]) document.getElementById("logical-" + id).addEventListener("click", () => {
+            try {
+                const draft = clone(state.draft), scope = document.getElementById("logical-tile-scope").value;
+                const ids = scope === "placed" ? Object.keys(draft.placements)
+                    : Object.keys(state.roster).filter(key => scope === "all" || state.roster[key].online);
+                const order = [...document.querySelectorAll("#grid-order [data-device-id]")].map(row => row.dataset.deviceId);
+                ids.sort(document.getElementById("logical-tile-order").value === "id" ? (a, b) => a.localeCompare(b)
+                    : (a, b) => (order.includes(a) ? order.indexOf(a) : Infinity) - (order.includes(b) ? order.indexOf(b) : Infinity) || compareDeviceIds(a, b));
+                const aspects = {};
+                for (const key of ids) {
+                    const viewport = state.roster[key]?.viewport;
+                    if (viewport?.width > 0 && viewport.height > 0) aspects[key] = viewport.width / viewport.height;
+                    draft.placements[key] ||= { x: 0, y: 0, w: Math.max(1, Math.round(100 * (aspects[key] || 1))), h: 100,
+                        bezel: { top: 0, right: 0, bottom: 0, left: 0 } };
+                }
+                const arranged = window.OperatorState.arrangeLogical(draft, ids, { columns: Number(document.getElementById("logical-tile-columns").value),
+                    rows: Number(document.getElementById("logical-tile-rows").value), gap: Number(document.getElementById("logical-tile-gap").value), tile: id === "tile", aspects,
+                    preserveAspect: document.getElementById("logical-tile-shape").value !== "fill" });
+                mutateDraft(next => Object.assign(next, arranged));
+            } catch (error) { document.getElementById("logical-message").textContent = error.message; }
+        });
+    }
+
+    function renderStage() { if (workspace) workspace.render(); drawStage(); }
 
     function bindNumberInput(input, write, validate) {
         let before = null;
@@ -1316,10 +1324,12 @@
         });
 
         input.addEventListener("input", function () {
+            if (!canManualEdit()) return;
             const value = num(input.value);
             const valid = value !== null && (!validate || validate(value));
             markInvalid(input, !valid);
             if (!valid) return;
+            beginManual();
             if (write(value)) afterDraftChange();
         });
 
@@ -1339,8 +1349,10 @@
     }
 
     function bindSlotField(input, field) {
+        let subject = null;
+        input.addEventListener("focus", () => { subject = state.selectedId; });
         bindNumberInput(input, function (value) {
-            const slot = selectedSlot();
+            const slot = state.draft && state.draft.slots[subject];
             if (!slot || slot[field] === value) return false;
             slot[field] = value;
             return true;
@@ -1469,26 +1481,9 @@
         };
     }
 
-    function replaceDisplay(display) {
-        rememberProfile(display);
-        state.displays = state.displays.filter(function (item) {
-            return item.device_id !== display.device_id;
-        });
-        state.displays.push(display);
-    }
-
-    function replaceCalibration(calibration) {
-        rememberCalibration(calibration);
-        state.calibrations = state.calibrations.filter(function (item) {
-            return item.device_id !== calibration.device_id;
-        });
-        state.calibrations.push(calibration);
-    }
-
-    function profileDefaults(profile) {
-        const id = state.selectedId;
+    function profileDefaults(profile, id = state.selectedId) {
         return {
-            label: profile ? profile.label : "Tablet " + shortId(id),
+            label: profile ? profile.label : deviceLabel(id, profile),
             provenance: profile ? profile.provenance : "manual",
             activeWidth: profile ? profile.active_width_mm : "",
             activeHeight: profile ? profile.active_height_mm : "",
@@ -1499,20 +1494,20 @@
         };
     }
 
+    function profileFieldValues(profile, id = state.selectedId) {
+        const values = profileDefaults(profile, id);
+        return {
+            "profile-active-width": formatNumber(values.activeWidth, 3), "profile-active-height": formatNumber(values.activeHeight, 3),
+            "profile-bezel-top": formatNumber(values.bezels.top, 3), "profile-bezel-right": formatNumber(values.bezels.right, 3),
+            "profile-bezel-bottom": formatNumber(values.bezels.bottom, 3), "profile-bezel-left": formatNumber(values.bezels.left, 3),
+            "profile-label": values.label, "profile-provenance": values.provenance,
+            "profile-pixel-width": values.panelPixels ? formatNumber(values.panelPixels.width, 0) : "",
+            "profile-pixel-height": values.panelPixels ? formatNumber(values.panelPixels.height, 0) : ""
+        };
+    }
+
     function fillProfileForm(profile) {
-        const values = profileDefaults(profile);
-        setInputValue(el.profileActiveWidth, formatNumber(values.activeWidth, 3));
-        setInputValue(el.profileActiveHeight, formatNumber(values.activeHeight, 3));
-        setInputValue(el.profileBezelTop, formatNumber(values.bezels.top, 3));
-        setInputValue(el.profileBezelRight, formatNumber(values.bezels.right, 3));
-        setInputValue(el.profileBezelBottom, formatNumber(values.bezels.bottom, 3));
-        setInputValue(el.profileBezelLeft, formatNumber(values.bezels.left, 3));
-        setInputValue(el.profileLabel, values.label);
-        setInputValue(el.profileProvenance, values.provenance);
-        setInputValue(el.profilePixelWidth, values.panelPixels
-            ? formatNumber(values.panelPixels.width, 0) : "");
-        setInputValue(el.profilePixelHeight, values.panelPixels
-            ? formatNumber(values.panelPixels.height, 0) : "");
+        for (const [id, value] of Object.entries(profileFieldValues(profile))) setInputValue(document.getElementById(id), value);
         state.profileDirty = false;
     }
 
@@ -1524,34 +1519,27 @@
         el.calMode.value = viewport ? viewport.mode : "";
     }
 
+    function calibrationFieldValues(calibration, profile, id = state.selectedId) {
+        const v = window.PhysicalCalibration.selectedViewport(state.roster, id);
+        const c = calibration;
+        return {
+            "cal-profile-revision": c ? formatNumber(c.profile_revision, 0) : profile ? formatNumber(profile.revision, 0) : "",
+            "cal-viewport-width": c ? formatNumber(c.viewport_width, 3) : v ? String(v.width) : "",
+            "cal-viewport-height": c ? formatNumber(c.viewport_height, 3) : v ? String(v.height) : "",
+            "cal-dpr": c ? formatNumber(c.dpr, 4) : v ? String(v.dpr) : "",
+            "cal-orientation": c ? String(c.orientation) : v ? String(v.orientation) : "",
+            "cal-mode": c ? c.mode : v ? v.mode : "", "cal-quarter-turn": c ? String(c.quarter_turn) : "0",
+            "cal-anchor-edge": c ? c.anchor_edge : "top-left",
+            "cal-offset-x": c ? formatNumber(c.panel_offset_mm[0], 3) : "", "cal-offset-y": c ? formatNumber(c.panel_offset_mm[1], 3) : "",
+            "cal-mm-css-x": c ? formatNumber(c.mm_per_css[0], 6) : "", "cal-mm-css-y": c ? formatNumber(c.mm_per_css[1], 6) : "",
+            "cal-uncertainty": c ? formatNumber(c.uncertainty_mm, 3) : "", "cal-method": c ? c.method : "manual"
+        };
+    }
+
     function fillCalibrationForm(calibration, profile) {
-        if (calibration) {
-            setInputValue(el.calProfileRevision, formatNumber(calibration.profile_revision, 0));
-            setInputValue(el.calViewportWidth, formatNumber(calibration.viewport_width, 3));
-            setInputValue(el.calViewportHeight, formatNumber(calibration.viewport_height, 3));
-            setInputValue(el.calDpr, formatNumber(calibration.dpr, 4));
-            setSelectValue(el.calOrientation, calibration.orientation);
-            setSelectValue(el.calMode, calibration.mode);
-            setSelectValue(el.calQuarterTurn, calibration.quarter_turn);
-            setSelectValue(el.calAnchorEdge, calibration.anchor_edge);
-            setInputValue(el.calOffsetX, formatNumber(calibration.panel_offset_mm[0], 3));
-            setInputValue(el.calOffsetY, formatNumber(calibration.panel_offset_mm[1], 3));
-            setInputValue(el.calMmCssX, formatNumber(calibration.mm_per_css[0], 6));
-            setInputValue(el.calMmCssY, formatNumber(calibration.mm_per_css[1], 6));
-            setInputValue(el.calUncertainty, formatNumber(calibration.uncertainty_mm, 3));
-            setInputValue(el.calMethod, calibration.method);
-        } else {
-            setInputValue(el.calProfileRevision, profile
-                ? formatNumber(profile.revision, 0) : "");
-            fillViewport(window.PhysicalCalibration.selectedViewport(state.roster, state.selectedId));
-            setSelectValue(el.calQuarterTurn, 0);
-            setSelectValue(el.calAnchorEdge, "top-left");
-            setInputValue(el.calOffsetX, "");
-            setInputValue(el.calOffsetY, "");
-            setInputValue(el.calMmCssX, "");
-            setInputValue(el.calMmCssY, "");
-            setInputValue(el.calUncertainty, "");
-            setInputValue(el.calMethod, "manual");
+        for (const [id, value] of Object.entries(calibrationFieldValues(calibration, profile))) {
+            const input = document.getElementById(id);
+            if (input.tagName === "SELECT") setSelectValue(input, value); else setInputValue(input, value);
         }
         state.calDirty = false;
     }
@@ -1605,7 +1593,7 @@
         try {
             context = rulerContext();
             rulerReview.begin(context.key);
-            state.calDirty = true;
+            rememberFields("calibration");
             syncTabDots();
             const preview = document.getElementById("cal-ruler-preview");
             preview.hidden = false;
@@ -1670,7 +1658,7 @@
                     return result.extrapolated_uncertainty.measured_mm;
                 })));
                 setInputValue(el.calMethod, "ruler-measured");
-                state.calDirty = true;
+                rememberFields("calibration");
                 setMsg(el.calibrationMsg, "Ruler chosen. Review offsets and Save calibration to create a new revision. Supplied profile and existing layout pins stay unchanged.", "info");
                 renderCalibrationHelper();
                 el.btnCalibrationSave.focus();
@@ -1771,7 +1759,39 @@
         }
     }
 
-    function populateDeviceCard(force) {
+    function fieldsIn(group) {
+        if (group === "model") return [document.getElementById("tablet-model")];
+        return Array.from((group === "profile" ? el.profileForm : el.calibrationForm).querySelectorAll("input[id], select[id]"));
+    }
+
+    function fieldValues(group) {
+        return Object.fromEntries(fieldsIn(group).map(input => [input.id, input.value]));
+    }
+
+    function rememberFields(group) {
+        const id = state.formDeviceId;
+        if (!id) return;
+        const saved = tabletForms.get(id, group);
+        const values = { ...fieldValues(group), ...(group !== "model" ? { _revision: saved?.baseline._revision || 0 } : {}) };
+        const form = tabletForms.edit(id, group, values, state.etag);
+        if (group === "profile") state.profileDirty = form.dirty;
+        if (group === "calibration") state.calDirty = form.dirty;
+        fieldsIn(group).forEach(input => { input.dataset.dirty = String(form.dirty); });
+    }
+
+    function retainFields(id, group, defaults) {
+        const form = tabletForms.observe(id, group, defaults, state.etag);
+        for (const input of fieldsIn(group)) {
+            if (document.activeElement !== input && input.value !== form.values[input.id]) input.value = form.values[input.id];
+            input.dataset.dirty = String(form.dirty);
+        }
+        if (group === "profile") state.profileDirty = form.dirty;
+        if (group === "calibration") state.calDirty = form.dirty;
+        if (form.conflict) setMsg(group === "calibration" ? el.calibrationMsg : el.profileMsg,
+            "These saved measurements changed elsewhere. Your fields are retained. Discard them to use the current measurements, or compare before saving.", "err");
+    }
+
+    function populateDeviceCard() {
         const id = state.selectedId;
         if (!id) {
             el.deviceCardEmpty.hidden = false;
@@ -1784,7 +1804,7 @@
         el.deviceCardBody.hidden = false;
         const profile = latestProfile(id);
         const calibration = latestCalibration(id);
-        const changed = state.formDeviceId !== id || force;
+        const changed = state.formDeviceId !== id;
 
         if (changed) {
             rulerReview.reset();
@@ -1809,7 +1829,9 @@
                 const option = document.createElement("option");
                 option.value = item[0]; option.textContent = item[1]; modelSelect.appendChild(option);
             });
-            modelSelect.value = assignment.mode === "explicit" ? assignment.model_id : assignment.mode === "manual" ? "manual" : "";
+            const defaultModel = assignment.mode === "explicit" ? assignment.model_id : assignment.mode === "manual" ? "manual" : "";
+            const form = tabletForms.observe(id, "model", { "tablet-model": defaultModel }, state.etag);
+            modelSelect.value = form.values["tablet-model"];
         }
         const record = state.roster[id] || {};
         const matches = (record.model_suggestions || []).filter(function (key) { return state.tabletModels[key]; });
@@ -1818,8 +1840,15 @@
             : matches.length ? "Ambiguous screen signature." : "Unknown screen signature.";
         renderCalibrationHelper();
 
-        if (changed || !state.profileDirty) fillProfileForm(profile);
-        if (changed || !state.calDirty) fillCalibrationForm(calibration, profile);
+        for (const group of ["profile", "calibration"]) {
+            const saved = tabletForms.get(id, group), revision = (group === "profile" ? profile : calibration)?.revision || 0;
+            if (changed || !saved || !saved.dirty) {
+                if (group === "profile") fillProfileForm(profile); else fillCalibrationForm(calibration, profile);
+                retainFields(id, group, { ...fieldValues(group), _revision: revision });
+            } else retainFields(id, group, { ...saved.baseline, _revision: revision });
+        }
+        const defaultModel = assignment.mode === "explicit" ? assignment.model_id : assignment.mode === "manual" ? "manual" : "";
+        retainFields(id, "model", { "tablet-model": defaultModel });
         state.formDeviceId = id;
     }
 
@@ -1835,40 +1864,35 @@
         } catch (error) {
             setMsg(el.profileMsg, errorDetail(error), "err");
             announce(errorDetail(error), "err");
+            el.profileForm.querySelector('[aria-invalid="true"]')?.focus();
             return;
         }
 
-        const id = state.selectedId;
+        rememberFields("profile");
+        const id = state.selectedId, submitted = tabletForms.get(id, "profile");
+        if (submitted.conflict) { setMsg(el.profileMsg, "Resolve the changed saved measurements first.", "err"); return; }
+        if (!await resolveOutput("Save tablet measurements")) return;
         setBusy(true);
         try {
             const payload = await api(
                 "PUT",
                 "/api/v3/displays/" + encodeURIComponent(id),
                 body,
-                { etag: true }
+                { ifMatch: submitted.baseEtag }
             );
             if (!payload || !payload.display || !payload.etag) {
                 throw new Error("The server returned an incomplete profile.");
             }
-            state.etag = payload.etag;
-            state.etagState = "current";
-            replaceDisplay(payload.display);
-            state.tabletAssignments[id] = { mode: "manual", model_id: null };
-            document.getElementById("tablet-model").value = "manual";
-            state.profileDirty = false;
-            fillProfileForm(payload.display);
-            setInputValue(el.calProfileRevision, String(payload.display.revision));
-            updateDeviceCardHeadings();
-            updateCurrentLines();
-            syncMeta();
-            renderDeviceList();
-            renderStage();
-            hideConflict();
-            clearError();
-            setMsg(el.profileMsg, "Saved profile revision " + payload.display.revision + ".", "ok");
+            tabletForms.saved(id, "profile", submitted.version, submitted.values, payload.etag);
+            await session.refresh();
+            if (state.selectedId === id) {
+                state.formDeviceId = null;
+                populateDeviceCard();
+            }
+            if (state.selectedId === id) setMsg(el.profileMsg, "Saved profile revision " + payload.display.revision + ".", "ok");
             announce("Saved profile revision " + payload.display.revision + ".", "ok");
         } catch (error) {
-            handleWriteError(error, el.profileMsg);
+            handleWriteError(error, state.selectedId === id ? el.profileMsg : null);
         } finally {
             setBusy(false);
         }
@@ -1887,41 +1911,37 @@
         } catch (error) {
             setMsg(el.calibrationMsg, errorDetail(error), "err");
             announce(errorDetail(error), "err");
+            el.calibrationForm.querySelector('[aria-invalid="true"]')?.focus();
             return;
         }
 
-        const id = state.selectedId;
+        rememberFields("calibration");
+        const id = state.selectedId, submitted = tabletForms.get(id, "calibration");
+        if (submitted.conflict) { setMsg(el.calibrationMsg, "Resolve the changed saved measurements first.", "err"); return; }
+        if (!await resolveOutput("Save tablet measurements")) return;
         setBusy(true);
         try {
             const payload = await api(
                 "PUT",
                 "/api/v3/calibrations/" + encodeURIComponent(id),
                 body,
-                { etag: true }
+                { ifMatch: submitted.baseEtag }
             );
             if (!payload || !payload.calibration || !payload.etag) {
                 throw new Error("The server returned an incomplete calibration.");
             }
-            state.etag = payload.etag;
-            state.etagState = "current";
-            replaceCalibration(payload.calibration);
-            state.tabletAssignments[id] = { mode: "manual", model_id: null };
-            document.getElementById("tablet-model").value = "manual";
-            state.calDirty = false;
-            fillCalibrationForm(payload.calibration, latestProfile(id));
-            updateDeviceCardHeadings();
-            updateCurrentLines();
-            syncMeta();
-            renderDeviceList();
-            renderStage();
-            hideConflict();
-            clearError();
-            setMsg(el.calibrationMsg, "Saved calibration revision "
+            tabletForms.saved(id, "calibration", submitted.version, submitted.values, payload.etag);
+            await session.refresh();
+            if (state.selectedId === id) {
+                state.formDeviceId = null;
+                populateDeviceCard();
+            }
+            if (state.selectedId === id) setMsg(el.calibrationMsg, "Saved calibration revision "
                 + payload.calibration.revision + " for profile revision "
                 + payload.calibration.profile_revision + ".", "ok");
             announce("Saved calibration revision " + payload.calibration.revision + ".", "ok");
         } catch (error) {
-            handleWriteError(error, el.calibrationMsg);
+            handleWriteError(error, state.selectedId === id ? el.calibrationMsg : null);
         } finally {
             setBusy(false);
         }
@@ -2611,7 +2631,7 @@
     }
 
     async function fetchRoster() {
-        try { if (operatorSync) await operatorSync.reconcile(true); }
+        try { await session.refresh(); }
         finally { state.rosterRefreshPromise = null; renderAll(); }
     }
 
@@ -2619,187 +2639,339 @@
      * Saved layouts
      * ---------------------------------------------------------------- */
 
+    let layoutsVersion = 0, scenesVersion = 0, savedScenes = [], returnPoint = null;
+    function snapshotMatches(entry, kind) {
+        const item = (state.snapshots[kind] || []).find(row => row.name === entry.name);
+        return !!item && !!entry.etag && item.etag === entry.etag;
+    }
+
     async function loadLayouts() {
+        const version = ++layoutsVersion;
         try {
-            const results = await Promise.all([api("GET", API_LAYOUTS), api("GET", "/api/v3/logical-layouts")]);
-            state.savedLayouts = (results[0].layouts || []).concat((results[1].layouts || []).map(function (entry) {
-                return Object.assign({}, entry, { logical: true });
-            }));
-        } catch (error) {
-            state.savedLayouts = [];
-            setMsg(el.layoutMsg, "Could not load saved layouts: " + errorDetail(error), "err");
-        }
-        renderSavedLayouts();
-        if (operatorDevices) operatorDevices.render();
+            const results = await Promise.all([api("GET", API_LAYOUTS, undefined, { fenced: "durable" }), api("GET", "/api/v3/logical-layouts", undefined, { fenced: "durable" })]);
+            if (version !== layoutsVersion) return;
+            const byName = new Map();
+            (results[0].layouts || []).forEach(entry => byName.set(entry.name, { ...entry, logical: false }));
+            (results[1].layouts || []).forEach(entry => byName.set(entry.name, { ...entry, logical: true }));
+            state.savedLayouts = [...byName.values()].sort((a, b) => a.name.localeCompare(b.name));
+            renderSavedLayouts(); clearMsg(document.getElementById("layouts-status"));
+            if (operatorDevices) operatorDevices.render();
+        } catch (error) { if (version === layoutsVersion) setMsg(document.getElementById("layouts-status"), "Saved arrangements could not be refreshed. " + error.message + " Use Refresh to retry.", "err"); }
     }
 
     function renderSavedLayouts() {
-        el.savedLayouts.textContent = "";
-        state.savedLayouts.forEach(function (entry) {
-            const layout = entry.layout || {};
-            const bounds = layout.bounds || {};
-            const slotCount = layout.slots && typeof layout.slots === "object"
-                ? Object.keys(layout.slots).length : 0;
-
-            const item = document.createElement("li");
-            item.className = "saved-row";
-
-            const info = document.createElement("span");
-            info.className = "saved-info";
-            const name = document.createElement("span");
-            name.className = "saved-name";
-            name.textContent = entry.name;
-            const meta = document.createElement("span");
-            meta.className = "saved-meta";
-            meta.textContent = entry.logical ? "Logical wall · " + Object.keys(layout.placements || {}).length + " tablets"
-                : slotCount + (slotCount === 1 ? " tablet" : " tablets")
-                + " · " + formatNumber(bounds.width, 1) + " × "
-                + formatNumber(bounds.height, 1) + " mm";
-            info.appendChild(name);
-            info.appendChild(meta);
-
-            const actions = document.createElement("span");
-            actions.className = "saved-actions";
-
-            const recall = document.createElement("button");
-            recall.type = "button";
-            recall.className = "btn btn-sm";
-            recall.textContent = "Recall";
-            recall.dataset.invalid = String(entry.valid === false || entry.invalid === true);
-            recall.disabled = state.busy || !state.etag || recall.dataset.invalid === "true";
-            recall.addEventListener("click", function () {
-                recallLayout(entry.name, entry.logical);
-            });
-
-            const remove = document.createElement("button");
-            remove.type = "button";
-            remove.className = "btn btn-danger btn-sm";
-            remove.textContent = "Delete";
-            remove.disabled = state.busy || !state.etag;
-            remove.addEventListener("click", function () {
-                deleteLayout(entry.name, entry.logical);
-            });
-
-            actions.appendChild(recall);
-            actions.appendChild(remove);
-            item.appendChild(info);
-            item.appendChild(actions);
-            el.savedLayouts.appendChild(item);
-        });
+        const focused = document.activeElement;
+        const focusName = focused && focused.closest("[data-snapshot-name]")?.dataset.snapshotName;
+        el.savedLayouts.replaceChildren();
+        for (const entry of state.savedLayouts) {
+            const layout = entry.layout || {}, count = Object.keys(window.OperatorState.entries(layout)).length;
+            const row = document.createElement("li"); row.className = "saved-row"; row.dataset.snapshotName = entry.name; row.dataset.kind = entry.logical ? "logical" : "physical";
+            const info = document.createElement("span"); info.className = "saved-info";
+            const name = document.createElement("strong"); name.className = "saved-name"; name.textContent = entry.name;
+            const meta = document.createElement("span"); meta.className = "saved-meta";
+            meta.textContent = entry.valid === false ? "Damaged saved data · replace or delete" : count + (count === 1 ? " tablet" : " tablets") + " · " + (entry.logical ? "Relative arrangement" : "Measured arrangement") + " · image excluded";
+            info.append(name, meta);
+            if (entry.valid !== false) {
+                const svg = document.createElementNS("http://www.w3.org/2000/svg", "svg");
+                svg.classList.add("saved-thumb"); svg.setAttribute("aria-hidden", "true");
+                const bounds = window.OperatorState.bounds(layout);
+                svg.setAttribute("viewBox", [bounds.x, bounds.y, bounds.width, bounds.height].join(" "));
+                for (const panel of window.OperatorStage.panels(layout, profileFor)) {
+                    if (panel.missing) continue;
+                    const rect = document.createElementNS(svg.namespaceURI, "rect");
+                    for (const [key, value] of Object.entries(panel.body)) rect.setAttribute(key, value);
+                    rect.setAttribute("fill", "var(--selected)"); rect.setAttribute("stroke", "var(--accent)");
+                    rect.setAttribute("stroke-width", "2"); rect.setAttribute("vector-effect", "non-scaling-stroke");
+                    if (panel.angle) rect.setAttribute("transform", "rotate(" + panel.angle + " " + panel.cx + " " + panel.cy + ")");
+                    svg.append(rect);
+                }
+                row.append(svg);
+                const subjects = document.createElement("span"); subjects.className = "saved-meta";
+                subjects.textContent = Object.entries(window.OperatorState.entries(layout)).map(([id, slot]) => numberedLabel(id)
+                    + (layout.kind === "physical" ? " (profile r" + slot.profile_revision + ", calibration r" + slot.calibration_revision + ")" : "")).join(", ");
+                info.append(subjects);
+            }
+            row.append(info);
+            const actions = document.createElement("span"); actions.className = "saved-actions";
+            for (const [verb, handler] of [["Recall", () => recallLayout(entry)], ["Delete", () => deleteLayout(entry)]]) {
+                const button = document.createElement("button"); button.type = "button"; button.className = "btn btn-sm";
+                button.textContent = verb; button.setAttribute("aria-label", verb + " arrangement “" + entry.name + "”");
+                button.dataset.invalid = String(verb === "Recall" && entry.valid === false);
+                button.disabled = state.busy || !state.etag || button.dataset.invalid === "true";
+                button.addEventListener("click", handler); actions.append(button);
+            }
+            row.append(actions); el.savedLayouts.append(row);
+        }
         el.savedEmpty.hidden = state.savedLayouts.length > 0;
-    }
-
-    function updateSavedButtons() {
-        const buttons = el.savedLayouts.querySelectorAll("button");
-        for (let index = 0; index < buttons.length; index += 1) {
-            buttons[index].disabled = state.busy || !state.etag || state.etagState !== "current" || buttons[index].dataset.invalid === "true";
+        if (focusName && document.activeElement === document.body) {
+            const row = Array.from(el.savedLayouts.children).find(item => item.dataset.snapshotName === focusName);
+            (row?.querySelector("button:not(:disabled)") || el.layoutName).focus({ preventScroll: true });
         }
     }
 
-    async function refreshSnapshotConfig() {
-        state.readFence.event();
-        const ticket = state.readFence.start();
-        const config = await api("GET", API_CONFIG);
-        if (state.readFence.accept(ticket)) ingestConfig(config, { preserveDraft: true });
+    function updateSavedButtons() {
+        for (const button of el.savedLayouts.querySelectorAll("button")) button.disabled = state.busy || !state.etag || state.etagState !== "current" || button.dataset.invalid === "true";
+    }
+
+    function showReturnPoint(result) {
+        if (!result.previous_layout_saved) return;
+        returnPoint = { name: result.previous_layout_saved };
+        document.getElementById("return-point").hidden = false;
+        document.getElementById("return-point-name").textContent = result.previous_layout_saved + ". This actual arrangement keeps the previous geometry. Its image is excluded.";
     }
 
     async function saveLayout(event) {
         event.preventDefault();
-        if (state.busy) return;
-        clearMsg(el.layoutMsg);
-
         const name = el.layoutName.value.trim();
-        if (!name) {
-            setMsg(el.layoutMsg, "Enter a name for this layout.", "err");
-            el.layoutName.focus();
-            return;
-        }
-
-        if (isDirty()) {
-            setMsg(el.layoutMsg, "Apply or cancel the unapplied draft before saving the committed layout.", "err");
-            return;
-        }
-
+        if (!name) { setMsg(el.layoutMsg, "Enter an arrangement name.", "err"); el.layoutName.focus(); return; }
+        if (state.busy || !await resolveOutput("Save the applied arrangement")) return;
+        const existing = state.savedLayouts.find(item => item.name === name);
+        if (existing && !window.confirm("Overwrite saved arrangement “" + name + "” with the applied geometry? The image is excluded.")) return;
+        const guard = state.etag, kind = state.layoutKind;
         setBusy(true);
         try {
-            const payload = await api(
-                "PUT",
-                (state.layoutKind === "logical" ? "/api/v3/logical-layouts" : API_LAYOUTS) + "/" + encodeURIComponent(name),
-                undefined,
-                { etag: true }
-            );
-            el.layoutName.value = payload && payload.name ? payload.name : name;
-            setMsg(el.layoutMsg, "Saved layout \"" + (payload && payload.name ? payload.name : name) + "\".", "ok");
-            announce("Saved " + state.layoutKind + " layout " + (payload && payload.name ? payload.name : name) + ".", "ok");
-            await refreshSnapshotConfig();
+            const result = await api("PUT", (kind === "logical" ? "/api/v3/logical-layouts" : API_LAYOUTS) + "/" + encodeURIComponent(name) + (existing ? "?replace=true" : ""), undefined, { ifMatch: guard });
+            ingestConfig(result, { preserveDraft: true });
+            setMsg(el.layoutMsg, "Arrangement “" + result.name + "” saved. Image excluded.", "ok");
             await loadLayouts();
-        } catch (error) {
-            handleWriteError(error, el.layoutMsg);
-        } finally {
-            setBusy(false);
-        }
+        } catch (error) { handleWriteError(error, el.layoutMsg); }
+        finally { setBusy(false); }
     }
 
-    async function recallLayout(name, logical) {
-        if (state.busy) return;
-        if (!state.etag) {
-            setMsg(el.layoutMsg, "No configuration ETag is loaded; reload the page.", "err");
-            return;
-        }
-        if (isDirty() && !window.confirm("Recall \"" + name + "\" and discard the unapplied draft?")) {
-            return;
-        }
-        if ((logical ? "logical" : "physical") !== state.layoutKind && !window.confirm("Recall “" + name + "” and switch layout kind? The server must save a named safety copy of the current arrangement. The image stays unchanged.")) return;
-        clearError();
+    async function recallLayout(entry) {
+        if (state.busy || !await resolveOutput("Recall arrangement “" + entry.name + "”")) return;
+        if (!snapshotMatches(entry, "layouts")) { setMsg(el.layoutMsg, "This saved arrangement changed. Refresh Saved and review it again.", "err"); return; }
+        const oldKind = state.layoutKind, targetKind = entry.logical ? "logical" : "physical", guard = state.etag;
+        if (oldKind !== targetKind && !window.confirm("Recall “" + entry.name + "” and change the sizing representation? The server creates a real named return point for the current arrangement. The image stays unchanged.")) return;
         setBusy(true);
         try {
-            const payload = await api(
-                "POST",
-                (logical ? "/api/v3/logical-layouts" : API_LAYOUTS) + "/" + encodeURIComponent(name) + "/recall",
-                undefined,
-                { etag: true }
-            );
-            ingestConfig(payload, { resetHistory: true });
-            hideConflict();
-            clearError();
-            announce("Recalled " + (logical ? "logical" : "physical") + " layout " + name + "." + (payload.previous_layout_saved ? " Previous arrangement saved as “" + payload.previous_layout_saved + "”." : ""), "ok");
+            const result = await api("POST", (entry.logical ? "/api/v3/logical-layouts" : API_LAYOUTS) + "/" + encodeURIComponent(entry.name) + "/recall", undefined, { ifMatch: guard });
+            ingestConfig(result); showReturnPoint(result);
+            setMsg(el.layoutMsg, "Arrangement “" + entry.name + "” recalled. Waiting for current tablet reports. Image unchanged.", "ok");
             await loadLayouts();
-        } catch (error) {
-            handleWriteError(error, el.layoutMsg);
-        } finally {
-            setBusy(false);
-        }
+        } catch (error) { handleWriteError(error, el.layoutMsg); }
+        finally { setBusy(false); }
     }
 
-    async function deleteLayout(name, logical) {
-        if (state.busy) return;
-        const focused = document.activeElement;
-        const focusIndex = Array.from(el.savedLayouts.querySelectorAll(".saved-row")).indexOf(focused.closest(".saved-row"));
-        if (!window.confirm("Delete saved layout \"" + name + "\"?")) return;
-        clearError();
+    async function deleteLayout(entry) {
+        if (state.busy || !await resolveOutput("Delete a saved arrangement")) return;
+        if (!snapshotMatches(entry, "layouts")) { setMsg(el.layoutMsg, "This saved arrangement changed. Refresh Saved before deleting it.", "err"); return; }
+        if (!window.confirm("Delete saved arrangement “" + entry.name + "”? Applied geometry and content stay unchanged.")) return;
         setBusy(true);
         try {
-            await api(
-                "DELETE",
-                (logical ? "/api/v3/logical-layouts" : API_LAYOUTS) + "/" + encodeURIComponent(name),
-                undefined,
-                { etag: true }
-            );
-            setMsg(el.layoutMsg, "Deleted layout \"" + name + "\".", "ok");
-            announce("Deleted saved layout " + name + ".", "ok");
-            await refreshSnapshotConfig();
-            await loadLayouts();
-        } catch (error) {
-            handleWriteError(error, el.layoutMsg);
-        } finally {
-            setBusy(false);
-            if (focusIndex >= 0 && document.activeElement === document.body) {
-                const rows = el.savedLayouts.querySelectorAll(".saved-row");
-                const row = rows[Math.min(focusIndex, rows.length - 1)];
-                const target = row && row.querySelector("button:not(:disabled)") || el.layoutName;
-                target.focus();
+            const result = await api("DELETE", (entry.logical ? "/api/v3/logical-layouts" : API_LAYOUTS) + "/" + encodeURIComponent(entry.name), undefined, { etag: true });
+            ingestConfig(result, { preserveDraft: true });
+            await loadLayouts(); setMsg(el.layoutMsg, "Saved arrangement deleted.", "ok");
+            el.layoutName.focus({ preventScroll: true });
+        } catch (error) { handleWriteError(error, el.layoutMsg); }
+        finally { setBusy(false); }
+    }
+
+    async function loadScenes() {
+        const version = ++scenesVersion;
+        try {
+            const result = await api("GET", "/api/v3/scenes", undefined, { fenced: "durable" });
+            if (version !== scenesVersion) return;
+            savedScenes = result.scenes || [];
+            document.getElementById("scene-message").textContent = "Scenes refreshed.";
+            const list = document.getElementById("saved-scenes"); list.replaceChildren();
+            for (const entry of savedScenes) {
+                const row = document.createElement("li"); row.className = "saved-row"; row.dataset.snapshotName = entry.name; row.dataset.kind = "scene";
+                const label = document.createElement("span"); label.className = "saved-info";
+                const name = document.createElement("strong"); name.textContent = entry.name;
+                const meta = document.createElement("span"); meta.className = "saved-meta";
+                meta.textContent = (entry.valid === false ? "Damaged saved data" : entry.content.type === "image" ? "Image · " + (entry.content.fit === "contain" ? "Show whole image" : "Fill wall") : "Test content") + " · arrangement excluded";
+                label.append(name, meta);
+                const image = entry.valid !== false && operatorContent.imageFor(entry.content.asset);
+                if (image) {
+                    const thumbnail = document.createElement("img"); thumbnail.className = "saved-thumb"; thumbnail.alt = ""; thumbnail.src = image.thumbnail_url;
+                    thumbnail.addEventListener("error", () => { thumbnail.hidden = true; }); row.append(thumbnail);
+                    const source = document.createElement("span"); source.className = "saved-meta"; source.textContent = image.name; label.append(source);
+                }
+                row.append(label);
+                const actions = document.createElement("span"); actions.className = "saved-actions";
+                for (const verb of ["Preview", "Delete"]) {
+                    const button = document.createElement("button"); button.type = "button"; button.className = "btn btn-sm";
+                    button.textContent = verb; button.setAttribute("aria-label", verb + " scene “" + entry.name + "”"); button.disabled = verb === "Preview" && entry.valid === false;
+                    button.addEventListener("click", async () => {
+                        if (!await resolveOutput(verb + " saved scene “" + entry.name + "”")) return;
+                        if (!snapshotMatches(entry, "scenes")) { document.getElementById("scene-message").textContent = "The saved scene changed. Refresh scenes and review it again."; return; }
+                        if (verb === "Preview") {
+                            operatorContent.previewScene(entry, state.etag); await showTab("content", { focus: true, persist: true });
+                            return;
+                        }
+                        if (!window.confirm("Delete saved scene “" + entry.name + "”? Applied content is unchanged.")) return;
+                        try {
+                            const result = await api("DELETE", "/api/v3/scenes/" + encodeURIComponent(entry.name), undefined, { etag: true });
+                            ingestConfig(result, { preserveDraft: true }); await loadScenes();
+                            document.getElementById("scene-message").textContent = "Saved scene deleted."; document.getElementById("scene-name").focus();
+                        } catch (error) { document.getElementById("scene-message").textContent = error.message; }
+                    });
+                    actions.append(button);
+                }
+                row.append(actions);
+                list.append(row);
             }
+            if (!savedScenes.length) document.getElementById("scene-message").textContent = "No saved scenes yet.";
+        } catch (error) { if (version === scenesVersion) document.getElementById("scene-message").textContent = "Saved scenes could not be read. " + error.message + " Use Refresh scenes to retry."; }
+    }
+
+    function bindDiagnosticColours() {
+        const message = document.getElementById("diagnostic-colour-message"), input = document.getElementById("diagnostic-colour");
+        document.getElementById("diagnostic-colour-refresh").addEventListener("click", async () => {
+            const id = state.selectedId;
+            if (!id) { message.textContent = "Select a tablet first."; return; }
+            try {
+                const records = await api("GET", "/devices", undefined, { fenced: true });
+                if (id !== state.selectedId) return;
+                const colour = records[id]?.color;
+                if (/^#[0-9a-f]{6}$/i.test(colour || "")) input.value = colour;
+                message.textContent = "Diagnostic colour for " + numberedLabel(id) + " · " + (colour || "not reported") + ". Current image proof is unchanged.";
+            } catch (error) { if (id === state.selectedId) message.textContent = "Diagnostic colour could not be read. " + error.message; }
+        });
+        for (const target of ["one", "all"]) document.getElementById("diagnostic-colour-" + target).addEventListener("click", async () => {
+            const id = state.selectedId, colour = input.value;
+            if (target === "one" && !id) { message.textContent = "Select a tablet first."; return; }
+            if (!await resolveOutput("Set a diagnostic test colour")) return;
+            try {
+                const result = await api("POST", target === "all" ? "/devices/color" : "/devices/" + encodeURIComponent(id) + "/color", { color: colour });
+                message.textContent = "Diagnostic colour set for " + (target === "all" ? "all currently registered tablets" : numberedLabel(id)) + ". "
+                    + (result.delivered === false ? "Delivery waits for connection. " : "") + "This legacy test command has no revision guard. It does not show an image.";
+                await session.refresh();
+            } catch (error) { message.textContent = "Diagnostic colour command failed. " + error.message; }
+        });
+    }
+
+    let measurementReview = null;
+    function currentMeasurementFields(id, group, baseline) {
+        if (group === "model") {
+            const assignment = state.tabletAssignments[id] || {};
+            return { "tablet-model": assignment.mode === "explicit" ? assignment.model_id : assignment.mode === "manual" ? "manual" : "" };
         }
+        const record = group === "profile" ? latestProfile(id) : latestCalibration(id);
+        return { ...baseline, ...(group === "profile" ? profileFieldValues(record, id) : calibrationFieldValues(record, latestProfile(id), id)), _revision: record?.revision || 0 };
+    }
+
+    function bindTabletSetup() {
+        let arrangementReview = null;
+        document.getElementById("btn-review-arrangement").addEventListener("click", async () => {
+            if (!isDirty() || state.gridPreview || operatorGrid.dirty()) { announce("Use Rebuild preview for a grid proposal. Individual adjustments can be compared here."); return; }
+            const signature = layoutSignature(state.draft);
+            try {
+                await session.refresh();
+                if (signature !== layoutSignature(state.draft)) return;
+                const current = session.view().config;
+                arrangementReview = { signature, etag: current.etag, current: window.OperatorState.layoutDraft(current.layout) };
+                const localIds = Object.keys(window.OperatorState.entries(state.draft)), liveIds = Object.keys(window.OperatorState.entries(current.layout));
+                document.getElementById("manual-review-summary").textContent = "Your retained proposal has " + localIds.length + " tablet positions. The current wall has " + liveIds.length
+                    + ". Positions removed by your proposal · " + (liveIds.filter(id => !localIds.includes(id)).map(numberedLabel).join(", ") || "none")
+                    + ". Keeping your proposal adopts this reviewed guard only. Apply arrangement remains a separate command. Exact historical measurement pins remain in the proposal."
+                    + (state.draft.kind !== current.layout.kind ? " Applying changes the sizing representation and requires a server-created return point." : "");
+                document.getElementById("manual-review-details").textContent = "Current geometry\n" + JSON.stringify(current.layout, null, 2) + "\nYour proposed geometry\n" + JSON.stringify(state.draft, null, 2);
+                if (!await showTab("show", { persist: true })) return;
+                document.getElementById("manual-arrangement-review").hidden = false;
+                document.getElementById("manual-review-summary").focus();
+            } catch (error) { handleWriteError(error); }
+        });
+        document.getElementById("manual-review-keep").addEventListener("click", () => {
+            const review = arrangementReview;
+            if (!review || review.etag !== state.etag || review.signature !== layoutSignature(state.draft)) { announce("The wall or proposal changed after comparison. Compare again before keeping this arrangement.", "err"); return; }
+            state.base = review.current; state.basePlacements = clone(review.current.placements || {});
+            state.draftBaseEtag = review.etag; state.draftConflict = false; state.viewLive = false;
+            arrangementReview = null; document.getElementById("manual-arrangement-review").hidden = true;
+            hideConflict(); afterDraftChange(); announce("Your arrangement is retained against the reviewed wall. Review the preview, then Apply arrangement.");
+        });
+        for (const group of ["profile", "calibration", "model"]) document.getElementById("review-" + group).addEventListener("click", async () => {
+            const id = state.selectedId, submitted = tabletForms.get(id, group);
+            if (!submitted) return;
+            try {
+                await session.refresh();
+                if (id !== state.selectedId || submitted.version !== tabletForms.get(id, group).version) return;
+                const remote = currentMeasurementFields(id, group, submitted.baseline);
+                measurementReview = { id, group, version: submitted.version, remote, etag: state.etag };
+                document.getElementById("measurement-comparison").textContent = "Current saved fields\n" + JSON.stringify(remote, null, 2)
+                    + "\nYour retained fields\n" + JSON.stringify(submitted.values, null, 2);
+                document.getElementById("measurement-review").hidden = false;
+                document.getElementById("measurement-keep").focus();
+            } catch (error) { handleWriteError(error); }
+        });
+        document.getElementById("measurement-keep").addEventListener("click", () => {
+            const review = measurementReview;
+            if (!review || review.id !== state.selectedId || review.etag !== state.etag || !tabletForms.review(review.id, review.group, review.version, review.remote, review.etag)) {
+                announce("The tablet, fields or wall changed. Compare the current saved fields again.", "err"); return;
+            }
+            measurementReview = null; document.getElementById("measurement-review").hidden = true;
+            populateDeviceCard(); announce("Your fields are retained against the reviewed saved values. Save is a separate command.");
+        });
+        for (const group of ["profile", "calibration", "model"]) document.getElementById("discard-" + group).addEventListener("click", () => {
+            tabletForms.discard(state.selectedId, group);
+            state.formDeviceId = null; populateDeviceCard(); syncTabDots();
+        });
+        document.getElementById("clear-wall").addEventListener("click", async () => {
+            if (!await resolveOutput("Clear the active wall")) return;
+            if (!window.confirm("Clear all active positions? Registrations, names, measurements and saved arrangements are retained. The selected image stays unchanged.")) return;
+            try { const result = await api("POST", "/api/v3/layout/clear", { confirm: true }, { etag: true }); ingestConfig(result); announce("Active positions cleared. Tablets and saved arrangements are retained."); }
+            catch (error) { handleWriteError(error); }
+        });
+        const newModelReview = () => { modelReviewVersion += 1; modelBatchReview = null; document.getElementById("group-hardware").checked = false; operatorGrid.render(); };
+        document.getElementById("group-model").addEventListener("change", newModelReview);
+        document.getElementById("group-new-review").addEventListener("click", newModelReview);
+        document.getElementById("group-confirm").addEventListener("click", async () => {
+            const prior = modelBatchReview;
+            const ids = prior ? prior.ids.slice() : operatorGrid.selectedIds(), modelId = document.getElementById("group-model").value;
+            const hardwareDeclared = document.getElementById("group-hardware").checked;
+            const resultNode = document.getElementById("group-result"), button = document.getElementById("group-confirm");
+            if (state.busy || confirmingModels || !ids.length || !modelId || !hardwareDeclared) { resultNode.textContent = "Select the actual tablets and model, then confirm that you checked their hardware."; return; }
+            if (isDirty() && !await resolveOutput("Confirm hardware measurements")) return;
+            const names = ids.map(numberedLabel), reviewedEtag = state.etag, reviewVersion = modelReviewVersion;
+            if (!window.confirm("Confirm “" + state.tabletModels[modelId].label + "” for " + names.join(", ") + "? Dimensions and calibration remain approximate. Each tablet saves separately; a problem stops the remaining writes.")) return;
+            operatorGrid.freezeSelection(); confirmingModels = true; button.disabled = true;
+            try {
+                const result = await window.OperatorDevices.confirmModels({ ids, modelId, hardwareDeclared, reviewedEtag, api, ingestConfig: () => {},
+                    readAuthority: async () => { await session.refresh(); return session.view().config; },
+                    currentEtag: () => session.view().etag,
+                    progress: value => { resultNode.textContent = "Confirmed · " + value.completed.map(numberedLabel).join(", ") + ". Remaining · " + value.untouched.map(numberedLabel).join(", "); } });
+                await session.refresh();
+                if (!operatorGrid.modelSetupComplete(result.expectedEtag)) showConflict("A separate wall change arrived during model confirmation. Review and rebuild the retained arrangement inputs before previewing.");
+                const completed = [...new Set([...(prior?.completed || []), ...result.completed])];
+                if (reviewVersion === modelReviewVersion) {
+                    modelBatchReview = result.failed ? { ids: [result.failed, ...result.untouched], modelId, completed } : null;
+                    if (modelBatchReview) document.getElementById("group-hardware").checked = false;
+                }
+                resultNode.textContent = "Completed · " + (completed.map(numberedLabel).join(", ") || "none")
+                    + (result.failed ? ". " + (result.status === "uncertain" ? "Completion uncertain" : "Failed / " + result.status) + " · " + numberedLabel(result.failed) : "")
+                    + ". Untouched · " + (result.untouched.map(numberedLabel).join(", ") || "none")
+                    + ". " + (result.reason || "Model dimensions remain approximate. Mapping readiness is checked separately before measured use.");
+            } catch (error) { resultNode.textContent = error.message; }
+            finally { confirmingModels = false; operatorGrid.render(); }
+        });
+        document.getElementById("image-rebuild").addEventListener("click", async () => {
+            await session.refresh();
+            if (!window.confirm("Keep this image choice and rebuild its preview against the current applied arrangement? Review it before Show image.")) return;
+            operatorContent.rebuild(); hideConflict(); renderStage();
+        });
+        document.getElementById("image-discard").addEventListener("click", () => { operatorContent.discard(); state.draftConflict = false; hideConflict(); renderStage(); });
+    }
+
+    function bindSavedScenes() {
+        document.getElementById("scenes-refresh").addEventListener("click", loadScenes);
+        document.getElementById("return-point-recall").addEventListener("click", () => {
+            if (!returnPoint) return;
+            const entry = state.savedLayouts.find(item => item.name === returnPoint.name);
+            if (entry) recallLayout(entry); else setMsg(el.layoutMsg, "Refresh Saved to locate the returned arrangement.", "err");
+        });
+        document.getElementById("scene-save-form").addEventListener("submit", async event => {
+            event.preventDefault();
+            const name = document.getElementById("scene-name").value.trim(), message = document.getElementById("scene-message");
+            if (!name) { message.textContent = "Enter a scene name."; document.getElementById("scene-name").focus(); return; }
+            if (!await resolveOutput("Save the applied scene")) return;
+            const existing = savedScenes.find(entry => entry.name === name);
+            if (existing && !window.confirm("Overwrite saved scene “" + name + "” with the applied content? Geometry is excluded.")) return;
+            try {
+                const result = await api("PUT", "/api/v3/scenes/" + encodeURIComponent(name) + (existing ? "?replace=true" : ""), undefined, { etag: true });
+                ingestConfig(result, { preserveDraft: true }); await loadScenes(); message.textContent = "Scene saved. Arrangement excluded.";
+            } catch (error) { message.textContent = error.message; }
+        });
     }
 
     /* ---------------------------------------------------------------- *
@@ -2826,7 +2998,7 @@
         if (state.drag) return;
 
         if (modified && (key === "z" || key === "Z")) {
-            if (isEditableTarget(event.target)) return;
+            if (state.tabName !== "show" || isEditableTarget(event.target)) return;
             event.preventDefault();
             if (event.shiftKey) redoDraft();
             else undoDraft();
@@ -2834,7 +3006,7 @@
         }
 
         if (modified && (key === "y" || key === "Y")) {
-            if (isEditableTarget(event.target)) return;
+            if (state.tabName !== "show" || isEditableTarget(event.target)) return;
             event.preventDefault();
             redoDraft();
             return;
@@ -2856,7 +3028,7 @@
         else if (key === "ArrowDown") deltaY = step;
         if (deltaX === 0 && deltaY === 0) return;
 
-        if (!selectedSlot()) return;
+        if (!selectedSlot() && !(state.draft && state.draft.placements && state.draft.placements[state.selectedId])) return;
         event.preventDefault();
         nudgeSelected(deltaX, deltaY);
     }
@@ -2865,7 +3037,7 @@
         tabEntries().forEach(function (entry) {
             if (!entry.tab) return;
             entry.tab.addEventListener("click", function () {
-                showTab(entry.name, { persist: true });
+                showTab(entry.name, { persist: true, focus: true });
             });
         });
         if (el.railTabs) el.railTabs.addEventListener("keydown", onTabKeyDown);
@@ -2881,16 +3053,6 @@
         el.btnRedo.addEventListener("click", redoDraft);
         el.btnApply.addEventListener("click", applyLayout);
         el.btnCancel.addEventListener("click", cancelDraft);
-        if (el.btnApplyLocal) {
-            el.btnApplyLocal.addEventListener("click", function () {
-                el.btnApply.click();
-            });
-        }
-        if (el.btnCancelLocal) {
-            el.btnCancelLocal.addEventListener("click", function () {
-                el.btnCancel.click();
-            });
-        }
         el.btnReload.addEventListener("click", reloadConfigWithConfirm);
         el.btnConflictReload.addEventListener("click", reloadConfigWithConfirm);
 
@@ -2901,58 +3063,23 @@
         el.btnNudgeYMinus.addEventListener("click", function () { nudgeSelected(0, -1); });
         el.btnNudgeYPlus.addEventListener("click", function () { nudgeSelected(0, 1); });
         el.btnAddSlot.addEventListener("click", addSelectedDevice);
-        document.getElementById("apply-tablet-model").addEventListener("click", async function () {
-            if (!state.selectedId || state.busy) return;
-            if (state.profileDirty || state.calDirty) {
-                setMsg(el.profileMsg, "Save or discard your measurement changes before applying a tablet model.", "err");
-                return;
-            }
-            const id = state.selectedId;
-            const choice = document.getElementById("tablet-model").value;
-            if (!choice) { setMsg(el.profileMsg, "Choose the actual model explicitly or use manual measurements. Automatic matches are suggestions.", "info"); return; }
-            if (choice !== "manual" && !window.confirm("Confirm this tablet is “" + (state.tabletModels[choice] && state.tabletModels[choice].label || choice) + "”? Model measurements remain approximate.")) return;
-            await refreshRoster();
-            if (state.profileDirty || state.calDirty) {
-                setMsg(el.profileMsg, "Save or discard your measurement changes before applying a tablet model.", "err");
-                return;
-            }
-            if (state.etagState !== "current" || state.busy) return;
-            const revision = state.revision;
-            const generation = state.generation;
+        document.getElementById("tablet-model").addEventListener("change", () => rememberFields("model"));
+        document.getElementById("apply-tablet-model").addEventListener("click", async () => {
+            const id = state.selectedId, choice = document.getElementById("tablet-model").value;
+            if (!id || !choice || state.busy) return;
+            rememberFields("model");
+            const submitted = tabletForms.get(id, "model");
+            if (tabletForms.get(id, "profile")?.dirty || tabletForms.get(id, "calibration")?.dirty) { setMsg(el.profileMsg, "Save or discard this tablet’s measurement fields first.", "err"); return; }
+            if (!await resolveOutput("Change tablet measurements")) return;
+            if (choice !== "manual" && !window.confirm("I checked the hardware of " + numberedLabel(id) + ". Confirm “" + state.tabletModels[choice].label + "” for it? Dimensions remain approximate.")) return;
             setBusy(true);
-            let modelApplied = false;
             try {
                 const result = await api("PUT", "/api/v3/tablet-assignments/" + encodeURIComponent(id),
-                    { mode: choice === "manual" ? "manual" : "explicit", model_id: choice === "manual" ? null : choice }, { etag: true });
-                modelApplied = true;
-                if (!result || !result.etag) throw new Error("The server did not return a configuration ETag.");
-                state.etag = result.etag;
-                const config = await api("GET", API_CONFIG);
-                if (config.etag !== result.etag || config.revision !== revision || config.generation !== generation
-                        || state.revision !== revision || state.generation !== generation
-                        || state.etag !== result.etag || state.etagState !== "current"
-                        || state.profileDirty || state.calDirty) {
-                    showConflict("The configuration changed while applying the tablet model.");
-                    return;
-                }
-                state.tabletAssignments = config.tablet_assignments || {};
-                state.displays = config.displays || [];
-                state.calibrations = config.calibrations || [];
-                state.displays.forEach(rememberProfile); state.calibrations.forEach(rememberCalibration);
-                setBusy(false);
-                const pair = validPair(id);
-                if (pair && state.draft && state.draft.slots[id]) {
-                    mutateDraft(function (draft) {
-                        draft.slots[id].profile_revision = pair.profile.revision;
-                        draft.slots[id].calibration_revision = pair.calibration.revision;
-                    });
-                }
-                populateDeviceCard(true); afterDraftChange();
-                announce("Tablet model choice applied.", "ok");
-            } catch (error) {
-                if (modelApplied) showConflict("The tablet model was applied, but its configuration could not be refreshed.");
-                handleWriteError(error, el.profileMsg);
-            }
+                    { mode: choice === "manual" ? "manual" : "explicit", model_id: choice === "manual" ? null : choice }, { ifMatch: submitted.baseEtag });
+                tabletForms.saved(id, "model", submitted.version, submitted.values, result.etag);
+                await session.refresh();
+                announce("Model choice saved for " + numberedLabel(id) + ". Measured readiness is checked separately.");
+            } catch (error) { handleWriteError(error, state.selectedId === id ? el.profileMsg : null); }
             finally { setBusy(false); }
         });
         bindSlotField(el.slotCenterX, "center_x_mm");
@@ -3078,7 +3205,7 @@
             if (!v || state.busy) return;
             fillViewport(v);
             invalidateRuler();
-            state.calDirty = true;
+            rememberFields("calibration");
             syncTabDots();
             setMsg(el.calibrationMsg, "Tablet viewport copied. Review measurements before saving.", "info");
         });
@@ -3091,21 +3218,21 @@
             document.getElementById(item[0]).addEventListener("click", function () { decideRuler(item[1]); });
         });
         el.profileForm.addEventListener("input", function () {
-            state.profileDirty = true;
+            rememberFields("profile");
             syncTabDots();
         });
         el.calibrationForm.addEventListener("input", function () {
             invalidateRuler();
-            state.calDirty = true;
+            rememberFields("calibration");
             syncTabDots();
         });
         el.profileForm.addEventListener("change", function () {
-            state.profileDirty = true;
+            rememberFields("profile");
             syncTabDots();
         });
         el.calibrationForm.addEventListener("change", function () {
             invalidateRuler();
-            state.calDirty = true;
+            rememberFields("calibration");
             syncTabDots();
         });
 
@@ -3212,12 +3339,11 @@
             });
         }
 
-        if (el.btnWallHealth) {
-            el.btnWallHealth.addEventListener("click", function () {
-                showTab("tablet", { focus: true, persist: true });
-                if (el.rosterStatus) el.rosterStatus.scrollIntoView({ block: "nearest" });
-            });
-        }
+        if (el.btnWallHealth) el.btnWallHealth.addEventListener("click", async () => {
+            await showTab("tablet", { persist: true });
+            const heading = document.getElementById("issues-title");
+            heading.focus({ preventScroll: true }); heading.scrollIntoView({ block: "nearest" });
+        });
         if (el.btnRosterRefresh) el.btnRosterRefresh.addEventListener("click", refreshRoster);
         if (el.btnDiagDownload) {
             el.btnDiagDownload.addEventListener("click", downloadDiagnostics);
@@ -3276,20 +3402,55 @@
 
     function init() {
         const labelFor = id => numberedLabel(id, latestProfile(id));
-        operatorContent = window.OperatorContent.create({ state, api, ingestConfig, renderStage, announce, showConflict, isDirty });
-        operatorGrid = window.OperatorGrid.create({ state, api, labelFor, validPair, profileFor, calibrationFor, ingestConfig, renderStage, syncDraftUi, isDirty, announce, showConflict });
-        operatorDevices = window.OperatorDevices.create({ state, api, labelFor, profileFor, calibrationFor, ingestConfig, refreshRoster, showConflict, isDirty, announce });
+        operatorContent = window.OperatorContent.create({ state, api, ingestConfig, renderStage, announce, showConflict, resolveOutput, refreshConnection: () => session.refresh() });
+        operatorGrid = window.OperatorGrid.create({ state, api, labelFor, validPair, profileFor, calibrationFor, ingestConfig, renderStage, syncDraftUi, isDirty, announce, showConflict, modelBusy: () => confirmingModels, modelReview: () => modelBatchReview });
+        operatorDevices = window.OperatorDevices.create({ state, api, labelFor, profileFor, calibrationFor, ingestConfig, refreshRoster, showConflict, announce, tabletForms, resolveOutput, removedFromWall: id => operatorGrid.exclude(id), selectTablet: selectDevice, openArrange: () => showTab("show", { focus: true, persist: true }) });
         operatorReadiness = window.OperatorReadiness.create({ state, api, copyText });
-        operatorSync = window.OperatorSync.create({ state, api, ingestConfig, renderAll, showConflict, isDirty: hasUnsavedEdits });
+        session.subscribe(observeSession);
+        workspace = window.OperatorWorkspace.create({ state, labelFor,
+            arrangementDirty: () => isDirty() || operatorGrid.dirty(), arrangementPreview: isDirty, imageDirty: () => operatorContent.dirty(),
+            applyArrangement: applyLayout, showImage: () => operatorContent.showSelected(),
+            discardArrangement: cancelDraft, discardImage: () => operatorContent.discard(),
+            canCommit: kind => kind === "image" ? !document.getElementById("show-image").disabled : isDirty() && !el.btnApply.disabled,
+            selectTablet: selectDevice, commitTask, renderStage, refreshReadiness: () => operatorReadiness.load(), refreshStatus: refreshRoster });
+        document.getElementById("refresh-command-status").addEventListener("click", () => session.refresh().catch(error => showError(error.message)));
+        window.addEventListener("beforeunload", event => {
+            if (hasUnsavedEdits()) { event.preventDefault(); event.returnValue = ""; }
+        });
         document.getElementById("open-tablet-measurements").addEventListener("click", () => { showTab("system", { persist: true }); document.getElementById("measurement-details").open = true; document.getElementById("tablet-model").focus(); });
+        const arrangeCommit = document.querySelector(".arrange-commit");
+        const arrangeResult = document.querySelector(".arrange-result");
+        const arrangeTools = document.querySelector(".arrange-tools");
+        const shortLandscape = window.matchMedia ? window.matchMedia("(max-height: 32rem) and (orientation: landscape)") : null;
+        function syncArrangeLayout() {
+            if (!arrangeCommit || !arrangeResult || !arrangeTools) return;
+            const target = shortLandscape && shortLandscape.matches ? arrangeTools : arrangeResult;
+            if (arrangeCommit.parentElement !== target) {
+                if (target === arrangeTools) arrangeTools.prepend(arrangeCommit);
+                else arrangeResult.append(arrangeCommit);
+                if (window.OperatorStage && el.stageSvg) window.OperatorStage.fit(el.stageSvg);
+            }
+        }
+        if (shortLandscape) shortLandscape.addEventListener("change", syncArrangeLayout);
+        window.addEventListener("resize", syncArrangeLayout);
+        syncArrangeLayout();
+        function toggleStageTechnical() {
+            const details = document.getElementById("stage-technical");
+            document.body.classList.toggle("show-stage-details");
+            if (details) details.open = true;
+            const identities = document.getElementById("stage-identities");
+            if (identities) identities.open = true;
+            if (details && document.body.classList.contains("show-stage-details")) details.scrollIntoView({ block: "start" });
+        }
+        document.getElementById("show-stage-technical-inline")?.addEventListener("click", toggleStageTechnical);
+        document.getElementById("show-arrange-technical")?.addEventListener("click", toggleStageTechnical);
         state.onParticipation = (id, participating) => mutateDraft(draft => { draft.slots[id].participating = participating; });
-        document.getElementById("open-wall-images").addEventListener("click", () => { showTab("show", { persist: true }); document.getElementById("image-select").focus(); });
         document.getElementById("experimental-opt-in").addEventListener("change", event => {
             document.getElementById("experimental-controls").hidden = !event.target.checked;
             if (event.target.checked) { loadLibrary(true); loadPlaylist(); refreshPlayback(); }
         });
         window.addEventListener("resize", () => { renderDeviceHealth(); renderStage(); });
-        window.addEventListener("pagehide", () => { operatorSync.destroy(); operatorContent.destroy(); clearInterval(state.playbackTimer); });
+        window.addEventListener("pagehide", () => { session.destroy(); operatorContent.destroy(); workspace.destroy(); clearInterval(state.playbackTimer); });
         operatorReadiness.load();
         const storedTab = readStoredTab();
         if (storedTab) {
@@ -3297,15 +3458,20 @@
             state.tabDecided = true;
         }
         bindEvents();
+        bindDiagnosticColours();
+        bindTabletSetup();
+        bindLogicalEditor();
+        bindSavedScenes();
         loadRulerAddress();
         syncMeta();
         syncDraftUi();
         renderPlaylist();
         renderPlayback();
         renderDiagnostics();
-        operatorSync.start();
+        session.start();
         operatorContent.refresh();
         loadLayouts();
+        loadScenes();
         loadDiagnostics(false);
         startPlaybackPolling();
     }

@@ -4,7 +4,7 @@
 window.PhysicalStage = {
     create: function (dependencies) {
         const {
-            DRAG_THRESHOLD_PX, WAKE_LOCK_TEXT, afterDraftChange, announce, bodyMetrics, calibrationFor, calibrationStatus, clearMsg, clone, compactView, deviceEntries, deviceLabel, deviceNumber, deviceRows, el, finiteOr, formatNumber, isOnline, latestProfile, mutateDraft, numberedLabel, populateDeviceCard, profileFor, pushUndo, roundTo, selectedSlot, selectionChanged, setInputValue, shortId, showError, showTab, state, syncTabDots, validPair
+            DRAG_THRESHOLD_PX, afterDraftChange, announce, bodyMetrics, calibrationFor, beginManual, canManualEdit, clearMsg, clone, deviceEntries, deviceLabel, deviceNumber, deviceRows, el, finiteOr, formatNumber, isOnline, latestProfile, mutateDraft, numberTag, numberedLabel, populateDeviceCard, profileFor, pushUndo, roundTo, selectedSlot, selectionChanged, setInputValue, showError, showTab, state, syncTabDots, validPair
         } = dependencies;
 
         function focusStageSlot(id) {
@@ -20,20 +20,53 @@ window.PhysicalStage = {
 
         function renderStage() {
             if (!state.draft) { el.stageScale.textContent = "Waiting for the wall."; return; }
-            const layout = state.gridPreview ? state.gridPreview.layout : state.draft;
+            const arrangementPreview = !!state.gridPreview || JSON.stringify(state.draft) !== JSON.stringify(state.base);
+            const preview = !state.viewLive && (arrangementPreview || !!state.previewContent);
+            const layout = state.viewLive ? state.operatorConfig.layout : state.gridPreview ? state.gridPreview.layout : state.draft;
             const config = state.operatorConfig || { layout: state.base, scene: state.scene, runtime: { devices: state.roster }, revision: state.revision, generation: state.generation };
-            let content = state.previewContent || state.scene && state.scene.content;
+            let content = !state.viewLive && state.previewContent || state.scene && state.scene.content;
             if (content && content.asset && content.asset === state.activeImageUnavailableId) content = Object.assign({}, content, { available: false });
-            state.stage = window.OperatorStage.draw({ svg: el.stageSvg, layout,
+            const presentation = { content: "images", tablet: "tablets", show: "arrange" }[state.tabName] || "context";
+            state.stage = window.OperatorStage.draw({ svg: el.stageSvg, layout, presentation,
+                viewport: state.drag && state.drag.viewport,
                 content, profileFor,
                 labelFor: id => numberedLabel(id, latestProfile(id)),
-                statusFor: id => window.OperatorState.tabletState(config, id, performance.now()),
-                selectedId: state.selectedId, runtime: config.runtime,
+                statusFor: id => state.rosterError ? { status: "stale", text: "Status stale · refresh the operator connection" } : window.OperatorState.tabletState(config, id, performance.now()),
+                selectedId: state.selectedId, runtime: config.runtime, preview, editable: state.tabName === "show" && !state.gridPreview && !state.viewLive && !state.previewContent,
                 resolutionNode: document.getElementById("stage-resolution") });
+            const stageKey = document.getElementById("stage-key");
+            if (stageKey) {
+                const bounds = window.OperatorState.bounds(layout);
+                const placed = window.OperatorStage.panels(layout, profileFor).filter(panel => !panel.missing && panel.slot.participating !== false);
+                const area = placed.reduce((sum, panel) => sum + panel.active.width * panel.active.height, 0);
+                const share = bounds.width && bounds.height ? Math.min(100, Math.round(area * 100 / (bounds.width * bounds.height))) : 0;
+                stageKey.hidden = !(share > 0 && share < 100);
+                stageKey.textContent = placed.length + (placed.length === 1 ? " tablet covers " : " tablets cover ") + share + "% of the wall. Hatched area has no tablet.";
+            }
+            const summary = document.getElementById("stage-identities") || document.createElement("details");
+            if (!summary.id) {
+                summary.id = "stage-identities";
+                summary.className = "stage-identities";
+                summary.innerHTML = "<summary>Tablet identities and status</summary><ul></ul>";
+                (document.getElementById("stage-key") || el.stageSvg.parentElement).insertAdjacentElement("afterend", summary);
+            }
+            if (summary.dataset.presentation !== presentation) {
+                summary.open = presentation === "tablets";
+                summary.dataset.presentation = presentation;
+            }
+            const identities = summary.querySelector("ul");
+            const rows = window.OperatorStage.panels(layout, profileFor).map(panel => {
+                const status = preview ? "Local preview · not tablet output" : state.rosterError
+                    ? "Status stale · refresh the operator connection" : window.OperatorState.tabletState(config, panel.id, performance.now()).text;
+                return numberedLabel(panel.id, latestProfile(panel.id)) + (panel.id === state.selectedId ? " · selected" : "") + " · " + status + (panel.missing ? " · pinned profile missing" : "");
+            });
+            if (identities.textContent !== rows.join("")) {
+                identities.replaceChildren(...rows.map(text => { const item = document.createElement("li"); item.textContent = text; return item; }));
+            }
+            summary.hidden = !rows.length;
             const bounds = window.OperatorState.bounds(layout);
-            el.stageScale.textContent = (state.gridPreview ? "Grid preview · " : state.previewContent ? "Image selection preview · " : "Committed content / layout draft · ")
-                + formatNumber(bounds.width, 1) + " × " + formatNumber(bounds.height, 1)
-                + (layout.kind === "physical" ? " mm" : " logical units") + ". Preview is not tablet output confirmation.";
+            el.stageScale.textContent = " · " + formatNumber(bounds.width, 1) + " × " + formatNumber(bounds.height, 1)
+                + (layout.kind === "physical" ? " mm" : " logical units");
         }
 
         function pointerToStage(event) {
@@ -46,28 +79,33 @@ window.PhysicalStage = {
         }
 
         function onPointerDown(event) {
-            if (state.busy || state.gridPreview) return;
             if (event.button !== 0 && event.pointerType === "mouse") return;
             const group = event.target && event.target.closest
                 ? event.target.closest(".slot") : null;
             if (!group) return;
             const id = group.dataset.deviceId;
             if (!id || !state.draft) return;
-            if (state.draft.kind === "logical") { selectDevice(id, { reveal: false }); return; }
-            if (!state.draft.slots[id]) return;
+            if (!window.OperatorState.entries(state.draft)[id]) return;
 
             selectDevice(id, { reveal: false });
+            if (state.tabName !== "show" || state.busy || state.gridPreview || state.viewLive || state.previewContent) {
+                state.stageTap = { id: id, pointerId: event.pointerId, x: event.clientX, y: event.clientY };
+                return;
+            }
+            if (!canManualEdit()) return;
             const point = pointerToStage(event);
             if (!point) return;
 
             state.drag = {
                 id: id,
+                mode: event.target.closest(".logical-resize") ? "resize" : "move",
                 pointerId: event.pointerId,
                 startClientX: event.clientX,
                 startClientY: event.clientY,
                 startStageX: point.x,
                 startStageY: point.y,
                 scale: state.stage.scale,
+                viewport: state.stage,
                 moved: false,
                 preDraft: clone(state.draft)
             };
@@ -86,20 +124,28 @@ window.PhysicalStage = {
             );
             if (!drag.moved) {
                 if (distance <= DRAG_THRESHOLD_PX) return;
-                drag.moved = true;
+                beginManual(); drag.moved = true;
                 el.stageSvg.classList.add("is-dragging");
             }
 
             const point = pointerToStage(event);
             if (!point) return;
-            const slot = state.draft.slots[drag.id];
-            const before = drag.preDraft.slots[drag.id];
+            const slot = window.OperatorState.entries(state.draft)[drag.id];
+            const before = window.OperatorState.entries(drag.preDraft)[drag.id];
             if (!slot || !before) return;
-
             const deltaX = (point.x - drag.startStageX) / drag.scale;
             const deltaY = (point.y - drag.startStageY) / drag.scale;
-            slot.center_x_mm = roundTo(finiteOr(before.center_x_mm, 0) + deltaX, 2);
-            slot.center_y_mm = roundTo(finiteOr(before.center_y_mm, 0) + deltaY, 2);
+            if (state.draft.kind === "logical") {
+                const step = Math.max(1, Math.round(Number(document.getElementById("logical-snap").value) || 1));
+                const snap = value => Math.round(value / step) * step;
+                if (drag.mode === "resize") {
+                    slot.w = Math.max(slot.bezel.left + slot.bezel.right + 1, snap(before.w + deltaX));
+                    slot.h = Math.max(slot.bezel.top + slot.bezel.bottom + 1, snap(before.h + deltaY));
+                } else { slot.x = snap(before.x + deltaX); slot.y = snap(before.y + deltaY); }
+            } else {
+                slot.center_x_mm = roundTo(finiteOr(before.center_x_mm, 0) + deltaX, 2);
+                slot.center_y_mm = roundTo(finiteOr(before.center_y_mm, 0) + deltaY, 2);
+            }
             event.preventDefault();
             afterDraftChange();
         }
@@ -127,8 +173,8 @@ window.PhysicalStage = {
             }
             pushUndo(drag.preDraft);
             afterDraftChange();
-            const slot = state.draft.slots[drag.id];
-            if (slot) {
+            const slot = window.OperatorState.entries(state.draft)[drag.id];
+            if (slot && state.draft.kind === "physical") {
                 announce("Moved " + deviceLabel(drag.id, latestProfile(drag.id))
                     + " to " + formatNumber(slot.center_x_mm, 1) + ", "
                     + formatNumber(slot.center_y_mm, 1) + " mm.");
@@ -136,10 +182,17 @@ window.PhysicalStage = {
         }
 
         function onPointerUp(event) {
+            const tap = state.stageTap;
+            if (tap && event.pointerId === tap.pointerId) {
+                state.stageTap = null;
+                const moved = Math.hypot(event.clientX - tap.x, event.clientY - tap.y) > DRAG_THRESHOLD_PX;
+                if (!moved && state.selectedId === tap.id) revealInspector();
+            }
             if (state.drag && event.pointerId === state.drag.pointerId) endDrag(true);
         }
 
         function onPointerCancel(event) {
+            if (state.stageTap && event.pointerId === state.stageTap.pointerId) state.stageTap = null;
             if (state.drag && event.pointerId === state.drag.pointerId) endDrag(false);
         }
 
@@ -147,47 +200,72 @@ window.PhysicalStage = {
          * Selection
          * ---------------------------------------------------------------- */
 
+        const deviceSheet = typeof document !== "undefined" ? document.getElementById("device-sheet") : null;
+        function compactSheet() {
+            return typeof window.matchMedia === "function" && window.matchMedia("(max-width: 48rem)").matches;
+        }
+        function syncDeviceSheetMode() {
+            if (!deviceSheet) return;
+            if (compactSheet()) {
+                if (deviceSheet.open) deviceSheet.close();
+                deviceSheet.removeAttribute("open");
+            } else {
+                if (deviceSheet.open && deviceSheet.dataset.modal === "true") deviceSheet.close();
+                if (!deviceSheet.open) deviceSheet.setAttribute("open", "");
+            }
+        }
+        function openDeviceSheet(trigger) {
+            if (!deviceSheet || !compactSheet()) return;
+            state.sheetTrigger = trigger || document.activeElement;
+            if (!deviceSheet.open) { deviceSheet.dataset.modal = "true"; deviceSheet.showModal(); }
+            const heading = document.getElementById("tablet-action-name");
+            if (heading) heading.focus({ preventScroll: true });
+        }
         function revealInspector() {
-            if (state.drag || compactView()) return;
-            if (!el.inspectorBody || el.inspectorBody.hidden) return;
-            showTab("tablet", { persist: true });
-            const card = el.inspectorBody.closest(".inspector") || el.inspectorBody;
-            if (card && typeof card.scrollIntoView === "function") {
-                let behavior = "smooth";
-                if (typeof window.matchMedia === "function"
-                        && window.matchMedia("(prefers-reduced-motion: reduce)").matches) {
-                    behavior = "auto";
-                }
-                try { card.scrollIntoView({ block: "start", behavior: behavior }); }
-                catch (error) { card.scrollIntoView(); }
-            }
-            if (el.selectedTitle) {
-                try { el.selectedTitle.focus({ preventScroll: true }); }
-                catch (error) { el.selectedTitle.focus(); }
-            }
+            if (state.drag || state.tabName === "show") return;
+            const id = state.selectedId, trigger = document.activeElement;
+            Promise.resolve(showTab("tablet", { persist: true })).then(opened => {
+                if (!opened || state.selectedId !== id || state.tabName !== "tablet") return;
+                if (compactSheet()) { openDeviceSheet(trigger); return; }
+                const heading = document.getElementById("tablet-action-name");
+                if (heading) { heading.focus({ preventScroll: true }); heading.scrollIntoView({ block: "nearest" }); }
+            });
+        }
+        if (deviceSheet && deviceSheet.addEventListener) {
+            deviceSheet.addEventListener("close", function () {
+                deviceSheet.dataset.modal = "";
+                const trigger = state.sheetTrigger;
+                state.sheetTrigger = null;
+                if (trigger && trigger.isConnected && !trigger.disabled) trigger.focus({ preventScroll: true });
+            });
+            document.getElementById("device-sheet-close")?.addEventListener("click", function () { deviceSheet.close(); });
+            window.addEventListener("resize", syncDeviceSheetMode);
+            syncDeviceSheetMode();
         }
 
         function selectDevice(id, options) {
-            if (!id || state.busy) return;
+            if (!id) return;
             if (state.selectedId !== id) {
                 state.selectedId = id;
-                state.formDeviceId = null;
-                state.profileDirty = false;
-                state.calDirty = false;
                 clearMsg(el.profileMsg);
                 clearMsg(el.calibrationMsg);
                 syncDeviceRows();
                 syncInspector();
                 renderStage();
-                populateDeviceCard(true);
+                populateDeviceCard();
                 syncTabDots();
             } else {
                 syncDeviceRows();
                 syncInspector();
             }
             selectionChanged();
-            showTab("tablet", { persist: true });
-            if (options && options.reveal) revealInspector();
+            if (options && options.reveal) {
+                const trigger = typeof document !== "undefined" ? document.activeElement : null;
+                Promise.resolve(showTab("tablet", { persist: true })).then(function (opened) {
+                    if (!opened) return;
+                    if (compactSheet()) openDeviceSheet(trigger);
+                });
+            }
         }
 
         function syncDeviceRows() {
@@ -209,20 +287,18 @@ window.PhysicalStage = {
             if (window.OperatorState && state.operatorConfig) {
                 const result = window.OperatorState.aggregate(state.operatorConfig, performance.now());
                 const stale = !!state.rosterError;
-                const facts = result.states.reduce((all, item) => {
-                    if (!item.showing) all[item.status] = (all[item.status] || 0) + 1;
-                    return all;
-                }, {});
-                el.wallHealth.textContent = (stale ? "Status stale · " : "") + (result.total
-                    ? (stale ? "Current image confirmation unavailable" : result.showing + " of " + result.total + " showing")
-                        + (Object.keys(facts).length ? " · " + Object.entries(facts).map(([key, count]) => count + " " + key.replaceAll("_", " ")).join(" · ") : "")
-                    : "No tablets on the wall");
+                const paint = result.total
+                    ? (stale ? "Current image evidence unavailable" : result.showing + " of " + result.total + " showing the current image")
+                    : "No tablets on the wall";
+                el.wallHealth.textContent = (stale ? "Status stale · " : "") + paint;
                 el.btnWallHealth.dataset.kind = stale || result.states.some(item => !["displayed", "offline", "excluded"].includes(item.status)) ? "warn" : "info";
-                if (state.scene && state.scene.content.type !== "image" && result.total) el.wallHealth.textContent = result.total + " tablets on the wall · no still image selected";
+                const compact = typeof window.matchMedia === "function" && window.matchMedia("(max-width: 36rem)").matches;
+                if (compact) el.wallHealth.textContent = (stale ? "Stale · " : "") + (result.total ? result.showing + "/" + result.total + " showing image" : "No wall");
+                el.btnWallHealth.setAttribute("aria-label", (stale ? "Status stale. " : "") + (result.total ? result.showing + " of " + result.total + " tablets showing the current image. Issues." : "No tablets on the wall. Issues."));
                 const online = Object.values(state.roster).filter(device => device.online).length;
                 el.deviceCount.textContent = online + " online · " + Object.keys(state.roster).length + " registered";
                 el.rosterStatus.textContent = stale ? "Status stale. " + state.rosterError + ". Refresh status to retry."
-                    : "Live status and slow reconciliation. Last checked " + new Date(state.rosterCheckedAt).toLocaleTimeString() + ".";
+                    : "Status checked " + new Date(state.rosterCheckedAt).toLocaleTimeString() + ".";
                 return;
             }
             let online = 0;
@@ -270,161 +346,47 @@ window.PhysicalStage = {
         }
 
         function renderDeviceList() {
-            const focused = document.activeElement;
-            const focusedRow = focused && focused.closest && focused.closest(".dev-row");
-            const focusedId = focusedRow ? focusedRow.dataset.deviceId : null;
-            const focusedAction = focused && focused.classList && focused.classList.contains("dev-action");
-
-            el.deviceList.textContent = "";
-            deviceRows.clear();
-            const entries = deviceEntries();
-
-            entries.forEach(function (entry) {
-                const online = isOnline(entry.id);
-                const number = deviceNumber(entry.id);
-                const item = document.createElement("li");
-                item.className = "dev-row";
-                item.dataset.deviceId = entry.id;
-                item.dataset.selected = entry.id === state.selectedId ? "true" : "false";
-
-                const pick = document.createElement("button");
-                pick.type = "button";
-                pick.className = "dev-pick";
-                pick.dataset.deviceId = entry.id;
-                pick.setAttribute("aria-pressed", entry.id === state.selectedId ? "true" : "false");
-
-                const identity = document.createElement("span");
-                identity.className = "dev-identity";
-
-                const dot = document.createElement("span");
-                dot.className = "dev-dot";
-                dot.dataset.online = online ? "true" : "false";
-                dot.setAttribute("aria-hidden", "true");
-                dot.title = online ? "Online" : "Offline";
-                identity.appendChild(dot);
-
-                const numberNode = document.createElement("span");
-                numberNode.className = "dev-number";
-                numberNode.textContent = number === null ? "#–" : "#" + number;
-                identity.appendChild(numberNode);
-
-                const label = document.createElement("span");
-                label.className = "dev-label";
-                label.textContent = entry.label;
-                identity.appendChild(label);
-
-                const flag = document.createElement("span");
-                flag.className = "dev-flag";
-                flag.textContent = entry.id === state.selectedId ? "Selected" : "";
-
-                const meta = document.createElement("span");
-                meta.className = "dev-meta";
-
-                const idText = document.createElement("span");
-                idText.className = "mono";
-                idText.textContent = shortId(entry.id) + "…";
-                idText.title = entry.id;
-                meta.appendChild(idText);
-
-                const sizeText = document.createElement("span");
-                sizeText.textContent = entry.placement ? formatNumber(entry.placement.w, 1) + " × " + formatNumber(entry.placement.h, 1) + " logical units" : entry.profile
-                    ? formatNumber(entry.profile.active_width_mm, 1) + " × "
-                        + formatNumber(entry.profile.active_height_mm, 1) + " mm"
-                    : "size unknown";
-                meta.appendChild(sizeText);
-
-                const profileText = document.createElement("span");
-                profileText.textContent = state.layoutKind === "logical" ? "unit-based layout" : entry.profile
-                    ? "profile r" + entry.profile.revision : "no profile";
-                meta.appendChild(profileText);
-
-                const status = state.operatorConfig && window.OperatorState
-                    ? { text: window.OperatorState.tabletState(state.operatorConfig, entry.id, performance.now()).text, kind: "info" }
-                    : calibrationStatus(entry.profile, entry.calibration);
-                const calText = document.createElement("span");
-                calText.className = "dev-cal";
-                calText.dataset.kind = status.kind;
-                calText.textContent = status.text;
-                meta.appendChild(calText);
-
-                const record = state.roster[entry.id];
-                const wakeLock = record && typeof record.wake_lock === "string"
-                    ? record.wake_lock : null;
-                if (wakeLock && wakeLock !== "held") {
-                    const wake = document.createElement("span");
-                    wake.className = "dev-wake";
-                    wake.dataset.kind = wakeLock;
-                    wake.textContent = "OS-managed screen wake · " + wakeLock;
-                    if (wakeLock === "unsupported") {
-                        wake.title = "Wake lock is optional on HTTP. Verify OS screen timeout and power settings.";
-                    } else {
-                        wake.title = "Screen wake is OS-managed. Keep this tablet on power and verify its screen timeout. Image confirmation is separate.";
-                    }
-                    meta.appendChild(wake);
-                }
-
-                pick.setAttribute("aria-label", numberedLabel(entry.id, entry.profile)
-                    + ", " + (online ? "online" : "offline")
-                    + ", device " + shortId(entry.id)
-                    + ", " + (entry.profile
-                        ? formatNumber(entry.profile.active_width_mm, 1) + " by "
-                            + formatNumber(entry.profile.active_height_mm, 1) + " millimetres active"
-                        : "size unknown")
-                    + ", " + (entry.profile ? "profile revision " + entry.profile.revision : "no profile")
-                    + ", " + status.text
-                    + (wakeLock && wakeLock !== "held"
-                        ? ", " + (WAKE_LOCK_TEXT[wakeLock] || wakeLock) : "")
-                    + (entry.id === state.selectedId ? ", selected" : ""));
-
-                pick.appendChild(identity);
-                pick.appendChild(flag);
-                pick.appendChild(meta);
-                pick.addEventListener("click", function () {
-                    selectDevice(entry.id, { reveal: true });
-                });
-
-                item.appendChild(pick);
-
-                if (entry.slot || entry.placement) {
-                    const onWall = document.createElement("span");
-                    onWall.className = "dev-slot";
-                    onWall.textContent = "On wall";
-                    item.appendChild(onWall);
-                } else {
-                    const pair = state.draft && state.draft.kind === "physical" && validPair(entry.id);
-                    const add = document.createElement("button");
-                    add.type = "button";
-                    add.className = "btn btn-sm dev-action";
-                    add.textContent = "Add";
-                    add.disabled = !pair;
-                    add.title = pair
-                        ? "Add this tablet to the wall"
-                        : "Use Layout & size in Wall for logical tablets, or confirm measurements before a measured Add.";
-                    add.addEventListener("click", function () {
+            const entries = deviceEntries(), ids = new Set(entries.map(entry => entry.id));
+            for (const [id, row] of deviceRows) if (!ids.has(id)) { row.item.remove(); deviceRows.delete(id); }
+            for (const [index, entry] of entries.entries()) {
+                let row = deviceRows.get(entry.id);
+                if (!row) {
+                    const item = document.createElement("li"); item.className = "dev-row tablet-row"; item.dataset.deviceId = entry.id;
+                    const pick = document.createElement("button"); pick.type = "button"; pick.className = "dev-pick tablet-pick"; pick.dataset.deviceId = entry.id;
+                    const identity = document.createElement("span"); identity.className = "dev-identity";
+                    const number = document.createElement("span"); number.className = "dev-number";
+                    const name = document.createElement("span"); name.className = "dev-label";
+                    const flag = document.createElement("span"); flag.className = "dev-flag";
+                    const meta = document.createElement("span"); meta.className = "dev-meta";
+                    identity.append(number, name, flag); pick.append(identity, meta); item.append(pick);
+                    pick.addEventListener("click", () => selectDevice(entry.id, { reveal: true }));
+                    const add = document.createElement("button"); add.type = "button"; add.className = "btn btn-sm dev-action"; add.textContent = "Place";
+                    add.addEventListener("click", async () => {
                         selectDevice(entry.id);
-                        addSelectedDevice();
+                        if (await showTab("show", { persist: true })) {
+                            if (state.draft.kind === "physical" && !validPair(entry.id)) announce("Confirm the model or save measurements in Arrange before placing this tablet.");
+                            else addSelectedDevice();
+                        }
                     });
-                    item.appendChild(add);
+                    item.append(add); row = { item, pick, flag, number, name, meta, add }; deviceRows.set(entry.id, row);
                 }
-
-                el.deviceList.appendChild(item);
-                deviceRows.set(entry.id, {
-                    item: item,
-                    pick: pick,
-                    flag: flag
-                });
-            });
-
-            renderDeviceCount();
-
-            if (focusedId) {
-                const row = deviceRows.get(focusedId);
-                if (row) {
-                    const target = focusedAction ? row.item.querySelector(".dev-action") || row.pick : row.pick;
-                    try { target.focus({ preventScroll: true }); }
-                    catch (error) { target.focus(); }
-                }
+                const online = isOnline(entry.id), current = state.operatorConfig && window.OperatorState.tabletState(state.operatorConfig, entry.id, performance.now());
+                const size = entry.placement ? formatNumber(entry.placement.w, 1) + " × " + formatNumber(entry.placement.h, 1) + " relative units"
+                    : entry.profile ? formatNumber(entry.profile.active_width_mm, 1) + " × " + formatNumber(entry.profile.active_height_mm, 1) + " mm" : "Size not set";
+                const status = current ? current.text : online ? "Connected · not on the wall" : "Offline";
+                row.number.textContent = numberTag(entry.id);
+                row.name.textContent = entry.label;
+                const compactRoster = typeof window.matchMedia === "function" && window.matchMedia("(max-width: 36rem)").matches;
+                const baseStatus = current ? current.text : online ? "Connected" : "Offline";
+                row.meta.textContent = compactRoster
+                    ? baseStatus + (entry.placement ? " · " + formatNumber(entry.placement.w, 0) + " × " + formatNumber(entry.placement.h, 0) : "")
+                    : (current ? "" : (online ? "Connected · " : "Offline · ")) + status + " · " + size;
+                row.item.dataset.status = current ? current.status : online ? "online" : "offline";
+                row.pick.setAttribute("aria-label", numberedLabel(entry.id) + ", " + status);
+                row.add.hidden = !!(entry.slot || entry.placement); row.add.disabled = state.busy;
+                if (el.deviceList.children[index] !== row.item) el.deviceList.insertBefore(row.item, el.deviceList.children[index] || null);
             }
+            syncDeviceRows();
         }
 
         /* ---------------------------------------------------------------- *
@@ -448,7 +410,7 @@ window.PhysicalStage = {
 
             if (state.draft && state.draft.kind === "logical") {
                 el.inspectorBody.hidden = true; el.inspectorMissing.hidden = false;
-                el.btnAddSlot.disabled = true; el.slotMissingText.textContent = "Logical dimensions stay in logical units. Use Layout & size in Wall; advanced geometry remains in the compatibility editor."; return;
+                el.btnAddSlot.disabled = !!state.draft.placements[id]; el.slotMissingText.textContent = state.draft.placements[id] ? "Edit this tablet with the relative arrangement fields below." : "Place this tablet in the relative arrangement, then drag or edit its dimensions."; return;
             }
 
             if (!slot) {
@@ -477,7 +439,7 @@ window.PhysicalStage = {
             }
 
             const participating = slot.participating !== false;
-            el.selectedState.textContent = participating ? "On the wall" : "Not participating";
+            el.selectedState.textContent = participating ? "Included in show" : "Excluded from show";
             el.selectedState.dataset.kind = participating ? "ok" : "warn";
 
             setInputValue(el.slotCenterX, formatNumber(slot.center_x_mm, 2));
@@ -516,25 +478,37 @@ window.PhysicalStage = {
         }
 
         function nudgeSelected(deltaX, deltaY) {
+            if (state.tabName !== "show" || state.viewLive || state.previewContent || state.gridPreview || state.busy) return;
+            if (state.draft && state.draft.kind === "logical") {
+                const id = state.selectedId;
+                if (!state.draft.placements[id]) return;
+                mutateDraft(draft => { draft.placements[id].x += deltaX; draft.placements[id].y += deltaY; });
+                return;
+            }
             const slot = selectedSlot();
-            if (!slot || state.busy || state.gridPreview) return;
-            const before = clone(state.draft);
-            slot.nudge_x_mm = roundTo(finiteOr(slot.nudge_x_mm, 0) + deltaX, 3);
-            slot.nudge_y_mm = roundTo(finiteOr(slot.nudge_y_mm, 0) + deltaY, 3);
-            pushUndo(before);
-            afterDraftChange();
+            if (!slot || state.busy || state.gridPreview || !canManualEdit()) return;
+            mutateDraft(draft => {
+                const target = draft.slots[state.selectedId];
+                target.nudge_x_mm = roundTo(finiteOr(target.nudge_x_mm, 0) + deltaX, 3);
+                target.nudge_y_mm = roundTo(finiteOr(target.nudge_y_mm, 0) + deltaY, 3);
+            });
             announce("Nudge " + formatNumber(slot.nudge_x_mm, 2) + ", "
                 + formatNumber(slot.nudge_y_mm, 2) + " mm.");
         }
 
         function rotateSelected() {
+            if (state.draft && state.draft.kind === "logical") {
+                const id = state.selectedId;
+                if (!state.draft.placements[id]) return;
+                mutateDraft(draft => { draft.placements[id] = window.OperatorState.rotateLogical(draft.placements[id]); });
+                return;
+            }
             const slot = selectedSlot();
-            if (!slot || state.busy || state.gridPreview) return;
-            const before = clone(state.draft);
-            const angle = finiteOr(slot.mount_angle, 0) + 90;
-            slot.mount_angle = roundTo(((angle % 360) + 360) % 360, 2);
-            pushUndo(before);
-            afterDraftChange();
+            if (!slot || state.busy || state.gridPreview || !canManualEdit()) return;
+            mutateDraft(draft => {
+                const target = draft.slots[state.selectedId], angle = finiteOr(target.mount_angle, 0) + 90;
+                target.mount_angle = roundTo(((angle % 360) + 360) % 360, 2);
+            });
             announce("Mount angle " + formatNumber(slot.mount_angle, 1) + "°.");
         }
 
@@ -553,7 +527,15 @@ window.PhysicalStage = {
 
         function addSelectedDevice() {
             const id = state.selectedId;
-            if (!id || state.busy || !state.draft || state.draft.kind !== "physical") return;
+            if (!id || state.busy || !state.draft) return;
+            if (state.draft.kind === "logical") {
+                if (state.draft.placements[id]) return;
+                const viewport = (state.roster[id] || {}).viewport;
+                const width = viewport && viewport.height > 0 ? Math.max(1, Math.round(100 * viewport.width / viewport.height)) : 100;
+                mutateDraft(draft => { draft.placements[id] = { x: Math.max(0, ...Object.values(draft.placements).map(p => p.x + p.w)), y: 0,
+                    w: width, h: 100, bezel: { top: 0, right: 0, bottom: 0, left: 0 } }; });
+                renderDeviceList(); return;
+            }
             if (state.draft.slots[id]) return;
             const pair = validPair(id);
             if (!pair) {
@@ -564,13 +546,15 @@ window.PhysicalStage = {
             if (!state.draft || state.draft.kind !== "physical" || state.gridPreview) return;
             const position = window.PhysicalSizing.nextPosition(state.draft.slots, profileFor, pair.profile, state.draft.bounds);
             if (position.error) { showError(position.error); return; }
+            const mount = document.getElementById("grid-common-mount").value;
+            if (mount === "") { showError("Declare the mounted top edge in Arrange before adding a measured tablet. Browser rotation does not establish the mounting."); return; }
             const centerX = position.x, centerY = position.y;
 
             const changed = mutateDraft(function (draft) {
                 draft.slots[id] = {
                     center_x_mm: roundTo(centerX, 2),
                     center_y_mm: roundTo(centerY, 2),
-                    mount_angle: 0,
+                    mount_angle: Number(mount),
                     nudge_x_mm: 0,
                     nudge_y_mm: 0,
                     profile_revision: pair.profile.revision,

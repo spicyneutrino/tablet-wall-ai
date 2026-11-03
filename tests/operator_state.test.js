@@ -35,6 +35,14 @@ for (const layout of [draft, fixture().layout]) {
 const roster = { a: { number: 4 }, b: { number: 1 }, c: { label: "alpha" }, d: { label: "Zulu" }, e: { number: null, label: "Beta" } };
 assert.deepEqual(Object.keys(roster).sort((a, b) => model.compareIds(roster, {}, a, b)), ["b", "a", "c", "e", "d"]);
 assert.equal(model.tabletState(fixture(), "tablet", now).showing, true);
+assert.equal(model.tabletState(fixture(), "tablet", now).text, "Reports current image");
+const sceneOnly = fixture(); sceneOnly.scene.content = { type: "color" };
+sceneOnly.runtime.devices.tablet.render.expected_token.asset = null;
+sceneOnly.runtime.devices.tablet.render.accepted_token.asset = null;
+assert.equal(model.tabletState(sceneOnly, "tablet", now).text, "Current scene reported");
+assert.equal(model.tabletState(sceneOnly, "tablet", now).showing, false, "only an image raises the current-image evidence count");
+const offlineFixture = fixture(); offlineFixture.runtime.devices.tablet.online = false;
+assert.equal(model.tabletState(offlineFixture, "tablet", now).text, "Offline · spot reserved");
 const notCurrent = fixture(); notCurrent.runtime.devices.tablet.render.current = false;
 assert.equal(model.tabletState(notCurrent, "tablet", now).showing, false, "server rejection cannot become a green badge");
 const newConnection = fixture(); newConnection.runtime.devices.tablet.connection_id = "socket-2";
@@ -71,6 +79,8 @@ for (const status of ["queued", "delivered", "shown"]) {
 }
 const clearedIdentify = fixture(); clearedIdentify.runtime.devices.tablet.identify = { state: "cleared", active: false };
 assert.equal(model.tabletState(clearedIdentify, "tablet", now).showing, true, "cleared Identify metadata must not obscure the current scene");
+const carried = model.observeConfig(fixture(), now + 1000);
+assert.equal(model.tabletState(carried, "tablet", now + 15001).status, "stale", "re-adopting a local projection cannot refresh the age of old paint evidence");
 const expired = fixture();
 assert.equal(model.tabletState(expired, "tablet", now + 15001).status, "stale", "cached age grows after a snapshot");
 expired.runtime.devices.tablet.online = false;

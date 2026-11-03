@@ -89,12 +89,6 @@
         const layout = body && stringOrNull(wall.layout);
         const layoutText = layout ? LAYOUT_LABEL[layout] || "Not reported: unrecognised layout " + JSON.stringify(layout)
             : body === null ? "Unknown: live wall state unavailable." : "Not reported";
-        const wallParts = [];
-        if (layoutText) wallParts.push(layoutText);
-        if (body && wall.revision !== null && wall.revision !== undefined) wallParts.push("revision " + wall.revision);
-        if (body && stringOrNull(wall.generation)) wallParts.push("generation " + stringOrNull(wall.generation));
-        if (body && wall.schema !== null && wall.schema !== undefined) wallParts.push("schema " + wall.schema);
-        const wallText = wallParts.length ? wallParts.join(" · ") : "Unknown: live wall state unavailable.";
 
         const transport = body && stringOrNull(security.transport);
         const authentication = body && stringOrNull(security.authentication);
@@ -128,7 +122,7 @@
             ["Wi-Fi", wifi.known === true && stringOrNull(wifi.name)
                 ? stringOrNull(wifi.name)
                 : "Not reported. Join the same network as the wall server."],
-            ["Layout", wallText],
+            ["Layout", layoutText],
             ["Security transport", transport ? transport.toUpperCase() : "Not reported"],
             ["Authentication", authentication === "disabled"
                 ? "None. Trusted local hotspot only."
@@ -192,19 +186,7 @@
 
     function create({ state, api, copyText }) {
         const $ = id => document.getElementById(id);
-        $("operator-readiness").innerHTML = `<section class="card" aria-labelledby="readiness-title"><h2 id="readiness-title">Join &amp; readiness</h2>
-            <p id="readiness-status" role="status" aria-live="polite">Reading server readiness…</p>
-            <p id="readiness-errors" role="alert" hidden></p>
-            <label class="field" for="tablet-url">Tablet address<input class="inp" id="tablet-url" readonly value="Tablet address not configured"></label>
-            <button class="btn" type="button" id="copy-tablet-url" disabled>Copy tablet URL</button><p id="tablet-url-note"></p>
-            <figure id="tablet-qr-figure" hidden><img id="tablet-qr" alt="QR code for the configured tablet address"><figcaption id="tablet-qr-note">Scan to open the tablet page. The QR encodes only the join address, not a credential.</figcaption></figure>
-            <p id="tablet-qr-error" role="alert" hidden>QR image failed to load. The text address above still works. <button class="btn" type="button" id="btn-readiness-qr-retry">Retry QR</button></p>
-            <p class="hint" id="readiness-refreshed">Not read yet.</p>
-            <button class="btn" type="button" id="btn-readiness-refresh">Refresh readiness</button>
-            <dl id="operator-readiness-facts" class="operator-facts"></dl>
-            <details id="readiness-paths"><summary>Data paths</summary><dl class="operator-facts" id="operator-readiness-paths"></dl></details>
-            <details id="readiness-advice"><summary>What this server cannot do</summary><ul id="operator-readiness-advice"></ul></details>
-            <p id="readiness-message" role="status" aria-live="polite"></p></section>`;
+
         let data = null, fetchedAt = null, failure = null, qrFailed = false, loading = false, qrRetry = 0;
 
         function factList(element, pairs, key) {
@@ -250,7 +232,7 @@
             const errors = $("readiness-errors");
             errors.hidden = !model.errors.length;
             errors.textContent = model.errors.length
-                ? "Server reported: " + model.errors.join(" · ")
+                ? "Tablet joining is unavailable. " + model.errors.join(" · ")
                 : "";
 
             const advice = $("readiness-advice");

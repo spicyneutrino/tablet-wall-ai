@@ -28,7 +28,100 @@
             || device && device.viewport && Math.round(device.viewport.width * device.viewport.dpr);
         return { pixels, target: target || null, upscale: target ? target / Math.max(1, pixels) : null };
     }
-    function draw({ svg, layout, content, profileFor, labelFor, statusFor, selectedId, runtime, resolutionNode }) {
+    function syncChildren(parent, next) {
+        const remaining = Array.from(parent.children);
+        const key = item => item.tagName + ":" + (item.getAttribute("data-device-id") || item.id || item.getAttribute("class") || "");
+        for (const [index, proposed] of Array.from(next.children).entries()) {
+            const current = remaining.find(item => key(item) === key(proposed));
+            if (!current) { parent.insertBefore(proposed, parent.children[index] || null); continue; }
+            remaining.splice(remaining.indexOf(current), 1);
+            for (const attr of Array.from(current.attributes)) if (!proposed.hasAttribute(attr.name)) current.removeAttribute(attr.name);
+            for (const attr of proposed.attributes) if (current.getAttribute(attr.name) !== attr.value) current.setAttribute(attr.name, attr.value);
+            if (proposed.children.length || current.children.length) syncChildren(current, proposed);
+            else if (current.textContent !== proposed.textContent) current.textContent = proposed.textContent;
+            if (parent.children[index] !== current) parent.insertBefore(current, parent.children[index] || null);
+        }
+        remaining.forEach(item => item.remove());
+    }
+    function fitLabels(svg) {
+        svg.querySelectorAll(".operator-slot-label").forEach(label => {
+            const matrix = label.getScreenCTM();
+            if (!matrix) return;
+            const scale = Math.hypot(matrix.a, matrix.b);
+            if (!scale) return;
+            const width = Number(label.dataset.width) * scale, height = Number(label.dataset.height) * scale;
+            const text = label.dataset.label;
+            const size = Math.min(12, height - 8, (width - 12) / (Math.min(4, text.length) * 0.6));
+            label.style.display = size < 10 ? "none" : "";
+            if (size < 10) return;
+            const room = Math.max(1, Math.floor((width - 12) / (size * 0.6)));
+            label.textContent = text.length > room ? text.slice(0, Math.max(1, room - 1)) + "…" : text;
+            label.setAttribute("font-size", size / scale);
+            label.setAttribute("stroke-width", 0);
+            label.setAttribute("x", Number(label.dataset.x) + 6 / scale);
+            label.setAttribute("y", Number(label.dataset.y) + (size + 4) / scale);
+            const bg = label.previousElementSibling;
+            if (bg && bg.classList && bg.classList.contains("operator-slot-label-bg")) {
+                const textWidth = typeof label.getComputedTextLength === "function" ? label.getComputedTextLength() : label.textContent.length * size * 0.6 / scale;
+                bg.setAttribute("x", Number(label.dataset.x) + 3 / scale);
+                bg.setAttribute("y", Number(label.dataset.y) + 1.5 / scale);
+                bg.setAttribute("width", textWidth + 6 / scale);
+                bg.setAttribute("height", (size + 5) / scale);
+                bg.setAttribute("rx", 2 / scale);
+            }
+        });
+    }
+    const fits = new WeakMap();
+    // Call OperatorStage.fit(el.stageSvg) after renderStage and stage relocation.
+    // Optional { actionBar, navigation } elements override the workspace defaults.
+    function fit(svg, options = {}) {
+        const field = svg.closest(".stage-scroll");
+        if (!field || !field.parentElement || !svg.viewBox.baseVal.width) return null;
+        const win = svg.ownerDocument.defaultView, doc = svg.ownerDocument;
+        let state = fits.get(svg);
+        if (!state) {
+            state = { options, parent: null };
+            const schedule = () => {
+                if (state.frame) return;
+                state.frame = win.requestAnimationFrame(() => { state.frame = 0; fit(svg, state.options); });
+            };
+            state.observer = new win.ResizeObserver(schedule);
+            win.addEventListener("resize", schedule);
+            fits.set(svg, state);
+        }
+        state.options = options;
+        if (state.parent !== field.parentElement) {
+            state.observer.disconnect();
+            state.parent = field.parentElement;
+            state.observer.observe(state.parent);
+        }
+        const parentStyle = win.getComputedStyle(state.parent), fieldStyle = win.getComputedStyle(field);
+        const availableWidth = state.parent.clientWidth - parseFloat(parentStyle.paddingLeft) - parseFloat(parentStyle.paddingRight);
+        if (availableWidth <= 0 || !field.getClientRects().length) return null;
+        let bottom = win.innerHeight;
+        const navigation = options.navigation || doc.querySelector(".workspace-nav-landmark");
+        const actionBar = options.actionBar || doc.querySelector(doc.body.dataset.task === "arrange" ? "#arrange-footer-actions" : ".image-actions");
+        for (const bar of [navigation, doc.body.dataset.outputDirty === "true" && actionBar]) {
+            if (!bar || !bar.getClientRects().length) continue;
+            const style = win.getComputedStyle(bar), rect = bar.getBoundingClientRect();
+            if (style.position === "fixed" && rect.bottom > bottom / 2) bottom = Math.min(bottom, rect.top - (parseFloat(style.marginTop) || 0));
+        }
+        const borderWidth = parseFloat(fieldStyle.borderLeftWidth) + parseFloat(fieldStyle.borderRightWidth);
+        const borderHeight = parseFloat(fieldStyle.borderTopWidth) + parseFloat(fieldStyle.borderBottomWidth);
+        const aspect = svg.viewBox.baseVal.width / svg.viewBox.baseVal.height;
+        const width = Math.max(0, availableWidth - borderWidth);
+        const commit = doc.body.dataset.task === "arrange" ? doc.querySelector(".arrange-result .arrange-commit") : null;
+        const reserved = commit && commit.getClientRects().length ? commit.offsetHeight + 16 : 0;
+        const availableHeight = bottom - field.getBoundingClientRect().top - 16 - borderHeight - reserved;
+        // A short viewport keeps a usable field and falls back to page scrolling.
+        const height = Math.min(width / aspect, Math.max(120, availableHeight));
+        field.style.inlineSize = Math.min(width, height * aspect) + borderWidth + "px";
+        svg.style.inlineSize = Math.min(width, height * aspect) + "px";
+        svg.style.blockSize = height + "px";
+        fitLabels(svg);
+        return { width: Math.min(width, height * aspect), height, availableWidth, availableHeight };
+    }
+    function draw({ svg, layout, content, profileFor, labelFor, statusFor, selectedId, runtime, resolutionNode, preview = false, editable = true, presentation = "context", viewport = null }) {
         const ns = "http://www.w3.org/2000/svg";
         const node = (tag, attrs, text) => {
             const item = document.createElementNS(ns, tag);
@@ -37,21 +130,30 @@
             return item;
         };
         const b = model.bounds(layout);
-        const scale = Math.min(664 / b.width, 424 / b.height);
-        const offX = 360 - (b.x + b.width / 2) * scale, offY = 240 - (b.y + b.height / 2) * scale;
-        const stage = { scale, offX, offY, step: 50 };
+        const width = 720;
+        const height = viewport ? viewport.height : 20 + 700 * b.height / b.width;
+        const scale = viewport ? viewport.scale : 700 / b.width;
+        const offX = viewport ? viewport.offX : width / 2 - (b.x + b.width / 2) * scale;
+        const offY = viewport ? viewport.offY : height / 2 - (b.y + b.height / 2) * scale;
+        const stage = { scale, offX, offY, width, height, step: 50 };
+        svg.setAttribute("viewBox", "0 0 " + width + " " + height);
+        svg.style.setProperty("--stage-aspect", width / height);
+        svg.dataset.presentation = presentation;
+        svg.setAttribute("aria-label", editable
+            ? "Wall. Select a tablet and drag it, or use the arrow keys to nudge the selected tablet."
+            : "Wall preview. Select a tablet to inspect its identity and status.");
         const focused = document.activeElement;
         const focusedId = focused && focused.closest && focused.closest(".slot") && focused.closest(".slot").dataset.deviceId;
-        svg.replaceChildren();
+        const view = node("svg");
         const defs = node("defs");
         const wallClip = node("clipPath", { id: "operator-wall-clip", clipPathUnits: "userSpaceOnUse" });
         wallClip.append(node("rect", b)); defs.append(wallClip);
         const panelClip = node("clipPath", { id: "operator-panel-clip", clipPathUnits: "userSpaceOnUse" });
         const hatch = node("pattern", { id: "operator-occlusion", width: 9, height: 9, patternUnits: "userSpaceOnUse" });
-        hatch.append(node("path", { d: "M-2 2L2-2 M0 9L9 0 M7 11L11 7", stroke: "#75828d", "stroke-width": 1 }));
-        defs.append(hatch, panelClip); svg.append(defs);
+        hatch.append(node("path", { d: "M-2 2L2-2 M0 9L9 0 M7 11L11 7", stroke: "var(--stage-line)", "stroke-width": 1, "stroke-opacity": 0.4 }));
+        defs.append(hatch, panelClip); view.append(defs);
         const world = node("g", { transform: "translate(" + offX + " " + offY + ") scale(" + scale + ")" });
-        svg.append(world);
+        view.append(world);
         const list = panels(layout, profileFor);
         const rect = (shape, attributes) => node("rect", Object.assign({}, shape, attributes));
         const rotation = panel => panel.angle ? "rotate(" + panel.angle + " " + panel.cx + " " + panel.cy + ")" : "rotate(0)";
@@ -61,40 +163,52 @@
         const transform = content && content.type === "image" && model.fitTransform(layout, content);
         const image = opacity => node("image", { href: content.url, x: transform.x, y: transform.y,
             width: transform.width, height: transform.height, preserveAspectRatio: "none", opacity });
-        world.append(rect(b, { fill: content && content.background || "#0b1120", stroke: "#778793", "stroke-width": 1 / scale }));
-        if (transform && content.url && content.available !== false && content.availability !== "unavailable") world.append(image(0.22));
+        world.append(rect(b, { fill: content && content.background || "var(--stage)", stroke: "var(--stage-line)", "stroke-width": 1 / scale }));
+        if ((presentation === "arrange" || presentation === "context") && transform && content.url && content.available !== false && content.availability !== "unavailable") world.append(image(0.22));
         const wall = node("g", { "clip-path": "url(#operator-wall-clip)" }); world.append(wall);
         wall.append(rect(b, { fill: "url(#operator-occlusion)" }));
         const visible = node("g", { "clip-path": "url(#operator-panel-clip)" }); wall.append(visible);
-        visible.append(rect(b, { fill: content && content.background || "#0b1120" }));
+        visible.append(rect(b, { fill: content && content.background || "var(--stage)" }));
         if (transform && content.url && content.available !== false && content.availability !== "unavailable") visible.append(image(1));
         const estimates = [], upscaleFactors = [];
-        const cssRatio = 720 / (svg.getBoundingClientRect().width || 720);
         list.sort((a, z) => Number(a.id === selectedId) - Number(z.id === selectedId)).forEach(panel => {
-            const status = statusFor(panel.id);
+            const status = preview ? { status: "preview", text: "Local preview · not tablet output" } : statusFor(panel.id);
             const group = node("g", { class: "slot operator-slot", role: "button", tabindex: 0,
-                "data-device-id": panel.id, "aria-pressed": String(panel.id === selectedId),
+                "data-device-id": panel.id, "data-status": status.status, "data-preview": String(preview), "aria-pressed": String(panel.id === selectedId),
                 "aria-label": labelFor(panel.id) + ", " + status.text + (panel.missing ? ", pinned profile missing" : "") });
             const outline = node("g", { transform: rotation(panel) });
             if (!panel.missing) {
-                outline.append(rect(panel.body, { fill: "transparent", stroke: panel.id === selectedId ? "#f4b942" : "#e5edf2", "stroke-width": (panel.id === selectedId ? 3 : 1.5) / scale }));
-                outline.append(rect(panel.active, { fill: "none", stroke: "#a8bcc6", "stroke-width": 0.75 / scale }));
+                outline.append(rect(panel.body, { class: "operator-body-outline", fill: "transparent", "stroke-width": (panel.id === selectedId ? 3 : 1.5) / scale }));
+                outline.append(rect(panel.active, { class: "operator-active-outline", fill: "none", "stroke-width": 0.75 / scale }));
                 const estimate = resolution(panel, transform, content, runtime && runtime.devices && runtime.devices[panel.id]);
                 if (estimate && estimate.upscale > 1.1) upscaleFactors.push(estimate.upscale);
                 if (estimate) estimates.push(labelFor(panel.id) + " ≈" + estimate.pixels + " source px across" + (estimate.target ? " for " + estimate.target + " output px" : " (output resolution unknown)")
                     + (estimate.upscale > 1.1 ? " · " + estimate.upscale.toFixed(1) + "× upscale" : ""));
-            } else outline.append(node("circle", { cx: panel.cx, cy: panel.cy, r: 8 / scale, fill: "none", stroke: "#f4b942", "stroke-width": 2 / scale }));
+            } else outline.append(node("circle", { cx: panel.cx, cy: panel.cy, r: 8 / scale, fill: "none", stroke: "var(--stage-selected)", "stroke-width": 2 / scale }));
+            if (!preview && status.status === "offline" && !panel.missing) {
+                outline.append(rect(panel.body, { class: "offline-reservation", opacity: 0.18 }));
+                outline.append(rect(panel.body, { fill: "url(#operator-occlusion)", opacity: 0.28 }));
+            }
+            if (!panel.missing) {
+                const label = labelFor ? labelFor(panel.id) : "";
+                if (label) {
+                    outline.append(node("rect", { class: "operator-slot-label-bg", fill: "var(--stage)", opacity: 0.82 }));
+                    outline.append(node("text", { x: panel.active.x + 6 / scale, y: panel.active.y + 15 / scale,
+                        class: "operator-slot-label", "font-size": 11 / scale, "stroke-width": 0,
+                        "data-label": label, "data-x": panel.active.x, "data-y": panel.active.y,
+                        "data-width": panel.active.width, "data-height": panel.active.height,
+                        "aria-hidden": "true" }, label));
+                }
+            }
             group.append(outline);
-            const center = panel.missing ? { x: panel.cx, y: panel.cy } : { x: panel.body.x + panel.body.width / 2, y: panel.body.y + panel.body.height / 2 };
-            const text = node("text", { x: center.x, y: center.y, class: "operator-slot-label", "font-size": 12 * cssRatio / scale, "text-anchor": "middle", "pointer-events": "none" });
-            const labelLimit = panel.missing ? 20 : Math.max(8, Math.min(36, Math.floor(panel.body.width * scale / cssRatio / 7)));
-            const label = labelFor(panel.id);
-            text.append(node("tspan", { x: center.x, dy: 0 }, label.length > labelLimit ? label.slice(0, labelLimit - 1) + "…" : label));
-            const statusLabels = { displayed: "Showing", loading: "Loading", offline: "Offline reserved", unknown: "Unconfirmed", identifying: "Identifying", failed: "Image failed", excluded: "Excluded" };
-            text.append(node("tspan", { x: center.x, dy: 16 * cssRatio / scale, "font-size": 11 * cssRatio / scale }, statusLabels[status.status] || status.status.replaceAll("_", " ")));
-            group.append(text); world.append(group);
+            if (layout.kind === "logical" && panel.id === selectedId && !panel.missing && editable) {
+                group.append(rect({ x: panel.body.x + panel.body.width - 10 / scale, y: panel.body.y + panel.body.height - 10 / scale, width: 10 / scale, height: 10 / scale },
+                    { class: "logical-resize", fill: "var(--stage-text)", "aria-hidden": "true" }));
+            }
+            world.append(group);
         });
-        if (!list.length) svg.append(node("text", { x: 360, y: 240, "text-anchor": "middle", class: "stage-note" }, "No tablets on the wall. Choose tablets in Layout & size."));
+        syncChildren(svg, view);
+        fit(svg, fits.get(svg) && fits.get(svg).options);
         if (resolutionNode) resolutionNode.textContent = estimates.length ? "Estimated sampling. " + estimates.join("; ") + ". Rotation, clipping and gaps may reduce visible detail." : "Resolution estimate needs an image and panel dimensions. Preview does not confirm tablet output.";
         const quality = document.getElementById("stage-quality-summary");
         if (quality) quality.textContent = upscaleFactors.length ? "Estimated upscaling up to " + Math.max(...upscaleFactors).toFixed(1) + "×. Check resolution estimates." : "";
@@ -104,7 +218,7 @@
         }
         return stage;
     }
-    const api = { panels, resolution, draw };
+    const api = { panels, resolution, draw, fit };
     if (typeof module !== "undefined" && module.exports) module.exports = api;
     else root.OperatorStage = api;
 }(typeof window !== "undefined" ? window : globalThis));

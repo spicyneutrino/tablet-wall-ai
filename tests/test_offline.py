@@ -101,6 +101,9 @@ def test_served_pages_reference_nothing_outside_the_origin(offline):
     assert all(state == "ok" for state in pages["fetched"].values()), pages["fetched"]
     assert any(path.endswith("client.js") for path in pages["fetched"])
     assert any(path.endswith("controller.js") for path in pages["fetched"])
+    assert any(path.endswith("operator-entry.js") for path in pages["fetched"])
+    assert any(path.endswith("physical.js") for path in pages["fetched"])
+    assert any(path.endswith(".ttf") for path in pages["fetched"])
     assert any(path.endswith(".css") for path in pages["fetched"])
 
 

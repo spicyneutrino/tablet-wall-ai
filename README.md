@@ -48,8 +48,7 @@ These addresses work only on the computer running the server:
 | Page       | URL                            |
 | ---------- | ------------------------------ |
 | Local client test | http://127.0.0.1:8000/client/ |
-| Wall console | http://127.0.0.1:8000/controller/physical.html |
-| Logical compatibility editor | http://127.0.0.1:8000/controller/ |
+| Wall workspace | http://127.0.0.1:8000/controller/ |
 | API docs   | http://127.0.0.1:8000/docs        |
 
 ## Connect tablets to the laptop hotspot
@@ -70,9 +69,10 @@ tablet. For a hotspot at `10.42.0.1`, it is
 its address can change. Both `/client` and `/client/` work. A tablet must never
 use `127.0.0.1` or `localhost` to reach the laptop.
 
-The Wall console stays at
-`http://127.0.0.1:8000/controller/physical.html` on the laptop. Its **System**
-tab shows the exact tablet address, Copy button, join QR, and readiness facts.
+The wall workspace stays at `http://127.0.0.1:8000/controller/` on the laptop.
+**Tablets** shows the exact tablet address, Copy button and join QR.
+**Settings** shows readiness facts. The direct `controller/physical.html` URL
+opens the same workspace.
 A loopback address carries a warning that it only opens on this computer.
 The QR is an address shortcut; it does not authenticate or approve a tablet.
 
@@ -102,9 +102,12 @@ deploy/                     hotspot proxy reference, service unit template,
 frontend/
   client/                   runs on each tablet; paints its wall slice
     index.html  client.js  client.css  view.js
-  controller/               operator dashboard; roster, wall and content control
-    index.html  controller.js  controller.css
-    physical.html physical.js physical.css
+  controller/               one operator workspace for tablets, arrangement,
+                            images, saved records and settings
+    physical.html physical.js operator-*.js
+    operator-tokens.css operator-workspace.css operator-stage.css fonts/
+    index.html operator-entry.js (forwards to the workspace)
+    experimental.html controller*.js controller.css (opt-in compatibility tools)
 tests/                      pytest contract tests (HTTP + WebSocket)
 pyproject.toml              deps, dev deps, pytest config
 ```
@@ -152,9 +155,16 @@ Desktop browser evidence does not replace physical tablet validation.
 
 ### Curating still images
 
-There are two sources. **Curated files**: create an `assets/` directory at the
+For the trusted hotspot launch, use `make hotspot ARGS='--operator-uploads'`
+to enable image addition from this computer for that launch only. In **Images**,
+choose a PNG or JPEG and select **Upload image**. Uploading selects a preview;
+**Show image** applies it separately. Uploads remain disabled by default, and
+the tablet listener does not admit uploads or operator controls.
+
+There are also two storage sources. **Curated files**: create an `assets/` directory at the
 repository root (or set `TABLET_WALL_ASSET_DIR` to another server-local
-directory) and copy JPEG or PNG files into it. **Managed uploads**: set
+directory) and copy JPEG or PNG files into it. **Managed uploads outside the
+hotspot launcher**: set
 `TABLET_WALL_MEDIA_DIR` (default `./media`), choose
 `TABLET_WALL_UPLOAD_MODE=loopback` for direct local use or `proxy` with
 `TABLET_WALL_OPERATOR_CREDENTIAL` behind the authenticated operator listener,
