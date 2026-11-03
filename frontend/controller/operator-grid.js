@@ -124,8 +124,8 @@
                     + (/model|approximate/i.test(profile.provenance + " " + calibration.method) ? "approximate " : "")
                     + "±" + Number(calibration.uncertainty_mm.toFixed(1)) + " mm" : "Pinned physical measurements are unavailable. Confirm a model or save measurements before previewing.";
             });
-            if ($("grid-1x4")) $("grid-1x4").textContent = "Row of " + selected.size;
-            if ($("grid-2x2")) $("grid-2x2").textContent = selected.size > 1 ? "Two rows · " + Math.ceil(selected.size / 2) + " columns" + (selected.size % 2 ? " · one empty cell" : "") : "One tablet";
+            if ($("grid-1x4")) { $("grid-1x4").textContent = "1 × 4"; $("grid-1x4").setAttribute("aria-label", "Row of " + selected.size); }
+            if ($("grid-2x2")) { $("grid-2x2").textContent = "2 × 2"; $("grid-2x2").setAttribute("aria-label", selected.size > 1 ? "Two rows, " + Math.ceil(selected.size / 2) + " columns" + (selected.size % 2 ? ", one empty cell" : "") : "One tablet"); }
             $("grid-kind-note").textContent = $("grid-kind").value === "logical" ? "Relative screen shapes, without physical calibration."
                 : "Pinned measurements. Model dimensions remain approximate.";
             const stale = !!baseEtag && baseEtag !== state.etag;

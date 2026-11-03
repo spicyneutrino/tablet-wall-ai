@@ -101,7 +101,9 @@
         const borderHeight = parseFloat(fieldStyle.borderTopWidth) + parseFloat(fieldStyle.borderBottomWidth);
         const aspect = svg.viewBox.baseVal.width / svg.viewBox.baseVal.height;
         const width = Math.max(0, availableWidth - borderWidth);
-        const availableHeight = bottom - field.getBoundingClientRect().top - 16 - borderHeight;
+        const commit = doc.body.dataset.task === "arrange" ? doc.querySelector(".arrange-result .arrange-commit") : null;
+        const reserved = commit && commit.getClientRects().length ? commit.offsetHeight + 16 : 0;
+        const availableHeight = bottom - field.getBoundingClientRect().top - 16 - borderHeight - reserved;
         // A short viewport keeps a usable field and falls back to page scrolling.
         const height = Math.min(width / aspect, Math.max(120, availableHeight));
         field.style.inlineSize = Math.min(width, height * aspect) + borderWidth + "px";

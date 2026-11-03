@@ -72,7 +72,7 @@ const content = context.window.OperatorContent.create({ state, renderStage() {},
         "library cards show filename only, not dimensions");
     assert.equal(buttonA.attrs["aria-pressed"], "false");
     assert.equal(cardA.dataset.selected, undefined, "selection uses one outline marker, not a duplicate badge");
-    assert.equal(node("stage-applied-content").textContent, "· Tablet colours");
+    assert.equal(node("stage-applied-content").textContent, "Tablet colours");
 
     await buttonA.click();
     assert.equal(content.dirty(), true, "clicking a library image creates a draft");

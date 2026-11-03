@@ -97,6 +97,11 @@
                 : ["blocked", "invalid", "stale_calibration", "needs_calibration", "needs_profile", "viewport_mismatch", "zoom_changed", "missing_profile", "missing_calibration", "invalid_mapping"].includes(evidence.status) ? "Return the tablet to its calibrated rotation, 100% zoom and launch mode, or review its measurements."
                 : evidence.status === "unplaced" ? "Connected and available. Place this tablet in Arrange." : "Current matching reports are separate from connection status. Reconnect keeps this browser identity.";
             $("tablet-recovery").hidden = !!evidence?.showing;
+            const tabletOnline = !!device && device.online === true;
+            for (const action of ["tablet-identify", "tablet-retry-image", "tablet-reconnect"]) {
+                const button = $(action);
+                if (button) button.hidden = !tabletOnline;
+            }
             const next = $("tablet-next-action");
             next.hidden = !device || (evidence?.status !== "unplaced" && !device.online) || evidence?.showing || ["hidden", "identifying", "unsupported_client", "unsupported_content", "unsupported"].includes(evidence?.status);
             next.dataset.deviceId = id || "";

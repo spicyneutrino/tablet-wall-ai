@@ -3418,6 +3418,32 @@
             if (hasUnsavedEdits()) { event.preventDefault(); event.returnValue = ""; }
         });
         document.getElementById("open-tablet-measurements").addEventListener("click", () => { showTab("system", { persist: true }); document.getElementById("measurement-details").open = true; document.getElementById("tablet-model").focus(); });
+        const arrangeCommit = document.querySelector(".arrange-commit");
+        const arrangeResult = document.querySelector(".arrange-result");
+        const arrangeTools = document.querySelector(".arrange-tools");
+        const shortLandscape = window.matchMedia ? window.matchMedia("(max-height: 32rem) and (orientation: landscape)") : null;
+        function syncArrangeLayout() {
+            if (!arrangeCommit || !arrangeResult || !arrangeTools) return;
+            const target = shortLandscape && shortLandscape.matches ? arrangeTools : arrangeResult;
+            if (arrangeCommit.parentElement !== target) {
+                if (target === arrangeTools) arrangeTools.prepend(arrangeCommit);
+                else arrangeResult.append(arrangeCommit);
+                if (window.OperatorStage && el.stageSvg) window.OperatorStage.fit(el.stageSvg);
+            }
+        }
+        if (shortLandscape) shortLandscape.addEventListener("change", syncArrangeLayout);
+        window.addEventListener("resize", syncArrangeLayout);
+        syncArrangeLayout();
+        function toggleStageTechnical() {
+            const details = document.getElementById("stage-technical");
+            document.body.classList.toggle("show-stage-details");
+            if (details) details.open = true;
+            const identities = document.getElementById("stage-identities");
+            if (identities) identities.open = true;
+            if (details && document.body.classList.contains("show-stage-details")) details.scrollIntoView({ block: "start" });
+        }
+        document.getElementById("show-stage-technical")?.addEventListener("click", toggleStageTechnical);
+        document.getElementById("show-arrange-technical")?.addEventListener("click", toggleStageTechnical);
         state.onParticipation = (id, participating) => mutateDraft(draft => { draft.slots[id].participating = participating; });
         document.getElementById("experimental-opt-in").addEventListener("change", event => {
             document.getElementById("experimental-controls").hidden = !event.target.checked;
