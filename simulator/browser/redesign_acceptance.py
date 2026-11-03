@@ -440,7 +440,7 @@ class Rig:
             }
         )
         page.screenshot(path=str(self.out / (stem + "-viewport.png")))
-        page.screenshot(path=str(self.out / (stem + "-full.png")), full_page=True)
+        page.screenshot(path=str(self.out / (stem + "-full.png")), full_page=True, timeout=30000)
         (self.out / (stem + ".html")).write_text(page.content())
         (self.out / (stem + "-ax.yml")).write_text(page.locator("body").aria_snapshot())
         self.write(stem + "-config.json", state)
@@ -477,8 +477,21 @@ class Rig:
         if not ok and fatal:
             raise AssertionError(name)
 
+    def open_disclosures(self, selector):
+        locator = self.page.locator(selector) if isinstance(selector, str) else selector
+        for detail in locator.locator("xpath=ancestor::details").all():
+            if detail.get_attribute("open") is None:
+                summary = detail.locator(":scope > summary")
+                self.manifest["operator_actions"].append("Open " + summary.inner_text())
+                if self.keyboard:
+                    summary.focus()
+                    summary.press("Enter")
+                else:
+                    summary.click()
+
     def click(self, selector, label=None):
         locator = self.page.locator(selector) if isinstance(selector, str) else selector
+        self.open_disclosures(locator)
         self.manifest["operator_actions"].append(label or str(selector))
         if self.keyboard:
             expect(locator).to_be_visible()
@@ -492,6 +505,7 @@ class Rig:
         self.click(self.page.get_by_role("tab", name=name, exact=True), "Open " + name)
 
     def select(self, selector, value):
+        self.open_disclosures(selector)
         self.manifest["operator_actions"].append(f"Choose {selector}={value}")
         locator = self.page.locator(selector)
         if self.keyboard:
@@ -510,6 +524,7 @@ class Rig:
             locator.select_option(value)
 
     def toggle(self, selector):
+        self.open_disclosures(selector)
         self.manifest["operator_actions"].append("Declare " + selector)
         if self.keyboard:
             expect(self.page.locator(selector)).to_be_visible()
@@ -1169,6 +1184,7 @@ def run_scenario(out, name, body, uploads=True, keyboard=False):
 
 def disabled(rig):
     rig.task("Images")
+    rig.click("#add-image")
     rig.check(
         not rig.page.locator("#upload-file").is_visible()
         and "--operator-uploads"
@@ -1193,6 +1209,7 @@ def image_negatives(rig):
         ("invalid PNG bytes", "bad-decode.png", "image/png", b"not a decodable image"),
     ]:
         with rig.fault(label, [(r"/uploads", [415, 422])]):
+            rig.open_disclosures(p.locator("#upload-file"))
             p.locator("#upload-file").set_input_files(
                 {"name": name, "mimeType": mime, "buffer": data}
             )
@@ -1219,6 +1236,7 @@ def image_negatives(rig):
                 ),
                 times=1,
             )
+            rig.open_disclosures(p.locator("#upload-file"))
             p.locator("#upload-file").set_input_files(
                 {"name": "refused.png", "mimeType": "image/png", "buffer": source}
             )
@@ -1250,6 +1268,7 @@ def image_negatives(rig):
         "upload network abort after real request creation", [(r"/uploads", ["network"])]
     ):
         p.route("**/uploads?*", lambda route: route.abort("connectionreset"), times=1)
+        rig.open_disclosures(p.locator("#upload-file"))
         p.locator("#upload-file").set_input_files(
             {"name": "uncertain.png", "mimeType": "image/png", "buffer": source}
         )
@@ -1263,6 +1282,7 @@ def image_negatives(rig):
         rig.click("#refresh-images")
         expect(p.locator("#upload-submit")).to_be_enabled()
     Image.new("RGB", (811, 407), (160, 23, 180)).save(rig.private / "retry-fresh.png")
+    rig.open_disclosures(p.locator("#upload-file"))
     p.locator("#upload-file").set_input_files(str(rig.private / "retry-fresh.png"))
     rig.click("#upload-submit")
     expect(p.locator("#upload-message")).to_contain_text(

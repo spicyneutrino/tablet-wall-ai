@@ -175,6 +175,7 @@ def pointer_drag(rig):
     task(p, "Settings")
     rig.dialog_accept = False
     count = len(rig.requests)
+    rig.open_disclosures(p.locator("#clear-wall"))
     p.locator("#clear-wall").click()
     rig.check(
         rig.config()["layout"] == current["layout"]
@@ -190,6 +191,7 @@ def snap_spacing(rig):
     p, device = rig.page, ids(rig)[1]
     tile = p.locator(f'#stage-svg .slot[data-device-id="{device}"]')
     tile.click()
+    rig.open_disclosures(p.locator("#logical-snap"))
     p.locator("#logical-snap").fill("10")
     body = tile.locator(".operator-body-outline")
     body.scroll_into_view_if_needed()
@@ -276,6 +278,7 @@ def command_variants(rig):
     )
     task(p, "Arrange")
     row = p.locator(f'#grid-order li[data-device-id="{device}"]')
+    rig.open_disclosures(row.locator("input[type=checkbox]"))
     row.locator("input[type=checkbox]").uncheck()
     reopened = rig.tablets[0].context.new_page()
     reopened.goto(rig.base + "/client/")
@@ -293,7 +296,9 @@ def command_variants(rig):
 def batch_uncertain(rig):
     p, subjects = rig.page, ids(rig)
     p.locator("#grid-kind").select_option("physical")
+    rig.open_disclosures(p.locator("#group-model"))
     p.locator("#group-model").select_option("google-pixel-c")
+    rig.open_disclosures(p.locator("#group-hardware"))
     p.locator("#group-hardware").check()
 
     def committed_abort(route):
@@ -311,6 +316,7 @@ def batch_uncertain(rig):
         "postcommit assignment response lost", [(r"/tablet-assignments/", ["network"])]
     ):
         p.route("**/api/v3/tablet-assignments/" + subjects[1], committed_abort, times=1)
+        rig.open_disclosures(p.locator("#group-confirm"))
         p.locator("#group-confirm").click()
         expect(p.locator("#group-result")).to_contain_text(
             "Completion uncertain", timeout=20000
@@ -331,7 +337,9 @@ def batch_uncertain(rig):
             and "Tablet 2" in p.locator("#group-subjects").inner_text(),
             "Uncertain batch requires a new declaration for captured unresolved subjects",
         )
+        rig.open_disclosures(p.locator("#group-hardware"))
         p.locator("#group-hardware").check()
+        rig.open_disclosures(p.locator("#group-confirm"))
         p.locator("#group-confirm").click()
         expect(p.locator("#group-result")).to_contain_text(
             "Untouched · none", timeout=20000
@@ -354,7 +362,9 @@ def batch_uncertain(rig):
 def batch_selection(rig):
     p, subjects = rig.page, ids(rig)
     p.locator("#grid-kind").select_option("physical")
+    rig.open_disclosures(p.locator("#group-model"))
     p.locator("#group-model").select_option("google-pixel-c")
+    rig.open_disclosures(p.locator("#group-hardware"))
     p.locator("#group-hardware").check()
     held = HeldResponse(
         rig,
@@ -362,6 +372,7 @@ def batch_selection(rig):
         "**/api/v3/tablet-assignments/" + subjects[0],
         "captured batch versus changed selection",
     )
+    rig.open_disclosures(p.locator("#group-confirm"))
     p.locator("#group-confirm").click()
     held.wait()
     row = p.locator(
@@ -401,7 +412,9 @@ def mixed_models(rig):
     pick(p, subjects[0])
     task(p, "Settings")
     p.locator("#measurement-details > summary").click()
+    rig.open_disclosures(p.locator("#tablet-model"))
     p.locator("#tablet-model").select_option("ipad-air-2")
+    rig.open_disclosures(p.locator("#apply-tablet-model"))
     p.locator("#apply-tablet-model").click()
     from redesign_acceptance import wait_until
 
@@ -424,24 +437,31 @@ def mixed_models(rig):
         and not p.locator("#group-hardware").is_checked(),
         "Mixed model group is not automatically declared homogeneous",
     )
+    rig.open_disclosures(p.locator("#group-confirm"))
     p.locator("#group-confirm").click()
     expect(p.locator("#group-result")).to_contain_text("checked their hardware")
     rig.check(
         rig.config()["tablet_assignments"] == assignments,
         "Missing hardware declaration never writes an incompatible model batch",
     )
+    rig.open_disclosures(p.locator( f'#grid-order li[data-device-id="{subjects[0]}"] input[type=checkbox]' ))
     p.locator(
         f'#grid-order li[data-device-id="{subjects[0]}"] input[type=checkbox]'
     ).uncheck()
+    rig.open_disclosures(p.locator("#group-model"))
     p.locator("#group-model").select_option("google-pixel-c")
+    rig.open_disclosures(p.locator("#group-hardware"))
     p.locator("#group-hardware").check()
+    rig.open_disclosures(p.locator("#group-confirm"))
     p.locator("#group-confirm").click()
     expect(p.locator("#group-result")).to_contain_text(
         "Untouched · none", timeout=15000
     )
+    rig.open_disclosures(p.locator( f'#grid-order li[data-device-id="{subjects[0]}"] input[type=checkbox]' ))
     p.locator(
         f'#grid-order li[data-device-id="{subjects[0]}"] input[type=checkbox]'
     ).check()
+    rig.open_disclosures(p.locator("#grid-common-mount"))
     p.locator("#grid-common-mount").select_option("0")
     p.locator("#grid-1x4").click()
     p.locator("#grid-preview").click()
@@ -665,10 +685,12 @@ def upload_timeout(rig):
         "**/uploads?*",
         "real upload publication response held until native 120-second XHR timeout",
     )
+    rig.open_disclosures(p.locator("#upload-file"))
     p.locator("#upload-file").set_input_files(
         {"name": "native-timeout.png", "mimeType": "image/png", "buffer": source}
     )
     before, started = rig.config(), time.monotonic()
+    rig.open_disclosures(p.locator("#upload-submit"))
     p.locator("#upload-submit").click()
     held.wait()
     rig.check(
@@ -724,8 +746,10 @@ def inventory_order(rig):
 
     path = rig.private / "inventory-new.png"
     Image.new("RGB", (317, 193), (90, 30, 170)).save(path)
+    rig.open_disclosures(p.locator("#upload-file"))
     p.locator("#upload-file").set_input_files(str(path))
     before = rig.config()
+    rig.open_disclosures(p.locator("#upload-submit"))
     p.locator("#upload-submit").click()
     expect(p.locator("#upload-message")).to_contain_text(
         "added and selected", timeout=15000
@@ -762,6 +786,7 @@ def upload_ambiguous(rig, malformed=False):
     path = rig.private / "ambiguous.png"
     Image.new("RGB", (353, 211), (23, 144, 109)).save(path)
     source = path.read_bytes()
+    rig.open_disclosures(p.locator("#upload-file"))
     p.locator("#upload-file").set_input_files(
         {"name": "ambiguous.png", "mimeType": "image/png", "buffer": source}
     )
@@ -770,6 +795,7 @@ def upload_ambiguous(rig, malformed=False):
         publication = HeldResponse(
             rig, p, "**/uploads?*", "actual publication held before ambiguous response"
         )
+        rig.open_disclosures(p.locator("#upload-submit"))
         p.locator("#upload-submit").click()
         publication.wait()
         receipt = {
@@ -888,6 +914,7 @@ def stale_scene(rig):
     old_guard = rig.config()["etag"]
     task(other, "Settings")
     other.get_by_text("Check patterns", exact=True).click()
+    rig.open_disclosures(other.locator("#show-colours"))
     other.locator("#show-colours").click()
     expect(other.locator("#active-image")).to_contain_text("Tablet colours")
     task(other, "Saved")
@@ -955,7 +982,9 @@ def missing_live(rig):
 
         path = rig.private / "live-replacement.png"
         Image.new("RGB", (377, 199), (20, 130, 100)).save(path)
+        rig.open_disclosures(p.locator("#upload-file"))
         p.locator("#upload-file").set_input_files(str(path))
+        rig.open_disclosures(p.locator("#upload-submit"))
         p.locator("#upload-submit").click()
         expect(p.locator("#upload-message")).to_contain_text(
             "added and selected", timeout=15000
@@ -994,9 +1023,9 @@ def replacement_fixture(rig):
     target = fresh.evaluate("localStorage.getItem('tablet-wall-device-id')")
     task(p, "Tablets")
     pick(p, old)
-    details = p.locator("#replace-target").locator("xpath=ancestor::details[1]")
-    details.locator("summary").first.click()
+    rig.open_disclosures(p.locator("#replace-target"))
     p.locator("#replace-target").select_option(target)
+    rig.open_disclosures(p.locator("#replace-hardware"))
     p.locator("#replace-hardware").select_option("same_hardware")
     selected = p.locator('#replace-saved input[data-name="Exact reservation"]')
     expect(selected).to_be_checked()
@@ -1010,7 +1039,9 @@ def different_hardware(rig):
     pick(p, target)
     task(p, "Settings")
     p.locator("#measurement-details > summary").click()
+    rig.open_disclosures(p.locator("#tablet-model"))
     p.locator("#tablet-model").select_option("ipad-air-2")
+    rig.open_disclosures(p.locator("#apply-tablet-model"))
     p.locator("#apply-tablet-model").click()
     from redesign_acceptance import wait_until
 
@@ -1022,9 +1053,12 @@ def different_hardware(rig):
     )
     task(p, "Tablets")
     pick(p, old)
+    rig.open_disclosures(p.locator("#replace-target"))
     p.locator("#replace-target").select_option(target)
     before = rig.config()
+    rig.open_disclosures(p.locator("#replace-hardware"))
     p.locator("#replace-hardware").select_option("different_hardware")
+    rig.open_disclosures(p.locator("#replace-preview"))
     p.locator("#replace-preview").click()
     expect(p.locator("#tablet-action-message")).to_contain_text(
         "physical_rebuild_required"
@@ -1042,8 +1076,11 @@ def different_hardware(rig):
         },
     )
     rig.viewport_shots("different-hardware-refusal")
+    rig.open_disclosures(p.locator("#replace-active"))
     p.locator("#replace-active").uncheck()
+    rig.open_disclosures(p.locator('#replace-saved input[data-name="Exact reservation"]'))
     p.locator('#replace-saved input[data-name="Exact reservation"]').uncheck()
+    rig.open_disclosures(p.locator("#replace-preview"))
     p.locator("#replace-preview").click()
     expect(p.locator("#replace-apply")).to_be_enabled()
     rig.check(
@@ -1051,6 +1088,7 @@ def different_hardware(rig):
         in p.locator("#replace-summary").inner_text(),
         "Different hardware identity-only review explicitly excludes physical measurement inheritance",
     )
+    rig.open_disclosures(p.locator("#replace-cancel"))
     p.locator("#replace-cancel").click()
 
 
@@ -1059,6 +1097,7 @@ def replacement_connection(rig):
 
     old, target, fresh = replacement_fixture(rig)
     p = rig.page
+    rig.open_disclosures(p.locator("#replace-preview"))
     p.locator("#replace-preview").click()
     expect(p.locator("#replace-apply")).to_be_enabled()
     plan = json.loads(p.locator("#replace-technical").text_content())
@@ -1114,6 +1153,7 @@ def replacement_connection(rig):
 def replacement_digest(rig):
     old, target, _ = replacement_fixture(rig)
     p, other = rig.page, second_operator(rig)
+    rig.open_disclosures(p.locator("#replace-preview"))
     p.locator("#replace-preview").click()
     expect(p.locator("#replace-apply")).to_be_enabled()
     old_saved = next(
@@ -1154,6 +1194,7 @@ def replacement_digest(rig):
         [(r"/rebind$", [412])],
     ):
         p.route("**/api/v3/devices/" + target + "/rebind", change_digest, times=1)
+        rig.open_disclosures(p.locator("#replace-apply"))
         p.locator("#replace-apply").click()
         expect(p.locator("#tablet-action-message")).to_contain_text("failed")
         actual = rig.config()
@@ -1188,8 +1229,10 @@ def forget_reconnect(rig):
         p.wait_for_timeout,
     )
     expect(p.locator("#tablet-forget-preview")).to_be_enabled()
+    rig.open_disclosures(p.locator("#tablet-forget-preview"))
     p.locator("#tablet-forget-preview").click()
     expect(p.locator("#tablet-forget-impact")).to_be_visible()
+    rig.open_disclosures(p.locator("#tablet-forget-active"))
     p.locator("#tablet-forget-active").check()
     before = rig.config()
     reopened = client.context.new_page()
@@ -1280,6 +1323,7 @@ def history_ownership(rig):
     tile.focus()
     tile.press("ArrowRight")
     task(p, "Settings")
+    rig.open_disclosures(p.locator("#clear-wall"))
     p.locator("#clear-wall").click()
     expect(p.locator("#draft-resolution")).to_be_visible()
     expect(p.locator("#resolve-commit")).to_have_text("Apply arrangement")
@@ -1318,6 +1362,7 @@ def history_ownership(rig):
     expect(p.locator("#resolve-commit")).to_have_text("Show image")
     p.locator("#resolve-stay").click()
     task(p, "Settings")
+    rig.open_disclosures(p.locator("#clear-wall"))
     p.locator("#clear-wall").click()
     expect(p.locator("#draft-resolution")).to_be_visible()
     expect(p.locator("#resolve-commit")).to_have_text("Show image")

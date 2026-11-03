@@ -109,8 +109,11 @@ def parity(rig):
     )
     task("Arrange")
     page.locator("#grid-kind").select_option("physical")
+    rig.open_disclosures(page.locator("#group-model"))
     page.locator("#group-model").select_option("google-pixel-c")
+    rig.open_disclosures(page.locator("#group-hardware"))
     page.locator("#group-hardware").check()
+    rig.open_disclosures(page.locator("#group-confirm"))
     page.locator("#group-confirm").click()
     expect(page.locator("#group-result")).to_contain_text(
         "Untouched · none", timeout=15000
@@ -119,6 +122,7 @@ def parity(rig):
         all(config()["tablet_assignments"][id]["mode"] == "explicit" for id in ids),
         "Captured group confirms all four hardware identities",
     )
+    rig.open_disclosures(page.locator("#grid-common-mount"))
     page.locator("#grid-common-mount").select_option("0")
     page.locator("#grid-1x4").click()
     grid_preview()
@@ -145,10 +149,13 @@ def parity(rig):
         for id, slot in config()["layout"]["slots"].items()
     }
     old_x = config()["layout"]["slots"][ids[-1]]["center_x_mm"]
+    rig.open_disclosures(page.locator("#slot-center-x"))
     page.locator("#slot-center-x").fill(str(old_x + 20))
     page.locator("#slot-center-x").press("Tab")
+    rig.open_disclosures(page.locator("#slot-angle"))
     page.locator("#slot-angle").fill("180")
     page.locator("#slot-angle").press("Tab")
+    rig.open_disclosures(page.locator("#btn-nudge-y-plus"))
     page.locator("#btn-nudge-y-plus").click()
     apply()
     check(
@@ -156,7 +163,9 @@ def parity(rig):
         and config()["layout"]["slots"][ids[-1]]["nudge_y_mm"] == 1,
         "Measured position, mounted rotation and nudge apply through one geometry command",
     )
+    rig.open_disclosures(page.locator("#bounds-mode"))
     page.locator("#bounds-mode").select_option("fixed")
+    rig.open_disclosures(page.locator("#bounds-width"))
     page.locator("#bounds-width").fill(str(config()["layout"]["bounds"]["width"] + 40))
     page.locator("#bounds-width").press("Tab")
     apply()
@@ -164,9 +173,13 @@ def parity(rig):
         config()["layout"]["sizing"]["mode"] == "fixed",
         "Measured fixed bounds remain manually editable",
     )
+    rig.open_disclosures(page.locator("#bounds-mode"))
     page.locator("#bounds-mode").select_option("tablets")
+    rig.open_disclosures(page.locator("#pack-columns"))
     page.locator("#pack-columns").fill("4")
+    rig.open_disclosures(page.locator("#pack-gap"))
     page.locator("#pack-gap").fill("5")
+    rig.open_disclosures(page.locator("#btn-pack-tablets"))
     page.locator("#btn-pack-tablets").click()
     apply()
     check(
@@ -175,6 +188,7 @@ def parity(rig):
     )
     task("Tablets")
     pick(ids[-1])
+    rig.open_disclosures(page.locator("#tablet-participation"))
     page.locator("#tablet-participation").uncheck()
     task("Arrange")
     apply()
@@ -183,11 +197,13 @@ def parity(rig):
         "Participation is a geometry draft until Apply",
     )
     task("Tablets")
+    rig.open_disclosures(page.locator("#tablet-participation"))
     page.locator("#tablet-participation").check()
     task("Arrange")
     apply()
     task("Arrange")
     for angle in ["90", "270"]:
+        rig.open_disclosures(page.locator("#grid-common-mount"))
         page.locator("#grid-common-mount").select_option(angle)
         page.locator("#grid-preview").click()
         expect(page.locator("#grid-message")).to_contain_text("Preview only")
@@ -202,7 +218,7 @@ def parity(rig):
             + angle
             + " overrides stored values without guessing",
         )
-    page.locator("#grid-cancel").click()
+    page.locator("#btn-cancel").click()
     check(
         page.locator("#grid-common-mount").input_value() == "",
         "Discard clears the common mount declaration and preserves the applied mounting",
@@ -211,7 +227,9 @@ def parity(rig):
     pick(ids[0])
     task("Settings")
     page.locator("#measurement-details").evaluate("details=>details.open=true")
+    rig.open_disclosures(page.locator("#profile-active-width"))
     page.locator("#profile-active-width").fill("148.5")
+    rig.open_disclosures(page.locator("#btn-profile-save"))
     page.locator("#btn-profile-save").click()
     expect(page.locator("#profile-msg")).to_contain_text("Saved profile")
     check(
@@ -254,11 +272,14 @@ def parity(rig):
         filename = RUN / ("upload-" + ext + "." + ext)
         Image.new("RGB", (640, 480), color).save(filename)
         before = config()
+        rig.open_disclosures(page.locator("#upload-file"))
         page.locator("#upload-file").set_input_files(str(filename))
+        rig.open_disclosures(page.locator("#upload-submit"))
         page.locator("#upload-submit").click()
         expect(page.locator("#upload-message")).to_contain_text(
             "Image added and selected", timeout=15000
         )
+        expect(page.get_by_role("button", name=f"Preview upload-{ext}.{ext}", exact=True)).to_have_attribute("aria-pressed", "true")
         expect(page.locator("#show-image")).to_be_enabled(timeout=10000)
         check(
             config()["scene"] == before["scene"]
@@ -266,7 +287,9 @@ def parity(rig):
             f"Actual {ext} upload selects locally and never auto-shows",
         )
         page.locator("#image-fit").select_option("cover" if ext == "png" else "contain")
+        selected_asset = page.locator("#image-select").input_value()
         page.locator("#show-image").click()
+        wait_config(lambda c: c["scene"]["content"]["asset"] == selected_asset, "Show commits the exact uploaded asset before the next upload")
         showing()
     save_scene("Landscape")
     task("Tablets")
@@ -297,8 +320,11 @@ def parity(rig):
     pick(ids[0])
     task("Settings")
     page.locator("#measurement-details").evaluate("details => details.open=true")
+    rig.open_disclosures(page.locator("#profile-active-width"))
     page.locator("#profile-active-width").fill("148.25")
+    rig.open_disclosures(page.locator("#cal-viewport-width"))
     page.locator("#cal-viewport-width").fill("887")
+    rig.open_disclosures(page.locator("#tablet-model"))
     page.locator("#tablet-model").select_option("manual")
     task("Tablets")
     pick(ids[1])
@@ -329,9 +355,12 @@ def parity(rig):
         "Cross-kind quick arrangement succeeds with a real safety copy",
     )
     page.locator(f'#stage-svg .slot[data-device-id="{ids[-1]}"]').click()
+    rig.open_disclosures(page.locator("#logical-mode"))
     page.locator("#logical-mode").select_option("fixed")
+    rig.open_disclosures(page.locator("#logical-width"))
     page.locator("#logical-width").fill("1200")
     page.locator("#logical-width").press("Tab")
+    rig.open_disclosures(page.locator("#logical-height"))
     page.locator("#logical-height").fill("800")
     page.locator("#logical-height").press("Tab")
     page.locator("#logical-w").fill("84")
@@ -385,16 +414,24 @@ def parity(rig):
         "Shift-arrow nudges only the selected stage tablet",
     )
     page.locator("#btn-undo").click()
+    rig.open_disclosures(page.locator("#logical-rotate"))
     page.locator("#logical-rotate").click()
     expect(page.locator("#logical-h")).to_have_value(w_before)
     page.locator("#btn-undo").click()
     page.locator(".logical-tiling").evaluate("details=>details.open=true")
+    rig.open_disclosures(page.locator("#logical-tile-columns"))
     page.locator("#logical-tile-columns").fill("2")
+    rig.open_disclosures(page.locator("#logical-tile-rows"))
     page.locator("#logical-tile-rows").fill("2")
+    rig.open_disclosures(page.locator("#logical-tile-gap"))
     page.locator("#logical-tile-gap").fill("10")
+    rig.open_disclosures(page.locator("#logical-tile-order"))
     page.locator("#logical-tile-order").select_option("id")
+    rig.open_disclosures(page.locator("#logical-pack"))
     page.locator("#logical-pack").click()
+    rig.open_disclosures(page.locator("#logical-tile-shape"))
     page.locator("#logical-tile-shape").select_option("keep")
+    rig.open_disclosures(page.locator("#logical-tile"))
     page.locator("#logical-tile").click()
     apply()
     logical = config()["layout"]
@@ -488,6 +525,7 @@ def parity(rig):
     )
     before_pattern = config()
     page.get_by_text("Check patterns", exact=True).click()
+    rig.open_disclosures(page.locator("#show-colours"))
     page.locator("#show-colours").click()
     wait_config(
         lambda c: c["scene"]["content"]["type"] == "color",
@@ -520,8 +558,10 @@ def parity(rig):
     task("Images")
     phone_image = RUN / "phone-added.png"
     Image.new("RGB", (720, 480), (45, 125, 145)).save(phone_image)
+    rig.open_disclosures(page.locator("#upload-file"))
     page.locator("#upload-file").set_input_files(str(phone_image))
     before_phone = config()
+    rig.open_disclosures(page.locator("#upload-submit"))
     page.locator("#upload-submit").click()
     expect(page.locator("#upload-message")).to_contain_text("added and selected")
     check(
@@ -541,8 +581,10 @@ def parity(rig):
     pick(ids[3])
     expect(page.locator("#tablet-reconnect")).to_be_disabled()
     expect(page.locator("#tablet-recovery")).to_contain_text("power")
+    rig.open_disclosures(page.locator("#tablet-forget-preview"))
     page.locator("#tablet-forget-preview").click()
     expect(page.locator("#tablet-forget-impact")).to_be_visible()
+    rig.open_disclosures(page.locator("#tablet-forget-cancel"))
     page.locator("#tablet-forget-cancel").click()
     check(
         page.locator("#tablet-forget-preview").evaluate(
@@ -572,6 +614,7 @@ def parity(rig):
         task("Tablets")
         for id in [ids[1], ids[2], ids[0], ids[3]]:
             pick(id)
+            rig.open_disclosures(page.locator("#tablet-remove"))
             page.locator("#tablet-remove").click()
             wait_config(
                 lambda c: (
@@ -598,6 +641,7 @@ def parity(rig):
         )
     recall("Original measured")
     task("Settings")
+    rig.open_disclosures(page.locator("#clear-wall"))
     page.locator("#clear-wall").click()
     wait_config(
         lambda c: not c["layout"]["slots"],
@@ -665,8 +709,10 @@ def edges(rig):
     def row(id):
         return page.locator(f'#grid-order li[data-device-id="{id}"]')
 
+    rig.open_disclosures(row(ids[1]).locator("input[type=checkbox]"))
     row(ids[1]).locator("input[type=checkbox]").uncheck()
     row(ids[0]).locator("summary").click()
+    rig.open_disclosures(row(ids[0]).locator("input[data-field=w]"))
     row(ids[0]).locator("input[data-field=w]").fill("77")
     tablets[1].reload()
     wait_config(
@@ -676,6 +722,7 @@ def edges(rig):
     expect(row(ids[1]).locator("input[type=checkbox]")).not_to_be_checked()
     expect(row(ids[0]).locator("input[data-field=w]")).to_have_value("77")
     check(True, "Intentional exclusion and manually entered size survive reconnect")
+    rig.open_disclosures(row(ids[1]).get_by_role("button", name="Include Tablet 2", exact=True))
     row(ids[1]).get_by_role("button", name="Include Tablet 2", exact=True).click()
     fifth_context = browser.new_context(
         viewport={"width": 900, "height": 1280},
@@ -835,7 +882,9 @@ def edges(rig):
     )
     replacement = RUN / "replacement.png"
     Image.new("RGB", (700, 400), (210, 130, 30)).save(replacement)
+    rig.open_disclosures(page.locator("#upload-file"))
     page.locator("#upload-file").set_input_files(str(replacement))
+    rig.open_disclosures(page.locator("#upload-submit"))
     page.locator("#upload-submit").click()
     expect(page.locator("#upload-message")).to_contain_text("added and selected")
     page.locator("#show-image").click()
@@ -858,10 +907,13 @@ def edges(rig):
     page.locator("#replacement-old").select_option(ids[1])
     page.locator("#replacement-open").click()
     expect(page.locator("#replace-target")).to_have_value(fifth_id)
+    rig.open_disclosures(page.locator("#replace-hardware"))
     page.locator("#replace-hardware").select_option("same_hardware")
+    rig.open_disclosures(page.locator("#replace-preview"))
     page.locator("#replace-preview").click()
     expect(page.locator("#replace-apply")).to_be_enabled()
     shot(page, "edge-replacement-review")
+    rig.open_disclosures(page.locator("#replace-apply"))
     page.locator("#replace-apply").click()
     wait_config(
         lambda c: (
@@ -886,11 +938,15 @@ def edges(rig):
     )
     task("Tablets")
     pick(ids[2])
+    rig.open_disclosures(page.locator("#tablet-forget-preview"))
     page.locator("#tablet-forget-preview").click()
     expect(page.locator("#tablet-forget-impact")).to_be_visible()
+    rig.open_disclosures(page.locator("#tablet-forget-confirm"))
     page.locator("#tablet-forget-confirm").click()
     expect(page.locator("#tablet-action-message")).to_contain_text("acknowledge")
+    rig.open_disclosures(page.locator("#tablet-forget-active"))
     page.locator("#tablet-forget-active").check()
+    rig.open_disclosures(page.locator("#tablet-forget-confirm"))
     page.locator("#tablet-forget-confirm").click()
     wait_config(
         lambda c: (
@@ -953,8 +1009,11 @@ def batch(rig):
 
     page.route("**/api/v3/tablet-assignments/" + ids[2], conflict_before_third, times=1)
     page.locator("#grid-kind").select_option("physical")
+    rig.open_disclosures(page.locator("#group-model"))
     page.locator("#group-model").select_option("google-pixel-c")
+    rig.open_disclosures(page.locator("#group-hardware"))
     page.locator("#group-hardware").check()
+    rig.open_disclosures(page.locator("#group-confirm"))
     page.locator("#group-confirm").click()
     expect(page.locator("#group-result")).to_contain_text(
         "Failed / conflict · Tablet 3", timeout=15000
@@ -974,7 +1033,9 @@ def batch(rig):
         "Actual sequential model requests use the preceding returned ETag",
     )
     shot(page, "batch-partial-review")
+    rig.open_disclosures(page.locator("#group-hardware"))
     page.locator("#group-hardware").check()
+    rig.open_disclosures(page.locator("#group-confirm"))
     page.locator("#group-confirm").click()
     expect(page.locator("#group-result")).to_contain_text(
         "Untouched · none", timeout=10000

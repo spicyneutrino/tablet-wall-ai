@@ -65,7 +65,7 @@ def native_keyboard(rig):
           return {id:e.id,tag:e.tagName,html:e.outerHTML.slice(0,220),disabled:!!e.disabled,
           hidden:!!e.closest('[hidden]'),visible:e.checkVisibility(),index:[...document.querySelectorAll('*')].indexOf(e),
           outline:s.outlineStyle,outlineWidth:parseFloat(s.outlineWidth),boxShadow:s.boxShadow,
-          svgFocus:e.matches('.slot')&&getComputedStyle(e.querySelector('.operator-slot-backing')).stroke!=='none',
+          svgFocus:e.matches('.slot')&&getComputedStyle(e.querySelector('.operator-body-outline')).stroke!=='none',
           occluded:r.width>0&&r.height>0&&!e.contains(document.elementFromPoint(x,y))};}""")
         if first is not None and (row["index"] == first or row["tag"] == "BODY"):
             break
@@ -128,6 +128,8 @@ def native_keyboard(rig):
     rows = p.locator("#grid-order li[data-device-id]")
     second_id = rows.nth(1).get_attribute("data-device-id")
     earlier = f'#grid-order li[data-device-id="{second_id}"] button[aria-label^="Move earlier"]'
+    native_tab_to(p, "#arrange-membership > summary")
+    p.keyboard.press("Enter")
     native_tab_to(p, earlier)
     p.keyboard.press("Enter")
     rig.check(
@@ -155,6 +157,7 @@ def native_keyboard(rig):
     native_tab_to(p, "#grid-preview")
     p.keyboard.press("Enter")
     expect(p.locator("#grid-message")).to_contain_text("Preview only")
+    native_tab_task(p, "Tablets")
     trigger_id = p.locator("[role=tab][aria-selected=true]").get_attribute("id")
     native_tab_task(p, "Images")
     dialog = p.locator("#draft-resolution")
@@ -183,7 +186,7 @@ def native_keyboard(rig):
     )
     rig.viewport_shots("native-keyboard")
     task(p, "Arrange")
-    p.locator("#grid-cancel").click()
+    p.locator("#btn-cancel").click()
 
 
 def entry_recovery(rig):
@@ -400,6 +403,7 @@ def visual_states(rig):
     )
     p.locator("#refresh-images").click()
     expect(p.locator("#image-message")).to_contain_text("0 images")
+    rig.open_disclosures("#image-select")
     for width, height in ((1440, 900), (390, 844)):
         p.set_viewport_size({"width": width, "height": height})
         rig.check(
@@ -457,11 +461,11 @@ STATE_CONTRAST = r"""() => {
  const lum=c=>rgb(c).map(v=>v/255).map(v=>v<=.04045?v/12.92:((v+.055)/1.055)**2.4).reduce((s,v,i)=>s+v*[.2126,.7152,.0722][i],0);
  const ratio=(a,b)=>{a=lum(a);b=lum(b);return (Math.max(a,b)+.05)/(Math.min(a,b)+.05)};
  const backdrop=e=>{for(let p=e;p;p=p.parentElement){const c=getComputedStyle(p).backgroundColor;if(c!=='rgba(0, 0, 0, 0)')return c}return '#fff'};
- return [...document.querySelectorAll('#stage-svg .operator-slot-label > tspan,#stage-svg .operator-body-outline,#stage-svg .logical-resize,:focus-visible')].filter(e=>e.checkVisibility()).map(e=>{
+ return [...document.querySelectorAll('#stage-identities li,#stage-svg .operator-body-outline,#stage-svg .logical-resize,:focus-visible')].filter(e=>e.checkVisibility()).map(e=>{
   const s=getComputedStyle(e),svg=e.closest('svg');
-  if(e.matches('tspan')){const backing=e.closest('.slot').querySelector('.operator-slot-backing');return {kind:'svg-text',text:e.textContent,foreground:s.fill,background:getComputedStyle(backing).fill,ratio:ratio(s.fill,getComputedStyle(backing).fill),threshold:4.5};}
+  if(e.matches('#stage-identities li')){const bg=backdrop(e);return {kind:'svg-text',text:e.textContent,foreground:s.color,background:bg,ratio:ratio(s.color,bg),threshold:4.5};}
   if(e.matches('.operator-body-outline,.logical-resize'))return {kind:'svg-nontext',id:e.closest('.slot').dataset.deviceId,foreground:e.matches('.logical-resize')?s.fill:s.stroke,background:'#0b1120',ratio:ratio(e.matches('.logical-resize')?s.fill:s.stroke,'#0b1120'),threshold:3};
-  if(e.matches('.slot')){const b=getComputedStyle(e.querySelector('.operator-slot-backing'));return {kind:'svg-focus',foreground:b.stroke,background:b.fill,width:parseFloat(b.strokeWidth),ratio:ratio(b.stroke,b.fill),threshold:3};}
+  if(e.matches('.slot')){const b=getComputedStyle(e.querySelector('.operator-body-outline'));return {kind:'svg-focus',foreground:b.stroke,background:backdrop(e),width:parseFloat(b.strokeWidth),ratio:ratio(b.stroke,backdrop(e)),threshold:3};}
   const outer=backdrop(e.parentElement);return {kind:'focus-ring',id:e.id,foreground:s.outlineColor,background:outer,width:parseFloat(s.outlineWidth),style:s.outlineStyle,ratio:ratio(s.outlineColor,outer),threshold:3};
  });
 }"""
@@ -521,6 +525,7 @@ def interaction_contrast(rig):
             rig.shot(p, "interaction-" + mode)
         task(p, "Arrange")
         tile = p.locator("#stage-svg .slot").first
+        rig.open_disclosures("#stage-identities li")
         native_tab_to(p, "#stage-svg .slot")
         tile.hover()
         rows = p.evaluate(STATE_CONTRAST)
@@ -626,15 +631,15 @@ def responsive(rig):
     tab.focus()
     tab.press("ArrowRight")
     rig.check(
-        p.get_by_role("tab", name="Images", exact=True).get_attribute("aria-selected")
+        p.get_by_role("tab", name="Saved", exact=True).get_attribute("aria-selected")
         == "true",
         "Task tabs support ArrowRight roving navigation",
         focus(p),
         fatal=False,
     )
-    p.get_by_role("tab", name="Images", exact=True).press("Home")
+    p.get_by_role("tab", name="Saved", exact=True).press("Home")
     rig.check(
-        p.get_by_role("tab", name="Tablets", exact=True).get_attribute("aria-selected")
+        p.get_by_role("tab", name="Images", exact=True).get_attribute("aria-selected")
         == "true",
         "Task tabs support Home navigation",
         focus(p),
@@ -701,7 +706,10 @@ def responsive(rig):
         field.input_value(),
         fatal=False,
     )
+    field.press("End")
+    p.keyboard.insert_text("X")
     rig.click("#tablet-label-discard")
+    expect(field).to_have_value(label)
     rig.tablets[3].close()
     from redesign_acceptance import wait_until
 
