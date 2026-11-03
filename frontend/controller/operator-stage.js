@@ -111,7 +111,13 @@
         const aspect = svg.viewBox.baseVal.width / svg.viewBox.baseVal.height;
         const width = Math.max(0, availableWidth - borderWidth);
         const commit = doc.body.dataset.task === "arrange" ? doc.querySelector(".arrange-result .arrange-commit") : null;
-        const reserved = commit && commit.getClientRects().length ? commit.offsetHeight + 16 : 0;
+        const idleActions = doc.body.dataset.task === "images" && doc.body.dataset.outputDirty !== "true"
+            && win.innerWidth <= 768 && win.innerHeight > 512 ? doc.querySelector("#image-idle-actions") : null;
+        const idleInspector = idleActions && idleActions.getClientRects().length ? idleActions.closest(".wall-inspector") : null;
+        const idleHeight = idleInspector ? idleActions.getBoundingClientRect().bottom - idleInspector.getBoundingClientRect().top
+            + parseFloat(win.getComputedStyle(idleInspector).paddingBottom) : 0;
+        const reserved = commit && commit.getClientRects().length ? commit.offsetHeight + 16
+            : idleInspector ? idleHeight + 16 : 0;
         const availableHeight = bottom - field.getBoundingClientRect().top - 16 - borderHeight - reserved;
         // A short viewport keeps a usable field and falls back to page scrolling.
         const height = Math.min(width / aspect, Math.max(120, availableHeight));

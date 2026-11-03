@@ -144,7 +144,7 @@
             const names = ids.map(labelFor);
             const subjects = names.every(name => /^Tablet \d+$/.test(name)) ? "Tablets " + names.map(name => name.slice(7)).join(", ") : names.join(", ");
             $("arrange-membership-summary").textContent = (ids.length ? subjects : "Choose tablets")
-                + (required ? " · required hardware, mounting or release review" : " · review order and pins");
+                + (required ? " · review tablet sizes and mounting" : " · tablet order and measurements");
             if (required) $("arrange-membership").open = true;
             $("arrange-membership").dataset.required = String(!!required);
         }

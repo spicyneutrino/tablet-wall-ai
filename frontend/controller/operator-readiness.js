@@ -23,9 +23,9 @@
         return value === null || value === undefined ? null : new Date(value).toLocaleTimeString();
     }
 
-    /* The server's readiness body is the only source of these facts. A field the
-     * server did not send stays unknown; guessed aliases such as "status" or
-     * "wifi_name" are deliberately not consulted. */
+    /* Server-check facts come only from readiness; live tablet counts use the
+     * current configuration. Missing fields stay unknown rather than consulting
+     * guessed aliases such as "status" or "wifi_name". */
     const SCHEMA_KEYS = ["tablet_url", "join_qr_url", "wifi", "security", "content",
         "wall", "devices", "storage", "backup", "restore_rehearsal", "advice", "errors"];
 
@@ -134,8 +134,8 @@
             ["Image content", content.summary
                 ? content.summary + (stringOrNull(content.type) ? " (" + content.type + ")" : "")
                 : "Not reported"],
-            ["Tablets", body && Number.isFinite(devices.online) && Number.isFinite(devices.total)
-                ? devices.online + " online of " + devices.total + " registered"
+            ["Connected tablets", body && Number.isFinite(devices.online) && Number.isFinite(devices.total)
+                ? devices.online + " connected of " + devices.total + " registered tablets"
                 : "Not reported"],
             ["Storage", body && storage.readable === true ? "Readable"
                 : body && storage.readable === false ? "Not readable or the database is unavailable" : "Not reported"],
@@ -157,19 +157,19 @@
         const at = clock(settings.fetchedAt);
         let status, kind;
         if (error) {
-            status = "Readiness could not be read: " + error + ". Retry readiness to check again.";
+            status = "Server checks could not be read: " + error + ". Refresh to try again.";
             kind = "err";
         } else if (malformed) {
-            status = "The readiness response did not include the expected fields. Refresh readiness to retry.";
+            status = "The server checks response did not include the expected fields. Refresh server checks to retry.";
             kind = "warn";
         } else if (body === null) {
-            status = "Reading server readiness…";
+            status = "Reading server checks…";
             kind = "info";
         } else if (errors.length) {
-            status = "Readiness reported" + (at ? " at " + at : "") + " with " + errors.length + " issue" + (errors.length === 1 ? "" : "s") + " below.";
+            status = "Server checks reported" + (at ? " at " + at : "") + " with " + errors.length + " issue" + (errors.length === 1 ? "" : "s") + " below.";
             kind = "warn";
         } else {
-            status = "Readiness reported" + (at ? " at " + at : "") + ". This is server state only; it does not prove a tablet is displaying the wall.";
+            status = "Server checks reported" + (at ? " at " + at : "") + ". This is server state only; it does not prove a tablet is displaying the wall.";
             kind = "ok";
         }
 
@@ -226,7 +226,16 @@
                 ? "The server did not provide a usable same-origin QR address. Use the text address."
                 : "Scan to open the tablet page. The QR encodes only the join address, not a credential.";
 
-            factList($("operator-readiness-facts"), model.facts, JSON.stringify(model.facts));
+            const overview = new Set(["Wi-Fi", "Connected tablets", "Uploads", "Security trust"]);
+            const counts = root.OperatorState.registrationCounts(state.operatorConfig);
+            const facts = model.facts.filter(([name]) => overview.has(name)).map(([name, value]) =>
+                name === "Connected tablets" && counts ? ["Live tablet status",
+                    (state.rosterError ? "Last known · " : "") + counts.online + " connected · " + counts.registered + " registered"
+                    + (counts.retained ? " · " + counts.retained + (counts.retained === 1 ? " retained wall position" : " retained wall positions") : "")] : [name, value]);
+            const details = model.facts.filter(([name]) => !overview.has(name)).map(([name, value]) =>
+                [name === "Image content" ? "Content at last check" : name, value]);
+            factList($("operator-readiness-facts"), facts, JSON.stringify(facts));
+            factList($("operator-readiness-details"), details, JSON.stringify(details));
             factList($("operator-readiness-paths"), model.paths, JSON.stringify(model.paths));
 
             const errors = $("readiness-errors");
@@ -253,7 +262,7 @@
                 : "Last successful read at " + new Date(fetchedAt).toLocaleTimeString() + ".";
             const refresh = $("btn-readiness-refresh");
             refresh.disabled = loading;
-            refresh.textContent = loading ? "Refreshing…" : failure ? "Retry readiness" : "Refresh readiness";
+            refresh.textContent = loading ? "Refreshing…" : failure ? "Retry server checks" : "Refresh server checks";
             return model;
         }
 

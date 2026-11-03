@@ -1,8 +1,8 @@
 .wall-stage { display: grid; gap: 1rem; }
 .wall-head { display: flex; flex-wrap: wrap; align-items: center; gap: .5rem 1rem; }
-.wall-head h2 { flex: 1 1 auto; font-size: 1.75rem; letter-spacing: -.02em; }
+.wall-head h2 { flex: 1 1 auto; font-size: 1.25rem; letter-spacing: -.02em; }
 .stage-mode { display: flex; flex-wrap: wrap; align-items: center; gap: .5rem; }
-.stage-mode > strong { font-size: .75rem; letter-spacing: .06em; text-transform: uppercase; color: var(--muted); }
+.stage-mode > strong { color: var(--muted); font-size: .875rem; font-weight: 600; letter-spacing: normal; }
 .stage-applied-content { font-size: .875rem; }
 .stage-dimensions { font-variant-numeric: tabular-nums; }
 .wall-head > .technical-details { flex-basis: 100%; }
@@ -43,15 +43,6 @@ body[data-stage-mode="live"] .wall-stage:has(.wall-empty:not([hidden])) :is(.sta
 body[data-stage-mode="arrangement-preview"] .stage-mode > strong,
 body[data-stage-mode="image-preview"] .stage-mode > strong { color: var(--accent); }
 body[data-connection="stale"] .wall-health { border-style: dashed; }
-@media (max-width: 36rem) {
-    .wall-stage { gap: .75rem; }
-    .wall-head { align-items: center; }
-    .wall-head h2 { flex: 0 0 auto; font-size: 1rem; }
-    .stage-mode { flex: 1 1 10rem; justify-content: flex-end; }
-    .stage-mode > strong { flex: 1 1 8rem; font-size: .875rem; }
-    .physical-meta { display: grid; }
-}
-
 .stage-identities ul { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 19rem), 1fr)); gap: .35rem 1.5rem; padding-inline-start: 1.25rem; }
 .stage-identities li { min-inline-size: 0; overflow-wrap: anywhere; }
 

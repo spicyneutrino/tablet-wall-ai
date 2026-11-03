@@ -202,14 +202,14 @@
             </div>
             <div class="roster-status-row">
                 <p class="hint" id="roster-status" role="status">Tablet status has not been checked.</p>
-                <button type="button" class="btn btn-sm" id="btn-roster-refresh" data-action="btn-roster-refresh">Refresh status</button>
+                <button type="button" class="btn btn-ghost btn-sm" id="btn-roster-refresh" data-action="btn-roster-refresh">Refresh status</button>
             </div>
 
             <ul class="dev-list" id="device-list" aria-label="Tablets known to this server"></ul>
             <p class="empty-note" id="device-empty" hidden>No tablets are registered yet. Open <a href="/client/">/client/</a> on a tablet on the same LAN, they appear here automatically.</p>
         </section><details id="tablet-joining"><summary>Add tablets and joining help</summary><section class="join-tablets task-section" aria-label="Joining help"><p>Open the tablet address on each tablet on the same network. Keep the page open and the tablet on power.</p><label class="field" for="tablet-url">Tablet address<input class="inp" id="tablet-url" readonly value="Tablet address not configured" data-field="tablet-url"></label><button class="btn" type="button" id="copy-tablet-url" disabled data-action="copy-tablet-url">Copy tablet URL</button><p id="tablet-url-note"></p><figure id="tablet-qr-figure" hidden><img id="tablet-qr" alt="QR code for the configured tablet address"><figcaption id="tablet-qr-note">Scan to open the tablet page. The QR encodes only the join address, not a credential.</figcaption></figure><p id="tablet-qr-error" role="alert" hidden>QR image failed to load. The text address above still works. <button class="btn" type="button" id="btn-readiness-qr-retry" data-action="btn-readiness-qr-retry">Retry QR</button></p><p id="join-network">Network details have not been reported.</p><button type="button" class="btn" id="join-refresh" data-action="join-refresh">Check connection</button><button type="button" class="btn" id="join-arrange" data-action="join-arrange">Arrange connected tablets</button></section></details></div><dialog class="tablet-selection" id="device-sheet" open aria-labelledby="tablet-actions-title"><button type="button" class="btn sheet-close" id="device-sheet-close" aria-label="Close selected tablet">Close</button><div id="operator-device-actions" hidden><section class="tablet-actions task-section" aria-labelledby="tablet-actions-title">
-            <h2 id="tablet-actions-title">Selected tablet</h2><h3 id="tablet-action-name" tabindex="-1">Select a tablet.</h3><p id="tablet-evidence"></p><p id="tablet-action-message" role="status" aria-live="polite"></p><p class="tablet-recovery" id="tablet-recovery"></p><button type="button" class="btn" id="tablet-next-action" hidden data-action="tablet-next-action">Review problem</button><div class="operator-actions"><button class="btn" id="tablet-identify" type="button" data-action="tablet-identify">Identify for 5 seconds</button><button class="btn" id="tablet-retry-image" type="button" data-action="tablet-retry-image">Retry image</button><button class="btn" id="tablet-reconnect" type="button" data-action="tablet-reconnect">Reconnect</button></div>
-            <form id="tablet-label-form" data-form="tablet-label-form"><label class="field" for="tablet-label">Tablet name<input class="inp" id="tablet-label" maxlength="80" autocomplete="off" data-field="tablet-label"></label><button class="btn" id="tablet-label-save" data-action="tablet-label-save">Save name</button><button type="button" class="btn" id="tablet-label-review" data-action="tablet-label-review">Compare current saved name</button><button type="button" class="btn" id="tablet-label-discard" data-action="tablet-label-discard">Discard name</button></form><section class="field-review" id="tablet-name-review" hidden><p id="tablet-name-comparison"></p><button class="btn" type="button" id="tablet-name-keep" data-action="tablet-name-keep">Keep my name against this saved value</button></section><details id="tablet-details" class="tablet-details"><summary>Placement and technical details</summary>
+            <h2 id="tablet-actions-title">Selected tablet</h2><h3 id="tablet-action-name" tabindex="-1">Select a tablet.</h3><p id="tablet-evidence"></p><p id="tablet-action-message" role="status" aria-live="polite"></p><p class="tablet-recovery" id="tablet-recovery"></p><button type="button" class="btn btn-primary" id="tablet-next-action" hidden data-action="tablet-next-action">Review problem</button><div class="operator-actions"><button class="btn" id="tablet-identify" type="button" data-action="tablet-identify">Identify for 5 seconds</button><button class="btn" id="tablet-retry-image" type="button" data-action="tablet-retry-image">Retry image</button><button class="btn" id="tablet-reconnect" type="button" data-action="tablet-reconnect">Reconnect</button></div>
+            <form id="tablet-label-form" data-form="tablet-label-form"><label class="field" for="tablet-label">Tablet name<input class="inp" id="tablet-label" maxlength="80" autocomplete="off" data-field="tablet-label"></label><button class="btn" id="tablet-label-save" data-action="tablet-label-save">Save name</button><button type="button" class="btn" id="tablet-label-review" data-action="tablet-label-review">Compare current saved name</button><button type="button" class="btn" id="tablet-label-discard" data-action="tablet-label-discard">Discard name</button></form><section class="field-review" id="tablet-name-review" hidden><p id="tablet-name-comparison"></p><button class="btn" type="button" id="tablet-name-keep" data-action="tablet-name-keep">Use my edited name</button></section><details id="tablet-details" class="tablet-details"><summary>Placement and technical details</summary>
             
             <p class="hint">Reconnect keeps the tablet identity, label and number. Identify temporarily covers the image.</p>
 
@@ -227,15 +227,20 @@
   <div class="wall-stage-slot" id="wall-context-content"></div>
   <aside class="wall-inspector" id="selected-image-controls" aria-labelledby="image-title">
     <div class="wall-inspector-head">
-      <p class="image-title" id="image-title">No image selected</p>
-      <p class="hint" id="image-details">Choose an image to preview it.</p>
+      <h3 class="image-title" id="image-title">Change the image</h3>
+      <p class="hint" id="image-details">Choose an image from the library to preview a change.</p>
     </div>
-    <div class="image-actions">
+    <div class="image-idle-actions" id="image-idle-actions">
+      <button class="btn btn-primary" type="button" id="edit-current-image" hidden>Adjust saved image</button>
+      <button class="btn btn-ghost" type="button" id="browse-images">Choose an image</button>
+    </div>
+    <div class="image-actions" id="image-preview-controls" hidden>
       <label class="field" for="image-fit">Wall-wide fit<select class="inp" id="image-fit" aria-label="Wall-wide fit" data-field="image-fit"><option value="cover">Fill</option><option value="contain">Fit</option></select></label>
-      <div class="image-action-row image-primary-actions"><button class="btn btn-primary" id="show-image" type="button" disabled data-action="show-image">Show image</button><button class="btn" id="image-discard" type="button" data-action="image-discard">Discard preview</button></div>
-      <p id="image-message" role="status" aria-live="polite"></p>
-      <details class="technical-details image-more" id="image-more"><summary>More image actions</summary><div class="image-action-row"><button class="btn" id="restore-image" type="button" disabled data-action="restore-image">Restore previous content</button><button class="btn" id="image-rebuild" type="button" data-action="image-rebuild">Rebuild preview</button></div></details><div class="image-action-row image-view-actions"><button type="button" class="btn" id="view-live" hidden data-action="view-live">View applied</button><button type="button" class="btn" id="view-preview" hidden data-action="view-preview">View preview</button></div>
+      <div class="image-action-row image-primary-actions"><button class="btn btn-primary" id="show-image" type="button" disabled data-action="show-image">Show image</button><button class="btn" id="image-discard" type="button" aria-label="Discard image preview" data-action="image-discard">Discard</button></div>
+      <div class="image-action-row image-view-actions"><button type="button" class="btn btn-ghost" id="view-live" hidden data-action="view-live">View saved wall</button><button type="button" class="btn btn-ghost" id="view-preview" hidden data-action="view-preview">View preview</button></div>
     </div>
+    <p id="image-message" role="status" aria-live="polite"></p>
+    <details class="technical-details image-more" id="image-more"><summary>More image actions</summary><div class="image-action-row"><button class="btn" id="restore-image" type="button" disabled data-action="restore-image">Restore previous content</button><button class="btn" id="image-rebuild" type="button" data-action="image-rebuild">Rebuild preview</button></div></details>
     <p class="hint" id="image-fit-note"></p>
     <details class="technical-details" id="image-details-disclosure"><summary>Image details</summary><label class="field" for="image-select">Image<select class="inp" id="image-select" data-field="image-select"><option value="">Loading images…</option></select></label><img id="image-thumbnail" alt="Selected still image preview" hidden></details>
   </aside>
@@ -243,20 +248,21 @@
     <div class="library-head"><h3 id="library-title">Library</h3><div class="library-toolbar"><div class="field"><label for="image-search">Search images</label><input class="inp" type="search" id="image-search" autocomplete="off" placeholder="Search by filename" data-field="image-search"></div><button type="button" class="btn" id="add-image">Add image</button></div></div>
     <ul id="image-gallery" class="image-gallery" aria-label="Image library"></ul>
   <div class="image-utilities"><details id="image-addition"><summary>Add image and upload availability</summary><button class="btn" type="button" id="images-check-connection" data-action="images-check-connection">Check image-addition connection</button><p id="upload-instruction">Checking upload availability…</p><form id="upload-form" hidden data-form="upload-form"><label class="field" for="upload-file">Upload a still image<input class="inp" type="file" id="upload-file" accept="image/png,image/jpeg" data-field="upload-file" required></label>
-                <button class="btn" id="upload-submit" data-action="upload-submit">Upload image</button><progress id="upload-progress" max="100" value="0" aria-label="Image upload progress" hidden></progress></form><p id="upload-message" role="status" aria-live="polite"></p></details><button class="btn" id="refresh-images" type="button" data-action="refresh-images">Refresh images</button></div></section>
+                <button class="btn" id="upload-submit" data-action="upload-submit">Upload image</button><progress id="upload-progress" max="100" value="0" aria-label="Image upload progress" hidden></progress></form><p id="upload-message" role="status" aria-live="polite"></p></details><button class="btn btn-ghost" id="refresh-images" type="button" data-action="refresh-images">Refresh images</button></div></section>
 </div></section>
             <section class="rail-panel task-panel" id="panel-system" role="tabpanel" aria-labelledby="tab-system" tabindex="0" hidden data-task="settings"><h2 class="task-title" tabindex="-1" id="task-settings">Settings</h2>
         <div id="operator-readiness"><section class="card task-section" aria-labelledby="readiness-title"><h2 id="readiness-title">Check wall</h2>
-            <p id="readiness-status" role="status" aria-live="polite">Reading server readiness…</p>
+            <p id="readiness-status" role="status" aria-live="polite">Reading server checks…</p>
             <p id="readiness-errors" role="alert" hidden></p>
 
             <p class="hint" id="readiness-refreshed">Not read yet.</p>
-            <button class="btn" type="button" id="btn-readiness-refresh" data-action="btn-readiness-refresh">Refresh readiness</button>
+            <button class="btn btn-ghost" type="button" id="btn-readiness-refresh" data-action="btn-readiness-refresh">Refresh server checks</button>
             <dl id="operator-readiness-facts" class="operator-facts"></dl>
+            <details><summary>Server and connection details</summary><dl id="operator-readiness-details" class="operator-facts"></dl></details>
             <details id="readiness-paths"><summary>Data paths</summary><dl class="operator-facts" id="operator-readiness-paths"></dl></details>
             <details id="readiness-advice"><summary>What this server cannot do</summary><ul id="operator-readiness-advice"></ul></details>
             <p id="readiness-message" role="status" aria-live="polite"></p></section></div>
-        <details class="card" id="measurement-details"><summary>Advanced measurements and model confirmation</summary><section class="field-review" id="measurement-review" hidden><h3>Review changed saved fields</h3><pre class="form-comparison" id="measurement-comparison"></pre><button type="button" class="btn" id="measurement-keep" data-action="measurement-keep">Keep my fields against these saved values</button></section>        <section class="card device-card task-section" aria-labelledby="device-card-title">
+        <details class="card" id="measurement-details"><summary>Advanced measurements and model confirmation</summary><section class="field-review" id="measurement-review" hidden><h3>Review changed saved fields</h3><pre class="form-comparison" id="measurement-comparison"></pre><button type="button" class="btn" id="measurement-keep" data-action="measurement-keep">Use my edited measurements</button></section>        <section class="card device-card task-section" aria-labelledby="device-card-title">
             <h2 id="device-card-title">Profile and calibration</h2>
             <p class="empty-note" id="device-card-empty">Select a tablet to edit its measurements.</p>
 
@@ -608,7 +614,7 @@
             </details>
         </section>
 </div>
-        </section><details><summary>Check patterns</summary><p class="hint">Patterns use committed wall bounds. A generated grid or black wall is an ordinary image. Keep your prior content with Restore previous content.</p>
+        </section><details><summary>Check patterns</summary><p class="hint">Patterns use the current wall size. A generated grid or black wall is an ordinary image. Keep your prior content with Restore previous content.</p>
                 <div class="operator-actions"><button class="btn" type="button" id="show-colours" data-action="show-colours">Tablet colours</button><button class="btn" type="button" id="show-calibration" data-action="show-calibration">Logical calibration pattern</button><button class="btn" type="button" id="pattern-grid" data-action="pattern-grid">Wall-sized grid</button><button class="btn" type="button" id="pattern-black" data-action="pattern-black">Black wall</button></div>
             </details><section class="diagnostic-colours task-section" aria-labelledby="diagnostic-colours-title"><h3 id="diagnostic-colours-title">Tablet test colours</h3><p>Change the diagnostic colour used by one tablet or all tablets. This legacy command has no revision guard. It does not select or show an image.</p><p id="diagnostic-colour-subject">Select a tablet in Tablets.</p><label class="field" for="diagnostic-colour">Test colour<input type="color" id="diagnostic-colour" value="#ef4444" data-field="diagnostic-colour"></label><button type="button" class="btn" id="diagnostic-colour-one" data-action="diagnostic-colour-one">Set selected tablet colour</button><button type="button" class="btn" id="diagnostic-colour-all" data-action="diagnostic-colour-all">Set all tablet colours</button><button type="button" class="btn" id="diagnostic-colour-refresh" data-action="diagnostic-colour-refresh">Read selected colour</button><p id="diagnostic-colour-message" role="status"></p></section><details class="destructive-area"><summary>Destructive wall actions</summary><p>Clear removes the applied arrangement. Review the confirmation before continuing.</p><button type="button" class="btn btn-danger" id="clear-wall" data-action="clear-wall">Clear wall</button></details></section>
         <section class="rail-panel task-panel" id="panel-saved" data-task="saved" role="tabpanel" aria-labelledby="tab-saved" hidden><h2 class="task-title" tabindex="-1">Saved</h2><section class="card saved-card task-section" aria-labelledby="saved-title">
@@ -616,32 +622,32 @@
                 <h2 id="saved-title">Saved arrangements</h2>
                 <button type="button" class="btn btn-ghost btn-sm" id="btn-layouts-refresh" data-action="btn-layouts-refresh">Refresh</button>
             </div>
-            <ul class="saved-list" id="saved-layouts" aria-label="Saved arrangements"></ul><p class="empty-note" id="saved-empty" hidden>No saved arrangements yet.</p><p class="hint">Saving keeps the committed layout, not the draft. Apply the draft first to save its changes under a new name.</p>
+            <ul class="saved-list" id="saved-layouts" aria-label="Saved arrangements"></ul><p class="empty-note" id="saved-empty" hidden>No saved arrangements yet.</p><p class="hint">Saves the arrangement currently applied to the wall. Apply any preview changes before saving them.</p>
 
             <form class="saved-form" id="layout-save-form" novalidate data-form="layout-save-form">
                 <div class="field">
                     <label class="label" for="layout-name">Name</label>
                     <input class="inp" id="layout-name" type="text" maxlength="64" autocomplete="off" spellcheck="false" placeholder="Lobby, 3 across" aria-describedby="layout-msg" data-field="layout-name">
                 </div>
-                <button type="submit" class="btn" id="btn-layout-save" data-action="btn-layout-save">Save committed layout</button>
+                <button type="submit" class="btn btn-primary" id="btn-layout-save" data-action="btn-layout-save">Save arrangement</button>
             </form>
 
             <p class="form-msg" id="layout-msg" role="status" aria-live="polite" hidden></p>
             <p class="form-msg" id="layouts-status" role="status" hidden></p>
 
-        </section><section class="saved-scenes task-section" aria-labelledby="saved-scenes-title"><div class="sec-head"><h3 id="saved-scenes-title">Saved scenes</h3><button type="button" class="btn btn-ghost btn-sm" id="scenes-refresh" data-action="scenes-refresh">Refresh scenes</button></div><p>Keep the applied image or test content and its Fit / Fill choice. Arrangements are saved separately.</p><ul id="saved-scenes" class="saved-list" aria-label="Saved scenes"></ul><form id="scene-save-form" data-form="scene-save-form"><label class="field" for="scene-name">Scene name<input class="inp" id="scene-name" maxlength="64" autocomplete="off" data-field="scene-name"></label><button type="submit" class="btn" id="scene-save" data-action="scene-save">Save applied scene</button></form><p id="scene-message" role="status"></p></section><section class="return-point task-section" id="return-point" hidden><h3>Return point saved</h3><p id="return-point-name"></p><button type="button" class="btn" id="return-point-recall" data-action="return-point-recall">Recall return point</button></section></section></div>
+        </section><section class="saved-scenes task-section" aria-labelledby="saved-scenes-title"><div class="sec-head"><h3 id="saved-scenes-title">Saved scenes</h3><button type="button" class="btn btn-ghost btn-sm" id="scenes-refresh" data-action="scenes-refresh">Refresh scenes</button></div><p>Save the current image or test pattern and its fit. Tablet positions are saved separately.</p><ul id="saved-scenes" class="saved-list" aria-label="Saved scenes"></ul><form id="scene-save-form" data-form="scene-save-form"><label class="field" for="scene-name">Scene name<input class="inp" id="scene-name" maxlength="64" autocomplete="off" data-field="scene-name"></label><button type="submit" class="btn btn-primary" id="scene-save" data-action="scene-save">Save scene</button></form><p id="scene-message" role="status"></p></section><section class="return-point task-section" id="return-point" hidden><h3>Return point saved</h3><p id="return-point-name"></p><button type="button" class="btn" id="return-point-recall" data-action="return-point-recall">Recall return point</button></section></section></div>
     </div>
     <div id="wall-context-park" hidden><section class="card stage-card wall-stage" aria-labelledby="stage-title">
             <div class="wall-head">
                 <h2 id="stage-title" tabindex="-1">Wall</h2>
 
-            <div class="stage-mode"><strong id="stage-mode-label">Applied configuration</strong><span class="stage-applied-content" id="stage-applied-content"></span><span class="stage-dimensions" id="stage-dimensions"></span></div></div>
+            <div class="stage-mode"><strong id="stage-mode-label">Saved wall</strong><span class="stage-applied-content" id="stage-applied-content"></span><span class="stage-dimensions" id="stage-dimensions"></span></div></div>
 
             <div class="stage-scroll" id="stage-scroll" tabindex="0" role="region" aria-label="Wall preview and tablet selection">
                 <svg class="stage-svg" id="stage-svg" viewBox="0 0 720 480" role="group" aria-label="Wall. Select a tablet and drag it, or use the arrow keys to nudge the selected tablet."></svg>
             </div><p class="stage-key" id="stage-key" hidden></p><button type="button" class="btn stage-technical-toggle" id="show-stage-technical-inline">Stage technical details</button>
 
-            <section class="arrangement-review task-section" id="manual-arrangement-review" hidden><h3>Review the current wall and your proposal</h3><p id="manual-review-summary" tabindex="-1"></p><details class="technical-details"><summary>Exact geometry and pins</summary><pre class="form-comparison" id="manual-review-details"></pre></details><button type="button" class="btn" id="manual-review-keep" data-action="manual-review-keep">Keep my arrangement against this wall</button></section>
+            <section class="arrangement-review task-section" id="manual-arrangement-review" hidden><h3>Review the current wall and your proposal</h3><p id="manual-review-summary" tabindex="-1"></p><details class="technical-details"><summary>Position and measurement details</summary><pre class="form-comparison" id="manual-review-details"></pre></details><button type="button" class="btn" id="manual-review-keep" data-action="manual-review-keep">Use my arrangement</button></section>
             <p class="hint" id="stage-quality-summary"></p>
             <details class="stage-details" id="stage-technical"><summary>Geometry, coverage and technical details</summary><p class="hint" id="layout-kind-note">Loading the configuration.</p><details class="technical-details"><summary>Technical details</summary><p class="wall-meta physical-meta">
                     <span>Revision <b id="wall-revision">–</b></span>

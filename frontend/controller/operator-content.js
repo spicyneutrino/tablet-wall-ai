@@ -7,7 +7,7 @@ window.OperatorContent = {
         const gallery = new Map();
         let retainMessage = false, shownRevision = null;
         const message = (text, retain = false) => { shownRevision = null; retainMessage = retain; $("image-message").textContent = text; };
-        const commandMessage = label => label + " applied. Tablet reports are in the header and Issues.";
+        const commandMessage = label => label + " updated. Check tablet status above.";
         function renderShownStatus() {
             if (!shownRevision) return;
             const config = state.operatorConfig, label = shownRevision.image ? "Image" : "Content";
@@ -39,7 +39,7 @@ window.OperatorContent = {
         function select(id, nextFit = fit) {
             if (!selectionDirty) baseEtag = state.etag;
             selected = id; fit = nextFit; savedScene = null; selectionDirty = true; selectionVersion += 1;
-            state.viewLive = false; if (!retainMessage) message("Preview ready. Show image applies it."); render(); renderStage();
+            state.viewLive = false; if (!retainMessage) message("Preview ready."); render(); renderStage();
         }
         async function choose(id, nextFit = fit) {
             if (!id) return false;
@@ -81,13 +81,7 @@ window.OperatorContent = {
                 if (row.thumbnail.getAttribute("src") !== image.thumbnail_url) row.thumbnail.src = image.thumbnail_url;
                 const thumbnailScale = Math.min(160 / image.width, 160 / image.height);
                 row.thumbnail.width = Math.max(1, Math.round(image.width * thumbnailScale)); row.thumbnail.height = Math.max(1, Math.round(image.height * thumbnailScale));
-                if (typeof document.createTextNode === "function") {
-                    row.name.replaceChildren(...image.name.split(/(?<=_)/).flatMap(function (part) {
-                        return [document.createTextNode(part), document.createElement("wbr")];
-                    }));
-                } else {
-                    row.name.textContent = image.name;
-                }
+                row.name.textContent = image.name;
             });
         }
         function render() {
@@ -127,15 +121,22 @@ window.OperatorContent = {
             const chosen = selectedContent();
             const draftName = image ? image.name : savedScene ? savedScene.name || "Saved scene" : null;
             $("image-title").textContent = selectionDirty && draftName ? draftName
-                : selectionDirty && selected ? "Selected image unavailable" : "Choose an image";
+                : selectionDirty && selected ? "Selected image unavailable" : "Change the image";
             $("image-details").textContent = selectionDirty && image ? image.width + " × " + image.height + " source px"
                 : selectionDirty && savedScene ? "Saved scene preview. Showing applies its content."
-                    : selectionDirty && selected ? "Selected image is unavailable. Refresh the library or choose a replacement. Your selection and geometry are retained." : "Select a library image to preview it.";
+                    : selectionDirty && selected ? "Selected image is unavailable. Refresh the library or choose a replacement. Your selection and geometry are retained."
+                        : active ? "Choose from the library, or adjust the saved image."
+                            : "Choose an image from the library to preview a change.";
+            $("image-idle-actions").hidden = selectionDirty;
+            $("image-preview-controls").hidden = !selectionDirty;
+            $("edit-current-image").hidden = selectionDirty || !active;
+            $("browse-images").textContent = active ? "Choose another image" : "Choose an image";
+            $("browse-images").className = active ? "btn btn-ghost" : "btn btn-primary";
             const thumbnail = $("image-thumbnail"); thumbnail.hidden = !image;
             if (image && thumbnail.getAttribute("src") !== image.thumbnail_url) thumbnail.src = image.thumbnail_url;
             const transform = chosen && state.base && window.OperatorState.fitTransform(state.base, chosen);
             $("image-fit-note").textContent = transform ? (fit === "cover" ? "Fill crops about " + Math.round(transform.cropX * 100) + "% of the source width and " + Math.round(transform.cropY * 100) + "% of its height."
-                : "Show whole image adds bars where the wall and image shapes differ.") + " One wall-wide transform. Bezels and gaps hide image areas." : "";
+                : "Fit keeps the whole image and adds bars where needed.") + " Tablet frames and gaps hide parts of the image." : "";
             const allowed = (state.capabilities || {}).uploads;
             $("images-check-connection").hidden = typeof allowed === "boolean";
             $("upload-form").hidden = allowed !== true;
@@ -233,6 +234,11 @@ window.OperatorContent = {
             choose(selected, event.target.value);
         });
         $("image-search").addEventListener("input", renderGallery);
+        $("browse-images").addEventListener("click", () => $("image-search").focus());
+        $("edit-current-image").addEventListener("click", () => {
+            const content = state.scene && state.scene.content;
+            if (content && content.type === "image") return choose(content.asset, content.fit || "cover");
+        });
         $("refresh-images").addEventListener("click", refresh);
         $("show-image").addEventListener("click", () => show(selectedContent(), { scene: savedScene, guard: baseEtag || state.etag }));
         $("restore-image").addEventListener("click", async () => { if (await resolveOutput("Restore previous content")) await show(previous, { guard: state.etag }); });

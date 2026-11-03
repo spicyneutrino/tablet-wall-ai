@@ -53,10 +53,15 @@ const content = context.window.OperatorContent.create({ state, renderStage() {},
     await content.refresh(); content.render();
     assert.equal(content.dirty(), false, "loading Images must not create a draft");
     assert.equal(node("show-image").disabled, true, "Show needs a draft");
+    assert.equal(node("image-preview-controls").hidden, true, "an idle wall does not present an inactive edit form");
+    assert.equal(node("image-idle-actions").hidden, false);
+    assert.equal(node("edit-current-image").hidden, true, "test colours have no saved image to adjust");
+    node("browse-images").click();
+    assert.equal(document.activeElement, node("image-search"), "browse takes keyboard focus to the image library");
     assert.equal(node("image-fit").disabled, true, "Fit needs a draft");
     assert.equal(node("image-select").value, "");
-    assert.equal(node("image-title").textContent, "Choose an image");
-    assert.equal(node("image-details").textContent, "Select a library image to preview it.");
+    assert.equal(node("image-title").textContent, "Change the image");
+    assert.equal(node("image-details").textContent, "Choose an image from the library to preview a change.");
 
     node("image-fit").value = "contain";
     node("image-fit").change({ target: node("image-fit") });
@@ -76,6 +81,8 @@ const content = context.window.OperatorContent.create({ state, renderStage() {},
 
     await buttonA.click();
     assert.equal(content.dirty(), true, "clicking a library image creates a draft");
+    assert.equal(node("image-preview-controls").hidden, false);
+    assert.equal(node("image-idle-actions").hidden, true);
     assert.equal(buttonA.attrs["aria-pressed"], "true");
     assert.equal(cardA.dataset.selected, undefined);
     assert.equal(node("image-title").textContent, "a");
@@ -88,8 +95,8 @@ const content = context.window.OperatorContent.create({ state, renderStage() {},
     content.discard();
     assert.equal(content.dirty(), false);
     assert.equal(buttonA.attrs["aria-pressed"], "false");
-    assert.equal(node("image-title").textContent, "Choose an image");
-    assert.equal(node("image-details").textContent, "Select a library image to preview it.");
+    assert.equal(node("image-title").textContent, "Change the image");
+    assert.equal(node("image-details").textContent, "Choose an image from the library to preview a change.");
     assert.equal(node("show-image").disabled, true);
     assert.equal(node("image-fit").disabled, true);
 
@@ -105,8 +112,10 @@ const content = context.window.OperatorContent.create({ state, renderStage() {},
     assert.equal(document.activeElement, node("image-search"));
     assert.equal(node("image-discard").hidden, true); assert.equal(node("restore-image").hidden, false);
     assert.equal(content.dirty(), false); assert.equal(node("image-select").value, "");
+    assert.equal(node("edit-current-image").hidden, false, "a saved image has an explicit adjust action");
+    assert.equal(node("image-preview-controls").hidden, true);
     assert.equal(node("show-image").disabled, true); assert.equal(node("image-fit").disabled, true);
-    assert.equal(node("image-message").textContent, "Image applied. Tablet reports are in the header and Issues.");
+    assert.equal(node("image-message").textContent, "Image updated. Check tablet status above.");
     assert.equal(buttonA.attrs["aria-pressed"], "false", "a completed Show clears the rust draft outline");
     assert.equal(cardA.dataset.applied, "true", "the applied marker remains when no draft exists");
     const appliedNote = cardA.children[1];
@@ -116,7 +125,7 @@ const content = context.window.OperatorContent.create({ state, renderStage() {},
     assert.match(node("stage-applied-content").textContent, /a · Fill wall/);
     assert.equal(node("stage-applied-content").textContent.includes("source px"), false);
 
-    const confirm = "Image applied. Tablet reports are in the header and Issues.";
+    const confirm = "Image updated. Check tablet status above.";
     const render = config.runtime.devices.t.render;
     Object.assign(render, { state: "displayed", current: true, expected_token: token, accepted_token: { ...token }, age_ms: 0, observed_mono: 100 });
     content.render(); assert.equal(node("image-message").textContent, confirm);
@@ -163,5 +172,10 @@ const content = context.window.OperatorContent.create({ state, renderStage() {},
     assert.equal(content.dirty(), false); assert.equal(node("image-select").value, "");
     assert.equal(cardA.dataset.applied, "true", "Discard never removes the applied marker");
     assert.equal(buttonB.attrs["aria-pressed"], "false", "Discard removes the rust outline");
+    await node("edit-current-image").click();
+    assert.equal(content.dirty(), true, "adjusting a saved image creates a new guarded preview");
+    assert.equal(state.previewContent.asset, "a");
+    content.discard();
+    assert.equal(content.dirty(), false);
     console.log("Content status, applied/draft ownership, command feedback, error retention and draft races passed");
 })().catch(error => { console.error(error); process.exitCode = 1; });

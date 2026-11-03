@@ -1,7 +1,27 @@
 "use strict";
 
 /* Physical stage rendering, selection, pointer editing and slot inspector. */
+function rosterSummary(config, stale) {
+    const counts = window.OperatorState.registrationCounts(config);
+    if (!counts) return "Tablet status unknown";
+    return (stale ? "Status stale · Last known: " : "") + counts.online + " online · " + counts.registered + " registered"
+        + (counts.retained ? " · " + counts.retained + (counts.retained === 1 ? " retained wall position" : " retained wall positions") : "");
+}
+function configureDeviceSheet(deviceSheet, compact, previousCompact) {
+    if (previousCompact === compact) return previousCompact;
+    if (compact) {
+        if (deviceSheet.open) deviceSheet.close();
+        deviceSheet.removeAttribute("open");
+    } else {
+        if (deviceSheet.open && deviceSheet.dataset.modal === "true") deviceSheet.close();
+        if (!deviceSheet.open) deviceSheet.setAttribute("open", "");
+    }
+    return compact;
+}
+
 window.PhysicalStage = {
+    rosterSummary: rosterSummary,
+    configureDeviceSheet: configureDeviceSheet,
     create: function (dependencies) {
         const {
             DRAG_THRESHOLD_PX, afterDraftChange, announce, bodyMetrics, calibrationFor, beginManual, canManualEdit, clearMsg, clone, deviceEntries, deviceLabel, deviceNumber, deviceRows, el, finiteOr, formatNumber, isOnline, latestProfile, mutateDraft, numberTag, numberedLabel, populateDeviceCard, profileFor, pushUndo, roundTo, selectedSlot, selectionChanged, setInputValue, showError, showTab, state, syncTabDots, validPair
@@ -201,18 +221,14 @@ window.PhysicalStage = {
          * ---------------------------------------------------------------- */
 
         const deviceSheet = typeof document !== "undefined" ? document.getElementById("device-sheet") : null;
+        let deviceSheetCompactMode = null;
         function compactSheet() {
             return typeof window.matchMedia === "function" && window.matchMedia("(max-width: 48rem)").matches;
         }
         function syncDeviceSheetMode() {
             if (!deviceSheet) return;
-            if (compactSheet()) {
-                if (deviceSheet.open) deviceSheet.close();
-                deviceSheet.removeAttribute("open");
-            } else {
-                if (deviceSheet.open && deviceSheet.dataset.modal === "true") deviceSheet.close();
-                if (!deviceSheet.open) deviceSheet.setAttribute("open", "");
-            }
+            const compact = compactSheet();
+            deviceSheetCompactMode = configureDeviceSheet(deviceSheet, compact, deviceSheetCompactMode);
         }
         function openDeviceSheet(trigger) {
             if (!deviceSheet || !compactSheet()) return;
@@ -295,8 +311,7 @@ window.PhysicalStage = {
                 const compact = typeof window.matchMedia === "function" && window.matchMedia("(max-width: 36rem)").matches;
                 if (compact) el.wallHealth.textContent = (stale ? "Stale · " : "") + (result.total ? result.showing + "/" + result.total + " showing image" : "No wall");
                 el.btnWallHealth.setAttribute("aria-label", (stale ? "Status stale. " : "") + (result.total ? result.showing + " of " + result.total + " tablets showing the current image. Issues." : "No tablets on the wall. Issues."));
-                const online = Object.values(state.roster).filter(device => device.online).length;
-                el.deviceCount.textContent = online + " online · " + Object.keys(state.roster).length + " registered";
+                el.deviceCount.textContent = rosterSummary(state.operatorConfig, stale);
                 el.rosterStatus.textContent = stale ? "Status stale. " + state.rosterError + ". Refresh status to retry."
                     : "Status checked " + new Date(state.rosterCheckedAt).toLocaleTimeString() + ".";
                 return;

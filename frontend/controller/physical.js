@@ -953,8 +953,8 @@
         if (conflict) showConflict("The wall changed. Your arrangement preview and its original guard are retained. Review the live wall, then rebuild or discard the preview.");
         else if (!state.draftConflict) hideConflict();
         renderAll(); maybeChooseInitialTab();
-        if (firstConfig) announce(Object.keys(window.OperatorState.entries(state.base)).length ? "Wall connected. Review current tablet reports."
-            : Object.values(state.roster).some(device => device.online) ? "Wall connected. Arrange connected tablets." : "Wall connected. Add tablets to begin.");
+        if (firstConfig) announce(Object.keys(window.OperatorState.entries(state.base)).length ? "Controller connected to the server. Review current tablet reports."
+            : Object.values(state.roster).some(device => device.online) ? "Controller connected to the server. Arrange connected tablets." : "Controller connected to the server. Add tablets to begin.");
     }
 
     function ensureSelection() {

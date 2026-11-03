@@ -81,6 +81,15 @@ bar.computed.position = "static";
 doc.body.dataset.outputDirty = "true";
 assert.equal(fit(svg).height, 382, "desktop actions in another column do not consume stage height");
 
+const idleActions = { getClientRects: () => [1], getBoundingClientRect: () => ({ bottom: 264 }),
+    closest: () => ({ computed: { paddingBottom: "16px" }, getBoundingClientRect: () => ({ top: 100 }) }) };
+doc.querySelector = selector => selector === ".image-actions" ? bar : selector === "#image-idle-actions" ? idleActions : navigation;
+win.innerWidth = 390;
+doc.body.dataset.outputDirty = "false";
+assert.equal(fit(svg).height, 186, "the phone wall leaves room for the explicit image-change actions");
+win.innerWidth = 1440;
+assert.equal(fit(svg).height, 382, "desktop actions retain their separate column");
+
 rotation = Math.PI / 3;
 fit(svg);
 assert.ok(Math.abs(Number(label.getAttribute("font-size")) * Math.hypot(label.getScreenCTM().a, label.getScreenCTM().b) - 12) < 1e-10);

@@ -2,6 +2,16 @@
 (function (root) {
     const clone = value => JSON.parse(JSON.stringify(value));
     const entries = layout => layout && (layout.kind === "physical" ? layout.slots : layout.placements) || {};
+    function registrationCounts(config) {
+        const devices = config && config.runtime && config.runtime.devices;
+        if (!devices || typeof devices !== "object" || Array.isArray(devices)) return null;
+        const ids = Object.keys(devices);
+        return {
+            registered: ids.length,
+            online: ids.filter(id => devices[id] && devices[id].online === true).length,
+            retained: Object.keys(entries(config.layout)).filter(id => !Object.prototype.hasOwnProperty.call(devices, id)).length
+        };
+    }
     function layoutDraft(layout) {
         if (!layout || !["physical", "logical", undefined].includes(layout.kind)) throw new Error("Unsupported layout. Update the console before editing.");
         const draft = clone(layout);
@@ -141,7 +151,7 @@
         return { event() { epoch += 1; }, start() { return { epoch, sequence: ++issued }; }, current(ticket) { return ticket.epoch === epoch; },
             accept(ticket) { if (ticket.epoch !== epoch || ticket.sequence < accepted) return false; accepted = ticket.sequence; return true; } };
     }
-    const api = { fitLogical, arrangeLogical, rotateLogical, clone, entries, layoutDraft, bounds, fitTransform, compareIds, sameToken, observeDevice, observeConfig, tabletState, aggregate, readFence };
+    const api = { fitLogical, arrangeLogical, rotateLogical, clone, entries, registrationCounts, layoutDraft, bounds, fitTransform, compareIds, sameToken, observeDevice, observeConfig, tabletState, aggregate, readFence };
     if (typeof module !== "undefined" && module.exports) module.exports = api;
     else root.OperatorState = api;
 }(typeof window !== "undefined" ? window : globalThis));

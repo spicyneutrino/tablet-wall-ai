@@ -21,7 +21,7 @@ const workspace = context.window.OperatorWorkspace.create({ state, arrangementDi
 workspace.render();
 assert.equal(node("shared-stage").parent, node("wall-context-content"));
 assert.equal(node("connected-summary").textContent, "1 connected");
-assert.equal(node("stage-mode-label").textContent, "Applied configuration");
+assert.equal(node("stage-mode-label").textContent, "Saved wall");
 node("edited-field").focus();
 workspace.render(); workspace.render();
 assert.equal(node("wall-context-content").appends.length, 1, "runtime updates do not detach the stage or SVG focus");
