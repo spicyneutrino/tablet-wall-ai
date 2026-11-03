@@ -1841,7 +1841,7 @@ def _config_payload() -> dict[str, Any]:
         payload["referenced_calibrations"] = calibrations
     if payload["scene"]["content"].get("type") == "image":
         payload["scene"]["content"].setdefault("fit", "cover")
-        payload["scene"]["content"].setdefault("background", "#262119")
+        payload["scene"]["content"].setdefault("background", "#22252a")
         payload["scene"]["content"]["available"] = operability.asset_available(
             payload["scene"]["content"]["asset"])
     payload["operator_state_version"] = 1
@@ -2737,7 +2737,7 @@ async def _send_prepare(
         "type": "prepare",
         **pending.as_frame(),
         **session.lineage(),
-        "asset": {**descriptor, **({"fit": "cover", "background": "#262119"} if descriptor.get("kind") != "video" else {})},
+        "asset": {**descriptor, **({"fit": "cover", "background": "#22252a"} if descriptor.get("kind") != "video" else {})},
         "plan": plan,
         "calibration": calibration,
         "connection_id": connection_id,

@@ -34,7 +34,7 @@ window.OperatorContent = {
             if (savedScene && savedScene.content.type !== "image") return savedScene.content;
             const image = images.find(item => item.id === selected);
             return image ? { type: "image", asset: image.id, url: image.url, intrinsicWidth: image.width,
-                intrinsicHeight: image.height, fit, background: savedScene && savedScene.content.background || "#262119" } : null;
+                intrinsicHeight: image.height, fit, background: savedScene && savedScene.content.background || "#22252a" } : null;
         }
         function select(id, nextFit = fit) {
             if (!selectionDirty) baseEtag = state.etag;

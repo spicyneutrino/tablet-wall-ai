@@ -8,25 +8,25 @@
 
 :root {
     color-scheme: light;
-    --bg: #f5f0e7;
-    --surface: #fdfbf6;
-    --surface-raised: #f9f5ee;
-    --hover: #f6f2ea;
-    --disabled-bg: #eee8de;
+    --bg: #efece4;
+    --surface: #faf8f2;
+    --surface-raised: #f3f0e8;
+    --hover: #f0ece4;
+    --disabled-bg: #e7e1d5;
     --backdrop: rgb(30 26 21 / 60%);
     --text: #2d2822;
     --muted: #5c564d;
-    --border: #ded8cc;
-    --control: #6f685c;
-    --accent: #9d4616;
+    --border: #d8d3c7;
+    --control: #67645d;
+    --accent: #8f4014;
     --selected: #f5e5d7;
     --success: #246344;
     --attention: #795500;
     --error: #a12a24;
-    --stage: #262119;
-    --stage-text: #f5f0e7;
+    --stage: #22252a;
+    --stage-text: #f2f0ea;
     --stage-selected: #ffc084;
-    --stage-line: #8f897e;
+    --stage-line: #8a8e95;
     --font: "Schibsted Grotesk", system-ui, -apple-system, sans-serif;
     --radius: 6px;
     --page-pad: 2rem;

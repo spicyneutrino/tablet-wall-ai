@@ -2680,7 +2680,7 @@
                     if (panel.missing) continue;
                     const rect = document.createElementNS(svg.namespaceURI, "rect");
                     for (const [key, value] of Object.entries(panel.body)) rect.setAttribute(key, value);
-                    rect.setAttribute("fill", "#f5e5d7"); rect.setAttribute("stroke", "#9d4616");
+                    rect.setAttribute("fill", "var(--selected)"); rect.setAttribute("stroke", "var(--accent)");
                     rect.setAttribute("stroke-width", "2"); rect.setAttribute("vector-effect", "non-scaling-stroke");
                     if (panel.angle) rect.setAttribute("transform", "rotate(" + panel.angle + " " + panel.cx + " " + panel.cy + ")");
                     svg.append(rect);

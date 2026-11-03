@@ -213,7 +213,7 @@ def test_scene_a_to_b_and_restart_expose_the_real_scene(image_environment, asset
         assert after["scene"]["content"] == {
             "type": "image", "asset": second["id"], "fit": "cover",
             "intrinsicWidth": 45, "intrinsicHeight": 90, "url": second["url"],
-            "background": "#262119", "available": True,
+            "background": "#22252a", "available": True,
         }
         assert client.get("/api/v3/config").json() == after
         stored = persist.load_state()
@@ -241,7 +241,7 @@ def test_managed_selection_preserves_immutable_object_metadata(operator, monkeyp
     assert media.find_object(managed["id"]) == original
     legacy = operator.get("/wall").json()["scene"]
     projected = deepcopy(response.json()["scene"])
-    assert projected["content"].pop("background") == "#262119"
+    assert projected["content"].pop("background") == "#22252a"
     assert projected["content"].pop("available") is True
     assert legacy == projected
 
