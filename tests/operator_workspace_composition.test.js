@@ -14,11 +14,11 @@ function node(id) {
     return nodes.get(id);
 }
 const state = { tabName: "content", roster: { a: { online: true }, b: { online: false } }, configLoaded: true, base: { placements: { a: {} } }, draft: { placements: { a: {} } } };
-let dirty = false;
+let dirty = false, applied = "a.png";
 const context = { window: { OperatorState: require("../frontend/controller/operator-state.js") }, document };
 vm.runInNewContext(fs.readFileSync(require.resolve("../frontend/controller/operator-workspace.js"), "utf8"), context);
 const workspace = context.window.OperatorWorkspace.create({ state, arrangementDirty: () => false, arrangementPreview: () => false,
-    imageDirty: () => dirty, canCommit: () => true, stageNames: () => ({ applied: "a.png", pending: "b.png" }) });
+    imageDirty: () => dirty, canCommit: () => true, stageNames: () => ({ applied, pending: "b.png" }) });
 workspace.render();
 assert.equal(node("shared-stage").parent, node("wall-context-content"));
 assert.equal(node("stage-mode-label").textContent, "Showing a.png");
@@ -46,6 +46,15 @@ state.roster = {}; workspace.render();
 assert.equal(node("tablet-joining").open, true, "empty roster leads with joining help");
 node("edited-field").focus(); state.roster = { a: { online: true } }; workspace.render();
 assert.equal(node("tablet-joining").open, false, "automatic joining help closes when the roster populates without stealing a field");
+dirty = false; state.previewContent = null; applied = null;
+state.scene = { content: { type: "color" } }; workspace.render();
+assert.equal(node("stage-mode-label").textContent, "Showing tablet colours", "test colours on the wall are not reported as nothing");
+state.scene = { content: { type: "calibration" } }; workspace.render();
+assert.equal(node("stage-mode-label").textContent, "Showing calibration pattern");
+state.base = { placements: {} }; workspace.render();
+assert.equal(node("stage-mode-label").textContent, "Nothing shown", "a scene with no tablets on the wall shows nothing");
+state.base = { placements: { a: {} } }; state.scene = null; workspace.render();
+assert.equal(node("stage-mode-label").textContent, "Nothing shown");
 console.log("Workspace relocates one stage only on task changes and preserves keyed field focus and admitted entry points");
 
 const controller = fs.readFileSync(require.resolve("../frontend/controller/physical.js"), "utf8");

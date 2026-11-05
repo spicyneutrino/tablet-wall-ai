@@ -928,7 +928,7 @@ def stale_scene(rig):
     other.get_by_text("Check patterns", exact=True).click()
     rig.open_disclosures(other.locator("#show-colours"))
     other.locator("#show-colours").click()
-    expect(other.locator("#stage-mode-label")).to_have_text("Nothing shown")
+    expect(other.locator("#stage-mode-label")).to_have_text("Showing tablet colours")
     task(other, "Saved")
     other.locator("#scene-name").fill("Guarded scene")
     other.locator("#scene-save").click()

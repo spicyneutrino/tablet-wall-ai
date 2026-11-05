@@ -68,7 +68,9 @@ window.OperatorWorkspace = {
             else if (!empty && emptyRoster === true && !joining.contains(document.activeElement)) joining.open = false;
             emptyRoster = empty;
             const names = stageNames();
-            const label = mode === "live" ? names.applied ? "Showing " + names.applied : "Nothing shown"
+            const shownType = state.scene && state.scene.content && state.scene.content.type;
+            const label = mode === "live" ? names.applied ? "Showing " + names.applied
+                : !wallEmpty && { color: "Showing tablet colours", calibration: "Showing calibration pattern" }[shownType] || "Nothing shown"
                 : "Preview · " + (mode === "image-preview" ? names.pending : "Arrangement");
             if ($("stage-mode-label").textContent !== label) $("stage-mode-label").textContent = label;
             const description = { live: "", "arrangement-preview": "Arrangement preview, not applied", "image-preview": "Image preview, not shown" }[mode];
