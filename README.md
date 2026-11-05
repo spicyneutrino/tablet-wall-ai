@@ -142,11 +142,34 @@ recall asks for confirmation; saving to a name that already exists requires a
 separate explicit replacement confirmation. Saved snapshots live in the same
 SQLite database as the active wall, so include it in backups.
 
+### Use the operator workspace
+
+In **Images**, select a library image, choose **Fill** or **Fit**, then select
+**Show image**. Selection and upload create previews; only **Show image**
+changes the displayed content. To adjust the applied image, select
+**Adjust image**. Missing files stay unavailable until you restore their bytes
+or choose another image. The asset identity remains in **Image details**.
+
+In **Tablets**, select a tablet to name or identify it. **Recovery** exposes
+**Retry image** and **Reconnect** when those commands are available. An offline
+tablet needs recovery on the device; the server cannot wake it remotely.
+**Add tablets** contains the join address and QR code.
+
+In **Saved**, save or recall arrangements separately from content. **Recall**
+applies the saved arrangement and keeps the current content. **Preview** beside
+a content record opens a preview for **Show saved content**. Automatic restore points are labelled separately from
+named arrangements. Saving a record does not apply a pending preview.
+
+Follow the [image-wall runbook](deploy/IMAGE-WALL-RUNBOOK.md) for startup,
+joining, display checks, backup, and recovery.
+
 ### Operator diagnostics
 
-The Wall console keeps Wall, Tablets, Content and System tabs available
-on desktop and phone screens. Under System, Field check can refresh storage,
-backup and client health or verify stored object bytes. Download report saves
+The workspace has five tasks on desktop and phone screens: **Images**,
+**Tablets**, **Arrange**, **Saved**, and **Settings**. In **Settings**, open
+**Measurements and diagnostics**. Under **Diagnostics**, select
+**Refresh diagnostics** to inspect storage, backup, and client health, or
+**Verify object bytes** to check stored media. Download report saves
 the last successful response as timestamped JSON, including integrity results
 when verification was requested. Failed refreshes disable download until a
 successful retry. Diagnostics use operator-read admission independently of upload
@@ -187,25 +210,34 @@ When authentication is disabled, every client that reaches the backend can read 
 
 ## Change the wall size
 
-Open the [Wall console](http://127.0.0.1:8000/controller/physical.html), then
-**Wall → Layout & size**. Choose **Logical units** or **Measured millimetres**,
-select **2 × 2** or **1 × 4**, review the participating tablet order and body
-orientation, then **Preview arrangement → Apply layout**. The 1 × 4 preset
-means one horizontal row. Gap defaults to zero; Fit wall to tablet bodies
-makes the bounds follow the packed footprints. Preview and Cancel do not
-change the tablets.
+Open the [wall workspace](http://127.0.0.1:8000/controller/) and select
+**Arrange**. Choose **Relative** or **Measured**, then a grid preset.
+Open **Tablets and mounting** to review the selected tablets, their order,
+and their mounted top edges. **1 × 4** means one horizontal row with four
+tablets; preset labels follow the selected tablet count.
+
+Select **Preview arrangement**, review the geometry and warnings, then select
+**Apply arrangement**. Preview keeps the current wall active.
+**Discard arrangement** clears the local work. Editing **Rows** or **Columns**
+releases the preset immediately, including while the field still has focus.
+Custom grids must match the selected tablet count unless you select
+**Allow empty trailing cells**.
+
+Extra gap defaults to zero. **Fit wall to tablet bodies** derives the bounds
+from the packed footprints. **View applied** lets you compare the current wall
+with a pending preview without discarding that preview.
 
 Measured layouts use pinned screen, bezel and calibration records. Confirm the
 actual model or save measurements before using that mode. Model profiles remain
-approximate; they do not establish seam accuracy. Advanced bounds and
-measurements are under **System**; selected-tablet mount angles and nudges are
-under **Tablets**. Missing referenced measurements
-block fitting rather than guessing a size.
+approximate; they do not establish seam accuracy. Open **Arrange**, then
+**Custom bounds**, for wall bounds and manual positions. For measurements,
+select a tablet in **Tablets** and select **Review measurements**.
+Missing referenced measurements block fitting rather than guessing a size.
 
-The [logical compatibility editor](http://127.0.0.1:8000/controller/) retains
-custom logical Width/Height and packing controls under **Layout**. It is blocked
-while a measured layout is active. Use the Wall console for normal image and
-arrangement changes. See [wall sizing behavior](docs/WALL-SIZING.md) and
+The [experimental compatibility editor](http://127.0.0.1:8000/controller/experimental.html)
+retains the old logical width, height, and packing controls under **Layout**.
+It is blocked while a measured layout is active. Use the workspace for normal
+image and arrangement changes. See [wall sizing behavior](docs/WALL-SIZING.md) and
 [physical calibration](docs/PHYSICAL-CALIBRATION.md).
 
 ## HTTP API
@@ -428,7 +460,22 @@ schema or roadmap space is reserved on the assumption that something will.
 
 Run `uv sync --all-groups` before the checks. `make test` runs Python tests and all JavaScript suites. `make lint` runs Ruff syntax, undefined-name, unused-import, and common-defect checks on production Python. `make typecheck` checks annotated production code with strict optional handling; unannotated function bodies are not yet enforced.
 
-`make coverage` measures Python lines and branches, including worker subprocesses, writes `coverage.xml`, and enforces an 80% combined floor. Current image-wall browser acceptance uses `uv run --group browser python -m simulator.browser.readiness_acceptance --artifacts /tmp/new-readiness-run` and `uv run --group browser python -m simulator.browser.operator_accessibility --artifacts /tmp/new-accessibility-run`. Use a fresh artifact directory each time. The older `controller_run` covers experimental playback; it is not the image-wall acceptance gate. See the [browser runner guide](simulator/README.md#current-image-wall-acceptance).
+`make coverage` measures Python lines and branches, including worker subprocesses,
+writes `coverage.xml`, and enforces an 80% combined floor.
+
+Run the workspace corrections journey with a fresh artifact directory:
+
+```sh
+uv run --group browser python simulator/browser/redesign_acceptance.py \
+	--scenario corrections --artifacts /tmp/new-corrections-run
+```
+
+The complete matrix uses `--scenario all` and a matching `--ingress-proof`
+manifest. See the [frontend verification record](docs/frontend-redesign/VERIFICATION.md#reproduce-safely).
+The readiness and accessibility drivers remain focused checks with their
+recorded scope. The older `controller_run` covers experimental playback; it is
+not the image-wall acceptance gate. See the
+[browser runner guide](simulator/README.md#current-image-wall-acceptance).
 
 For repeatable viewport and reconnect checks, run `uv run --group browser python -m simulator.browser.audit_round --round 6 --artifacts /tmp/new-viewport-audit`. The browser runners always use temporary database, media, and asset paths. For any manual app launch, set those paths to a disposable scratch copy before startup; startup creates directories, writes SQLite, and cleans staging.
 

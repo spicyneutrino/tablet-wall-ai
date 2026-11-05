@@ -55,7 +55,9 @@
             label.style.display = size < 10 ? "none" : "";
             if (size < 10) return;
             const room = Math.max(1, Math.floor((width - 12) / (size * 0.6)));
-            label.textContent = text.length > room ? text.slice(0, Math.max(1, room - 1)) + "…" : text;
+            const numbered = /^Tablet (\d+)\b/.exec(text);
+            label.textContent = text.length > room && numbered && room <= numbered[0].length ? numbered[1]
+                : text.length > room ? text.slice(0, Math.max(1, room - 1)) + "…" : text;
             label.setAttribute("font-size", size / scale);
             label.setAttribute("stroke-width", 0);
             label.setAttribute("x", Number(label.dataset.x) + 6 / scale);
@@ -75,6 +77,7 @@
     // Call OperatorStage.fit(el.stageSvg) after renderStage and stage relocation.
     // Optional { actionBar, navigation } elements override the workspace defaults.
     function fit(svg, options = {}) {
+        if (svg.classList.contains("is-dragging")) return null;
         const field = svg.closest(".stage-scroll");
         if (!field || !field.parentElement || !svg.viewBox.baseVal.width) return null;
         const win = svg.ownerDocument.defaultView, doc = svg.ownerDocument;
@@ -98,30 +101,43 @@
         const parentStyle = win.getComputedStyle(state.parent), fieldStyle = win.getComputedStyle(field);
         const availableWidth = state.parent.clientWidth - parseFloat(parentStyle.paddingLeft) - parseFloat(parentStyle.paddingRight);
         if (availableWidth <= 0 || !field.getClientRects().length) return null;
-        let bottom = win.innerHeight;
+        const compact = win.matchMedia("(max-width: 48rem), (max-height: 32rem) and (orientation: landscape)").matches;
+        const fieldRect = field.getBoundingClientRect();
+        const zoom = fieldRect.width / parseFloat(fieldStyle.width) || 1;
+        const fieldTop = (fieldRect.top + win.scrollY + (doc.querySelector(".operator-workspace")?.scrollTop || 0)) / zoom;
+        let bottom = win.innerHeight / zoom;
         const navigation = options.navigation || doc.querySelector(".workspace-nav-landmark");
-        const actionBar = options.actionBar || doc.querySelector(doc.body.dataset.task === "arrange" ? "#arrange-footer-actions" : ".image-actions");
+        const actionBar = options.actionBar || doc.body.dataset.task !== "arrange" && doc.querySelector(".image-actions");
         for (const bar of [navigation, doc.body.dataset.outputDirty === "true" && actionBar]) {
             if (!bar || !bar.getClientRects().length) continue;
-            const style = win.getComputedStyle(bar), rect = bar.getBoundingClientRect();
-            if (style.position === "fixed" && rect.bottom > bottom / 2) bottom = Math.min(bottom, rect.top - (parseFloat(style.marginTop) || 0));
+            const rect = bar.getBoundingClientRect();
+            if (bar === actionBar) {
+                const inline = compact && bottom - fieldTop - rect.height / zoom - 16 < 120 / zoom;
+                doc.body.dataset.imageActionsInline = String(inline);
+                if (inline) continue;
+            }
+            const style = win.getComputedStyle(bar);
+            if ((bar === navigation || style.position === "fixed") && rect.bottom / zoom > bottom / 2) bottom = Math.min(bottom, rect.top / zoom - (parseFloat(style.marginTop) || 0));
         }
         const borderWidth = parseFloat(fieldStyle.borderLeftWidth) + parseFloat(fieldStyle.borderRightWidth);
         const borderHeight = parseFloat(fieldStyle.borderTopWidth) + parseFloat(fieldStyle.borderBottomWidth);
         const aspect = svg.viewBox.baseVal.width / svg.viewBox.baseVal.height;
         const width = Math.max(0, availableWidth - borderWidth);
-        const commit = doc.body.dataset.task === "arrange" ? doc.querySelector(".arrange-result .arrange-commit") : null;
-        const reserved = commit && commit.getClientRects().length ? commit.offsetHeight + 16 : 0;
-        const availableHeight = bottom - field.getBoundingClientRect().top - 16 - borderHeight - reserved;
+        const availableHeight = bottom - fieldTop - 16 - borderHeight;
         // A short viewport keeps a usable field and falls back to page scrolling.
-        const height = Math.min(width / aspect, Math.max(120, availableHeight));
+        const taskSelector = doc.getElementById("compact-task-select");
+        const reflow = taskSelector && taskSelector.getClientRects().length;
+        const topInset = navigation && win.getComputedStyle(navigation).position === "sticky" ? navigation.getBoundingClientRect().height / zoom : 0;
+        const imagePortrait = compact && doc.body.dataset.task === "images" && win.matchMedia("(orientation: portrait)").matches;
+        const height = imagePortrait ? width / aspect : reflow ? Math.min(width / aspect, Math.max(120 / zoom, bottom - topInset - 16))
+            : Math.min(width / aspect, Math.max(120 / zoom, availableHeight));
         field.style.inlineSize = Math.min(width, height * aspect) + borderWidth + "px";
         svg.style.inlineSize = Math.min(width, height * aspect) + "px";
         svg.style.blockSize = height + "px";
         fitLabels(svg);
         return { width: Math.min(width, height * aspect), height, availableWidth, availableHeight };
     }
-    function draw({ svg, layout, content, profileFor, labelFor, statusFor, selectedId, runtime, resolutionNode, preview = false, editable = true, presentation = "context", viewport = null }) {
+    function draw({ svg, layout, content, profileFor, labelFor, statusFor, selectedId, runtime, resolutionNode, preview = false, editable = true, presentation = "context", viewport = null, compareIds = null }) {
         const ns = "http://www.w3.org/2000/svg";
         const node = (tag, attrs, text) => {
             const item = document.createElementNS(ns, tag);
@@ -171,7 +187,7 @@
         visible.append(rect(b, { fill: content && content.background || "var(--stage)" }));
         if (transform && content.url && content.available !== false && content.availability !== "unavailable") visible.append(image(1));
         const estimates = [], upscaleFactors = [];
-        list.sort((a, z) => Number(a.id === selectedId) - Number(z.id === selectedId)).forEach(panel => {
+        list.sort((a, z) => compareIds ? compareIds(a.id, z.id) : Number(a.id === selectedId) - Number(z.id === selectedId)).forEach(panel => {
             const status = preview ? { status: "preview", text: "Local preview · not tablet output" } : statusFor(panel.id);
             const group = node("g", { class: "slot operator-slot", role: "button", tabindex: 0,
                 "data-device-id": panel.id, "data-status": status.status, "data-preview": String(preview), "aria-pressed": String(panel.id === selectedId),
@@ -209,9 +225,7 @@
         });
         syncChildren(svg, view);
         fit(svg, fits.get(svg) && fits.get(svg).options);
-        if (resolutionNode) resolutionNode.textContent = estimates.length ? "Estimated sampling. " + estimates.join("; ") + ". Rotation, clipping and gaps may reduce visible detail." : "Resolution estimate needs an image and panel dimensions. Preview does not confirm tablet output.";
-        const quality = document.getElementById("stage-quality-summary");
-        if (quality) quality.textContent = upscaleFactors.length ? "Estimated upscaling up to " + Math.max(...upscaleFactors).toFixed(1) + "×. Check resolution estimates." : "";
+        if (resolutionNode) resolutionNode.textContent = estimates.join("; ");
         if (focusedId) {
             const target = Array.from(svg.querySelectorAll(".slot")).find(item => item.dataset.deviceId === focusedId);
             if (target) target.focus({ preventScroll: true });

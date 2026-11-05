@@ -1,6 +1,6 @@
 # Calibrate a mixed-tablet wall
 
-Use **Physical setup** at `/controller/physical.html` to give images the same
+Use the wall workspace at `/controller/` to give images the same
 physical scale on different tablets. Logical wall units and equal-sized crops
 cannot establish millimetres on the screens. Physical mode fits one master image
 to the wall, then renders each tablet's measured part. Existing still-image
@@ -11,8 +11,8 @@ playlists use this same mapping; pre-splitting each slide is unnecessary.
 Open the tablet's existing browser identity at
 `http://10.42.0.1:8080/client/?calibrate=1` when using the hotspot launcher.
 The ruler page shows its server-assigned `#N` and short ID. Select that same
-tablet under **Tablet** in Physical setup. Opening another browser or private tab
-can create another identity.
+tablet in **Tablets**, then select **Review measurements**. Opening another
+browser or private tab can create another identity.
 
 Record the lit panel width and height, excluding bezels, and all four bezel
 widths. Enter a display profile and save it. Profile dimensions describe the
@@ -21,7 +21,8 @@ panel, and the slot's rotation places the tablet on the wall.
 
 ## Reuse a measured tablet model
 
-Select a tablet and choose **Tablet model** in Physical setup. The built-in iPad
+In **Tablets**, select the tablet, then **Review measurements**.
+Choose its actual hardware under **Tablet model**. The built-in iPad
 Air 2 and Google Pixel C models use the measured portrait dimensions and ruler
 scales supplied for this wall, with a provisional 3 mm uncertainty. A unique
 screen size, DPR and platform match assigns a model automatically for a new
@@ -40,26 +41,31 @@ An existing layout retains the model snapshot associated with its saved
 calibration revision. Changing the current model choice does not change that
 layout until you apply a draft with the new measurement revisions.
 
-**Arrange connected tablets** prepares an editable, side-by-side physical draft
-from connected tablets with assigned models. Drag, rotate and adjust the draft
-before applying it. The existing wall remains active until Apply. When a physical draft replaces a logical wall, the server saves the old layout
-under a generated “Before physical” name. Recall it under **Saved layouts** in Physical setup.
+In **Arrange**, choose **Measured** and a grid preset. Open **Tablets and
+mounting** to select the tablets, review their measurement pins, and choose
+the mounted top edges. Select **Preview arrangement**, review the result,
+then select **Apply arrangement**. The current wall stays active during preview.
+A change between relative and measured sizing creates a named return point.
+Find that record in **Saved** under **Arrangements**.
 
 ## Measure the browser scale
 
 1. Put the tablet in its intended orientation and display mode. Use 100% zoom.
    If installing an iPad Home Screen web app, calibrate that identity and mode.
-2. Open its ruler page and select the matching number in Physical setup.
+2. Open its ruler page. In **Tablets**, select the matching number, then
+   select **Review measurements**.
    **Use tablet viewport** captures that tablet's CSS width, height, DPR,
    orientation and mode. Offline tablets do not supply defaults.
 3. Measure between the centres of the endpoint marks on both ruler targets.
    Each is normally 200 CSS pixels; a small viewport may show a shorter labelled
    span. Enter the two measured lengths in millimetres and the labelled spans.
-4. Choose **Prepare measured calibration**. For example, 40 mm measured across
+4. Select **Check ruler measurements**. For example, 40 mm measured across
    200 CSS pixels gives `0.2 mm/CSS px`. The horizontal and vertical scales
    describe the browser axes **before** quarter turn. Do not swap them for a
    rotated panel or multiply them by DPR.
-5. Review quarter turn, panel offsets and uncertainty. Offsets locate the
+5. Review the comparison and select **Use ruler** to prepare the calibration.
+   **Keep supplied** writes nothing. **Measure again** returns to the inputs.
+   Review quarter turn, panel offsets, and uncertainty. Offsets locate the
    transformed viewport origin on the panel in millimetres. Browser chrome can
    leave part of the panel outside the viewport; zero offsets require checking.
 6. Save calibration. Guided saves are refused if the tablet is offline or its
@@ -74,9 +80,9 @@ zoom prevents physical playback until the calibrated zoom is restored.
 ## Place tablets and verify the whole image
 
 Add the measured tablets to the physical draft and position them as mounted,
-including bezels and gaps. Under **System → Wall bounds**, select either fixed
-dimensions or **Fit wall to tablets**. Packing places bodies together in a draft;
-check the real arrangement before applying it.
+including bezels and gaps. In **Arrange**, open **Custom bounds**, then
+**Wall bounds**. Choose **Fixed wall size** or **Fit wall to tablets**. Packing
+places bodies together in a draft. Check the real arrangement before applying it.
 
 Create a test image with exactly the committed wall's aspect ratio. This command
 generates 50 mm grid intervals, crossing diagonals and a circle for a sample

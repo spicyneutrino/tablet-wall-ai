@@ -2,7 +2,7 @@
 title: "The wall is the interface"
 subtitle: "A field guide to tablet-wall-ai"
 description: "How one Python process, one SQLite file, and a room full of browser tablets become a calibrated, timed wall."
-updated: "26 October 2026"
+updated: "5 November 2026"
 status_label: "Software scope R1–R5 complete"
 status_detail: "8 hardware and deployment gates remain open"
 hero_figure: "figures/hero-wall.svg"
@@ -60,14 +60,15 @@ and talks to a room full of tablets. There is no container, no message broker,
 and no cloud service in the runtime. That small shape is deliberate. The hard
 parts are geometry, time, and evidence, not infrastructure.
 
-> **Current state, 26 October 2026.** The software scope of P0 and R1–R5 is
-> complete. The eight hardware and deployment gates are still MISSING. R6,
-> the conditional segmented or live-media phase, has not started. The frontend
-> console has finished phases 1 and 2. Its phase 3, which ports uploads and
-> retires the legacy logical view, is not started.
+> **Operator workspace update, 5 November 2026.** The workspace now provides
+> Images, Tablets, Arrange, Saved, and Settings on desktop and phone screens.
+> Image upload belongs to Images. `/controller/` opens the workspace; the old
+> logical editor remains at `/controller/experimental.html`.
 >
-> Counts and gate status are dated 26 October 2026. The linked runner reports
-> are authoritative when they disagree with this page.
+> The software evidence and remaining native checks are in the
+> [frontend verification record](../frontend-redesign/VERIFICATION.md).
+> The eight hardware and deployment gates remain open. The older backend and
+> playback evidence in this guide retains its original scope and dates.
 
 ## The wall is three loops
 
@@ -137,8 +138,10 @@ and expect them to agree. The README says one process per wall and database.
 There is no horizontal scaling story, no broker, and no distributed lease. For
 this product, that is a feature: the failure modes stay local and inspectable.
 
-This is not a general-purpose cloud video wall. It is not multi-tenant, it has
-no built-in authentication, and it is not an AI product. The name is historical.
+This is not a general-purpose cloud video wall. It is not multi-tenant, and
+it is not an AI product. Optional shared-secret authentication protects the
+application but does not assign separate tablet and operator roles. The name
+is historical.
 The intended deployment is one operator, one wall, and a known set of tablets.
 
 > **Pattern to reuse: separate claims by evidence.** "The server sent a frame"
@@ -187,9 +190,10 @@ to small modules with clear ownership.
 
 The frontend mirrors the split. `frontend/client/client.js` owns the tablet's
 connection and playback. `frontend/client/view.js` owns pure transform math.
-`frontend/controller/physical.js` owns the current operator console.
-`frontend/controller/controller.js` is the legacy logical controller, still
-kept for uploads and the old workflow.
+`frontend/controller/physical.js` composes the operator console. The
+`operator-*.js` modules own image selection, grid previews, tablet commands,
+measurements, state, and synchronization. `frontend/controller/controller.js`
+serves the experimental compatibility editor; the workspace owns image uploads.
 
 ### The boot path
 
@@ -581,7 +585,8 @@ The editor keeps the committed layout and the draft separately. `state.base` is
 the server's layout. `state.draft` is a clone. A change goes through
 `mutateDraft()`, which records undo history and updates the dirty flag. Apply
 sends the whole draft with `If-Match`. A 412 keeps the draft and shows the
-conflict. Cancel restores the base. Nothing is written until Apply succeeds.
+conflict. **Discard arrangement** restores the base. Nothing is written until
+**Apply arrangement** succeeds.
 
 ### What calibration cannot prove
 
@@ -927,12 +932,15 @@ secure. It retries from the heartbeat. The states are `held`, `released`,
 tablet. A held lock is not a kiosk configuration. It does not stop OS sleep by
 itself.
 
-The System tab loads diagnostics: media quota, used and free space, object
-counts, database schema and size, backup age, online and total clients, and
-wake-lock counts. It can re-hash media with `?verify=1`. It can rebind a tablet
-that changed origin or storage: choose the new registration and the offline
-tablet it replaces. The placement and display number move to the new id. Saved
-layouts keep the old id, so the operator must recall and save them again.
+In **Settings**, **Measurements and diagnostics** reports media quota, free
+space, object counts, database size, backup age, client counts, and wake locks.
+The diagnostics request can re-hash media with `?verify=1`.
+
+In **Tablets**, the selected-tablet inspector can replace an offline tablet
+that changed origin or storage. **Remove, Forget or replace** contains the
+replacement flow. The placement and display number move to the new identity.
+Saved layouts keep the old identity, so the operator must recall and save
+those layouts again.
 
 ### What recovery does not cover
 
@@ -979,42 +987,50 @@ for the next wall frame or a tap. Videos use a pending and active slot with
 strict lineage checks. A stale prepare or commit cannot paint. The client also
 sends drift samples and reacts to a stalled frame callback.
 
-### The physical console
+### The operator workspace
 
-The current operator console is one stage with a four-tab rail:
+The workspace separates five tasks:
 
-- **Show**: playback controls, the frozen cohort, exclusions, next-cut
-  readiness, and details.
-- **Tablet**: device list, inspector, profile, and calibration.
-- **Content**: library, playlist order, dwell, loop, and upload link.
-- **System**: wall bounds, saved layouts, diagnostics, rebind, and the legacy
-  link.
+- **Images** owns the library, upload, fit, preview, and **Show image**.
+- **Tablets** owns selection, naming, Identify, recovery, and replacement.
+- **Arrange** owns grid presets, tablet order, mounting, custom positions,
+  preview, and **Apply arrangement**.
+- **Saved** keeps arrangement records separate from saved content.
+- **Settings** owns server checks, measurements, diagnostics, and experimental
+  playback.
 
-The stage stays visible. Selecting a slot opens the Tablet tab and reveals the
-inspector for an explicit click or Enter, not for a drag. The rail has a local
-draft with Undo, Redo, Apply, and Cancel. The dirty dot on a tab is a local
-state indicator, not a server flag.
+The stage presents the active task's layout and content. **View applied**
+compares the current wall with a pending preview without clearing local work.
+Only current matching paint reports count as showing an image. A successful
+command or connected socket does not establish a painted screen.
 
-The responsive behavior is part of the interaction model:
+`OperatorState.stageView` derives the stage's layout, content, and editability.
+`OperatorContent` owns image previews and content commands. `OperatorGrid` owns
+grid review and application. `OperatorDevices` owns tablet commands, while
+`OperatorMeasurements` owns model, profile, and calibration forms.
+`OperatorSession` remains the authority and write boundary. The controller
+coordinates manual geometry and resolution when another task has pending work.
 
-- At 1000 px and wider, the rail is 392 px, or 340 px at 1000–1199, and scrolls
-  inside itself. Each tab keeps its own scroll position.
-- At 720–999 px, the stage comes first and the rail sits below it.
-- At 719 px and below, the tab strip is hidden. The compact Show card is the
-  only panel. Tab state is coerced to Show so ARIA and visibility agree.
+A selected grid preset follows tablet membership. Editing Rows or Columns ends
+preset ownership on the first input event. A later status render therefore
+preserves the typed value and focus before the field loses focus. Preview and
+Apply remain separate commands. An invalid cell count blocks Preview unless
+the operator explicitly allows empty trailing cells.
 
-### The legacy controller
+On desktop, Images places its library beside the composer and wall. Portrait
+phones put image choices before the composer and wall. Tablets uses a roster
+and inspector on desktop, with a native selected-tablet dialog on phones.
+Arrange places its controls beside the stage on wide screens and below it on
+phones. All five tasks remain reachable. When the tabs no longer fit, a native
+task selector provides the same navigation and draft resolution.
 
-`index.html` and `controller.js` still own the logical-wall workflow and the
-upload UI. The current console links to it from System and from the Content
-hint. This is deliberate debt. Phase 3 of the console plan is to port upload,
-promote the content workflow, and then retire or redirect the logical mode. It
-has not started.
+### The compatibility editor
 
-The legacy controller uses one listen-only WebSocket and HTTP writes. It has no
-polling except a one-second UI tick for relative times. Its state model is
-different from the physical console. Do not assume a component can move between
-the two pages without changing its contract.
+`/controller/` forwards to `physical.html`, retaining the query and fragment.
+`experimental.html` loads the old logical editor and `controller.js`. That
+editor retains its own state model and compatibility routes. It refuses logical
+layout mutations while a measured layout is active. Use the workspace for
+normal image and arrangement work.
 
 ### Accessibility is designed in
 
@@ -1022,30 +1038,37 @@ The console uses one polite page status region for state changes. The playback
 countdown is `aria-hidden`, so a screen reader does not hear a number update
 every second. Tabs use a roving tabindex and Arrow, Home, and End keys. The stage
 is a focusable region. Nudge buttons have full labels. The skip links target the
-stage and the controls. Focus rings are visible, and reduced-motion preferences
+active task and the controls. Focus rings are visible, and reduced-motion preferences
 disable smooth scrolling and transitions.
 
-The compact view is not a shrunken desktop. It is a read-only show view with a
-single card and a More disclosure. Full forms wait for a larger screen or the
-deferred authenticated controller tablet. That is a scope decision, not a
-missing CSS breakpoint.
+Phone layouts keep the task forms and explicit commands. Focus stays on an
+edited field during status refresh. A command that hides its trigger returns
+focus to a visible control. Native screen-reader and browser-menu zoom checks
+remain separate from the emulated browser evidence.
 
 > **Pattern to reuse: make the draft a first-class object.** A local draft with
 > explicit Apply is easier to reason about than a form that writes on every
 > keystroke. The dirty state can be shown, cancelled, and tested.
 
 **Trace it.** Read `frontend/controller/physical.html`, then `init`, `showTab`,
-`selectDevice`, and `applyLayout` in `physical.js`. The relevant files are
-`frontend/controller/physical.html`, `frontend/controller/physical.js`,
-`frontend/client/client.js`, and `frontend/client/view.js`.
+`selectDevice`, and `applyLayout` in `physical.js`. Follow the module factories
+into `operator-state.js`, `operator-grid.js`, `operator-content.js`, and
+`operator-measurements.js` for their respective owners.
 
-## Security and deployment: the proxy is the boundary
+## Security and deployment
 
-The application has no login. This is the first thing to understand about its
-security model. Anyone who can reach the backend can register a device, read the
-roster, or repaint the wall. The project does not pretend otherwise. The
-deployment reference puts a reverse proxy in front and binds the app to
-loopback.
+Authentication is optional. With `TABLET_WALL_AUTH_TOKEN` unset, anyone who
+reaches the backend can register a device, read the roster, or repaint the wall.
+A configured token protects HTTP routes, static files, and WebSocket endpoints.
+Browsers sign in at `/auth/login`; scripts send a Bearer token. The shared secret
+does not establish separate tablet and operator roles.
+
+The [authentication guide](../AUTH.md) describes admission and cookie rules.
+The deployment reference adds route restrictions at a reverse proxy and binds
+the backend to loopback. Its operator listener strips cookies and authorization
+headers, so combining that reference with app authentication still needs
+validation. The trusted HTTP hotspot trial refuses app authentication and
+requires a separate deployment for authenticated HTTPS.
 
 ![The reverse proxy is the authentication boundary. Tablets get a narrow allowlist on one origin. The operator gets Basic auth on a second origin. The backend stays loopback-only.](figures/trust.svg)
 
@@ -1096,11 +1119,11 @@ shared deployment secret, not a per-operator identity.
 | Threat | Current control | Residual risk |
 | --- | --- | --- |
 | A LAN peer impersonates a tablet | Device UUID and socket replacement | No pairing or per-device secret. A guessed UUID can replace a socket. |
-| A browser on another site repaints the wall | Exact operator `Origin` on writes | Reads are open. The guard is not authentication. |
+| A browser on another site repaints the wall | Exact operator `Origin` on writes | Reads are open unless app authentication is enabled. The Origin guard does not authenticate. |
 | An unauthenticated upload | Upload mode, origin, proxy credential, loopback peer | The proxy credential is shared, not per operator. |
 | Malicious image or video | Content-type allowlist, magic bytes, size and pixel caps, child worker, re-validation, metadata strip | A decoder bug in the worker is still possible. The worker limits the blast radius. |
 | Path traversal or symlink swap | Regular, non-symlink files, `O_NOFOLLOW`, exact hash checks | The asset directory is operator-controlled. |
-| Stale or forged layout write | ETag and `If-Match`, 412, 428 | A client with the current ETag can write. |
+| Stale or forged layout write | ETag and `If-Match`, 412, 428 | An admitted client with the current ETag can write. |
 | Stolen device identity | None | Pairing, revocation, and rotation are future work. |
 | TLS interception | Local CA in the reference | Installed trust on real tablets is a gate. |
 
@@ -1160,9 +1183,9 @@ to new targets and refuses to overwrite. Stop the service before a restore. The
 drill runs a backup while the app is running, restores to new paths, starts a
 disposable app, and fetches a restored image.
 
-> **Pattern to reuse: keep the trust boundary outside the app when the app has
-> no identity model.** A loopback bind plus a proxy with real authentication is
-> easier to reason about than a home-grown login inside a single-process app.
+> **Pattern to reuse: separate authentication from roles.** A shared secret
+> admits a caller. Route restrictions decide which operations that caller can
+> reach. Neither establishes a separate identity for each tablet.
 
 **Trace it.** Read `operator_origin_guard` in `main.py`, then
 `media.admit_upload` in `tabletwall/media.py`, then the listener blocks in
@@ -1363,14 +1386,16 @@ The README phases are:
 - Phase 1, core loop: done.
 - Phase 2, still wall: software done, physical validation open.
 - Phase 3, safe unattended operation: not complete. 3a and 3b are reference
-  artifacts. 3c and 3d are deferred.
+  artifacts pending deployment validation. Operational checks and engineering
+  gates have software evidence, while hardware acceptance remains open.
 - Phase 4, timed media: software slice done, physical validation open.
 
 The console phases are:
 
 - Phase 1, low-risk fixes: done.
 - Phase 2, tabbed rail: done.
-- Phase 3, upload port and legacy retirement: not started.
+- The workspace owns image uploads and supports relative and measured layouts.
+- The old logical editor remains available through the experimental route.
 
 ### Vocabulary
 

@@ -791,13 +791,13 @@ window.PhysicalPlayback = {
                         + " required · " + online.length + " online.");
                 }
                 if (required.length === 0) {
-                    blockers.push("The saved layout has no tablets on the wall. Add tablets under Tablets, then Apply layout.");
+                    blockers.push("The saved layout has no tablets on the wall. Add tablets under Tablets, then Apply arrangement.");
                 } else if (effective.length === 0) {
                     blockers.push("Every participating tablet is excluded. Include at least one tablet in this show before Start.");
                 }
             } else {
                 parts.push("No saved physical layout.");
-                blockers.push("Set the wall bounds and choose Apply layout before starting.");
+                blockers.push("Set the wall bounds and choose Apply arrangement before starting.");
             }
 
             const policy = chosenPolicy();

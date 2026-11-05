@@ -16,8 +16,22 @@ application code and data unchanged.
 
 ## Current image-wall acceptance
 
-From the repository root, with Chromium installed for the locked Playwright
-version, run the two image-first acceptance drivers:
+From the repository root, install the browser dependencies and run the
+workspace corrections journey:
+
+```bash
+uv sync --group dev --group browser
+uv run --group browser python simulator/browser/redesign_acceptance.py \
+	--scenario corrections --artifacts /tmp/new-workspace-corrections
+```
+
+This journey exercises keyboard focus, image and arrangement previews, tablet
+recovery, and Saved feedback. A successful focused journey exits with code 0.
+For the full matrix and its generated-ingress proof, use the
+[redesign verification instructions](../docs/frontend-redesign/VERIFICATION.md#reproduce-safely).
+The full matrix still returns nonzero while native and hardware gates remain open.
+
+The older image-first drivers remain focused readiness and accessibility checks:
 
 ```bash
 uv sync --group dev --group browser

@@ -5,6 +5,8 @@ from pathlib import Path
 import sys
 from playwright.sync_api import expect
 
+from _redesign_edge_cases import task_tab
+
 CONTRAST = r"""() => {
  const rgba=c=>{const a=c.match(/[\d.]+/g).map(Number);return [...a.slice(0,3),a.length>3?a[3]:1]};
  const over=(a,b)=>a.slice(0,3).map((v,i)=>v*a[3]+b[i]*(1-a[3])).concat(1);
@@ -117,10 +119,10 @@ def native_keyboard(rig):
     )
     native_tab_to(p, "#scene-save")
     p.keyboard.press("Enter")
-    expect(p.locator("#scene-message")).to_contain_text("Enter a scene name")
+    expect(p.locator("#scene-message")).to_contain_text("Enter a content name")
     rig.check(
         focus(p)["id"] == "scene-name",
-        "Invalid empty scene submission focuses its own name field",
+        "Invalid empty content submission focuses its own name field",
         focus(p),
         fatal=False,
     )
@@ -156,7 +158,7 @@ def native_keyboard(rig):
     )
     native_tab_to(p, "#grid-preview")
     p.keyboard.press("Enter")
-    expect(p.locator("#grid-message")).to_contain_text("Preview only")
+    expect(p.locator("body")).to_have_attribute("data-stage-mode", "arrangement-preview")
     native_tab_task(p, "Tablets")
     trigger_id = p.locator("[role=tab][aria-selected=true]").get_attribute("id")
     native_tab_task(p, "Images")
@@ -316,6 +318,9 @@ def visual_states(rig):
                 fatal=False,
             )
             rig.shot(p, "long-names-" + name)
+            if p.locator("#device-sheet-close").is_visible():
+                p.locator("#device-sheet-close").click()
+                expect(p.locator("#device-sheet:modal")).to_have_count(0)
     p.set_viewport_size({"width": 1440, "height": 900})
     task(p, "Images")
     with p.expect_response("**/api/v3/images") as inventory:
@@ -403,12 +408,11 @@ def visual_states(rig):
     )
     p.locator("#refresh-images").click()
     expect(p.locator("#image-message")).to_have_text("No images available.")
-    rig.open_disclosures("#image-select")
     for width, height in ((1440, 900), (390, 844)):
         p.set_viewport_size({"width": width, "height": height})
         rig.check(
             p.locator("#image-gallery li").count() == 0
-            and "No images" in p.locator("#image-select").inner_text(),
+            and "No images" in p.locator("#image-message").inner_text(),
             f"Canonical empty image inventory retains admitted Add image and Arrange at {width}",
         )
         rig.shot(p, "inventory-empty")
@@ -479,6 +483,7 @@ def interaction_contrast(rig):
     task(p, "Tablets")
     for width, height in ((1440, 900), (390, 844)):
         p.set_viewport_size({"width": width, "height": height})
+        p.evaluate("()=>new Promise(resolve=>requestAnimationFrame(()=>requestAnimationFrame(resolve)))")
         for mode in ("hover", "focus"):
             target = p.locator("#tablet-label-save")
             if not target.is_visible():
@@ -528,8 +533,6 @@ def interaction_contrast(rig):
             p.locator("#device-sheet-close").click()
         task(p, "Arrange")
         tile = p.locator("#stage-svg .slot").first
-        if not p.locator("#stage-identities").is_visible():
-            p.locator(".stage-technical-toggle:visible").click()
         rig.open_disclosures("#stage-identities li")
         native_tab_to(p, "#stage-svg .slot")
         tile.hover()
@@ -632,19 +635,19 @@ def responsive(rig):
     rig.click("#tablet-label-save")
     expect(p.locator("#tablet-action-message")).to_contain_text("Name saved")
     rig.task("Arrange")
-    tab = p.get_by_role("tab", name="Arrange", exact=True)
+    tab = task_tab(p, "Arrange")
     tab.focus()
     tab.press("ArrowRight")
     rig.check(
-        p.get_by_role("tab", name="Saved", exact=True).get_attribute("aria-selected")
+        task_tab(p, "Saved").get_attribute("aria-selected")
         == "true",
         "Task tabs support ArrowRight roving navigation",
         focus(p),
         fatal=False,
     )
-    p.get_by_role("tab", name="Saved", exact=True).press("Home")
+    task_tab(p, "Saved").press("Home")
     rig.check(
-        p.get_by_role("tab", name="Images", exact=True).get_attribute("aria-selected")
+        task_tab(p, "Images").get_attribute("aria-selected")
         == "true",
         "Task tabs support Home navigation",
         focus(p),
@@ -658,10 +661,10 @@ def responsive(rig):
     p.locator("#scene-name").focus()
     p.keyboard.insert_text("Keyboard scene")
     rig.click("#scene-save")
-    expect(p.locator("#scene-message")).to_contain_text("Scene saved")
-    rig.click(p.get_by_role("button", name="Delete scene “Keyboard scene”", exact=True))
+    expect(p.locator("#scene-message")).to_contain_text("Content saved")
+    rig.click(p.get_by_role("button", name="Delete content “Keyboard scene”", exact=True))
     expect(
-        p.get_by_role("button", name="Preview scene “Keyboard scene”", exact=True)
+        p.get_by_role("button", name="Preview content “Keyboard scene”", exact=True)
     ).to_have_count(0)
     rig.check(
         focus(p)["tag"] != "BODY" and focus(p)["visible"],

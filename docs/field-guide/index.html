@@ -134,9 +134,9 @@
             </li>
 
             <li>
-              <a class="nav-link" href="#security-and-deployment-the-proxy-is-the-boundary" data-chapter="10">
+              <a class="nav-link" href="#security-and-deployment" data-chapter="10">
                 <span class="nav-number">10</span>
-                <span class="nav-text">Security and deployment: the proxy is the boundary</span>
+                <span class="nav-text">Security and deployment</span>
               </a>
             </li>
 
@@ -174,7 +174,7 @@
       </nav>
       <div class="sidebar-foot">
         <a href="GUIDE.md">Read the Markdown source</a>
-        <span>Updated 26 October 2026</span>
+        <span>Updated 5 November 2026</span>
       </div>
     </div>
   </aside>
@@ -305,13 +305,14 @@ and talks to a room full of tablets. There is no container, no message broker,
 and no cloud service in the runtime. That small shape is deliberate. The hard
 parts are geometry, time, and evidence, not infrastructure.</p>
 <blockquote class="note">
-<p><strong>Current state, 26 October 2026.</strong> The software scope of P0 and R1–R5 is
-complete. The eight hardware and deployment gates are still MISSING. R6,
-the conditional segmented or live-media phase, has not started. The frontend
-console has finished phases 1 and 2. Its phase 3, which ports uploads and
-retires the legacy logical view, is not started.</p>
-<p>Counts and gate status are dated 26 October 2026. The linked runner reports
-are authoritative when they disagree with this page.</p>
+<p><strong>Operator workspace update, 5 November 2026.</strong> The workspace now provides
+Images, Tablets, Arrange, Saved, and Settings on desktop and phone screens.
+Image upload belongs to Images. <code>/controller/</code> opens the workspace; the old
+logical editor remains at <code>/controller/experimental.html</code>.</p>
+<p>The software evidence and remaining native checks are in the
+<a href="../frontend-redesign/VERIFICATION.md">frontend verification record</a>.
+The eight hardware and deployment gates remain open. The older backend and
+playback evidence in this guide retains its original scope and dates.</p>
 </blockquote>
 
     </section>
@@ -452,8 +453,10 @@ network. A single process makes the common path short:</p>
 and expect them to agree. The README says one process per wall and database.
 There is no horizontal scaling story, no broker, and no distributed lease. For
 this product, that is a feature: the failure modes stay local and inspectable.</p>
-<p>This is not a general-purpose cloud video wall. It is not multi-tenant, it has
-no built-in authentication, and it is not an AI product. The name is historical.
+<p>This is not a general-purpose cloud video wall. It is not multi-tenant, and
+it is not an AI product. Optional shared-secret authentication protects the
+application but does not assign separate tablet and operator roles. The name
+is historical.
 The intended deployment is one operator, one wall, and a known set of tablets.</p>
 <blockquote class="note">
 <p><strong>Pattern to reuse: separate claims by evidence.</strong> &quot;The server sent a frame&quot;
@@ -603,9 +606,10 @@ to small modules with clear ownership.</p>
 </table></div>
 <p>The frontend mirrors the split. <code>frontend/client/client.js</code> owns the tablet's
 connection and playback. <code>frontend/client/view.js</code> owns pure transform math.
-<code>frontend/controller/physical.js</code> owns the current operator console.
-<code>frontend/controller/controller.js</code> is the legacy logical controller, still
-kept for uploads and the old workflow.</p>
+<code>frontend/controller/physical.js</code> composes the operator console. The
+<code>operator-*.js</code> modules own image selection, grid previews, tablet commands,
+measurements, state, and synchronization. <code>frontend/controller/controller.js</code>
+serves the experimental compatibility editor; the workspace owns image uploads.</p>
 <h3 id="the-boot-path">The boot path<a class="heading-anchor" href="#the-boot-path" tabindex="-1" aria-label="Link to section: The boot path">#</a></h3>
 <p>Startup is a useful trace because it touches most layers.</p>
 <ol>
@@ -1368,7 +1372,8 @@ every pointer action.</p>
 the server's layout. <code>state.draft</code> is a clone. A change goes through
 <code>mutateDraft()</code>, which records undo history and updates the dirty flag. Apply
 sends the whole draft with <code>If-Match</code>. A 412 keeps the draft and shows the
-conflict. Cancel restores the base. Nothing is written until Apply succeeds.</p>
+conflict. <strong>Discard arrangement</strong> restores the base. Nothing is written until
+<strong>Apply arrangement</strong> succeeds.</p>
 <h3 id="what-calibration-cannot-prove">What calibration cannot prove<a class="heading-anchor" href="#what-calibration-cannot-prove" tabindex="-1" aria-label="Link to section: What calibration cannot prove">#</a></h3>
 <p>A browser can report a viewport, but it cannot prove the panel's physical size.
 The profile is an operator measurement. A calibration says &quot;for this reported
@@ -1915,12 +1920,14 @@ secure. It retries from the heartbeat. The states are <code>held</code>, <code>r
 <code>unsupported</code>, <code>insecure</code>, and <code>denied</code>. The controller shows the state per
 tablet. A held lock is not a kiosk configuration. It does not stop OS sleep by
 itself.</p>
-<p>The System tab loads diagnostics: media quota, used and free space, object
-counts, database schema and size, backup age, online and total clients, and
-wake-lock counts. It can re-hash media with <code>?verify=1</code>. It can rebind a tablet
-that changed origin or storage: choose the new registration and the offline
-tablet it replaces. The placement and display number move to the new id. Saved
-layouts keep the old id, so the operator must recall and save them again.</p>
+<p>In <strong>Settings</strong>, <strong>Measurements and diagnostics</strong> reports media quota, free
+space, object counts, database size, backup age, client counts, and wake locks.
+The diagnostics request can re-hash media with <code>?verify=1</code>.</p>
+<p>In <strong>Tablets</strong>, the selected-tablet inspector can replace an offline tablet
+that changed origin or storage. <strong>Remove, Forget or replace</strong> contains the
+replacement flow. The placement and display number move to the new identity.
+Saved layouts keep the old identity, so the operator must recall and save
+those layouts again.</p>
 <h3 id="what-recovery-does-not-cover">What recovery does not cover<a class="heading-anchor" href="#what-recovery-does-not-cover" tabindex="-1" aria-label="Link to section: What recovery does not cover">#</a></h3>
 <p>There is no automatic return to the exact video frame after a full host suspend.
 The clock epoch changes, the session aborts, and clients restore the persisted
@@ -2005,7 +2012,7 @@ svg .panel-small { font-family: 'Source Code Pro', ui-monospace, SFMono-Regular,
 
 <rect class="bg" width="960" height="560"/>
 <rect width="960" height="560" fill="url(#ui-dots)" opacity=".55"/>
-<text class="mono" x="52" y="38" text-anchor="start" >TWO PAGES</text><text class="small" x="908" y="38" text-anchor="end" >drawing versus editing</text><rect class="surface" x="58" y="76" width="390" height="380" rx="6"/><text class="label-strong" x="74" y="102" text-anchor="start" >Tablet client</text><text class="mono" x="74" y="120" text-anchor="start" >frontend/client/</text><rect class="wall" x="90" y="144" width="326" height="238" rx="4"/><rect class="surface-accent" x="116" y="170" width="126" height="92" rx="2"/><rect class="surface-accent" x="250" y="170" width="126" height="92" rx="2"/><rect class="surface-warn" x="116" y="270" width="260" height="84" rx="2"/><text class="label-strong" x="130" y="196" text-anchor="start" >canvas</text><text class="small" x="130" y="214" text-anchor="start" >stills</text><text class="label-strong" x="264" y="196" text-anchor="start" >canvas</text><text class="small" x="264" y="214" text-anchor="start" >stills</text><text class="label-strong" x="130" y="300" text-anchor="start" >video element</text><text class="small" x="130" y="318" text-anchor="start" >clipped by the same matrix</text><text class="mono" x="74" y="410" text-anchor="start" >persisted wall</text><text class="small" x="74" y="430" text-anchor="start" >restored on stop or close</text><rect class="surface" x="512" y="76" width="390" height="380" rx="6"/><text class="label-strong" x="528" y="102" text-anchor="start" >Physical console</text><text class="mono" x="528" y="120" text-anchor="start" >frontend/controller/physical</text><rect class="wall" x="528" y="144" width="230" height="230" rx="4"/><text class="panel-label" x="544" y="170" text-anchor="start" >stage</text><text class="panel-small" x="544" y="188" text-anchor="start" >SVG · millimetres</text><rect class="surface-accent" x="544" y="206" width="96" height="64" rx="2"/><rect class="surface-accent" x="654" y="206" width="88" height="64" rx="2"/><rect class="surface-2" x="544" y="284" width="198" height="72" rx="2"/><text class="small" x="560" y="310" text-anchor="start" >selection</text><text class="tiny" x="560" y="328" text-anchor="start" >draft · undo</text><rect class="surface-2" x="772" y="144" width="114" height="44" rx="2"/><text class="small" x="786" y="170" text-anchor="start" >Show</text><rect class="surface-2" x="772" y="196" width="114" height="44" rx="2"/><text class="small" x="786" y="222" text-anchor="start" >Tablet</text><rect class="surface-accent" x="772" y="248" width="114" height="44" rx="2"/><text class="small" x="786" y="274" text-anchor="start" >Content</text><rect class="surface-2" x="772" y="300" width="114" height="44" rx="2"/><text class="small" x="786" y="326" text-anchor="start" >System</text><text class="mono" x="528" y="410" text-anchor="start" >draft is local until Apply</text><text class="small" x="528" y="430" text-anchor="start" >one visible panel</text><rect class="surface-accent" x="58" y="484" width="844" height="50" rx="3"/><text class="mono" x="76" y="514" text-anchor="start" >shared contract: HTTP commands + WebSocket pushes + ETags + the persisted wall</text>
+<text class="mono" x="52" y="38" text-anchor="start" >TWO PAGES</text><text class="small" x="908" y="38" text-anchor="end" >drawing versus editing</text><rect class="surface" x="58" y="76" width="390" height="380" rx="6"/><text class="label-strong" x="74" y="102" text-anchor="start" >Tablet client</text><text class="mono" x="74" y="120" text-anchor="start" >frontend/client/</text><rect class="wall" x="90" y="144" width="326" height="238" rx="4"/><rect class="surface-accent" x="116" y="170" width="126" height="92" rx="2"/><rect class="surface-accent" x="250" y="170" width="126" height="92" rx="2"/><rect class="surface-warn" x="116" y="270" width="260" height="84" rx="2"/><text class="label-strong" x="130" y="196" text-anchor="start" >canvas</text><text class="small" x="130" y="214" text-anchor="start" >stills</text><text class="label-strong" x="264" y="196" text-anchor="start" >canvas</text><text class="small" x="264" y="214" text-anchor="start" >stills</text><text class="label-strong" x="130" y="300" text-anchor="start" >video element</text><text class="small" x="130" y="318" text-anchor="start" >clipped by the same matrix</text><text class="mono" x="74" y="410" text-anchor="start" >persisted wall</text><text class="small" x="74" y="430" text-anchor="start" >restored on stop or close</text><rect class="surface" x="512" y="76" width="390" height="380" rx="6"/><text class="label-strong" x="528" y="102" text-anchor="start" >Operator workspace</text><text class="mono" x="528" y="120" text-anchor="start" >frontend/controller/physical</text><rect class="wall" x="528" y="144" width="230" height="230" rx="4"/><text class="panel-label" x="544" y="170" text-anchor="start" >stage</text><text class="panel-small" x="544" y="188" text-anchor="start" >SVG · layout geometry</text><rect class="surface-accent" x="544" y="206" width="96" height="64" rx="2"/><rect class="surface-accent" x="654" y="206" width="88" height="64" rx="2"/><rect class="surface-2" x="544" y="284" width="198" height="72" rx="2"/><text class="small" x="560" y="310" text-anchor="start" >selection</text><text class="tiny" x="560" y="328" text-anchor="start" >draft · undo</text><rect class="surface-2" x="772" y="144" width="114" height="38" rx="2"/><text class="small" x="786" y="168" text-anchor="start" >Images</text><rect class="surface-2" x="772" y="190" width="114" height="38" rx="2"/><text class="small" x="786" y="214" text-anchor="start" >Tablets</text><rect class="surface-accent" x="772" y="236" width="114" height="38" rx="2"/><text class="small" x="786" y="260" text-anchor="start" >Arrange</text><rect class="surface-2" x="772" y="282" width="114" height="38" rx="2"/><text class="small" x="786" y="306" text-anchor="start" >Saved</text><rect class="surface-2" x="772" y="328" width="114" height="38" rx="2"/><text class="small" x="786" y="352" text-anchor="start" >Settings</text><text class="mono" x="528" y="410" text-anchor="start" >draft is local until Apply</text><text class="small" x="528" y="430" text-anchor="start" >one visible panel</text><rect class="surface-accent" x="58" y="484" width="844" height="50" rx="3"/><text class="mono" x="76" y="514" text-anchor="start" >shared contract: HTTP commands + WebSocket pushes + ETags + the persisted wall</text>
 </svg>
 </button></div><figcaption><span class="figure-number">Figure 09</span>The tablet draws a full-screen wall slice. The console edits and observes. The same protocol feeds both, but only the tablet needs a live socket for playback.</figcaption></figure>
 <h3 id="the-tablet-client">The tablet client<a class="heading-anchor" href="#the-tablet-client" tabindex="-1" aria-label="Link to section: The tablet client">#</a></h3>
@@ -2022,76 +2029,88 @@ or request fullscreen without stealing a drag.</p>
 for the next wall frame or a tap. Videos use a pending and active slot with
 strict lineage checks. A stale prepare or commit cannot paint. The client also
 sends drift samples and reacts to a stalled frame callback.</p>
-<h3 id="the-physical-console">The physical console<a class="heading-anchor" href="#the-physical-console" tabindex="-1" aria-label="Link to section: The physical console">#</a></h3>
-<p>The current operator console is one stage with a four-tab rail:</p>
+<h3 id="the-operator-workspace">The operator workspace<a class="heading-anchor" href="#the-operator-workspace" tabindex="-1" aria-label="Link to section: The operator workspace">#</a></h3>
+<p>The workspace separates five tasks:</p>
 <ul>
-<li><strong>Show</strong>: playback controls, the frozen cohort, exclusions, next-cut
-readiness, and details.</li>
-<li><strong>Tablet</strong>: device list, inspector, profile, and calibration.</li>
-<li><strong>Content</strong>: library, playlist order, dwell, loop, and upload link.</li>
-<li><strong>System</strong>: wall bounds, saved layouts, diagnostics, rebind, and the legacy
-link.</li>
+<li><strong>Images</strong> owns the library, upload, fit, preview, and <strong>Show image</strong>.</li>
+<li><strong>Tablets</strong> owns selection, naming, Identify, recovery, and replacement.</li>
+<li><strong>Arrange</strong> owns grid presets, tablet order, mounting, custom positions,
+preview, and <strong>Apply arrangement</strong>.</li>
+<li><strong>Saved</strong> keeps arrangement records separate from saved content.</li>
+<li><strong>Settings</strong> owns server checks, measurements, diagnostics, and experimental
+playback.</li>
 </ul>
-<p>The stage stays visible. Selecting a slot opens the Tablet tab and reveals the
-inspector for an explicit click or Enter, not for a drag. The rail has a local
-draft with Undo, Redo, Apply, and Cancel. The dirty dot on a tab is a local
-state indicator, not a server flag.</p>
-<p>The responsive behavior is part of the interaction model:</p>
-<ul>
-<li>At 1000 px and wider, the rail is 392 px, or 340 px at 1000–1199, and scrolls
-inside itself. Each tab keeps its own scroll position.</li>
-<li>At 720–999 px, the stage comes first and the rail sits below it.</li>
-<li>At 719 px and below, the tab strip is hidden. The compact Show card is the
-only panel. Tab state is coerced to Show so ARIA and visibility agree.</li>
-</ul>
-<h3 id="the-legacy-controller">The legacy controller<a class="heading-anchor" href="#the-legacy-controller" tabindex="-1" aria-label="Link to section: The legacy controller">#</a></h3>
-<p><code>index.html</code> and <code>controller.js</code> still own the logical-wall workflow and the
-upload UI. The current console links to it from System and from the Content
-hint. This is deliberate debt. Phase 3 of the console plan is to port upload,
-promote the content workflow, and then retire or redirect the logical mode. It
-has not started.</p>
-<p>The legacy controller uses one listen-only WebSocket and HTTP writes. It has no
-polling except a one-second UI tick for relative times. Its state model is
-different from the physical console. Do not assume a component can move between
-the two pages without changing its contract.</p>
+<p>The stage presents the active task's layout and content. <strong>View applied</strong>
+compares the current wall with a pending preview without clearing local work.
+Only current matching paint reports count as showing an image. A successful
+command or connected socket does not establish a painted screen.</p>
+<p><code>OperatorState.stageView</code> derives the stage's layout, content, and editability.
+<code>OperatorContent</code> owns image previews and content commands. <code>OperatorGrid</code> owns
+grid review and application. <code>OperatorDevices</code> owns tablet commands, while
+<code>OperatorMeasurements</code> owns model, profile, and calibration forms.
+<code>OperatorSession</code> remains the authority and write boundary. The controller
+coordinates manual geometry and resolution when another task has pending work.</p>
+<p>A selected grid preset follows tablet membership. Editing Rows or Columns ends
+preset ownership on the first input event. A later status render therefore
+preserves the typed value and focus before the field loses focus. Preview and
+Apply remain separate commands. An invalid cell count blocks Preview unless
+the operator explicitly allows empty trailing cells.</p>
+<p>On desktop, Images places its library beside the composer and wall. Portrait
+phones put image choices before the composer and wall. Tablets uses a roster
+and inspector on desktop, with a native selected-tablet dialog on phones.
+Arrange places its controls beside the stage on wide screens and below it on
+phones. All five tasks remain reachable. When the tabs no longer fit, a native
+task selector provides the same navigation and draft resolution.</p>
+<h3 id="the-compatibility-editor">The compatibility editor<a class="heading-anchor" href="#the-compatibility-editor" tabindex="-1" aria-label="Link to section: The compatibility editor">#</a></h3>
+<p><code>/controller/</code> forwards to <code>physical.html</code>, retaining the query and fragment.
+<code>experimental.html</code> loads the old logical editor and <code>controller.js</code>. That
+editor retains its own state model and compatibility routes. It refuses logical
+layout mutations while a measured layout is active. Use the workspace for
+normal image and arrangement work.</p>
 <h3 id="accessibility-is-designed-in">Accessibility is designed in<a class="heading-anchor" href="#accessibility-is-designed-in" tabindex="-1" aria-label="Link to section: Accessibility is designed in">#</a></h3>
 <p>The console uses one polite page status region for state changes. The playback
 countdown is <code>aria-hidden</code>, so a screen reader does not hear a number update
 every second. Tabs use a roving tabindex and Arrow, Home, and End keys. The stage
 is a focusable region. Nudge buttons have full labels. The skip links target the
-stage and the controls. Focus rings are visible, and reduced-motion preferences
+active task and the controls. Focus rings are visible, and reduced-motion preferences
 disable smooth scrolling and transitions.</p>
-<p>The compact view is not a shrunken desktop. It is a read-only show view with a
-single card and a More disclosure. Full forms wait for a larger screen or the
-deferred authenticated controller tablet. That is a scope decision, not a
-missing CSS breakpoint.</p>
+<p>Phone layouts keep the task forms and explicit commands. Focus stays on an
+edited field during status refresh. A command that hides its trigger returns
+focus to a visible control. Native screen-reader and browser-menu zoom checks
+remain separate from the emulated browser evidence.</p>
 <blockquote class="note">
 <p><strong>Pattern to reuse: make the draft a first-class object.</strong> A local draft with
 explicit Apply is easier to reason about than a form that writes on every
 keystroke. The dirty state can be shown, cancelled, and tested.</p>
 </blockquote>
 <p><strong>Trace it.</strong> Read <code>frontend/controller/physical.html</code>, then <code>init</code>, <code>showTab</code>,
-<code>selectDevice</code>, and <code>applyLayout</code> in <code>physical.js</code>. The relevant files are
-<code>frontend/controller/physical.html</code>, <code>frontend/controller/physical.js</code>,
-<code>frontend/client/client.js</code>, and <code>frontend/client/view.js</code>.</p>
+<code>selectDevice</code>, and <code>applyLayout</code> in <code>physical.js</code>. Follow the module factories
+into <code>operator-state.js</code>, <code>operator-grid.js</code>, <code>operator-content.js</code>, and
+<code>operator-measurements.js</code> for their respective owners.</p>
 
         <nav class="chapter-pager" aria-label="Chapter navigation">
 
           <a class="pager-prev" href="#when-the-wall-breaks"><span>Previous</span>When the wall breaks</a>
 
 
-          <a class="pager-next" href="#security-and-deployment-the-proxy-is-the-boundary"><span>Next</span>Security and deployment: the proxy is the boundary</a>
+          <a class="pager-next" href="#security-and-deployment"><span>Next</span>Security and deployment</a>
 
         </nav>
       </section>
 
-      <section class="chapter" id="security-and-deployment-the-proxy-is-the-boundary-chapter" data-chapter="10">
-        <h2 id="security-and-deployment-the-proxy-is-the-boundary">Security and deployment: the proxy is the boundary<a class="heading-anchor" href="#security-and-deployment-the-proxy-is-the-boundary" tabindex="-1" aria-label="Link to section: Security and deployment: the proxy is the boundary">#</a></h2>
-<p>The application has no login. This is the first thing to understand about its
-security model. Anyone who can reach the backend can register a device, read the
-roster, or repaint the wall. The project does not pretend otherwise. The
-deployment reference puts a reverse proxy in front and binds the app to
-loopback.</p>
+      <section class="chapter" id="security-and-deployment-chapter" data-chapter="10">
+        <h2 id="security-and-deployment">Security and deployment<a class="heading-anchor" href="#security-and-deployment" tabindex="-1" aria-label="Link to section: Security and deployment">#</a></h2>
+<p>Authentication is optional. With <code>TABLET_WALL_AUTH_TOKEN</code> unset, anyone who
+reaches the backend can register a device, read the roster, or repaint the wall.
+A configured token protects HTTP routes, static files, and WebSocket endpoints.
+Browsers sign in at <code>/auth/login</code>; scripts send a Bearer token. The shared secret
+does not establish separate tablet and operator roles.</p>
+<p>The <a href="../AUTH.md">authentication guide</a> describes admission and cookie rules.
+The deployment reference adds route restrictions at a reverse proxy and binds
+the backend to loopback. Its operator listener strips cookies and authorization
+headers, so combining that reference with app authentication still needs
+validation. The trusted HTTP hotspot trial refuses app authentication and
+requires a separate deployment for authenticated HTTPS.</p>
 <figure class="figure" id="figure-trust"><div class="figure-art"><button class="figure-zoom" type="button" aria-label="Enlarge figure 10: The reverse proxy is the authentication boundary. Tablets get a narrow allowlist on one origin. The operator gets Basic auth on a second origin. The backend stays loopback-only."><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 960 560" role="img" aria-labelledby="trust-title trust-desc">
 <title id="trust-title">The reverse proxy is the authentication boundary and the app stays loopback-only.</title>
 <desc id="trust-desc">The reverse proxy is the authentication boundary and the app stays loopback-only.</desc>
@@ -2215,7 +2234,7 @@ shared deployment secret, not a per-operator identity.</p>
 <tr>
 <td>A browser on another site repaints the wall</td>
 <td>Exact operator <code>Origin</code> on writes</td>
-<td>Reads are open. The guard is not authentication.</td>
+<td>Reads are open unless app authentication is enabled. The Origin guard does not authenticate.</td>
 </tr>
 <tr>
 <td>An unauthenticated upload</td>
@@ -2235,7 +2254,7 @@ shared deployment secret, not a per-operator identity.</p>
 <tr>
 <td>Stale or forged layout write</td>
 <td>ETag and <code>If-Match</code>, 412, 428</td>
-<td>A client with the current ETag can write.</td>
+<td>An admitted client with the current ETag can write.</td>
 </tr>
 <tr>
 <td>Stolen device identity</td>
@@ -2291,9 +2310,9 @@ to new targets and refuses to overwrite. Stop the service before a restore. The
 drill runs a backup while the app is running, restores to new paths, starts a
 disposable app, and fetches a restored image.</p>
 <blockquote class="note">
-<p><strong>Pattern to reuse: keep the trust boundary outside the app when the app has
-no identity model.</strong> A loopback bind plus a proxy with real authentication is
-easier to reason about than a home-grown login inside a single-process app.</p>
+<p><strong>Pattern to reuse: separate authentication from roles.</strong> A shared secret
+admits a caller. Route restrictions decide which operations that caller can
+reach. Neither establishes a separate identity for each tablet.</p>
 </blockquote>
 <p><strong>Trace it.</strong> Read <code>operator_origin_guard</code> in <code>main.py</code>, then
 <code>media.admit_upload</code> in <code>tabletwall/media.py</code>, then the listener blocks in
@@ -2533,7 +2552,7 @@ and <code>simulator/browser/run.py</code>.</p>
 
         <nav class="chapter-pager" aria-label="Chapter navigation">
 
-          <a class="pager-prev" href="#security-and-deployment-the-proxy-is-the-boundary"><span>Previous</span>Security and deployment: the proxy is the boundary</a>
+          <a class="pager-prev" href="#security-and-deployment"><span>Previous</span>Security and deployment</a>
 
 
           <a class="pager-next" href="#evidence-is-part-of-the-design"><span>Next</span>Evidence is part of the design</a>
@@ -2800,7 +2819,7 @@ svg .panel-small { font-family: 'Source Code Pro', ui-monospace, SFMono-Regular,
 
 <rect class="bg" width="960" height="560"/>
 <rect width="960" height="560" fill="url(#road-dots)" opacity=".55"/>
-<text class="mono" x="52" y="38" text-anchor="start" >DELIVERY PHASES</text><text class="small" x="908" y="38" text-anchor="end" >software closed, hardware open</text><rect class="surface-accent" x="56" y="84" width="198" height="100" rx="4"/><text class="num" x="70" y="112" text-anchor="start" >P0</text><text class="label-strong" x="70" y="138" text-anchor="start" >baseline</text><text class="small" x="70" y="162" text-anchor="start" >done</text><rect class="surface-accent" x="278" y="84" width="198" height="100" rx="4"/><text class="num" x="292" y="112" text-anchor="start" >R1</text><text class="label-strong" x="292" y="138" text-anchor="start" >upload + show</text><text class="small" x="292" y="162" text-anchor="start" >done</text><rect class="surface-accent" x="500" y="84" width="198" height="100" rx="4"/><text class="num" x="514" y="112" text-anchor="start" >R2</text><text class="label-strong" x="514" y="138" text-anchor="start" >calibration + editor</text><text class="small" x="514" y="162" text-anchor="start" >done</text><rect class="surface-accent" x="722" y="84" width="198" height="100" rx="4"/><text class="num" x="736" y="112" text-anchor="start" >R3</text><text class="label-strong" x="736" y="138" text-anchor="start" >clock + hard cuts</text><text class="small" x="736" y="162" text-anchor="start" >done</text><rect class="surface-accent" x="56" y="216" width="198" height="100" rx="4"/><text class="num" x="70" y="244" text-anchor="start" >R4</text><text class="label-strong" x="70" y="270" text-anchor="start" >native video</text><text class="small" x="70" y="294" text-anchor="start" >done</text><rect class="surface-accent" x="278" y="216" width="198" height="100" rx="4"/><text class="num" x="292" y="244" text-anchor="start" >R5</text><text class="label-strong" x="292" y="270" text-anchor="start" >field readiness</text><text class="small" x="292" y="294" text-anchor="start" >done</text><rect class="surface-warn" x="500" y="216" width="198" height="100" rx="4"/><text class="num" x="514" y="244" text-anchor="start" >R6</text><text class="label-strong" x="514" y="270" text-anchor="start" >segmented / live</text><text class="small" x="514" y="294" text-anchor="start" >not started</text><rect class="surface-warn" x="56" y="360" width="846" height="96" rx="4"/><text class="label-strong" x="72" y="386" text-anchor="start" >Open gates</text><text class="small" x="72" y="408" text-anchor="start" >optical still cuts · physical video decode/suspend/recovery · iOS Safari · mixed-model calibration</text><text class="small" x="72" y="428" text-anchor="start" >installed CA trust + origin migration · real Wi-Fi/OS · kiosk · sustained soak</text><text class="mono-strong" x="72" y="448" text-anchor="start" >all eight MISSING</text><rect class="surface-2" x="56" y="478" width="846" height="52" rx="3"/><text class="mono" x="72" y="508" text-anchor="start" >Console: phase 1 done · phase 2 done · phase 3 upload/legacy retirement not started</text>
+<text class="mono" x="52" y="38" text-anchor="start" >DELIVERY PHASES</text><text class="small" x="908" y="38" text-anchor="end" >software closed, hardware open</text><rect class="surface-accent" x="56" y="84" width="198" height="100" rx="4"/><text class="num" x="70" y="112" text-anchor="start" >P0</text><text class="label-strong" x="70" y="138" text-anchor="start" >baseline</text><text class="small" x="70" y="162" text-anchor="start" >done</text><rect class="surface-accent" x="278" y="84" width="198" height="100" rx="4"/><text class="num" x="292" y="112" text-anchor="start" >R1</text><text class="label-strong" x="292" y="138" text-anchor="start" >upload + show</text><text class="small" x="292" y="162" text-anchor="start" >done</text><rect class="surface-accent" x="500" y="84" width="198" height="100" rx="4"/><text class="num" x="514" y="112" text-anchor="start" >R2</text><text class="label-strong" x="514" y="138" text-anchor="start" >calibration + editor</text><text class="small" x="514" y="162" text-anchor="start" >done</text><rect class="surface-accent" x="722" y="84" width="198" height="100" rx="4"/><text class="num" x="736" y="112" text-anchor="start" >R3</text><text class="label-strong" x="736" y="138" text-anchor="start" >clock + hard cuts</text><text class="small" x="736" y="162" text-anchor="start" >done</text><rect class="surface-accent" x="56" y="216" width="198" height="100" rx="4"/><text class="num" x="70" y="244" text-anchor="start" >R4</text><text class="label-strong" x="70" y="270" text-anchor="start" >native video</text><text class="small" x="70" y="294" text-anchor="start" >done</text><rect class="surface-accent" x="278" y="216" width="198" height="100" rx="4"/><text class="num" x="292" y="244" text-anchor="start" >R5</text><text class="label-strong" x="292" y="270" text-anchor="start" >field readiness</text><text class="small" x="292" y="294" text-anchor="start" >done</text><rect class="surface-warn" x="500" y="216" width="198" height="100" rx="4"/><text class="num" x="514" y="244" text-anchor="start" >R6</text><text class="label-strong" x="514" y="270" text-anchor="start" >segmented / live</text><text class="small" x="514" y="294" text-anchor="start" >not started</text><rect class="surface-warn" x="56" y="360" width="846" height="96" rx="4"/><text class="label-strong" x="72" y="386" text-anchor="start" >Open gates</text><text class="small" x="72" y="408" text-anchor="start" >optical still cuts · physical video decode/suspend/recovery · iOS Safari · mixed-model calibration</text><text class="small" x="72" y="428" text-anchor="start" >installed CA trust + origin migration · real Wi-Fi/OS · kiosk · sustained soak</text><text class="mono-strong" x="72" y="448" text-anchor="start" >all eight MISSING</text><rect class="surface-2" x="56" y="478" width="846" height="52" rx="3"/><text class="mono" x="72" y="508" text-anchor="start" >Console: five tasks · image uploads · relative and measured arrangements</text>
 </svg>
 </button></div><figcaption><span class="figure-number">Figure 13</span>Software phases are closed. Hardware gates are open. R6 is conditional and has not started.</figcaption></figure>
 <h3 id="current-phase-status">Current phase status<a class="heading-anchor" href="#current-phase-status" tabindex="-1" aria-label="Link to section: Current phase status">#</a></h3>
@@ -2856,14 +2875,16 @@ svg .panel-small { font-family: 'Source Code Pro', ui-monospace, SFMono-Regular,
 <li>Phase 1, core loop: done.</li>
 <li>Phase 2, still wall: software done, physical validation open.</li>
 <li>Phase 3, safe unattended operation: not complete. 3a and 3b are reference
-artifacts. 3c and 3d are deferred.</li>
+artifacts pending deployment validation. Operational checks and engineering
+gates have software evidence, while hardware acceptance remains open.</li>
 <li>Phase 4, timed media: software slice done, physical validation open.</li>
 </ul>
 <p>The console phases are:</p>
 <ul>
 <li>Phase 1, low-risk fixes: done.</li>
 <li>Phase 2, tabbed rail: done.</li>
-<li>Phase 3, upload port and legacy retirement: not started.</li>
+<li>The workspace owns image uploads and supports relative and measured layouts.</li>
+<li>The old logical editor remains available through the experimental route.</li>
 </ul>
 <h3 id="vocabulary">Vocabulary<a class="heading-anchor" href="#vocabulary" tabindex="-1" aria-label="Link to section: Vocabulary">#</a></h3>
 <div class="table-wrap"><table>

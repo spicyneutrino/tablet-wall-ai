@@ -590,8 +590,6 @@ async def main(artifacts_arg: Path) -> int:
               topbar_links=initial_shell["topbarIndexLinks"],
               legacy=initial_shell["legacyLink"])
         draft_before = await controller.evaluate("""() => ({
-            flag: document.querySelector('#draft-flag').textContent,
-            dirty: document.querySelector('#draft-flag').dataset.dirty,
             tabletDot: !document.querySelector('#tab-tablet-dot').hidden,
             contentDot: !document.querySelector('#tab-content-dot').hidden,
             playlistHint: document.querySelector('#playlist-hint').textContent,
@@ -629,8 +627,6 @@ async def main(artifacts_arg: Path) -> int:
             current = expected
         report["tab_transitions"] = tab_transitions
         draft_after = await controller.evaluate("""() => ({
-            flag: document.querySelector('#draft-flag').textContent,
-            dirty: document.querySelector('#draft-flag').dataset.dirty,
             tabletDot: !document.querySelector('#tab-tablet-dot').hidden,
             contentDot: !document.querySelector('#tab-content-dot').hidden,
             playlistHint: document.querySelector('#playlist-hint').textContent,
@@ -914,7 +910,7 @@ async def main(artifacts_arg: Path) -> int:
                 pauseVisible: !!pause.getClientRects().length,
                 cardHeight: card.getBoundingClientRect().height,
                 moreVisible: !!more.getClientRects().length,
-                moreExpanded: more.getAttribute('aria-expanded'),
+                moreExpanded: String(more.parentElement.open),
                 extraVisible: !!extra.getClientRects().length,
                 stageTabIndex: stage.getAttribute('tabindex'),
                 stageRole: stage.getAttribute('role'),
@@ -1481,7 +1477,6 @@ async def main(artifacts_arg: Path) -> int:
             localCancelDisabled: document.querySelector('#btn-cancel-local').disabled,
             globalCancelDisabled: document.querySelector('#btn-cancel').disabled,
             nudgeX: document.querySelector('#slot-nudge-x').value,
-            draftFlag: document.querySelector('#draft-flag').textContent,
         })""")
         check("S12", "a nudge enables both Apply controls and both Cancel controls",
               nudged["localDisabled"] is False and nudged["globalDisabled"] is False
@@ -1502,7 +1497,6 @@ async def main(artifacts_arg: Path) -> int:
             localDisabled: document.querySelector('#btn-apply-local').disabled,
             globalDisabled: document.querySelector('#btn-apply').disabled,
             nudgeX: document.querySelector('#slot-nudge-x').value,
-            draftFlag: document.querySelector('#draft-flag').textContent,
         })""")
         layout_revision_after = http.get("/api/v3/config").json().get("revision")
         report["local_apply"] = {
@@ -1512,9 +1506,8 @@ async def main(artifacts_arg: Path) -> int:
         }
         check("S12", "local Cancel clears the draft and disables both Apply controls",
               cancelled["localDisabled"] is True and cancelled["globalDisabled"] is True
-              and cancelled["nudgeX"] == "0"
-              and cancelled["draftFlag"] == "Matches the committed layout",
-              nudge_x=cancelled["nudgeX"], draft=cancelled["draftFlag"])
+              and cancelled["nudgeX"] == "0",
+              nudge_x=cancelled["nudgeX"])
         check("S12", "local Cancel and the nudge did not write the layout",
               layout_revision_after == layout_revision_before,
               before=layout_revision_before, after=layout_revision_after)

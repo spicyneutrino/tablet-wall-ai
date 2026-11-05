@@ -29,5 +29,7 @@
     --stage-line: #8a8e95;
     --font: "Schibsted Grotesk", system-ui, -apple-system, sans-serif;
     --radius: 6px;
+    --panel-radius: 12px;
+    --panel-pad: 1.25rem;
     --page-pad: 2rem;
 }

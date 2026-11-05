@@ -10,12 +10,12 @@ from types import SimpleNamespace
 
 from playwright.sync_api import expect, sync_playwright
 from redesign_acceptance import Rig, digest, new_artifacts, wait_until
-from _redesign_edge_cases import HeldResponse, quick_wall, show_supplied
+from _redesign_edge_cases import TASK_TABS, HeldResponse, quick_wall, show_supplied
 
 VIEWPORTS = ((1440, 900), (390, 844), (320, 844), (820, 1180))
 TARGETS = {
     "Images": ("#image-gallery button", "#show-image"),
-    "Tablets": ("#device-list .dev-pick", "#device-list .roster-identify"),
+    "Tablets": ("#device-list .dev-pick",),
     "Arrange": ("#grid-1x4", "#grid-preview, #btn-apply:not([disabled])"),
 }
 MEASURE = """selectors => {
@@ -62,6 +62,8 @@ class ExperienceRig(Rig):
 
 def capture(rig, state, tasks=("Images", "Tablets", "Arrange", "Saved", "Settings")):
     p = rig.page
+    viewport = p.viewport_size
+    selected_task = p.locator("#compact-task-select").input_value()
     for width, height in VIEWPORTS:
         p.set_viewport_size({"width": width, "height": height})
         for task in tasks:
@@ -72,7 +74,8 @@ def capture(rig, state, tasks=("Images", "Tablets", "Arrange", "Saved", "Setting
             metrics.update(state=state,viewport=p.viewport_size,screenshot=rig.shot(p, state + "-" + task))
             metrics["entry_findings"] = entry_findings(metrics)
             rig.experience.append(metrics)
-    p.set_viewport_size({"width": 1440, "height": 900})
+    p.set_viewport_size(viewport)
+    rig.task(next(name for name, value in TASK_TABS.items() if value == selected_task))
 
 
 def journey(rig, artwork):
@@ -104,7 +107,7 @@ def journey(rig, artwork):
     before = rig.config()
     rig.click("#grid-2x2")
     rig.click("#grid-preview")
-    expect(p.locator("#grid-message")).to_contain_text("Preview only")
+    expect(p.locator("body")).to_have_attribute("data-stage-mode", "arrangement-preview")
     assert rig.config()["revision"] == before["revision"]
     capture(rig, "arrangement-preview", tasks=("Arrange",))
     rig.tablets[0].close()

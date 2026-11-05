@@ -74,8 +74,8 @@ Logs rotate at 1,000,000 bytes with two archives each.
 2. Open the exact printed URL, ending in `/client/`. Typing `http://` and a
    bare address is not the same thing.
 3. Open `http://127.0.0.1:<backend-port>/controller/physical.html` on the
-   laptop. In **System → Join & readiness**, copy the exact tablet address or
-   scan its QR. The QR is a URL shortcut, not pairing; the tablet still
+   laptop. Select **Tablets**, then open **Add tablets**. Copy the exact tablet
+   address or scan its QR. The QR is a URL shortcut, not pairing; the tablet still
    registers and opens its own socket. A loopback address only works on the
    laptop and is labelled accordingly.
 4. Leave the page open. Reloading keeps the tablet identity.
@@ -102,37 +102,48 @@ The tablet listener refuses both routes, even with a forged operator header.
 
 ## 5. Choose an image
 
-Wall console → **Wall → Show a still image**. Pick a library image, check the preview,
-then **Show on wall**. Browsing does not change the wall until you apply.
+Select **Images**. Pick an image in **Library**, check the preview, then select
+**Show image**. Browsing and uploading do not change the displayed content.
+To adjust the applied image, select **Adjust image**.
 
-Choose **Fill the wall (crops)** or **Fit whole image (adds bars)** before
+Choose **Fill** to crop or **Fit** to show the whole image with bars before
 showing the image. The stage previews crop, screen coverage and bezel/gap
 occlusion. If bytes are missing, the image remains unavailable; select another
-image or restore the file and use **Refresh images**. Readiness reports the
-same missing bytes as `available: false`.
+image or restore the file and select **Refresh** in **Library**.
+Open **Image details** to inspect the missing asset identity. Readiness reports
+the same missing bytes as `available: false`.
 
 ## 6. Arrange and verify the grid
 
-Open **Wall → Layout & size**. Choose the layout kind, **2 × 2** or **1 × 4**,
-and the tablet order and body orientation. The latter preset is one horizontal
-row. Use **Preview arrangement**, review it, then **Apply layout**. Cancel
-leaves the active wall unchanged. Extra gap defaults to zero.
+Select **Arrange**. Choose **Relative** or **Measured**, then a grid preset.
+Open **Tablets and mounting** to review membership, order, and mounted top
+edges. **1 × 4** is one horizontal row with four selected tablets; the label
+changes with membership. Editing **Rows** or **Columns** switches to a custom
+grid. Select **Allow empty trailing cells** if the grid has more cells than
+selected tablets.
+
+Select **Preview arrangement**, review the geometry and warnings, then select
+**Apply arrangement**. **Discard arrangement** clears the local draft.
+Preview and Discard leave the active wall unchanged. Extra gap defaults to
+zero. Use **View applied** to compare without discarding the preview.
 
 For measured layouts, confirm each actual tablet model or provide measured
-calibration first. Model profiles stay approximate. **Wall → Colours and
-continuity checks → Wall-sized grid** generates an image for the committed
+calibration first. Model profiles stay approximate. In **Settings**, open
+**Check patterns**. **Wall-sized grid** generates an image for the committed
 physical bounds with 50 mm intervals. Use it to record actual seam/scale
 measurements; the generated coordinates do not prove physical accuracy.
 **Logical calibration pattern** is available only for logical layouts.
 
 Check **N of M showing** and the tablet cards. A network connection alone does
-not count as a current image paint. A failed card offers **Retry image**.
+not count as a current image paint. To retry a failed image, select the tablet
+in **Tablets**, open **Recovery**, and select **Retry image** when available.
+Offline tablets keep physical recovery guidance instead of unavailable commands.
 
 ## 7. Blank the wall
 
-Open **Wall → Colours and continuity checks → Black wall**. This shows an
-ordinary black image without deleting the layout. **Restore previous content**
-returns to the prior scene. **Tablet colours** instead shows each tablet's
+In **Settings**, open **Check patterns** and select **Black wall**. This shows an ordinary black image without deleting the layout.
+To return to the prior scene, open **Images**, then **Image details**, and select
+**Restore previous content**. **Tablet colours** instead shows each tablet's
 assigned diagnostic colour.
 
 ## 8. Stop

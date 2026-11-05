@@ -22,11 +22,13 @@ import urllib.request
 from PIL import Image, ImageDraw
 from playwright.sync_api import expect, sync_playwright
 
+from _redesign_edge_cases import TASK_TABS, HeldResponse, save_name, second_operator, task_tab
+
 ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(ROOT))
 from deploy.hotspot import Settings, backend_environment  # noqa: E402
 
-SCENARIOS = ("first-wall", "races", "recovery", "parity", "responsive", "edge-cases")
+SCENARIOS = ("first-wall", "races", "recovery", "parity", "responsive", "corrections", "edge-cases")
 APPLICATION_BASE = "295cb61220677a3a42dbcc7812c3a267c810864b"
 MANDATORY_OPEN = [
     "Physical pointer drag, explicit snap-step behavior, Clear cancellation, and complete offline/reconnect command variants.",
@@ -502,7 +504,11 @@ class Rig:
             locator.click()
 
     def task(self, name):
-        self.click(self.page.get_by_role("tab", name=name, exact=True), "Open " + name)
+        selector = self.page.locator("#compact-task-select")
+        if selector.is_visible():
+            selector.select_option(value=TASK_TABS[name])
+            return
+        self.click(task_tab(self.page, name), "Open " + name)
 
     def select(self, selector, value):
         self.open_disclosures(selector)
@@ -833,11 +839,16 @@ class Rig:
             "Console opens before any tablet registers",
         )
         self.viewport_shots("empty")
-        self.click("#empty-add-tablets", "Open Add tablets")
+        expect(self.page.locator("#wall-empty")).to_be_hidden()
         for i in range(4):
             self.new_tablet(i, delay=i == 0)
         expect(self.page.locator("#device-count")).to_contain_text("4")
-        self.task("Arrange")
+        expect(self.page.locator("#tablet-joining")).not_to_have_attribute("open", "")
+        expect(self.page.locator("#wall-health")).to_contain_text("4 online · none on the wall")
+        self.task("Images")
+        expect(self.page.locator("#wall-empty")).to_be_visible()
+        self.click("#empty-add-tablets", "Arrange joined tablets")
+        expect(self.page.locator("#wall-empty")).to_be_hidden()
         expect(
             self.page.locator("#grid-order input[type=checkbox]:checked")
         ).to_have_count(4)
@@ -1026,7 +1037,7 @@ def first_wall(rig):
     rig.click("#grid-1x4", "Choose Row of 4")
     before = rig.config()
     rig.click("#grid-preview", "Preview arrangement")
-    expect(p.locator("#grid-message")).to_contain_text("Preview only")
+    expect(p.locator("body")).to_have_attribute("data-stage-mode", "arrangement-preview")
     labels = p.locator("#stage-identities li").evaluate_all(
         "es=>es.map(e=>({text:e.textContent,pixels:parseFloat(getComputedStyle(e).fontSize)}))"
     )
@@ -1051,7 +1062,7 @@ def first_wall(rig):
     )
     rig.viewport_shots("measured-review")
     rig.click("#btn-apply", "Apply arrangement")
-    expect(p.locator("#stage-mode-label")).to_have_text("Applied configuration", timeout=15000)
+    expect(p.locator("body")).to_have_attribute("data-stage-mode", "live", timeout=15000)
     slots = rig.config()["layout"]["slots"]
     rig.check(
         len(slots) == 4
@@ -1102,7 +1113,7 @@ def first_wall(rig):
     before = rig.config()
     rig.click("#grid-2x2")
     rig.click("#grid-preview")
-    expect(p.locator("#grid-message")).to_contain_text("Preview only")
+    expect(p.locator("body")).to_have_attribute("data-stage-mode", "arrangement-preview")
     rig.check(
         rig.config()["layout"] == before["layout"]
         and rig.config()["revision"] == before["revision"],
@@ -1110,7 +1121,7 @@ def first_wall(rig):
     )
     rig.viewport_shots("two-by-two-review")
     rig.click("#btn-apply")
-    expect(p.locator("#stage-mode-label")).to_have_text("Applied configuration", timeout=15000)
+    expect(p.locator("body")).to_have_attribute("data-stage-mode", "live", timeout=15000)
     expect(p.locator("#wall-health")).to_contain_text("4 of 4 showing the current image", timeout=15000)
     rig.check(
         rig.config()["scene"] == before["scene"],
@@ -1407,7 +1418,7 @@ def race_suite(rig):
     rig.observe(other_context, "second-operator")
     other = other_context.new_page()
     other.goto(rig.base + "/controller/physical.html")
-    other.get_by_role("tab", name="Tablets", exact=True).click()
+    task_tab(other, "Tablets").click()
     other.locator(f'.dev-pick[data-device-id="{ids[0]}"]').click()
     old = rig.config()
 
@@ -1456,7 +1467,7 @@ def recovery(rig):
     expect(p.locator("#layout-msg")).to_contain_text("saved")
     p.locator("#scene-name").fill("Durable recovery scene")
     rig.click("#scene-save")
-    expect(p.locator("#scene-message")).to_contain_text("Scene saved")
+    expect(p.locator("#scene-message")).to_contain_text("Content saved")
     durable = rig.config()
     client = rig.tablets[0]
     rig.task("Tablets")
@@ -1536,6 +1547,219 @@ def recovery(rig):
     )
 
 
+def corrections(rig):
+    """Corrective keyboard, fit, Identify, recovery and feedback checks.
+
+    Run with:
+      .venv/bin/python simulator/browser/redesign_acceptance.py \
+          --artifacts /tmp/tablet-wall-corrections-NEW --scenario corrections
+    """
+    p = rig.page
+    first_wall(rig)
+    for name in ("Images", "Tablets", "Arrange", "Saved", "Settings"):
+        tab = task_tab(p, name)
+        tab.focus()
+        tab.press("Enter")
+        expect(tab).to_be_focused()
+        style = tab.evaluate(
+            "e=>({outline:getComputedStyle(e).outlineStyle,rect:e.getBoundingClientRect().toJSON()})"
+        )
+        rig.check(
+            style["outline"] != "none" and style["rect"]["width"] > 1,
+            name + " retains visible keyboard tab focus",
+            style,
+        )
+
+    rig.task("Images")
+    gallery = p.locator("#image-gallery .image-choice-button")
+    count = gallery.count()
+    stops = [gallery.nth(index).evaluate("e=>e.tabIndex") for index in range(count)]
+    rig.check(
+        count > 0 and sum(1 for stop in stops if stop == 0) == 1
+        and all(stop in (0, -1) for stop in stops),
+        "Image gallery exposes one tab stop",
+        stops,
+    )
+    if count > 1:
+        gallery.nth(0).focus()
+        p.keyboard.press("ArrowRight")
+        expect(gallery.nth(1)).to_be_focused()
+        rig.check(
+            gallery.nth(1).evaluate("e=>e.tabIndex") == 0,
+            "Gallery tab stop follows arrow focus",
+        )
+        p.keyboard.press("Home")
+        expect(gallery.nth(0)).to_be_focused()
+
+    p.locator("#edit-current-image").click()
+    expect(p.locator("#stage-mode-description")).to_have_text("Image preview, not shown")
+    tree = p.locator("body").aria_snapshot()
+    rig.check(
+        "Image preview, not shown" in tree,
+        "Actual accessibility tree exposes the image preview boundary",
+    )
+    (rig.out / "image-preview-ax.yml").write_text(tree)
+
+    toggle = p.locator("#view-toggle")
+    expect(toggle).to_have_text("View applied")
+    toggle.focus()
+    toggle.press("Enter")
+    expect(toggle).to_be_focused()
+    expect(toggle).to_have_text("View preview")
+    rig.check(True, "View applied keeps focus and relabels the toggle View preview")
+    rig.task("Tablets")
+    with p.expect_response("**/api/v3/config"):
+        rig.click("#btn-roster-refresh")
+    rig.task("Images")
+    expect(toggle).to_have_text("View preview")
+    rig.check(True, "Status refresh retains the applied comparison and pending image preview")
+    toggle.focus()
+    toggle.press("Enter")
+    expect(toggle).to_be_focused()
+    expect(toggle).to_have_text("View applied")
+    rig.check(True, "View preview keeps focus and relabels the toggle View applied")
+
+    for width, height in ((320, 844), (390, 844), (667, 375), (844, 390)):
+        for scale in (1, 2):
+            p.set_viewport_size({"width": width, "height": height})
+            tag = p.add_style_tag(content=f"html{{font-size:{100 * scale}%}}")
+            for fit in ("cover", "contain"):
+                p.locator("#image-fit").select_option(fit)
+                p.locator("#image-fit").scroll_into_view_if_needed()
+                p.evaluate(
+                    "()=>new Promise(r=>requestAnimationFrame(()=>requestAnimationFrame(r)))"
+                )
+                metrics = p.locator("#image-fit").evaluate(
+                    """e=>{
+                        const s=getComputedStyle(e), c=document.createElement('canvas').getContext('2d');c.font=s.font;
+                        return {text:e.selectedOptions[0].textContent,required:c.measureText(e.selectedOptions[0].textContent).width,
+                            available:e.clientWidth-parseFloat(s.paddingLeft)-parseFloat(s.paddingRight)-24,
+                            labelFont:getComputedStyle(e.parentElement).fontSize};
+                    }"""
+                )
+                rig.check(
+                    metrics["required"] <= metrics["available"] + 1
+                    and float(metrics["labelFont"].replace("px", "")) >= 14,
+                    f"Scaling label and selected {fit} stay readable at {width} and {scale}x text",
+                    metrics,
+                )
+            rig.shot(p, f"{width}-text{scale}-fit")
+            tag.evaluate("e=>e.remove()")
+
+    p.locator("#image-discard").click()
+    p.set_viewport_size({"width": 1440, "height": 900})
+    p.locator("#edit-current-image").click()
+    expect(p.locator("#show-image")).to_be_enabled()
+    p.locator("#show-image").focus()
+    p.locator("#show-image").press("Enter")
+    expect(p.locator("#show-image")).to_be_disabled(timeout=15000)
+    expect(p.locator("#image-search")).to_be_focused()
+    rig.check(True, "Show image hands focus to the visible library after the command disables it")
+
+    rig.task("Arrange")
+    p.locator("#grid-1x4").click()
+    p.locator("#grid-preview").click()
+    expect(p.locator("#stage-mode-description")).to_have_text("Arrangement preview, not applied")
+    tree = p.locator("body").aria_snapshot()
+    rig.check(
+        "Arrangement preview, not applied" in tree,
+        "Actual accessibility tree exposes the geometry preview boundary",
+    )
+    (rig.out / "arrangement-preview-ax.yml").write_text(tree)
+    p.locator("#btn-apply").focus()
+    p.locator("#btn-apply").press("Enter")
+    expect(p.locator("#grid-preview")).to_be_focused(timeout=15000)
+    rig.check(True, "Apply arrangement hands focus to the visible Preview control")
+
+    p.locator("#grid-1x4").click()
+    p.locator("#grid-preview").click()
+    expect(p.locator("#btn-cancel")).to_be_enabled(timeout=15000)
+    p.locator("#btn-cancel").focus()
+    p.locator("#btn-cancel").press("Enter")
+    expect(p.locator("#grid-preview")).to_be_focused()
+    rig.check(p.locator("#grid-preview").is_visible(), "Discard returns focus to the visible Preview control")
+    rig.open_disclosures("#grid-order")
+    identify = p.locator("#grid-order [data-device-id]").first.get_by_role("button", name="Identify", exact=False)
+    with p.expect_request("**/identify") as request:
+        identify.click()
+    subject = p.locator("#grid-order [data-device-id]").first.get_attribute("data-device-id")
+    rig.check(
+        request.value.url.endswith("/" + subject + "/identify"),
+        "Arrange Identify uses its captured row subject",
+        request.value.url,
+    )
+    rig.shot(p, "ordering-identify")
+
+    rig.task("Tablets")
+    p.locator(".dev-pick").first.click()
+    rig.check(
+        p.locator("#stage-svg .slot").evaluate_all("es=>es.map(e=>e.dataset.deviceId)")
+        == p.locator(".dev-pick").evaluate_all("es=>es.map(e=>e.dataset.deviceId)"),
+        "Stage tab order matches tablet-number roster order after selection",
+    )
+    other = second_operator(rig)
+    held = HeldResponse(rig, p, "**/api/v3/config", "Identify stale-authority read")
+    save_name(other, subject, "Review tablet")
+    held.wait()
+    expect(p.locator("#tablet-identify")).to_be_disabled()
+    expect(p.locator(".roster-identify")).to_have_count(0)
+    rig.check(True, "Inspector Identify disables while authority is stale without a duplicate roster entry")
+    held.release()
+    expect(p.locator("#tablet-identify")).to_be_enabled()
+
+    rig.check(True, "Inspector Identify recovers after authoritative reconciliation")
+
+    p.set_viewport_size({"width": 390, "height": 844})
+    p.locator(".dev-pick").first.click()
+    rig.tablets[0].set_viewport_size({"width": 930, "height": 1280})
+    expect(p.locator("#open-tablet-measurements")).to_be_visible()
+    p.locator("#open-tablet-measurements").click()
+    expect(p.locator("#panel-system")).to_be_visible()
+    expect(p.locator("#tablet-model")).to_be_focused()
+    expect(p.locator("dialog:modal")).to_have_count(0)
+    p.locator("#tablet-model").click()
+    p.locator("#tablet-model").press("Escape")
+    rig.check(True, "Phone measurement recovery closes its modal and focuses an interactive destination")
+    rig.shot(p, "measurement-destination")
+
+    rig.tablets[0].set_viewport_size({"width": 900, "height": 1280})
+    rig.task("Tablets")
+    rig.new_tablet(4)
+    p.locator(".dev-pick").last.click()
+    expect(p.locator("#tablet-arrange")).to_be_visible()
+    p.locator("#tablet-arrange").click()
+    expect(p.locator("#panel-show")).to_be_visible()
+    expect(p.locator("dialog:modal")).to_have_count(0)
+    p.locator("#grid-1x4").click()
+    p.locator("#btn-cancel").click()
+    rig.check(True, "Phone Place in Arrange closes its modal and leaves the destination interactive")
+    rig.shot(p, "arrange-destination")
+
+    rig.task("Saved")
+    restore_points = p.locator('#saved-layouts [data-snapshot-name^="Before physical "]')
+    expect(restore_points.first.locator(".saved-name")).to_contain_text("Restore point · Before physical ")
+    expect(restore_points.first.get_by_role("button", name="Recall", exact=False)).to_be_enabled()
+    rig.check(True, "Automatic safety copy is labelled as a restore point and retains Recall")
+    p.locator("#layout-name").fill("")
+    p.locator("#btn-layout-save").click()
+    expect(p.locator("#layout-msg")).to_contain_text("name")
+    msg = p.locator("#layout-msg").bounding_box()
+    button = p.locator("#btn-layout-save").bounding_box()
+    rig.check(
+        0 <= msg["y"] - button["y"] - button["height"] < 32,
+        "Saved validation is adjacent to the form",
+        {"message": msg, "button": button},
+    )
+    expect(p.locator("#layout-name")).to_be_focused()
+    rig.shot(p, "saved-local-feedback")
+    rig.check(
+        p.locator("#btn-layouts-refresh").inner_text() == "Refresh"
+        and p.locator("#scenes-refresh").count() == 0,
+        "One task-level Refresh saved names both object inventories",
+    )
+    rig.shot(p, "corrective-final")
+
+
 def main(argv=None):
     from _redesign_edge_cases import EDGE_CASES
 
@@ -1560,6 +1784,7 @@ def main(argv=None):
         "recovery": recovery,
         "parity": parity,
         "responsive": responsive,
+        "corrections": corrections,
         **EDGE_CASES,
     }
     reports = []

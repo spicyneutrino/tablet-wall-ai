@@ -2,6 +2,7 @@
 
 from copy import deepcopy
 import json
+import re
 import time
 
 from playwright.sync_api import expect
@@ -11,8 +12,19 @@ def ids(rig):
     return [client["id"] for client in rig.manifest["clients"]]
 
 
+TASK_TABS = {"Images": "content", "Tablets": "tablet", "Arrange": "show", "Saved": "saved", "Settings": "system"}
+
+
+def task_tab(page, name):
+    return page.get_by_role("tab", name=re.compile(rf"^{re.escape(name)}(?:, unsaved changes)?$"))
+
+
 def task(page, name):
-    page.get_by_role("tab", name=name, exact=True).click()
+    selector = page.locator("#compact-task-select")
+    if selector.is_visible():
+        selector.select_option(value=TASK_TABS[name])
+    else:
+        task_tab(page, name).click()
 
 
 def pick(page, device):
@@ -32,7 +44,7 @@ def second_operator(rig):
     page = context.new_page()
     page.set_default_timeout(7000)
     page.goto(rig.base + "/controller/physical.html")
-    expect(page.locator("#device-count")).to_contain_text(str(len(ids(rig))))
+    expect(page.locator("#device-list .dev-pick")).to_have_count(len(ids(rig)))
     return page
 
 
@@ -95,9 +107,9 @@ def quick_wall(rig):
     task(p, "Arrange")
     p.locator("#grid-1x4").click()
     p.locator("#grid-preview").click()
-    expect(p.locator("#grid-message")).to_contain_text("Preview only")
+    expect(p.locator("body")).to_have_attribute("data-stage-mode", "arrangement-preview")
     p.locator("#btn-apply").click()
-    expect(p.locator("#stage-mode-label")).to_have_text("Applied configuration")
+    expect(p.locator("body")).to_have_attribute("data-stage-mode", "live")
     rig.check(
         len(rig.config()["layout"]["placements"]) == 4,
         "Real UI applies a relative four-tablet fixture",
@@ -159,7 +171,7 @@ def pointer_drag(rig):
     p.mouse.up()
     proposed = float(p.locator("#slot-center-x").input_value())
     p.locator("#btn-apply").click()
-    expect(p.locator("#stage-mode-label")).to_have_text("Applied configuration")
+    expect(p.locator("body")).to_have_attribute("data-stage-mode", "live")
     current = rig.config()
     rig.check(
         abs(current["layout"]["slots"][device]["center_x_mm"] - proposed) < 0.01
@@ -228,7 +240,7 @@ def snap_spacing(rig):
     )
     p.locator("#btn-redo").click()
     p.locator("#btn-apply").click()
-    expect(p.locator("#stage-mode-label")).to_have_text("Applied configuration")
+    expect(p.locator("body")).to_have_attribute("data-stage-mode", "live")
     rig.check(
         rig.config()["layout"]["placements"][device]["x"] == 90,
         "Snapped draft applies through the guarded arrangement action",
@@ -241,6 +253,7 @@ def command_variants(rig):
     task(p, "Tablets")
     pick(p, device)
     before = rig.config()
+    rig.open_disclosures("#tablet-reconnect")
     p.locator("#tablet-reconnect").click()
     expect(p.locator("#tablet-action-message")).to_contain_text("keeps its identity")
     from redesign_acceptance import wait_until
@@ -465,9 +478,9 @@ def mixed_models(rig):
     p.locator("#grid-common-mount").select_option("0")
     p.locator("#grid-1x4").click()
     p.locator("#grid-preview").click()
-    expect(p.locator("#grid-message")).to_contain_text("Preview only")
+    expect(p.locator("body")).to_have_attribute("data-stage-mode", "arrangement-preview")
     p.locator("#btn-apply").click()
-    expect(p.locator("#stage-mode-label")).to_have_text("Applied configuration")
+    expect(p.locator("body")).to_have_attribute("data-stage-mode", "live")
     rig.check(
         rig.config()["tablet_assignments"][subjects[0]]["model_id"] == "ipad-air-2"
         and all(
@@ -757,13 +770,13 @@ def inventory_order(rig):
     expect(
         p.get_by_role("button", name="Preview inventory-new.png", exact=True)
     ).to_be_visible()
-    selected = p.locator("#image-select").input_value()
+    selected = p.locator("#selected-image-controls").get_attribute("data-asset-id")
     held.release()
     wait_until(
         lambda: not p.locator("#refresh-images").is_disabled(), p.wait_for_timeout
     )
     rig.check(
-        p.locator("#image-select").input_value() == selected
+        p.locator("#selected-image-controls").get_attribute("data-asset-id") == selected
         and p.get_by_role(
             "button", name="Preview inventory-new.png", exact=True
         ).get_attribute("aria-pressed")
@@ -884,7 +897,10 @@ def upload_ambiguous(rig, malformed=False):
                 fatal=False,
             )
         p.locator("#refresh-images").click()
-        expect(p.locator("#image-message")).to_contain_text("images available")
+        expect(p.locator("#image-message")).to_have_text("")
+        expect(
+            p.get_by_role("button", name="Preview ambiguous.png", exact=True)
+        ).to_be_visible()
         expect(p.locator("#upload-submit")).to_be_enabled()
         rig.check(
             rig.config()["scene"] == before["scene"]
@@ -909,18 +925,18 @@ def stale_scene(rig):
     task(p, "Saved")
     p.locator("#scene-name").fill("Guarded scene")
     p.locator("#scene-save").click()
-    expect(p.locator("#scene-message")).to_contain_text("Scene saved")
-    p.get_by_role("button", name="Preview scene “Guarded scene”", exact=True).click()
+    expect(p.locator("#scene-message")).to_contain_text("Content saved")
+    p.get_by_role("button", name="Preview content “Guarded scene”", exact=True).click()
     old_guard = rig.config()["etag"]
     task(other, "Settings")
     other.get_by_text("Check patterns", exact=True).click()
     rig.open_disclosures(other.locator("#show-colours"))
     other.locator("#show-colours").click()
-    expect(other.locator("#stage-applied-content")).to_contain_text("Tablet colours")
+    expect(other.locator("#stage-mode-label")).to_have_text("Showing tablet colours")
     task(other, "Saved")
     other.locator("#scene-name").fill("Guarded scene")
     other.locator("#scene-save").click()
-    expect(other.locator("#scene-message")).to_contain_text("Scene saved")
+    expect(other.locator("#scene-message")).to_contain_text("Content saved")
     before = rig.config()
     with rig.fault(
         "saved scene changed after real preview", [(r"/scenes/.*/recall", [412])]
@@ -968,7 +984,12 @@ def missing_live(rig):
         )
         task(p, "Images")
         p.locator("#refresh-images").click()
-        expect(p.locator("#stage-applied-content")).to_contain_text("Unavailable")
+        expect(p.locator("#stage-mode-label")).to_contain_text("Unavailable")
+        expect(p.locator("#image-title")).to_have_text("Unavailable image")
+        expect(p.locator("#image-title")).to_be_visible()
+        expect(p.locator("#stage-mode")).to_be_hidden()
+        rig.open_disclosures("#image-source-details")
+        expect(p.locator("#image-source-details")).to_have_text(before["scene"]["content"]["asset"])
         rig.check(
             rig.config()["scene"]["content"]["asset"]
             == before["scene"]["content"]["asset"]
@@ -1169,7 +1190,7 @@ def replacement_digest(rig):
         other.locator(f'#stage-svg .slot[data-device-id="{ids(rig)[1]}"]').focus()
         other.keyboard.press("ArrowRight")
         other.locator("#btn-apply").click()
-        expect(other.locator("#stage-mode-label")).to_have_text("Applied configuration")
+        expect(other.locator("body")).to_have_attribute("data-stage-mode", "live")
         save_arrangement(other, "Exact reservation")
         latest = rig.config()
         captured.update(
@@ -1404,7 +1425,7 @@ def refused_grid(rig):
         {"field": p.locator("#logical-w").input_value(), "stage_width": rendered},
     )
     p.locator("#btn-apply").click()
-    expect(p.locator("#stage-mode-label")).to_have_text("Applied configuration")
+    expect(p.locator("body")).to_have_attribute("data-stage-mode", "live")
     rig.check(
         rig.config()["layout"]["placements"][device]["w"] == 95,
         "46a9f24 manual stage and committed geometry agree after refused grid preview",

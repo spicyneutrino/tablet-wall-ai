@@ -19,9 +19,9 @@ function element(id) {
 
 function harness() {
     const ids = ["operator-readiness", "readiness-status", "readiness-errors", "tablet-url",
-        "copy-tablet-url", "tablet-url-note", "tablet-qr-figure", "tablet-qr", "tablet-qr-note",
+        "copy-tablet-url", "tablet-join-line", "join-network", "tablet-url-note", "tablet-qr-figure", "tablet-qr", "tablet-qr-note",
         "tablet-qr-error", "btn-readiness-qr-retry", "readiness-refreshed", "btn-readiness-refresh",
-        "operator-readiness-facts", "readiness-paths", "operator-readiness-paths", "readiness-advice",
+        "operator-readiness-facts", "operator-readiness-details", "readiness-paths", "operator-readiness-paths", "readiness-advice",
         "operator-readiness-advice", "readiness-message"];
     const nodes = {};
     ids.forEach(id => { nodes[id] = element(id); });
@@ -33,7 +33,8 @@ function harness() {
     const state = {};
     const copied = [];
     let copyResult = true;
-    const context = vm.createContext({ window: { location: { origin: "http://127.0.0.1:8000" } }, document: document, URL: URL, Date: Date, JSON: JSON });
+    const context = vm.createContext({ window: { OperatorState: require("../frontend/controller/operator-state.js"), location: { origin: "http://127.0.0.1:8000" } }, document: document, URL: URL, Date: Date, JSON: JSON });
+    vm.runInContext(fs.readFileSync(require.resolve("../frontend/controller/operator-dom.js"), "utf8"), context);
     vm.runInContext(fs.readFileSync(require.resolve("../frontend/controller/operator-readiness.js"), "utf8"), context);
     const model = context.window.OperatorReadiness;
     const instance = model.create({
@@ -80,14 +81,14 @@ function factsText(nodes) {
     assert.equal(known.qr.state, "ready");
     assert.equal(known.qr.href, "/api/v3/join-qr");
     assert.equal(known.status.kind, "ok");
-    assert.match(known.status.text, /does not prove a tablet is displaying the wall/);
+    assert.match(known.status.text, /^Checked at /);
     const joined = known.facts.map(pair => pair.join(" = ")).join(" | ");
     const layoutFact = known.facts.find(pair => pair[0] === "Layout");
     assert.equal(layoutFact[0], "Layout");
     assert.equal(layoutFact[1], "Measured millimetres (physical)", "the default Layout fact names layout only");
     for (const expected of ["Wall-Net", "Measured millimetres (physical)", "HTTP", "None. Trusted local hotspot only.",
         "Disabled; use the configured image folder", "Trusted local hotspot",
-        "A still image is selected", "1 online of 2 registered", "Readable",
+        "A still image is selected", "1 connected of 2 registered tablets", "Readable",
         "2026-11-01T10:00:00Z — a snapshot was recorded on disk",
         "does not prove this snapshot restores", "2026-10-30T09:00:00Z — recorded",
         "Referenced content only.", "Only current matching paint reports count"]) {
@@ -156,7 +157,7 @@ function factsText(nodes) {
     const page = harness();
     page.instance.render();
     assert.equal(page.nodes["readiness-status"].dataset.kind, "info");
-    assert.equal(page.nodes["btn-readiness-refresh"].textContent, "Refresh readiness");
+    assert.equal(page.nodes["btn-readiness-refresh"].textContent, "Refresh");
 
     const loading = page.instance.load();
     assert.deepEqual(page.calls, [["GET", "/api/v3/readiness"]], "readiness must read its own endpoint");
@@ -167,15 +168,29 @@ function factsText(nodes) {
     page.pending.shift().resolve(JSON.parse(JSON.stringify(full)));
     assert.equal(await loading, true);
 
-    assert.equal(page.nodes["tablet-url"].value, "http://192.168.50.1:8080/client/");
-    assert.equal(page.nodes["copy-tablet-url"].disabled, false);
+    assert.equal(page.nodes["tablet-url"].textContent, "http://192.168.50.1:8080/client/");
+    assert.equal(page.nodes["tablet-join-line"].hidden, false);
     assert.equal(page.nodes["tablet-qr-figure"].hidden, false);
     assert.ok(page.nodes["tablet-qr"].attrs.src.startsWith("/api/v3/join-qr?tablet_url="));
     assert.equal(page.nodes["readiness-errors"].hidden, true);
     assert.equal(page.nodes["operator-readiness-advice"].children.length, 1);
-    assert.ok(page.nodes["readiness-refreshed"].textContent.startsWith("Last successful read at "));
+    assert.equal(page.nodes["readiness-refreshed"].hidden, true, "a healthy read has one timestamp");
     assert.ok(factsText(page.nodes).includes("Wall-Net"));
+    assert.ok(!factsText(page.nodes).includes("Backup proof"), "routine server checks lead with connection facts");
+    assert.ok(page.nodes["operator-readiness-details"].children.some(node => node.textContent === "Backup proof"),
+        "the complete backup and server evidence remains available in details");
     assert.equal(page.nodes["readiness-status"].dataset.kind, "ok");
+    page.state.operatorConfig = { layout: { kind: "logical", placements: { a: {}, b: {}, retained: {} } },
+        runtime: { devices: { a: { online: true }, b: { online: true } } } };
+    page.instance.render();
+    assert.ok(!factsText(page.nodes).includes("Live tablet status"), "live display evidence belongs to the header");
+    assert.ok(page.nodes["operator-readiness-details"].children.some(node => node.textContent === "Connected tablets"),
+        "server-reported connection counts remain in server details");
+    page.state.rosterError = "offline";
+    page.instance.render();
+    assert.ok(!factsText(page.nodes).includes("Last known"), "roster failure does not rewrite independent server evidence");
+    delete page.state.rosterError;
+    page.instance.render();
     assert.equal(page.state.readiness.wifi.name, "Wall-Net");
     assert.equal(typeof page.state.readinessFetchedAt, "number");
 
@@ -219,16 +234,17 @@ function factsText(nodes) {
     assert.equal(await read, false);
     assert.equal(failed.nodes["readiness-status"].dataset.kind, "err");
     assert.match(failed.nodes["readiness-status"].textContent, /403 forbidden/);
-    assert.match(failed.nodes["readiness-status"].textContent, /Retry readiness/);
-    assert.equal(failed.nodes["btn-readiness-refresh"].textContent, "Retry readiness");
+    assert.match(failed.nodes["readiness-status"].textContent, /Refresh to try again/);
+    assert.equal(failed.nodes["btn-readiness-refresh"].textContent, "Retry");
+    assert.equal(failed.nodes["btn-readiness-refresh"].attrs["aria-label"], "Retry server checks", "the accessible name keeps the visible verb and names its region");
     assert.equal(failed.nodes["btn-readiness-refresh"].disabled, false);
-    assert.equal(failed.nodes["tablet-url"].value, "Tablet address not configured");
+    assert.equal(failed.nodes["tablet-join-line"].hidden, true, "no address means no line and no Copy");
 
     const retried = failed.instance.load();
     failed.pending.shift().resolve(JSON.parse(JSON.stringify(full)));
     assert.equal(await retried, true);
     assert.equal(failed.nodes["readiness-status"].dataset.kind, "ok");
-    assert.equal(failed.nodes["btn-readiness-refresh"].textContent, "Refresh readiness");
+    assert.equal(failed.nodes["btn-readiness-refresh"].textContent, "Refresh");
 
     /* A body with none of the documented fields is an error, not "ready". */
     const wrong = harness();

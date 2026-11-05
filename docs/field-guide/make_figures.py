@@ -605,24 +605,21 @@ def frontends() -> None:
     b.append(text(74, 430, "restored on stop or close", "small"))
     # console
     b.append(rect(512, 76, 390, 380, "surface", 6))
-    b.append(text(528, 102, "Physical console", "label-strong"))
+    b.append(text(528, 102, "Operator workspace", "label-strong"))
     b.append(text(528, 120, "frontend/controller/physical", "mono"))
     b.append(rect(528, 144, 230, 230, "wall", 4))
     b.append(text(544, 170, "stage", "panel-label"))
-    b.append(text(544, 188, "SVG · millimetres", "panel-small"))
+    b.append(text(544, 188, "SVG · layout geometry", "panel-small"))
     b.append(rect(544, 206, 96, 64, "surface-accent", 2))
     b.append(rect(654, 206, 88, 64, "surface-accent", 2))
     b.append(rect(544, 284, 198, 72, "surface-2", 2))
     b.append(text(560, 310, "selection", "small"))
     b.append(text(560, 328, "draft · undo", "tiny"))
-    b.append(rect(772, 144, 114, 44, "surface-2", 2))
-    b.append(text(786, 170, "Show", "small"))
-    b.append(rect(772, 196, 114, 44, "surface-2", 2))
-    b.append(text(786, 222, "Tablet", "small"))
-    b.append(rect(772, 248, 114, 44, "surface-accent", 2))
-    b.append(text(786, 274, "Content", "small"))
-    b.append(rect(772, 300, 114, 44, "surface-2", 2))
-    b.append(text(786, 326, "System", "small"))
+    for i, label in enumerate(["Images", "Tablets", "Arrange", "Saved", "Settings"]):
+        y = 144 + i * 46
+        style = "surface-accent" if label == "Arrange" else "surface-2"
+        b.append(rect(772, y, 114, 38, style, 2))
+        b.append(text(786, y + 24, label, "small"))
     b.append(text(528, 410, "draft is local until Apply", "mono"))
     b.append(text(528, 430, "one visible panel", "small"))
     # shared contract
@@ -777,7 +774,7 @@ def roadmap() -> None:
     b.append(text(72, 448, "all eight MISSING", "mono-strong"))
     # console
     b.append(rect(56, 478, 846, 52, "surface-2", 3))
-    b.append(text(72, 508, "Console: phase 1 done · phase 2 done · phase 3 upload/legacy retirement not started", "mono"))
+    b.append(text(72, 508, "Console: five tasks · image uploads · relative and measured arrangements", "mono"))
     write("roadmap.svg", "road", "Software phases are closed while all eight hardware gates remain open.", "".join(b))
 
 

@@ -15,10 +15,10 @@ window.OperatorSync = {
             const ticket = fence.start();
             try {
                 const config = await api("GET", "/api/v3/config");
-                if (!fence.accept(ticket)) return;
+                if (!fence.accept(ticket)) { queued ||= state.etagState === "stale"; return; }
                 if (!config.runtime || !config.runtime.devices) {
                     const roster = await api("GET", "/devices");
-                    if (!fence.accept(ticket)) return;
+                    if (!fence.accept(ticket)) { queued ||= state.etagState === "stale"; return; }
                     state.roster = roster;
                 }
                 receive(config); state.rosterError = null;
@@ -26,7 +26,7 @@ window.OperatorSync = {
                 status(socket && socket.readyState === WebSocket.OPEN ? "Live operator updates connected. Slow reconciliation is active." : "Socket unavailable. Showing reconciled status; live updates may be delayed.");
             } catch (error) {
                 state.rosterError = error.message;
-                status("Status stale. " + error.message + " Retry Refresh status or Reload config."); renderAll();
+                status("Status stale. " + error.message + " Retry Refresh."); renderAll();
             } finally { fetching = false; if (queued && !stopped && !state.busy) { queued = false; reconcile(); } }
         }
         function connect() {

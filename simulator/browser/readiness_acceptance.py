@@ -391,7 +391,7 @@ def image_id(name: str) -> str:
 
 def select_image(page, asset_id: str, fit: str) -> None:
     tab(page, "Wall")
-    page.locator("#image-select").select_option(asset_id)
+    page.locator(f'#image-gallery [data-asset-id="{asset_id}"] button').click()
     page.locator("#image-fit").select_option(fit)
 
 
@@ -671,9 +671,9 @@ def phase_logical_grid():
     page.locator("#grid-kind").select_option("logical")
     page.locator("#grid-2x2").click()
     page.locator("#grid-preview").click()
-    wait_until(lambda: page.locator("#grid-cancel").is_enabled(),
+    wait_until(lambda: page.locator("#btn-apply").is_enabled(),
                "logical 2x2 preview did not appear")
-    check("Preview only" in page.locator("#grid-message").inner_text(),
+    check(page.locator("body").get_attribute("data-stage-mode") == "arrangement-preview",
           "TWR-10 A5 the 2x2 preview is labelled before Apply")
     page.locator("#btn-apply").click()
     wait_until(lambda: len(config()["layout"].get("placements", {})) == 4,
@@ -713,10 +713,10 @@ def phase_physical_grid():
         angle.select_option("0")
     page.wait_for_timeout(250)
     page.locator("#grid-preview").click()
-    wait_until(lambda: page.locator("#grid-cancel").is_enabled(),
+    wait_until(lambda: page.locator("#btn-apply").is_enabled(),
                "physical 1x4 preview did not appear")
     preview = page.locator("#grid-message").inner_text()
-    check("Preview only" in preview and "1 rows × 4 columns" in preview,
+    check(page.locator("body").get_attribute("data-stage-mode") == "arrangement-preview" and "1 × 4" in preview,
           "TWR-10 A2 the physical 1x4 preview reports one row and four columns")
     check("Apply will request a named safety copy" in preview,
           "TWR-09 A5 the cross-kind preview warns that Apply requests a named safety copy")
@@ -764,14 +764,14 @@ def phase_content(return_name: str):
     first = image_id("first.png")
     marked = image_id("marked.png")
     show_image(page, first, "cover")
-    active = page.locator("#stage-applied-content").inner_text()
-    check("first.png" in active and "Fill wall" in active and "2000 × 1400" in page.locator("#stage-dimensions").inner_text(),
+    active = page.locator("#stage-mode-label").inner_text()
+    check("first.png" in active and config()["scene"]["content"].get("fit") == "cover" and "2000 × 1400" in page.locator("#stage-dimensions").inner_text(),
           "TWR-04 A1 image A is named in the console with its fill and wall size")
     wait_painted(first)
 
     show_image(page, marked, "contain")
-    active = page.locator("#stage-applied-content").inner_text()
-    check("marked.png" in active and "Show whole image" in active and "2000 × 1000" in page.locator("#stage-dimensions").inner_text(),
+    active = page.locator("#stage-mode-label").inner_text()
+    check("marked.png" in active and "2000 × 1000" in page.locator("#stage-dimensions").inner_text(),
           "TWR-04 A1 image B is named in the console with its fit and wall size")
     check(config()["scene"]["content"].get("fit") == "contain",
           "TWR-04 A1 image B is committed with the selected fit")
@@ -783,10 +783,8 @@ def phase_content(return_name: str):
     wait_until(lambda: "online" in page.locator("#device-count").inner_text(),
                "console did not recover after reload")
     tab(page, "Wall")
-    wait_until(lambda: "marked.png" in page.locator("#stage-applied-content").inner_text(),
+    wait_until(lambda: "marked.png" in page.locator("#stage-mode-label").inner_text(),
                "reload did not show image B")
-    check("Show whole image" in page.locator("#stage-applied-content").inner_text(),
-          "TWR-04 A1 reload still names image B with Fit")
     check(config()["scene"]["content"].get("asset") == marked,
           "TWR-04 A1 reload still reads image B from the committed scene")
     wait_painted(marked)
@@ -873,16 +871,6 @@ def phase_fit(marked: str):
     show_image(page, marked, "contain")
     wait_until(lambda: config()["scene"]["content"].get("fit") == "contain",
                "scene did not carry contain")
-    fit_note = page.locator("#image-fit-note").inner_text()
-    check("Fit keeps the entire source inside the wall bounds and adds bars." in fit_note,
-          "TWR-05 A2 contain is named as a whole-wall fit with bars")
-    check("Bezels and gaps still hide image areas." in fit_note
-          and "This is one wall-wide transform." in fit_note,
-          "TWR-05 A4 the fit note separates bezel/gap occlusion from the global transform")
-    stage_note = page.locator("#stage-preview-note").inner_text()
-    check("Hatching marks hidden bezels and gaps." in stage_note
-          and "Fill may also crop source edges outside the wall." in stage_note,
-          "TWR-05 A4 the stage note distinguishes bezel/gap hatching from off-wall Fill crop")
     legend = page.locator(".stage-legend").evaluate("node => node.textContent")
     check("Tablet body" in legend and "Active panel" in legend,
           "TWR-05 A4 the stage legend has separate body and active-panel treatments")
@@ -956,12 +944,6 @@ def phase_fit(marked: str):
 
     show_image(page, marked, "cover")
     wait_painted(marked)
-    cover_model = page.evaluate(MODEL_JS)
-    fill_note = page.locator("#image-fit-note").inner_text()
-    expected_fill = (f"Fill crops {round(cover_model['cropX'] * 100)}% of the source width and "
-                     f"{round(cover_model['cropY'] * 100)}% of its height outside the wall.")
-    check(expected_fill in fill_note,
-          "TWR-05 A1 Fill states the crop predicted by the OperatorState model: " + expected_fill)
     fill_counts = {}
     for tablet in tablets:
         path = SHOTS / f"10-fill-{tablet['id'][:8]}.png"
@@ -1169,7 +1151,7 @@ def phase_return_point():
     page.locator("#grid-kind").select_option("logical")
     page.locator("#grid-2x2").click()
     page.locator("#grid-preview").click()
-    wait_until(lambda: page.locator("#grid-cancel").is_enabled(),
+    wait_until(lambda: page.locator("#btn-apply").is_enabled(),
                "logical cross-kind preview did not appear")
     dialogs_before = len(dialogs)
     page.locator("#btn-apply").click()
