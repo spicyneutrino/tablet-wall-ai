@@ -98,6 +98,13 @@
             announce(labelFor(id) + " moved to position " + (next + 1) + ".");
         }
         function updateButtons() {
+            if (selectedPreset) {
+                if (selected.size <= 1) selectedPreset = "grid-2x2";
+                const { r, c, holes } = preset(selectedPreset === "grid-2x2");
+                $("grid-rows").value = r;
+                $("grid-columns").value = c;
+                $("grid-holes").checked = holes;
+            }
             const manualDirty = !state.gridPreview && isDirty();
             for (const id of ["grid-kind", "grid-rows", "grid-columns", "grid-gap", "grid-padding", "grid-orientation", "grid-sizing", "grid-holes", "grid-2x2", "grid-1x4", "grid-common-mount", "group-confirm"]) if ($(id)) $(id).disabled = manualDirty || state.busy;
             if ($("group-confirm")) $("group-confirm").disabled ||= modelBusy();
@@ -328,9 +335,7 @@
             }
         }
         for (const id of ["grid-kind", "grid-rows", "grid-columns", "grid-gap", "grid-padding", "grid-orientation", "grid-sizing", "grid-holes"]) $(id).addEventListener("change", () => { selectedPreset = null; invalidate(); updateButtons(); });
-        for (const [id, twoRows] of presets) $(id).addEventListener("click", () => {
-            const { r, c, holes } = preset(twoRows);
-            $("grid-rows").value = r; $("grid-columns").value = c; $("grid-holes").checked = holes;
+        for (const [id] of presets) $(id).addEventListener("click", () => {
             selectedPreset = id; invalidate();
         });
         $("grid-preview").addEventListener("click", preview);
