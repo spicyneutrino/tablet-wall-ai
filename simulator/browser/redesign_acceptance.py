@@ -1607,6 +1607,13 @@ def corrections(rig):
     expect(toggle).to_be_focused()
     expect(toggle).to_have_text("View preview")
     rig.check(True, "View applied keeps focus and relabels the toggle View preview")
+    rig.task("Tablets")
+    with p.expect_response("**/api/v3/config"):
+        rig.click("#btn-roster-refresh")
+    rig.task("Images")
+    expect(toggle).to_have_text("View preview")
+    rig.check(True, "Status refresh retains the applied comparison and pending image preview")
+    toggle.focus()
     toggle.press("Enter")
     expect(toggle).to_be_focused()
     expect(toggle).to_have_text("View applied")

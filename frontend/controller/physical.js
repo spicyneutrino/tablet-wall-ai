@@ -924,7 +924,7 @@
             state.draftConflict = false;
             state.undo = []; state.redo = [];
             state.gridPreview = null;
-            state.viewLive = false;
+            if (!operatorContent.dirty()) state.viewLive = false;
         }
         if (conflict) state.draftConflict = true;
         state.displays.forEach(rememberProfile);
