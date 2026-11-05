@@ -151,9 +151,6 @@ window.OperatorContent = {
             $("image-source-details").textContent = source ? source.width + " × " + source.height + " source px" : "";
             const thumbnail = $("image-thumbnail"); thumbnail.hidden = !source;
             if (source && thumbnail.getAttribute("src") !== source.url) thumbnail.src = source.url;
-            const transform = chosen && state.base && window.OperatorState.fitTransform(state.base, chosen);
-            $("image-fit-note").textContent = transform ? (fit === "cover" ? "Fill crops about " + Math.round(transform.cropX * 100) + "% of the source width and " + Math.round(transform.cropY * 100) + "% of its height."
-                : "Fit keeps the whole image and adds bars where needed.") : "";
             const allowed = (state.capabilities || {}).uploads;
             $("images-check-connection").hidden = typeof allowed === "boolean";
             $("upload-form").hidden = allowed !== true;

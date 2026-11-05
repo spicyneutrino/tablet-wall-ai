@@ -375,7 +375,6 @@ dialog.tablet-selection::backdrop { background: var(--backdrop); }
     .rail-tab[aria-selected="true"], .image-choice-button[aria-pressed="true"], .tablet-row[data-selected="true"] { outline: 2px solid Highlight; }
 }
 
-#image-fit-note:empty { display: none; }
 #measurement-details, #tablet-details, #tablet-details > details { border-block-start: 1px solid var(--border); }
 #measurement-details { margin-block-start: -1rem; }
 

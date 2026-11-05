@@ -871,16 +871,6 @@ def phase_fit(marked: str):
     show_image(page, marked, "contain")
     wait_until(lambda: config()["scene"]["content"].get("fit") == "contain",
                "scene did not carry contain")
-    fit_note = page.locator("#image-fit-note").inner_text()
-    check("Fit keeps the entire source inside the wall bounds and adds bars." in fit_note,
-          "TWR-05 A2 contain is named as a whole-wall fit with bars")
-    check("Bezels and gaps still hide image areas." in fit_note
-          and "This is one wall-wide transform." in fit_note,
-          "TWR-05 A4 the fit note separates bezel/gap occlusion from the global transform")
-    stage_note = page.locator("#stage-preview-note").inner_text()
-    check("Hatching marks hidden bezels and gaps." in stage_note
-          and "Fill may also crop source edges outside the wall." in stage_note,
-          "TWR-05 A4 the stage note distinguishes bezel/gap hatching from off-wall Fill crop")
     legend = page.locator(".stage-legend").evaluate("node => node.textContent")
     check("Tablet body" in legend and "Active panel" in legend,
           "TWR-05 A4 the stage legend has separate body and active-panel treatments")
@@ -954,12 +944,6 @@ def phase_fit(marked: str):
 
     show_image(page, marked, "cover")
     wait_painted(marked)
-    cover_model = page.evaluate(MODEL_JS)
-    fill_note = page.locator("#image-fit-note").inner_text()
-    expected_fill = (f"Fill crops {round(cover_model['cropX'] * 100)}% of the source width and "
-                     f"{round(cover_model['cropY'] * 100)}% of its height outside the wall.")
-    check(expected_fill in fill_note,
-          "TWR-05 A1 Fill states the crop predicted by the OperatorState model: " + expected_fill)
     fill_counts = {}
     for tablet in tablets:
         path = SHOTS / f"10-fill-{tablet['id'][:8]}.png"

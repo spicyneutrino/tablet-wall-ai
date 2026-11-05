@@ -61,7 +61,6 @@
         boundsY: document.getElementById("bounds-y"),
         boundsWidth: document.getElementById("bounds-width"),
         boundsHeight: document.getElementById("bounds-height"),
-        boundsNote: document.getElementById("bounds-note"),
         boundsMode: document.getElementById("bounds-mode"),
         boundsPadding: document.getElementById("bounds-padding"),
         sizingMsg: document.getElementById("sizing-msg"),
@@ -1036,13 +1035,10 @@
 
         if (state.layoutKind === "physical") {
             el.layoutKindNote.textContent = "Measured arrangement · millimetres. Model dimensions remain approximate.";
-            el.boundsNote.textContent = "Values describe the draft in millimetres. Apply arrangement to save changes.";
         } else if (state.layoutKind === "logical") {
             el.layoutKindNote.textContent = "Quick arrangement · relative screen shapes. Use Match real sizes for measured continuity.";
-            el.boundsNote.textContent = "Physical bounds are unavailable for a logical layout. Use the relative arrangement fields in Arrange.";
         } else {
             el.layoutKindNote.textContent = "No wall configuration is loaded.";
-            el.boundsNote.textContent = "";
         }
     }
 

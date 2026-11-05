@@ -225,7 +225,7 @@
         });
         syncChildren(svg, view);
         fit(svg, fits.get(svg) && fits.get(svg).options);
-        if (resolutionNode) resolutionNode.textContent = estimates.length ? "Estimated sampling. " + estimates.join("; ") + ". Rotation, clipping and gaps may reduce visible detail." : "Resolution estimate needs an image and panel dimensions. Preview does not confirm tablet output.";
+        if (resolutionNode) resolutionNode.textContent = estimates.join("; ");
         if (focusedId) {
             const target = Array.from(svg.querySelectorAll(".slot")).find(item => item.dataset.deviceId === focusedId);
             if (target) target.focus({ preventScroll: true });

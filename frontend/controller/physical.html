@@ -102,7 +102,6 @@
                         <button type="button" class="btn nudge-btn" id="btn-nudge-y-minus" aria-label="Nudge Y minus 1 millimetre" data-action="btn-nudge-y-minus">Y −1</button>
                         <button type="button" class="btn nudge-btn" id="btn-nudge-y-plus" aria-label="Nudge Y plus 1 millimetre" data-action="btn-nudge-y-plus">Y +1</button>
                     </div>
-                    <p class="hint">Arrow keys nudge by 1 mm. Shift + arrow nudges by 10 mm.</p>
                 </div>
 
 
@@ -114,7 +113,6 @@
             </div>
         </section><section class="card bounds-card task-section" aria-labelledby="bounds-title">
             <h2 id="bounds-title">Wall bounds</h2>
-            <p class="hint">The rectangle every slot is placed inside. Values are millimetres, measured from the top-left corner of the wall as the audience sees it.</p>
             <div class="field">
                 <label class="label" for="bounds-mode">Wall sizing</label>
                 <select class="inp" id="bounds-mode" data-field="bounds-mode">
@@ -126,7 +124,6 @@
                 <label class="label" for="bounds-padding">Outer padding (mm)</label>
                 <input class="inp" id="bounds-padding" type="number" min="0" step="any" value="0" inputmode="decimal" data-field="bounds-padding">
             </div>
-            <p class="hint">Fixed uses the dimensions below. Fit encloses the placed tablet bodies, including their borders and rotation. Diagonal tablets can leave empty corners.</p>
             <p class="form-msg" id="sizing-msg" role="status" aria-live="polite" hidden></p>
             <div class="pack-row">
                 <div class="field">
@@ -157,10 +154,8 @@
                     <input class="inp" id="bounds-height" type="number" min="1" step="any" inputmode="decimal" autocomplete="off" data-field="bounds-height">
                 </div>
             </div>
-            <p class="hint" id="bounds-note"></p>
         </section><section class="logical-editor task-section" id="logical-editor" hidden aria-labelledby="logical-title">
             <h3 id="logical-title">Relative arrangement</h3>
-            <p>Relative units describe the preview, without a measured continuity claim. Select a tablet in the diagram or Tablets.</p>
             <div id="logical-fields" class="operator-fields"></div>
             <label class="field" for="logical-snap">Snap spacing (relative units)<input class="inp" id="logical-snap" type="number" min="1" value="1" step="1" data-field="logical-snap"></label>
             <label class="field" for="logical-width">Wall width (relative units)<input class="inp" id="logical-width" type="number" min="1" step="1" data-field="logical-width"></label>
@@ -170,7 +165,6 @@
             <button type="button" class="btn" id="logical-rotate" data-action="logical-rotate">Rotate selected 90°</button>
             <details class="logical-tiling task-section">
                 <summary>Tile or pack tablets</summary>
-                <p>Preview changes the arrangement draft. Tablets outside the chosen scope keep their positions. New relative sizes use the reported screen aspect when available, or a square fallback.</p>
                 <div class="operator-fields">
                     <label class="field" for="logical-tile-scope">Tablets<select class="inp" id="logical-tile-scope" data-field="logical-tile-scope"><option value="placed">Placed tablets</option><option value="online">Online tablets</option><option value="all">All registered tablets</option></select></label>
                     <label class="field" for="logical-tile-columns">Columns<input class="inp" id="logical-tile-columns" type="number" min="1" step="1" value="4" data-field="logical-tile-columns"></label>
@@ -237,7 +231,7 @@
     <p id="image-message" class="form-msg" role="status" aria-live="polite"></p>
   </section>
   <div class="wall-stage-slot" id="wall-context-content"></div>
-  <details class="technical-details" id="image-details-disclosure"><summary>Image details</summary><button class="btn btn-ghost" id="restore-image" type="button" hidden data-action="restore-image">Restore previous content</button><p class="hint" id="image-source-details"></p><p class="hint" id="image-fit-note"></p><img id="image-thumbnail" loading="lazy" decoding="async" alt="Uncropped source image" hidden></details>
+  <details class="technical-details" id="image-details-disclosure"><summary>Image details</summary><button class="btn btn-ghost" id="restore-image" type="button" hidden data-action="restore-image">Restore previous content</button><p class="hint" id="image-source-details"></p><img id="image-thumbnail" loading="lazy" decoding="async" alt="Uncropped source image" hidden></details>
   </div>
 </div></section>
             <section class="rail-panel task-panel" id="panel-system" role="tabpanel" aria-labelledby="tab-system" tabindex="0" hidden data-task="settings"><h2 class="task-title sr-only" tabindex="-1" id="task-settings">Settings</h2>
@@ -446,7 +440,6 @@
         </details>
         <details class="card field-card task-section" aria-labelledby="field-title">
             <summary><span><span id="field-title">Diagnostics</span> <span class="chip" id="diag-state" data-kind="info">loading</span></span></summary>
-            <p class="hint">Software diagnostics. Tablet output is reported separately.</p>
             <div class="field-actions">
                 <button type="button" class="btn" id="btn-diag-refresh" data-action="btn-diag-refresh">Refresh diagnostics</button>
                 <button type="button" class="btn btn-ghost" id="btn-diag-verify" data-action="btn-diag-verify">Verify object bytes</button>
@@ -512,7 +505,6 @@
                 <div class="playback-session" id="playback-session" hidden>
                     <div class="playback-section">
                         <h3>Next cut</h3>
-                        <p class="hint" id="playback-readiness-note">Ready means prepared for the next cut.</p>
                         <ul class="playback-members" id="playback-members" aria-label="Next cut readiness"></ul>
                         <p class="empty-note" id="playback-members-empty" hidden>No wall tablets are online.</p>
                     </div>
@@ -636,7 +628,7 @@
                         ETag <code id="etag-value" title="">–</code>
                         <span class="chip" id="etag-state" data-kind="info">waiting</span>
                     </span>
-                </p><p class="hint" id="stage-preview-note">Hatching marks hidden bezels and gaps. Fill may also crop source edges outside the wall.</p>
+                </p>
             <div class="stage-foot">
 
                 <ul class="stage-legend" aria-label="Stage legend">
