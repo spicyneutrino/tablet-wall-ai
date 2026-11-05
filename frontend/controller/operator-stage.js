@@ -137,7 +137,7 @@
         fitLabels(svg);
         return { width: Math.min(width, height * aspect), height, availableWidth, availableHeight };
     }
-    function draw({ svg, layout, content, profileFor, labelFor, statusFor, selectedId, runtime, resolutionNode, preview = false, editable = true, presentation = "context", viewport = null }) {
+    function draw({ svg, layout, content, profileFor, labelFor, statusFor, selectedId, runtime, resolutionNode, preview = false, editable = true, presentation = "context", viewport = null, compareIds = null }) {
         const ns = "http://www.w3.org/2000/svg";
         const node = (tag, attrs, text) => {
             const item = document.createElementNS(ns, tag);
@@ -187,7 +187,7 @@
         visible.append(rect(b, { fill: content && content.background || "var(--stage)" }));
         if (transform && content.url && content.available !== false && content.availability !== "unavailable") visible.append(image(1));
         const estimates = [], upscaleFactors = [];
-        list.sort((a, z) => Number(a.id === selectedId) - Number(z.id === selectedId)).forEach(panel => {
+        list.sort((a, z) => compareIds ? compareIds(a.id, z.id) : Number(a.id === selectedId) - Number(z.id === selectedId)).forEach(panel => {
             const status = preview ? { status: "preview", text: "Local preview · not tablet output" } : statusFor(panel.id);
             const group = node("g", { class: "slot operator-slot", role: "button", tabindex: 0,
                 "data-device-id": panel.id, "data-status": status.status, "data-preview": String(preview), "aria-pressed": String(panel.id === selectedId),

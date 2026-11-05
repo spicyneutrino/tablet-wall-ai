@@ -163,5 +163,17 @@ for (const [width, height] of [[2000, 1000], [1000, 2000], [8000, 200]]) {
     assert.equal(stage.height, 20 + 700 * height / width);
     assert.deepEqual(layout, before, "rendering preserves bezels, placements and empty logical bounds");
 }
+const roster = { z: { number: 1 }, a: { number: 2 }, m: { number: 3 } };
+const target = new Element("svg");
+const options = { svg: target, layout: { kind: "logical", width: 300, height: 100, placements:
+    Object.fromEntries(["m", "a", "z"].map((id, index) => [id, { x: index * 100, y: 0, w: 100, h: 100 }])) },
+    labelFor: id => id, statusFor: () => ({ status: "offline", text: "Offline" }),
+    compareIds: (a, b) => require("../frontend/controller/operator-state.js").compareIds(roster, {}, a, b) };
+const slots = node => node.children.flatMap(child => child.getAttribute("data-device-id") ? [child] : slots(child));
+for (const selectedId of ["a", "z", "m"]) {
+    draw({ ...options, selectedId });
+    assert.deepEqual(slots(target).map(slot => slot.getAttribute("data-device-id")), ["z", "a", "m"],
+        "stage tab order follows tablet numbers regardless of placement order or selection");
+}
 delete global.document;
 console.log("Stage geometry, measured fit, relocation, action budgets and screen-space labels passed");

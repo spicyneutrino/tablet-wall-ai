@@ -1685,6 +1685,11 @@ def corrections(rig):
 
     rig.task("Tablets")
     p.locator(".dev-pick").first.click()
+    rig.check(
+        p.locator("#stage-svg .slot").evaluate_all("es=>es.map(e=>e.dataset.deviceId)")
+        == p.locator(".dev-pick").evaluate_all("es=>es.map(e=>e.dataset.deviceId)"),
+        "Stage tab order matches tablet-number roster order after selection",
+    )
     other = second_operator(rig)
     held = HeldResponse(rig, p, "**/api/v3/config", "Identify stale-authority read")
     save_name(other, subject, "Review tablet")

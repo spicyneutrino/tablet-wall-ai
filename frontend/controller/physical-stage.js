@@ -46,6 +46,7 @@ window.PhysicalStage = {
             state.stage = window.OperatorStage.draw({ svg: el.stageSvg, layout, presentation,
                 viewport: state.drag && state.drag.viewport,
                 content, profileFor,
+                compareIds: (a, b) => window.OperatorState.compareIds(state.roster, state.deviceLabels || {}, a, b),
                 labelFor: id => numberedLabel(id, latestProfile(id)),
                 statusFor: id => state.rosterError ? { status: "stale", text: "Status stale · refresh the operator connection" } : window.OperatorState.tabletState(config, id, performance.now()),
                 selectedId: state.selectedId, runtime: config.runtime, preview, editable,
