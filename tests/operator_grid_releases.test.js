@@ -35,7 +35,12 @@ nodes.get("grid-preview").listeners.click().then(() => {
     assert.match(nodes.get("grid-message").textContent, /^Cannot preview arrangement\./, "the acknowledgement satisfies the release guard");
     const twoByTwo = nodes.get("grid-2x2");
     assert.deepEqual([twoByTwo.textContent, twoByTwo["aria-label"]], ["1 × 1", "1 × 1 grid"], "the preset names the grid it will build for one tablet");
+    assert.equal(nodes.get("grid-1x4").hidden, true, "equivalent one-tablet presets collapse");
     twoByTwo.listeners.click();
+    assert.equal(twoByTwo["aria-pressed"], "true");
+    assert.equal(nodes.get("grid-message").textContent, "");
+    nodes.get("grid-columns").listeners.change();
+    assert.equal(twoByTwo["aria-pressed"], "false", "custom dimensions clear preset selection");
     assert.deepEqual([nodes.get("grid-rows").value, nodes.get("grid-columns").value], [1, 1]);
     console.log("Grid release acknowledgements and preset labels follow authority updates");
 }).catch(error => { console.error(error); process.exitCode = 1; });

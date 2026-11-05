@@ -65,7 +65,7 @@
     function create({ state, api, labelFor, validPair, profileFor, calibrationFor, ingestConfig, renderStage, syncDraftUi, isDirty, announce, showConflict, modelBusy = () => false, modelReview = () => null, identifyTablet = () => {}, canIdentify = () => false }) {
         const $ = id => document.getElementById(id);
         let order = [], selected = new Set(), sizes = {}, angles = {}, storedAngles = {}, rows = new Map(), busy = false, initialized = false;
-        let previewCommand = null, inputVersion = 0, releaseRows = new Map();
+        let previewCommand = null, inputVersion = 0, releaseRows = new Map(), selectedPreset = null;
         let members = membership(), edited = false, baseEtag = null;
         const named = value => order.reduce((line, id) => line.split(id).join(labelFor(id)), value);
         const text = value => { $("grid-message").textContent = named(value); };
@@ -123,6 +123,8 @@
             });
             for (const [id, twoRows] of presets) {
                 const { label, holes } = preset(twoRows);
+                $(id).hidden = !twoRows && label === preset(true).label;
+                $(id).setAttribute("aria-pressed", String(selectedPreset === id));
                 $(id).textContent = label; $(id).setAttribute("aria-label", label + " grid" + (holes ? ", one empty cell" : ""));
             }
             const stale = !!baseEtag && baseEtag !== state.etag;
@@ -322,17 +324,16 @@
                 }
             }
         }
-        for (const id of ["grid-kind", "grid-rows", "grid-columns", "grid-gap", "grid-padding", "grid-orientation", "grid-sizing", "grid-holes"]) $(id).addEventListener("change", () => { invalidate(); updateButtons(); });
+        for (const id of ["grid-kind", "grid-rows", "grid-columns", "grid-gap", "grid-padding", "grid-orientation", "grid-sizing", "grid-holes"]) $(id).addEventListener("change", () => { selectedPreset = null; invalidate(); updateButtons(); });
         for (const [id, twoRows] of presets) $(id).addEventListener("click", () => {
             const { r, c, holes } = preset(twoRows);
             $("grid-rows").value = r; $("grid-columns").value = c; $("grid-holes").checked = holes;
-            invalidate(); text(r + " row" + (r === 1 ? "" : "s") + " × " + c + " column" + (c === 1 ? "" : "s")
-                + " selected" + (holes ? " with an empty trailing cell" : "") + " · not previewed");
+            selectedPreset = id; invalidate();
         });
         $("grid-preview").addEventListener("click", preview);
         function reset() {
             inputVersion += 1;
-            text("");
+            text(""); selectedPreset = null;
             state.gridPreview = null; previewCommand = null; edited = false; baseEtag = null;
             rows.forEach(row => row.item.remove()); rows.clear(); releaseRows.clear(); order = []; selected.clear(); sizes = {}; angles = {}; storedAngles = {}; members = membership(); initialized = false;
             if ($("grid-common-mount")) $("grid-common-mount").value = "";
