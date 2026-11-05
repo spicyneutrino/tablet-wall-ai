@@ -104,7 +104,7 @@
         const compact = win.matchMedia("(max-width: 48rem), (max-height: 32rem) and (orientation: landscape)").matches;
         const fieldRect = field.getBoundingClientRect();
         const zoom = fieldRect.width / parseFloat(fieldStyle.width) || 1;
-        const fieldTop = (fieldRect.top + win.scrollY) / zoom;
+        const fieldTop = (fieldRect.top + win.scrollY + (doc.querySelector(".operator-workspace")?.scrollTop || 0)) / zoom;
         let bottom = win.innerHeight / zoom;
         const navigation = options.navigation || doc.querySelector(".workspace-nav-landmark");
         const actionBar = options.actionBar || doc.body.dataset.task !== "arrange" && doc.querySelector(".image-actions");
@@ -117,7 +117,7 @@
                 if (inline) continue;
             }
             const style = win.getComputedStyle(bar);
-            if (style.position === "fixed" && rect.bottom / zoom > bottom / 2) bottom = Math.min(bottom, rect.top / zoom - (parseFloat(style.marginTop) || 0));
+            if ((bar === navigation || style.position === "fixed") && rect.bottom / zoom > bottom / 2) bottom = Math.min(bottom, rect.top / zoom - (parseFloat(style.marginTop) || 0));
         }
         const borderWidth = parseFloat(fieldStyle.borderLeftWidth) + parseFloat(fieldStyle.borderRightWidth);
         const borderHeight = parseFloat(fieldStyle.borderTopWidth) + parseFloat(fieldStyle.borderBottomWidth);
