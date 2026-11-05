@@ -59,6 +59,13 @@ const content = context.window.OperatorContent.create({ state, renderStage() {},
     assert.equal(node("image-fit").disabled, true, "Fit needs a draft");
     assert.equal(node("image-title").textContent, "Nothing shown", "diagnostic colours are never named as content");
     assert.equal(node("image-details").textContent, "", "idle state needs no instructional paragraph");
+    state.scene = { content: { type: "image", asset: "sha256:missing" } };
+    content.render();
+    assert.equal(node("image-title").textContent, "Unavailable image", "a missing applied image has a readable heading instead of an asset digest");
+    assert.equal(node("image-source-details").textContent, "sha256:missing", "the exact missing asset identity stays in Image details");
+    assert.equal(content.stageNames().unavailable, true, "stage metadata exposes availability independently of its filename");
+    state.scene = { content: { type: "color" } };
+    content.render();
 
     node("image-fit").value = "contain";
     node("image-fit").change({ target: node("image-fit") });
@@ -166,7 +173,7 @@ const content = context.window.OperatorContent.create({ state, renderStage() {},
     assert.equal(state.previewContent.asset, "b"); assert.equal(content.dirty(), true); assert.equal(node("image-discard").hidden, false);
     assert.equal(node("image-title").textContent, "b");
     assert.equal(node("image-source-details").textContent, "100 × 100 source px");
-    assert.deepEqual({ ...content.stageNames() }, { applied: "a", pending: "b" },
+    assert.deepEqual({ ...content.stageNames() }, { applied: "a", pending: "b", unavailable: false },
         "the inspector shows draft facts and the stage chip can name applied content");
     assert.equal(buttonA.attrs["aria-pressed"], "false", "Show cleared the draft it submitted");
     assert.equal(buttonB.attrs["aria-pressed"], "true", "a newer draft keeps its own rust outline");

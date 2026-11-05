@@ -985,6 +985,11 @@ def missing_live(rig):
         task(p, "Images")
         p.locator("#refresh-images").click()
         expect(p.locator("#stage-mode-label")).to_contain_text("Unavailable")
+        expect(p.locator("#image-title")).to_have_text("Unavailable image")
+        expect(p.locator("#image-title")).to_be_visible()
+        expect(p.locator("#stage-mode")).to_be_hidden()
+        rig.open_disclosures("#image-source-details")
+        expect(p.locator("#image-source-details")).to_have_text(before["scene"]["content"]["asset"])
         rig.check(
             rig.config()["scene"]["content"]["asset"]
             == before["scene"]["content"]["asset"]

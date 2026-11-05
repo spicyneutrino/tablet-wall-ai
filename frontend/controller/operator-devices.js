@@ -85,6 +85,7 @@
             if (id !== recovery.dataset.deviceId || String(healthy) !== recovery.dataset.healthy) recovery.open = !healthy;
             recovery.dataset.deviceId = id; recovery.dataset.healthy = String(healthy);
             const tabletOnline = !!device && device.online === true;
+            recovery.hidden = !tabletOnline;
             for (const action of ["tablet-identify", "tablet-retry-image", "tablet-reconnect"]) {
                 const button = $(action);
                 if (button) button.hidden = !tabletOnline;

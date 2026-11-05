@@ -67,10 +67,11 @@ window.OperatorWorkspace = {
             }
             const names = stageNames();
             const shownType = state.scene && state.scene.content && state.scene.content.type;
-            const label = mode === "live" ? names.applied ? state.tabName === "content" ? "Showing" + (names.applied.endsWith(" · Unavailable") ? " · Unavailable" : "") : "Showing " + names.applied
+            const label = mode === "live" ? names.unavailable ? "Unavailable image" : names.applied ? state.tabName === "content" ? "Showing" : "Showing " + names.applied
                 : !wallEmpty && { color: "Showing tablet colours", calibration: "Showing calibration pattern" }[shownType] || "Nothing shown"
                 : "Preview · " + (mode === "image-preview" ? names.pending : "Arrangement");
             if ($("stage-mode-label").textContent !== label) $("stage-mode-label").textContent = label;
+            $("stage-mode").hidden = state.tabName === "content" && mode === "live" && label === $("image-title").textContent;
             const description = { live: "", "arrangement-preview": "Arrangement preview, not applied", "image-preview": "Image preview, not shown" }[mode];
             if ($("stage-mode-description").textContent !== description) $("stage-mode-description").textContent = description;
             $("view-toggle").hidden = mode === "live" && (!state.viewLive || !hasPreview && !image);

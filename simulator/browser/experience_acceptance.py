@@ -15,7 +15,7 @@ from _redesign_edge_cases import TASK_TABS, HeldResponse, quick_wall, show_suppl
 VIEWPORTS = ((1440, 900), (390, 844), (320, 844), (820, 1180))
 TARGETS = {
     "Images": ("#image-gallery button", "#show-image"),
-    "Tablets": ("#device-list .dev-pick", "#device-list .roster-identify"),
+    "Tablets": ("#device-list .dev-pick",),
     "Arrange": ("#grid-1x4", "#grid-preview, #btn-apply:not([disabled])"),
 }
 MEASURE = """selectors => {

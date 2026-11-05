@@ -4,7 +4,7 @@ const { create } = require("../frontend/controller/operator-devices.js");
 const nodes = new Map();
 function node(id) {
     if (!nodes.has(id)) nodes.set(id, {
-        dataset: {}, value: "", textContent: "", options: [], listeners: {},
+        dataset: {}, value: "", textContent: "", options: [], listeners: {}, hidden: false,
         addEventListener(event, handler) { this.listeners[event] = handler; },
         replaceChildren() {}, append() {}, add(value) { this.options.push(value); },
         getClientRects() { return [1]; }, focus() { document.activeElement = this; }
@@ -44,7 +44,14 @@ async function run() {
     assert.equal(node("tablet-recovery-actions").open, false, "healthy current reports collapse recovery");
     node("tablet-recovery-actions").open = true; devices.render();
     assert.equal(node("tablet-recovery-actions").open, true, "polls preserve operator disclosure choice");
+    state.roster.a.online = false;
+    evidence = { status: "offline", text: "Offline", showing: false }; devices.render();
+    assert.equal(node("tablet-recovery-actions").hidden, true, "offline recovery does not offer an empty disclosure");
+    assert.equal(node("tablet-recovery").hidden, false, "offline physical recovery guidance remains visible");
+    assert.match(node("tablet-recovery").textContent, /check power/);
+    state.roster.a.online = true;
     evidence = { status: "failed", text: "Failed image", showing: false }; devices.render();
+    assert.equal(node("tablet-recovery-actions").hidden, false, "online failures retain actionable recovery");
     assert.equal(node("tablet-recovery-actions").open, true, "failed images show recovery immediately");
     evidence = { status: "displayed", text: "Reports current image", showing: true }; devices.render();
     const pending = devices.identify("a");

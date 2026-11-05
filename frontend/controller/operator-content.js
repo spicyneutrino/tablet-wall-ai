@@ -110,12 +110,15 @@ window.OperatorContent = {
             const fallback = focused && visibleGalleryButtons().includes(focused) ? focused : null;
             setGalleryTabStop(selectedRow && !selectedRow.item.hidden ? selectedRow.button : fallback);
         }
+        function appliedUnavailable() {
+            const content = state.scene && state.scene.content || {};
+            return content.type === "image" && Boolean(content.available === false || content.availability === "unavailable" || state.activeImageUnavailableId);
+        }
         function appliedName() {
             const content = state.scene && state.scene.content || {};
             if (content.type !== "image") return null;
             const active = images.find(item => item.id === content.asset);
-            const unavailable = content.available === false || content.availability === "unavailable" || state.activeImageUnavailableId ? " · Unavailable" : "";
-            return (active ? active.name : content.name || content.asset) + unavailable;
+            return active ? active.name : content.name || "Image";
         }
         function pendingName() {
             const image = images.find(item => item.id === selected);
@@ -143,13 +146,14 @@ window.OperatorContent = {
             $("refresh-images").disabled = loading;
             const chosen = selectedContent();
             $("image-title").textContent = selectionDirty ? pendingName()
-                : active ? active.name : content.type === "image" ? content.name || content.asset : "Nothing shown";
+                : appliedUnavailable() ? "Unavailable image" : active ? active.name : content.type === "image" ? content.name || "Image" : "Nothing shown";
             $("image-details").textContent = selectionDirty && selected && !image
                 ? "Selected image unavailable. Refresh images or choose a replacement." : "";
             $("image-preview-controls").hidden = !selectionDirty;
             $("edit-current-image").hidden = selectionDirty || !active;
             const source = selectionDirty ? image : active;
-            $("image-source-details").textContent = source ? source.width + " × " + source.height + " source px" : "";
+            $("image-source-details").textContent = source ? source.width + " × " + source.height + " source px"
+                : !selectionDirty && content.type === "image" ? content.asset : "";
             const thumbnail = $("image-thumbnail"); thumbnail.hidden = !source;
             if (source && thumbnail.getAttribute("src") !== source.url) thumbnail.src = source.url;
             const allowed = (state.capabilities || {}).uploads;
@@ -295,7 +299,7 @@ window.OperatorContent = {
             } catch (error) { message("Pattern unavailable. " + error.message.replace(/[.!?\s]+$/, "") + ". Choose a prepared grid or black image from the library.", true, "err", "pattern-message"); }
         });
         return { render, refresh, dirty: () => selectionDirty,
-            stageNames: () => ({ applied: appliedName(), pending: pendingName() }),
+            stageNames: () => ({ applied: appliedName(), pending: pendingName(), unavailable: appliedUnavailable() }),
             imageFor: id => images.find(image => image.id === id),
             showSelected: () => show(selectedContent(), { scene: savedScene, guard: baseEtag || state.etag }),
             previewScene(entry, guard) {
