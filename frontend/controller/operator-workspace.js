@@ -6,7 +6,7 @@ window.OperatorWorkspace = {
         let pending = null, resolving = false;
         const issues = new Map();
         const stage = document.querySelector(".wall-stage"), arrangeTools = document.querySelector(".arrange-tools");
-        let stageTask = null;
+        let stageTask = null, joiningHasTablets = null;
         const anyOnline = () => !state.rosterError && Object.values(state.roster).some(device => device.online);
         async function resolve(reason, except) {
             const nextKind = () => arrangementDirty() && except !== "arrangement" ? "arrangement"
@@ -58,6 +58,7 @@ window.OperatorWorkspace = {
             const wallEmpty = !state.base || !Object.keys(window.OperatorState.entries(state.base)).length;
             if ($("wall-context-tablet")) $("wall-context-tablet").hidden = !wallEmpty;
             const noTablets = !Object.keys(state.roster).length;
+            if (joiningHasTablets !== !noTablets) { $("tablet-joining").open = noTablets; joiningHasTablets = !noTablets; }
             $("image-details-disclosure").hidden = $("stage-technical").hidden = arrangeTools.hidden = noTablets;
             if (stageTask !== state.tabName) {
                 const host = $("wall-context-" + state.tabName) || $("wall-context-park");

@@ -1219,8 +1219,6 @@
     const {
         addSelectedDevice, deleteSelectedSlot, endDrag, nudgeSelected, onPointerCancel, onPointerDown, onPointerMove, onPointerUp, renderDeviceHealth, renderDeviceList, renderStage: drawStage, rotateSelected, selectDevice, syncInspector
     } = window.PhysicalStage.create({
-        identifyTablet: id => operatorDevices.identify(id),
-        canIdentify: id => !!operatorDevices && operatorDevices.canIdentify(id),
         selectionChanged: () => {
             if (operatorDevices) operatorDevices.render(); renderLogicalEditor();
             if (state.tabName === "show") document.getElementById("arrange-custom").open = true;

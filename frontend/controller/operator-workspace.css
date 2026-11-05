@@ -235,7 +235,6 @@ dialog.tablet-selection::backdrop { background: var(--backdrop); }
 .tablet-row { border: 0; border-inline-start: 3px solid transparent; border-block-end: 1px solid var(--border); border-radius: 0; align-items: center; }
 .tablet-row[data-selected="true"] { border: 0; border-inline-start: 3px solid var(--accent); border-block-end: 1px solid var(--border); }
 .dev-list { gap: 0; }
-.roster-identify { flex: none; margin: .5rem; }
 .dev-number { min-inline-size: 2.5rem; min-block-size: 2.75rem; }
 #operator-wall { display: grid; gap: 1.5rem; }
 #operator-wall > .task-section { gap: .75rem; }

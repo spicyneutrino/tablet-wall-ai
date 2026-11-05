@@ -843,6 +843,7 @@ class Rig:
         for i in range(4):
             self.new_tablet(i, delay=i == 0)
         expect(self.page.locator("#device-count")).to_contain_text("4")
+        expect(self.page.locator("#tablet-joining")).not_to_have_attribute("open", "")
         expect(self.page.locator("#wall-health")).to_contain_text("4 online · none on the wall")
         self.task("Images")
         expect(self.page.locator("#wall-empty")).to_be_visible()
@@ -1689,12 +1690,12 @@ def corrections(rig):
     save_name(other, subject, "Review tablet")
     held.wait()
     expect(p.locator("#tablet-identify")).to_be_disabled()
-    expect(p.locator(".roster-identify").first).to_be_disabled()
-    rig.check(True, "Both visible Identify entries disable while authority is stale")
+    expect(p.locator(".roster-identify")).to_have_count(0)
+    rig.check(True, "Inspector Identify disables while authority is stale without a duplicate roster entry")
     held.release()
     expect(p.locator("#tablet-identify")).to_be_enabled()
-    expect(p.locator(".roster-identify").first).to_be_enabled()
-    rig.check(True, "Both Identify entries recover after authoritative reconciliation")
+
+    rig.check(True, "Inspector Identify recovers after authoritative reconciliation")
 
     p.set_viewport_size({"width": 390, "height": 844})
     p.locator(".dev-pick").first.click()

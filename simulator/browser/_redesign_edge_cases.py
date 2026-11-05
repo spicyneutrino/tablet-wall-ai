@@ -253,6 +253,7 @@ def command_variants(rig):
     task(p, "Tablets")
     pick(p, device)
     before = rig.config()
+    rig.open_disclosures("#tablet-reconnect")
     p.locator("#tablet-reconnect").click()
     expect(p.locator("#tablet-action-message")).to_contain_text("keeps its identity")
     from redesign_acceptance import wait_until

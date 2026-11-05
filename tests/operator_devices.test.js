@@ -15,9 +15,10 @@ global.document = { getElementById: node, createElement: node, activeElement: nu
 global.Option = function (text, value) { this.textContent = text; this.value = value; };
 global.window = { OperatorState: {
     entries: layout => layout.slots,
-    tabletState: () => ({ status: "showing", text: "Reports current image", showing: true }),
+    tabletState: () => evidence,
     compareIds: (roster, labels, a, b) => a.localeCompare(b)
 } };
+let evidence = { status: "displayed", text: "Reports current image", showing: true };
 const state = { selectedId: "a", roster: { a: { online: true, caps: ["identify"] }, b: { online: true, caps: ["identify"] } },
     base: { slots: {} }, draft: { slots: {} }, layoutKind: "logical", etagState: "current", savedLayouts: [] };
 let release;
@@ -30,6 +31,7 @@ async function run() {
     for (const authority of ["stale", "missing"]) {
         state.etagState = authority;
         devices.render();
+        assert.equal(node("tablet-recovery-actions").open, true, "stale authority keeps recovery visible");
         assert.equal(node("tablet-identify").disabled, true, authority + " authority disables the inspector command");
         assert.equal(devices.canIdentify("a"), false, authority + " authority disables other command entries");
         await devices.identify("a");
@@ -39,6 +41,12 @@ async function run() {
     state.etagState = "current";
     devices.render();
     assert.equal(node("tablet-identify").disabled, false);
+    assert.equal(node("tablet-recovery-actions").open, false, "healthy current reports collapse recovery");
+    node("tablet-recovery-actions").open = true; devices.render();
+    assert.equal(node("tablet-recovery-actions").open, true, "polls preserve operator disclosure choice");
+    evidence = { status: "failed", text: "Failed image", showing: false }; devices.render();
+    assert.equal(node("tablet-recovery-actions").open, true, "failed images show recovery immediately");
+    evidence = { status: "displayed", text: "Reports current image", showing: true }; devices.render();
     const pending = devices.identify("a");
     assert.equal(requests.length, 1);
     assert.equal(requests[0][1], "/api/v3/devices/a/identify");

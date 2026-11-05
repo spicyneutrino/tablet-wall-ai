@@ -223,7 +223,7 @@
             if (!model.qr.href) { qrFailed = false; image.removeAttribute("src"); }
             $("tablet-qr-note").textContent = model.qr.state === "unusable"
                 ? "The server did not provide a usable same-origin QR address. Use the text address."
-                : "Scan to open the tablet page. The QR encodes only the join address, not a credential.";
+                : "The QR encodes only the join address, not a credential.";
 
             const overview = new Set(["Wi-Fi", "Uploads", "Security trust"]);
             const facts = model.facts.filter(([name]) => overview.has(name));

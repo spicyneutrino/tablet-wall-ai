@@ -80,6 +80,10 @@
                 : ["blocked", "invalid", "stale_calibration", "needs_calibration", "needs_profile", "viewport_mismatch", "zoom_changed", "missing_profile", "missing_calibration", "invalid_mapping"].includes(evidence.status) ? "Return the tablet to its calibrated rotation, 100% zoom and launch mode, or review its measurements."
                 : evidence.status === "unplaced" ? "Connected and available. Place this tablet in Arrange." : "Current matching reports are separate from connection status. Reconnect keeps this browser identity.";
             $("tablet-recovery").hidden = !!evidence?.showing;
+            const recovery = $("tablet-recovery-actions");
+            const healthy = !!evidence?.showing && !state.rosterError && state.etagState === "current";
+            if (id !== recovery.dataset.deviceId || String(healthy) !== recovery.dataset.healthy) recovery.open = !healthy;
+            recovery.dataset.deviceId = id; recovery.dataset.healthy = String(healthy);
             const tabletOnline = !!device && device.online === true;
             for (const action of ["tablet-identify", "tablet-retry-image", "tablet-reconnect"]) {
                 const button = $(action);

@@ -24,7 +24,7 @@ window.PhysicalStage = {
     configureDeviceSheet: configureDeviceSheet,
     create: function (dependencies) {
         const {
-            identifyTablet = () => {}, canIdentify = () => false, DRAG_THRESHOLD_PX, afterDraftChange, announce, bodyMetrics, calibrationFor, beginManual, canManualEdit, clearMsg, clone, deviceEntries, deviceLabel, deviceNumber, deviceRows, el, finiteOr, formatNumber, isOnline, latestProfile, mutateDraft, numberTag, numberedLabel, populateDeviceCard, profileFor, pushUndo, roundTo, selectedSlot, selectionChanged, setInputValue, showError, showTab, state, syncTabDots, validPair
+            DRAG_THRESHOLD_PX, afterDraftChange, announce, bodyMetrics, calibrationFor, beginManual, canManualEdit, clearMsg, clone, deviceEntries, deviceLabel, deviceNumber, deviceRows, el, finiteOr, formatNumber, isOnline, latestProfile, mutateDraft, numberTag, numberedLabel, populateDeviceCard, profileFor, pushUndo, roundTo, selectedSlot, selectionChanged, setInputValue, showError, showTab, state, syncTabDots, validPair
         } = dependencies;
 
         function focusStageSlot(id) {
@@ -369,9 +369,7 @@ window.PhysicalStage = {
                             else addSelectedDevice();
                         }
                     });
-                    const identify = document.createElement("button"); identify.type = "button"; identify.className = "btn roster-identify"; identify.textContent = "Identify";
-                    identify.addEventListener("click", () => identifyTablet(entry.id));
-                    item.append(add, identify); row = { item, pick, number, name, meta, add, identify }; deviceRows.set(entry.id, row);
+                    item.append(add); row = { item, pick, number, name, meta, add }; deviceRows.set(entry.id, row);
                 }
                 const online = isOnline(entry.id), current = state.operatorConfig && window.OperatorState.tabletState(state.operatorConfig, entry.id, performance.now());
                 const status = current ? current.text : online ? "Connected · not on the wall" : "Offline";
@@ -380,8 +378,6 @@ window.PhysicalStage = {
                 row.meta.textContent = current && current.showing ? "" : status;
                 row.item.dataset.status = current ? current.status : online ? "online" : "offline";
                 row.pick.setAttribute("aria-label", numberedLabel(entry.id) + ", " + status);
-                row.identify.setAttribute("aria-label", "Identify " + numberedLabel(entry.id));
-                row.identify.disabled = !canIdentify(entry.id);
                 row.add.hidden = !!(entry.slot || entry.placement); row.add.disabled = state.busy;
                 if (el.deviceList.children[index] !== row.item) el.deviceList.insertBefore(row.item, el.deviceList.children[index] || null);
             }

@@ -8,7 +8,7 @@
     <title>Tablet wall · tablet-wall-ai</title>
     <link rel="icon" href="favicon.svg" type="image/svg+xml">
     <link rel="stylesheet" href="operator-tokens.css?v=2">
-    <link rel="stylesheet" href="operator-workspace.css?v=26">
+    <link rel="stylesheet" href="operator-workspace.css?v=27">
     <link rel="stylesheet" href="operator-stage.css?v=4">
 </head>
 <body class="physical">
@@ -191,8 +191,8 @@
             <p class="hint" id="roster-status" role="status" hidden>Tablet status has not been checked.</p>
 
             <ul class="dev-list" id="device-list" aria-label="Tablets known to this server"></ul>
-        </section><section class="join-tablets task-section" id="tablet-joining" aria-label="Add tablets"><p id="tablet-join-line" hidden>Open <code id="tablet-url"></code> on each tablet <button class="btn btn-ghost btn-sm" type="button" id="copy-tablet-url" aria-label="Copy tablet address" data-action="copy-tablet-url">Copy</button></p><p id="readiness-message" role="status" aria-live="polite"></p><p id="tablet-url-note"></p><figure id="tablet-qr-figure" hidden><img id="tablet-qr" alt="QR code for the configured tablet address"><figcaption id="tablet-qr-note">Scan to open the tablet page. The QR encodes only the join address, not a credential.</figcaption></figure><p id="tablet-qr-error" role="alert" hidden>QR image failed to load. The text address above still works. <button class="btn" type="button" id="btn-readiness-qr-retry" data-action="btn-readiness-qr-retry">Retry QR</button></p><p id="join-network" hidden>Network details have not been reported.</p></section></div><dialog class="tablet-selection" id="device-sheet" open aria-labelledby="tablet-actions-title"><button type="button" class="btn sheet-close" id="device-sheet-close" aria-label="Close selected tablet">Close</button><div id="operator-device-actions" hidden><section class="tablet-actions task-section" aria-labelledby="tablet-actions-title">
-            <h2 id="tablet-actions-title" class="sr-only">Tablet controls</h2><h3 id="tablet-action-name" tabindex="-1">Select a tablet.</h3><p id="tablet-evidence"></p><p id="tablet-action-message" role="status" aria-live="polite"></p><p class="tablet-recovery" id="tablet-recovery"></p><button class="btn btn-primary" id="open-tablet-measurements" type="button" data-action="open-tablet-measurements">Review measurements</button><button type="button" class="btn btn-primary" id="tablet-arrange" hidden>Place in Arrange</button><div class="operator-actions"><button class="btn" id="tablet-identify" type="button" data-action="tablet-identify">Identify</button><button class="btn" id="tablet-retry-image" type="button" data-action="tablet-retry-image">Retry image</button><button class="btn" id="tablet-reconnect" type="button" data-action="tablet-reconnect">Reconnect</button></div>
+        </section><details class="join-tablets task-section" id="tablet-joining" open><summary>Add tablets</summary><p id="tablet-join-line" hidden>Open <code id="tablet-url"></code> on each tablet <button class="btn btn-ghost btn-sm" type="button" id="copy-tablet-url" aria-label="Copy tablet address" data-action="copy-tablet-url">Copy</button></p><p id="readiness-message" role="status" aria-live="polite"></p><p id="tablet-url-note"></p><p id="tablet-qr-note">The QR encodes only the join address, not a credential.</p><figure id="tablet-qr-figure" hidden><img id="tablet-qr" alt="QR code for the configured tablet address"></figure><p id="tablet-qr-error" role="alert" hidden>QR image failed to load. The text address above still works. <button class="btn" type="button" id="btn-readiness-qr-retry" data-action="btn-readiness-qr-retry">Retry QR</button></p><p id="join-network" hidden>Network details have not been reported.</p></details></div><dialog class="tablet-selection" id="device-sheet" open aria-labelledby="tablet-action-name"><button type="button" class="btn sheet-close" id="device-sheet-close" aria-label="Close selected tablet">Close</button><div id="operator-device-actions" hidden><section class="tablet-actions task-section" aria-labelledby="tablet-actions-title">
+            <h2 id="tablet-actions-title" class="sr-only">Tablet controls</h2><h3 id="tablet-action-name" tabindex="-1">Select a tablet.</h3><p id="tablet-evidence"></p><p id="tablet-action-message" role="status" aria-live="polite"></p><p class="tablet-recovery" id="tablet-recovery"></p><button class="btn btn-primary" id="open-tablet-measurements" type="button" data-action="open-tablet-measurements">Review measurements</button><button type="button" class="btn btn-primary" id="tablet-arrange" hidden>Place in Arrange</button><div class="operator-actions"><button class="btn" id="tablet-identify" type="button" data-action="tablet-identify">Identify</button></div><details id="tablet-recovery-actions"><summary>Recovery</summary><div class="operator-actions"><button class="btn" id="tablet-retry-image" type="button" data-action="tablet-retry-image">Retry image</button><button class="btn" id="tablet-reconnect" type="button" data-action="tablet-reconnect">Reconnect</button></div></details>
             <form id="tablet-label-form" data-form="tablet-label-form"><label class="field" for="tablet-label">Tablet name<input class="inp" id="tablet-label" maxlength="80" autocomplete="off" data-field="tablet-label"></label><div class="operator-actions"><button class="btn btn-primary" id="tablet-label-save" data-action="tablet-label-save">Save name</button><button type="button" class="btn" id="tablet-label-review" data-action="tablet-label-review">Compare current saved name</button><button type="button" class="btn" id="tablet-label-discard" data-action="tablet-label-discard">Discard name</button></div></form><section class="field-review" id="tablet-name-review" hidden><p id="tablet-name-comparison"></p><button class="btn" type="button" id="tablet-name-keep" data-action="tablet-name-keep">Use my edited name</button></section><section id="tablet-details" class="tablet-details">
 
 
@@ -651,15 +651,15 @@
 <script src="operator-stage.js?v=13"></script>
 <script src="operator-content.js?v=8"></script>
 <script src="operator-grid.js?v=8"></script>
-<script src="operator-devices.js?v=5"></script>
-<script src="operator-readiness.js?v=3"></script>
+<script src="operator-devices.js?v=6"></script>
+<script src="operator-readiness.js?v=4"></script>
 <script src="operator-sync.js?v=2"></script>
 <script src="operator-session.js?v=2"></script>
-<script src="operator-workspace.js?v=9"></script>
+<script src="operator-workspace.js?v=10"></script>
 <script src="physical-playback.js?v=2"></script>
 <script src="physical-sizing.js?v=1"></script>
-<script src="physical-stage.js?v=10"></script>
+<script src="physical-stage.js?v=11"></script>
 <script src="physical-calibration.js?v=1"></script>
-<script src="physical.js?v=31"></script>
+<script src="physical.js?v=32"></script>
 <dialog class="draft-resolution" id="draft-resolution" aria-labelledby="draft-resolution-title"><h2 id="draft-resolution-title">Resolve your preview</h2><p id="draft-resolution-text"></p><div class="operator-actions"><button type="button" class="btn btn-primary" id="resolve-commit" data-action="resolve-commit">Apply arrangement</button><button type="button" class="btn" id="resolve-discard" data-action="resolve-discard">Discard</button><button type="button" class="btn" id="resolve-stay" data-action="resolve-stay">Stay</button></div></dialog></body>
 </html>
