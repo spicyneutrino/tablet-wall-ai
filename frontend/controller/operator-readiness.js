@@ -65,7 +65,7 @@
                 copyable = true;
                 note = ["localhost", "[::1]"].includes(host) || /^127\./.test(host)
                     ? "This is a loopback address. It opens only on this computer. Configure a tablet-reachable origin before joining."
-                    : "Open this address on each tablet on the same Wi-Fi. This URL is not a login or pairing credential.";
+                    : "This URL is not a login or pairing credential.";
             } catch (_) {
                 note = "The server reported a tablet address that is not a usable http or https origin. Fix the tablet origin, then refresh.";
             }
@@ -207,9 +207,8 @@
             status.textContent = model.status.text;
             status.dataset.kind = model.status.kind;
 
-            const url = $("tablet-url");
-            url.value = model.url.href || "Tablet address not configured";
-            $("copy-tablet-url").disabled = !model.url.copyable;
+            $("tablet-url").textContent = model.url.href || "";
+            $("tablet-join-line").hidden = $("join-network").hidden = !model.url.copyable;
             $("tablet-url-note").textContent = model.url.note;
 
             const figure = $("tablet-qr-figure"), image = $("tablet-qr"), qrError = $("tablet-qr-error");

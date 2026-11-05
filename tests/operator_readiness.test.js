@@ -19,7 +19,7 @@ function element(id) {
 
 function harness() {
     const ids = ["operator-readiness", "readiness-status", "readiness-errors", "tablet-url",
-        "copy-tablet-url", "tablet-url-note", "tablet-qr-figure", "tablet-qr", "tablet-qr-note",
+        "copy-tablet-url", "tablet-join-line", "join-network", "tablet-url-note", "tablet-qr-figure", "tablet-qr", "tablet-qr-note",
         "tablet-qr-error", "btn-readiness-qr-retry", "readiness-refreshed", "btn-readiness-refresh",
         "operator-readiness-facts", "operator-readiness-details", "readiness-paths", "operator-readiness-paths", "readiness-advice",
         "operator-readiness-advice", "readiness-message"];
@@ -167,8 +167,8 @@ function factsText(nodes) {
     page.pending.shift().resolve(JSON.parse(JSON.stringify(full)));
     assert.equal(await loading, true);
 
-    assert.equal(page.nodes["tablet-url"].value, "http://192.168.50.1:8080/client/");
-    assert.equal(page.nodes["copy-tablet-url"].disabled, false);
+    assert.equal(page.nodes["tablet-url"].textContent, "http://192.168.50.1:8080/client/");
+    assert.equal(page.nodes["tablet-join-line"].hidden, false);
     assert.equal(page.nodes["tablet-qr-figure"].hidden, false);
     assert.ok(page.nodes["tablet-qr"].attrs.src.startsWith("/api/v3/join-qr?tablet_url="));
     assert.equal(page.nodes["readiness-errors"].hidden, true);
@@ -236,7 +236,7 @@ function factsText(nodes) {
     assert.match(failed.nodes["readiness-status"].textContent, /Refresh to try again/);
     assert.equal(failed.nodes["btn-readiness-refresh"].textContent, "Retry server checks");
     assert.equal(failed.nodes["btn-readiness-refresh"].disabled, false);
-    assert.equal(failed.nodes["tablet-url"].value, "Tablet address not configured");
+    assert.equal(failed.nodes["tablet-join-line"].hidden, true, "no address means no line and no Copy");
 
     const retried = failed.instance.load();
     failed.pending.shift().resolve(JSON.parse(JSON.stringify(full)));

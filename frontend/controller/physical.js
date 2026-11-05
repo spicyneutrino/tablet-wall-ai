@@ -56,7 +56,6 @@
         rosterStatus: document.getElementById("roster-status"),
         btnRosterRefresh: document.getElementById("btn-roster-refresh"),
         deviceList: document.getElementById("device-list"),
-        deviceEmpty: document.getElementById("device-empty"),
         boundsX: document.getElementById("bounds-x"),
         boundsY: document.getElementById("bounds-y"),
         boundsWidth: document.getElementById("bounds-width"),
@@ -3339,7 +3338,7 @@
             const heading = document.getElementById("issues-title");
             heading.focus({ preventScroll: true }); heading.scrollIntoView({ block: "nearest" });
         });
-        if (el.btnRosterRefresh) el.btnRosterRefresh.addEventListener("click", refreshRoster);
+        if (el.btnRosterRefresh) el.btnRosterRefresh.addEventListener("click", async () => { await Promise.all([operatorReadiness.load(), refreshRoster()]); workspace.render(); });
         if (el.btnDiagDownload) {
             el.btnDiagDownload.addEventListener("click", downloadDiagnostics);
         }
@@ -3408,7 +3407,7 @@
             applyArrangement: applyLayout, showImage: () => operatorContent.showSelected(),
             discardArrangement: cancelDraft, discardImage: () => operatorContent.discard(),
             canCommit: kind => kind === "image" ? !document.getElementById("show-image").disabled : isDirty() && !el.btnApply.disabled,
-            selectTablet: selectDevice, commitTask, renderStage, stageNames: () => operatorContent.stageNames(), onViewChange: () => operatorContent.viewChanged(), refreshReadiness: () => operatorReadiness.load(), refreshStatus: refreshRoster });
+            selectTablet: selectDevice, commitTask, renderStage, stageNames: () => operatorContent.stageNames(), onViewChange: () => operatorContent.viewChanged() });
         document.getElementById("refresh-command-status").addEventListener("click", () => session.refresh().catch(error => showError(error.message)));
         window.addEventListener("beforeunload", event => {
             if (hasUnsavedEdits()) { event.preventDefault(); event.returnValue = ""; }

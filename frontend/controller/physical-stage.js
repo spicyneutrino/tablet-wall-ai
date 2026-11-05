@@ -281,7 +281,6 @@ window.PhysicalStage = {
         }
 
         function renderDeviceCount() {
-            el.deviceEmpty.hidden = deviceRows.size > 0;
             renderDeviceHealth();
         }
 

@@ -222,7 +222,7 @@ for (const kind of ["logical", "physical"]) {
     for (const compact of [false, true]) {
         for (const reveal of [false, true]) {
             const selected = { selectedId: "Beta", busy: false, draft: { kind, placements: {}, slots: {} }, basePlacements: {}, roster: {} };
-            const selectionNodes = { deviceEmpty: {}, inspectorEmpty: {}, inspectorBody: { hidden: true }, inspectorMissing: {}, btnAddSlot: {}, slotMissingText: {}, deviceCount: {}, wallHealth: {}, btnWallHealth: { dataset: {} }, rosterStatus: { dataset: {} } };
+            const selectionNodes = { inspectorEmpty: {}, inspectorBody: { hidden: true }, inspectorMissing: {}, btnAddSlot: {}, slotMissingText: {}, deviceCount: {}, wallHealth: {}, btnWallHealth: { dataset: {} }, rosterStatus: { dataset: {} } };
             const notified = [];
             const selectionStage = context.window.PhysicalStage.create({ state: selected, el: selectionNodes, deviceRows: new Map(),
                 latestProfile: () => null, deviceLabel: id => id, selectedSlot: () => null, validPair: () => null,

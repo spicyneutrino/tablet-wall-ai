@@ -1,13 +1,12 @@
 "use strict";
 window.OperatorWorkspace = {
     create({ state, labelFor, arrangementDirty, arrangementPreview, imageDirty, applyArrangement, showImage, discardArrangement, discardImage,
-        commitTask, renderStage, stageNames, onViewChange = () => {}, refreshReadiness, refreshStatus, selectTablet, canCommit }) {
+        commitTask, renderStage, stageNames, onViewChange = () => {}, selectTablet, canCommit }) {
         const $ = id => document.getElementById(id);
         let pending = null, resolving = false;
         const issues = new Map();
         const stage = document.querySelector(".wall-stage");
         let stageTask = null;
-        let emptyRoster = null;
         async function resolve(reason, except) {
             const nextKind = () => arrangementDirty() && except !== "arrangement" ? "arrangement"
                 : imageDirty() && except !== "image" ? "image" : null;
@@ -62,11 +61,6 @@ window.OperatorWorkspace = {
                 host.append(stage);
                 stageTask = state.tabName;
             }
-            const joining = $("tablet-joining");
-            const empty = !Object.keys(state.roster).length;
-            if (empty && emptyRoster !== true) joining.open = true;
-            else if (!empty && emptyRoster === true && !joining.contains(document.activeElement)) joining.open = false;
-            emptyRoster = empty;
             const names = stageNames();
             const shownType = state.scene && state.scene.content && state.scene.content.type;
             const label = mode === "live" ? names.applied ? "Showing " + names.applied
@@ -120,12 +114,6 @@ window.OperatorWorkspace = {
             if (restore && toggle.hidden && (typeof search.getClientRects !== "function" || search.getClientRects().length)) search.focus({ preventScroll: true });
         });
         $("empty-add-tablets").addEventListener("click", () => open(!state.rosterError && Object.values(state.roster).some(device => device.online) ? "show" : "tablet", { focus: true, persist: true }));
-        $("join-arrange").addEventListener("click", () => open("show", { focus: true, persist: true }));
-        $("join-refresh").addEventListener("click", async () => { await Promise.all([refreshReadiness(), refreshStatus()]); render(); });
-        $("add-tablets").addEventListener("click", () => {
-            $("tablet-joining").open = true;
-            $("tablet-joining").querySelector("summary").focus();
-        });
         $("add-image").addEventListener("click", () => {
             $("image-addition").open = true;
             ($("upload-form").hidden ? $("image-addition").querySelector("summary") : $("upload-file")).focus();
