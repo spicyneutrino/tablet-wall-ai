@@ -67,7 +67,8 @@
         let order = [], selected = new Set(), sizes = {}, angles = {}, storedAngles = {}, rows = new Map(), busy = false, initialized = false;
         let previewCommand = null, inputVersion = 0, releaseRows = new Map();
         let members = membership(), edited = false, baseEtag = null;
-        const text = value => { $("grid-message").textContent = order.reduce((line, id) => line.split(id).join(labelFor(id)), value); };
+        const named = value => order.reduce((line, id) => line.split(id).join(labelFor(id)), value);
+        const text = value => { $("grid-message").textContent = named(value); };
         function invalidate() {
             if (!edited) baseEtag = state.etag;
             edited = true;
@@ -277,12 +278,18 @@
                 state.gridPreview = result;
                 previewCommand = Object.assign({}, previewCommand, { guards: result.guards });
                 const wall = model.bounds(result.layout);
-                text(result.order.length + (result.order.length === 1 ? " tablet · " : " tablets · ") + previewCommand.rows + " row" + (previewCommand.rows === 1 ? "" : "s") + " × " + previewCommand.columns
-                    + " column" + (previewCommand.columns === 1 ? "" : "s") + " · wall " + Number(wall.width.toFixed(1)) + " × " + Number(wall.height.toFixed(1)) + (kind === "physical" ? " mm" : " logical units")
-                    + " · gap " + previewCommand.gap + (kind === "physical" ? " mm" : " logical units") + ". "
-                    + { preserve: "Mounting and stored sizes preserved.", portrait: "Portrait orientation.", landscape: "Landscape orientation.", auto: "Orientation from current viewports and confirmed models." }[previewCommand.orientation]
-                    + (result.warnings || []).map(warning => " " + warning[0].toUpperCase() + warning.slice(1).replace(/[.!?\s]+$/, "") + ".").join("")
+                const sentence = warning => " " + warning[0].toUpperCase() + warning.slice(1).replace(/[.!?\s]+$/, "") + ".";
+                const warnings = result.warnings || [], estimated = warnings.filter(warning => /^estimated measurement/.test(warning));
+                text(result.order.length + (result.order.length === 1 ? " tablet · " : " tablets · ") + previewCommand.rows + " × " + previewCommand.columns
+                    + " · " + Number(wall.width.toFixed(1)) + " × " + Number(wall.height.toFixed(1)) + (kind === "physical" ? " mm" : " logical units")
+                    + warnings.filter(warning => !estimated.includes(warning)).map(sentence).join("")
                     + (result.previous_kind !== kind ? " Apply will request a named safety copy of the current arrangement." : ""));
+                if (estimated.length) {
+                    const chip = document.createElement("span"), detail = document.createElement("span");
+                    chip.className = "chip"; chip.dataset.kind = "warn"; chip.textContent = "Estimated sizes";
+                    detail.className = "sr-only"; detail.textContent = named(estimated.map(sentence).join(""));
+                    chip.append(detail); $("grid-message").append(" ", chip);
+                }
                 updateButtons(); syncDraftUi(); renderStage();
                 if ($("arrange-membership").dataset.required === "false") $("arrange-membership").open = false;
                 $("btn-apply").focus();

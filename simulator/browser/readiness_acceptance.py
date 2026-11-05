@@ -716,7 +716,7 @@ def phase_physical_grid():
     wait_until(lambda: page.locator("#btn-apply").is_enabled(),
                "physical 1x4 preview did not appear")
     preview = page.locator("#grid-message").inner_text()
-    check(page.locator("body").get_attribute("data-stage-mode") == "arrangement-preview" and "1 row × 4 columns" in preview,
+    check(page.locator("body").get_attribute("data-stage-mode") == "arrangement-preview" and "1 × 4" in preview,
           "TWR-10 A2 the physical 1x4 preview reports one row and four columns")
     check("Apply will request a named safety copy" in preview,
           "TWR-09 A5 the cross-kind preview warns that Apply requests a named safety copy")
