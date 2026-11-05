@@ -1729,6 +1729,10 @@ def corrections(rig):
     rig.shot(p, "arrange-destination")
 
     rig.task("Saved")
+    restore_points = p.locator('#saved-layouts [data-snapshot-name^="Before physical "]')
+    expect(restore_points.first.locator(".saved-name")).to_contain_text("Restore point · Before physical ")
+    expect(restore_points.first.get_by_role("button", name="Recall", exact=False)).to_be_enabled()
+    rig.check(True, "Automatic safety copy is labelled as a restore point and retains Recall")
     p.locator("#layout-name").fill("")
     p.locator("#btn-layout-save").click()
     expect(p.locator("#layout-msg")).to_contain_text("name")

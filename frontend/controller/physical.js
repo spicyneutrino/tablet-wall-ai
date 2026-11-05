@@ -2659,7 +2659,7 @@
             const layout = entry.layout || {}, count = Object.keys(window.OperatorState.entries(layout)).length;
             const row = document.createElement("li"); row.className = "saved-row"; row.dataset.snapshotName = entry.name; row.dataset.kind = entry.logical ? "logical" : "physical";
             const info = document.createElement("span"); info.className = "saved-info";
-            const name = document.createElement("strong"); name.className = "saved-name"; name.textContent = entry.name;
+            const name = document.createElement("strong"); name.className = "saved-name"; name.textContent = (/^Before (physical|logical) [a-f0-9]{12}$/.test(entry.name) ? "Restore point · " : "") + entry.name;
             const meta = document.createElement("span"); meta.className = "saved-meta";
             meta.textContent = entry.valid === false ? "Damaged saved data · replace or delete" : count + (count === 1 ? " tablet" : " tablets") + " · " + (entry.logical ? "Relative" : "Measured");
             info.append(name, meta);
