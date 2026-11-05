@@ -5,7 +5,7 @@ window.OperatorWorkspace = {
         const $ = id => document.getElementById(id);
         let pending = null, resolving = false;
         const issues = new Map();
-        const stage = document.querySelector(".wall-stage");
+        const stage = document.querySelector(".wall-stage"), arrangeTools = document.querySelector(".arrange-tools");
         let stageTask = null;
         async function resolve(reason, except) {
             const nextKind = () => arrangementDirty() && except !== "arrangement" ? "arrangement"
@@ -56,6 +56,8 @@ window.OperatorWorkspace = {
             document.body.dataset.outputDirty = String(arrangement || image);
             const wallEmpty = !state.base || !Object.keys(window.OperatorState.entries(state.base)).length;
             if ($("wall-context-tablet")) $("wall-context-tablet").hidden = !wallEmpty;
+            const noTablets = !Object.keys(state.roster).length;
+            $("image-details-disclosure").hidden = $("stage-technical").hidden = arrangeTools.hidden = noTablets;
             if (stageTask !== state.tabName) {
                 const host = $("wall-context-" + state.tabName) || $("wall-context-park");
                 host.append(stage);

@@ -3,7 +3,7 @@ const assert = require("node:assert/strict");
 const fs = require("node:fs");
 const vm = require("node:vm");
 const nodes = new Map();
-const document = { activeElement: null, body: { dataset: {} }, getElementById: node, querySelector: () => node("shared-stage") };
+const document = { activeElement: null, body: { dataset: {} }, getElementById: node, querySelector: selector => node(selector === ".arrange-tools" ? "arrange-tools" : "shared-stage") };
 function node(id) {
     if (!nodes.has(id)) nodes.set(id, { dataset: {}, hidden: true, textContent: "", listeners: {}, appends: [],
         setAttribute(name, value) { (this.attrs ||= {})[name] = value; },
@@ -48,6 +48,11 @@ state.base = { placements: {} }; workspace.render();
 assert.equal(node("stage-mode-label").textContent, "Nothing shown", "a scene with no tablets on the wall shows nothing");
 state.base = { placements: { a: {} } }; state.scene = null; workspace.render();
 assert.equal(node("stage-mode-label").textContent, "Nothing shown");
+const tabletOnly = ["image-details-disclosure", "stage-technical", "arrange-tools"];
+state.roster = {}; workspace.render();
+assert.deepEqual(tabletOnly.map(id => node(id).hidden), [true, true, true], "with no tablets, Images and Arrange offer only Add tablets");
+state.roster = { a: { online: true } }; workspace.render();
+assert.deepEqual(tabletOnly.map(id => node(id).hidden), [false, false, false], "details and arrange tools return once a tablet joins");
 console.log("Workspace relocates one stage only on task changes and preserves keyed field focus and admitted entry points");
 
 const controller = fs.readFileSync(require.resolve("../frontend/controller/physical.js"), "utf8");
