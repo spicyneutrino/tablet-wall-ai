@@ -54,14 +54,10 @@ const content = context.window.OperatorContent.create({ state, renderStage() {},
     assert.equal(content.dirty(), false, "loading Images must not create a draft");
     assert.equal(node("show-image").disabled, true, "Show needs a draft");
     assert.equal(node("image-preview-controls").hidden, true, "an idle wall does not present an inactive edit form");
-    assert.equal(node("image-idle-actions").hidden, false);
     assert.equal(node("edit-current-image").hidden, true, "test colours have no saved image to adjust");
-    node("browse-images").click();
-    assert.equal(document.activeElement, node("image-search"), "browse takes keyboard focus to the image library");
     assert.equal(node("image-fit").disabled, true, "Fit needs a draft");
-    assert.equal(node("image-select").value, "");
-    assert.equal(node("image-title").textContent, "Change the image");
-    assert.equal(node("image-details").textContent, "Choose an image from the library to preview a change.");
+    assert.equal(node("image-title").textContent, "Tablet colours");
+    assert.equal(node("image-details").textContent, "", "idle state needs no instructional paragraph");
 
     node("image-fit").value = "contain";
     node("image-fit").change({ target: node("image-fit") });
@@ -82,11 +78,10 @@ const content = context.window.OperatorContent.create({ state, renderStage() {},
     await buttonA.click();
     assert.equal(content.dirty(), true, "clicking a library image creates a draft");
     assert.equal(node("image-preview-controls").hidden, false);
-    assert.equal(node("image-idle-actions").hidden, true);
     assert.equal(buttonA.attrs["aria-pressed"], "true");
     assert.equal(cardA.dataset.selected, undefined);
     assert.equal(node("image-title").textContent, "a");
-    assert.equal(node("image-details").textContent, "100 × 100 source px");
+    assert.equal(node("image-source-details").textContent, "100 × 100 source px");
     assert.equal(node("show-image").disabled, false);
     assert.equal(node("image-fit").disabled, false);
     assert.equal(node("stage-applied-content").textContent, "Applied: Tablet colours",
@@ -95,13 +90,13 @@ const content = context.window.OperatorContent.create({ state, renderStage() {},
     content.discard();
     assert.equal(content.dirty(), false);
     assert.equal(buttonA.attrs["aria-pressed"], "false");
-    assert.equal(node("image-title").textContent, "Change the image");
-    assert.equal(node("image-details").textContent, "Choose an image from the library to preview a change.");
+    assert.equal(node("image-title").textContent, "Tablet colours");
+    assert.equal(node("image-details").textContent, "", "idle state needs no instructional paragraph");
     assert.equal(node("show-image").disabled, true);
     assert.equal(node("image-fit").disabled, true);
 
     assert.equal(node("image-discard").hidden, true); assert.equal(node("restore-image").hidden, true);
-    await node("image-select").change({ target: { value: "a" } });
+    await buttonA.click();
     assert.equal(node("image-discard").hidden, false);
     assert.equal(node("image-rebuild").hidden, true, "a current preview needs no Rebuild");
     state.etag = "changed"; content.render();
@@ -111,7 +106,7 @@ const content = context.window.OperatorContent.create({ state, renderStage() {},
     await content.showSelected();
     assert.equal(document.activeElement, node("image-search"));
     assert.equal(node("image-discard").hidden, true); assert.equal(node("restore-image").hidden, false);
-    assert.equal(content.dirty(), false); assert.equal(node("image-select").value, "");
+    assert.equal(content.dirty(), false); assert.equal(state.previewContent, null);
     assert.equal(node("edit-current-image").hidden, false, "a saved image has an explicit adjust action");
     assert.equal(node("image-preview-controls").hidden, true);
     assert.equal(node("show-image").disabled, true); assert.equal(node("image-fit").disabled, true);
@@ -153,23 +148,27 @@ const content = context.window.OperatorContent.create({ state, renderStage() {},
     assert.equal(node("image-message").textContent, confirm);
 
     failInventory = true; await content.refresh(); content.render(); assert.match(node("image-message").textContent, /library unavailable/);
-    await node("image-select").change({ target: { value: "a" } }); await content.showSelected(); content.render();
+    await buttonA.click(); await content.showSelected(); content.render();
     assert.match(node("image-message").textContent, /library unavailable/, "a retained library error survives a later command");
     failInventory = false; await content.refresh();
-    await node("image-select").change({ target: { value: "a" } }); release = {};
+    await buttonA.click(); release = {};
     const pending = content.showSelected(); await new Promise(resolve => setImmediate(resolve));
     content.previewScene({ name: "new", content: { type: "image", asset: "b" } }, "e");
     release.resolve(config); await pending;
     assert.equal(state.previewContent.asset, "b"); assert.equal(content.dirty(), true); assert.equal(node("image-discard").hidden, false);
     assert.equal(node("image-title").textContent, "b");
-    assert.equal(node("image-details").textContent, "100 × 100 source px");
+    assert.equal(node("image-source-details").textContent, "100 × 100 source px");
     assert.match(node("stage-applied-content").textContent, /^Applied: a · Fill wall$/,
         "the inspector shows draft facts and the stage mode area shows applied content");
     assert.equal(buttonA.attrs["aria-pressed"], "false", "Show cleared the draft it submitted");
     assert.equal(buttonB.attrs["aria-pressed"], "true", "a newer draft keeps its own rust outline");
     assert.equal(cardA.dataset.applied, "true", "Show moves the applied marker to the submitted image");
+    state.viewLive = true; content.render();
+    assert.equal(node("image-title").textContent, "Preview: b", "comparison keeps the pending filename distinct from applied output");
+    assert.match(node("stage-applied-content").textContent, /^a · Fill wall$/);
+    state.viewLive = false; content.render();
     node("image-discard").focus(); content.discard(); assert.equal(document.activeElement, node("image-search"));
-    assert.equal(content.dirty(), false); assert.equal(node("image-select").value, "");
+    assert.equal(content.dirty(), false); assert.equal(state.previewContent, null);
     assert.equal(cardA.dataset.applied, "true", "Discard never removes the applied marker");
     assert.equal(buttonB.attrs["aria-pressed"], "false", "Discard removes the rust outline");
     await node("edit-current-image").click();

@@ -5,6 +5,7 @@ const { fit, draw } = require("../frontend/controller/operator-stage.js");
 class Element {
     constructor(tagName = "g", attributes = {}) {
         this.tagName = tagName;
+        this.classList = { contains: () => false };
         this.attrs = new Map(Object.entries(attributes));
         this.children = [];
         this.style = { setProperty() {} };
@@ -29,6 +30,8 @@ class Element {
 const events = {}, observers = [], frames = [];
 const win = {
     innerHeight: 900,
+    scrollY: 0,
+    matchMedia: query => ({ matches: query === "(orientation: portrait)" ? win.innerWidth < win.innerHeight : win.innerWidth <= 768 || win.innerHeight <= 512 }),
     getComputedStyle: node => node.computed,
     addEventListener: (name, callback) => { events[name] = callback; },
     requestAnimationFrame: callback => { frames.push(callback); return frames.length; },
@@ -49,7 +52,8 @@ const parent = { clientWidth: 1000, computed: { paddingLeft: "16px", paddingRigh
 const field = { parentElement: parent, style: {},
     computed: { borderLeftWidth: "1px", borderRightWidth: "1px", borderTopWidth: "1px", borderBottomWidth: "1px" },
     getClientRects: () => [1], getBoundingClientRect: () => ({ top: 200, bottom: 400 }) };
-const svg = { ownerDocument: doc, viewBox: { baseVal: { width: 720, height: 370 } }, style: {},
+let dragging = false;
+const svg = { classList: { contains: () => dragging }, ownerDocument: doc, viewBox: { baseVal: { width: 720, height: 370 } }, style: {},
     closest: () => field, querySelectorAll: () => labels };
 const label = new Element("text");
 label.dataset = { width: "667", height: "354", x: "0", y: "0", label: "Screen 1" };
@@ -63,6 +67,11 @@ let result = fit(svg);
 assert.equal(result.width, 966, "available width excludes parent padding and field border");
 assert.equal(parseFloat(field.style.inlineSize), 968, "field shrink-wraps the SVG and its border");
 assert.equal(result.width / result.height, 720 / 370);
+const dragSize = { ...svg.style };
+dragging = true;
+assert.equal(fit(svg), null, "stage chrome cannot refit the field during a captured drag");
+assert.deepEqual(svg.style, dragSize);
+dragging = false;
 assert.equal(Number(label.getAttribute("font-size")) * Math.hypot(label.getScreenCTM().a, label.getScreenCTM().b), 12);
 assert.equal(Number(label.getAttribute("stroke-width")), 0, "the solid label chip replaces the glyph halo");
 
@@ -75,27 +84,55 @@ doc.body.dataset.outputDirty = "true";
 bar.getBoundingClientRect = () => ({ top: 500, bottom: 556, height: 56 });
 result = fit(svg);
 assert.equal(result.height, 274, "preview reserves the visible fixed action bar and gap");
+win.scrollY = 100;
+field.getBoundingClientRect = () => ({ top: 100, bottom: 300 });
+assert.equal(fit(svg).height, 274, "opening a preview while scrolled keeps the unscrolled stage budget");
+win.scrollY = 0;
+field.getBoundingClientRect = () => ({ top: 200, bottom: 400 });
+win.innerWidth = 320;
+bar.getBoundingClientRect = () => ({ top: 220, bottom: 556, height: 336 });
+assert.equal(fit(svg).height, 966 / (720 / 370), "an inline portrait preview keeps the full-width wall scrollable");
+assert.equal(doc.body.dataset.imageActionsInline, "true");
+win.innerWidth = 1440;
+bar.getBoundingClientRect = () => ({ top: 500, bottom: 556, height: 56 });
 doc.body.dataset.outputDirty = "false";
 assert.equal(fit(svg).height, 382, "applied state regains the action bar budget");
 bar.computed.position = "static";
 doc.body.dataset.outputDirty = "true";
 assert.equal(fit(svg).height, 382, "desktop actions in another column do not consume stage height");
 
-const idleActions = { getClientRects: () => [1], getBoundingClientRect: () => ({ bottom: 264 }),
-    closest: () => ({ computed: { paddingBottom: "16px" }, getBoundingClientRect: () => ({ top: 100 }) }) };
-doc.querySelector = selector => selector === ".image-actions" ? bar : selector === "#image-idle-actions" ? idleActions : navigation;
 win.innerWidth = 390;
 doc.body.dataset.outputDirty = "false";
-assert.equal(fit(svg).height, 186, "the phone wall leaves room for the explicit image-change actions");
+assert.equal(fit(svg).height, 966 / (720 / 370), "the portrait wall remains full width below the Library");
 parent.getBoundingClientRect = () => ({ bottom: 448 });
-assert.equal(fit(svg).height, 138, "wrapped stage notes leave both idle actions above the phone navigation");
+assert.equal(fit(svg).height, 966 / (720 / 370), "wrapped notes do not shrink the scrollable portrait artwork");
+const commit = { getClientRects: () => [1], offsetHeight: 94 };
+doc.body.dataset.task = "arrange";
+doc.querySelector = selector => selector === ".arrange-result .arrange-commit" ? commit : null;
+parent.getBoundingClientRect = () => ({ bottom: 470 });
+assert.equal(fit(svg).height, 382, "phone Arrange does not shrink the wall to reserve scrolling review copy");
+win.innerWidth = 1440;
+assert.equal(fit(svg).height, 202, "desktop Arrange reserves stage notes, the review row and its gap");
 parent.getBoundingClientRect = () => ({ bottom: 400 });
+doc.body.dataset.task = "images";
+doc.querySelector = selector => selector === ".image-actions" ? bar : navigation;
 win.innerWidth = 1440;
 assert.equal(fit(svg).height, 382, "desktop actions retain their separate column");
 
+win.innerHeight = 1200;
+field.computed.width = "968px";
+field.getBoundingClientRect = () => ({ top: 400, bottom: 800, width: 1936 });
+assert.equal(fit(svg).height, 382, "CSS zoom converts viewport measurements into the field's layout units");
+win.innerHeight = 600;
+delete field.computed.width;
+field.getBoundingClientRect = () => ({ top: 200, bottom: 400 });
 rotation = Math.PI / 3;
 fit(svg);
 assert.ok(Math.abs(Number(label.getAttribute("font-size")) * Math.hypot(label.getScreenCTM().a, label.getScreenCTM().b) - 12) < 1e-10);
+parent.clientWidth = 170;
+label.dataset.label = "Tablet 2";
+fit(svg);
+assert.equal(label.textContent, "2", "compact labels keep the distinguishing tablet number");
 parent.clientWidth = 70;
 fit(svg);
 assert.equal(label.style.display, "none", "panels too small for 10px text omit their visual label");
@@ -111,6 +148,13 @@ assert.equal(result.width, 366);
 win.innerHeight = 180;
 result = fit(svg);
 assert.equal(result.height, 120, "an exhausted viewport keeps a usable field with page scrolling");
+
+win.innerHeight = 600;
+doc.getElementById = () => ({ getClientRects: () => [1] });
+result = fit(svg);
+assert.equal(result.width, 366, "enlarged-text navigation keeps a full-width scrollable wall");
+assert.ok(Math.abs(result.height - result.width * 370 / 720) < 1e-10);
+doc.getElementById = () => null;
 
 global.document = doc;
 for (const [width, height] of [[2000, 1000], [1000, 2000], [8000, 200]]) {

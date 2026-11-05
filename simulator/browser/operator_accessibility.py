@@ -5,6 +5,8 @@ from pathlib import Path
 import sys
 from playwright.sync_api import expect
 
+from _redesign_edge_cases import task_tab
+
 CONTRAST = r"""() => {
  const rgba=c=>{const a=c.match(/[\d.]+/g).map(Number);return [...a.slice(0,3),a.length>3?a[3]:1]};
  const over=(a,b)=>a.slice(0,3).map((v,i)=>v*a[3]+b[i]*(1-a[3])).concat(1);
@@ -156,7 +158,7 @@ def native_keyboard(rig):
     )
     native_tab_to(p, "#grid-preview")
     p.keyboard.press("Enter")
-    expect(p.locator("#grid-message")).to_contain_text("Preview only")
+    expect(p.locator("body")).to_have_attribute("data-stage-mode", "arrangement-preview")
     native_tab_task(p, "Tablets")
     trigger_id = p.locator("[role=tab][aria-selected=true]").get_attribute("id")
     native_tab_task(p, "Images")
@@ -403,12 +405,11 @@ def visual_states(rig):
     )
     p.locator("#refresh-images").click()
     expect(p.locator("#image-message")).to_have_text("No images available.")
-    rig.open_disclosures("#image-select")
     for width, height in ((1440, 900), (390, 844)):
         p.set_viewport_size({"width": width, "height": height})
         rig.check(
             p.locator("#image-gallery li").count() == 0
-            and "No images" in p.locator("#image-select").inner_text(),
+            and "No images" in p.locator("#image-message").inner_text(),
             f"Canonical empty image inventory retains admitted Add image and Arrange at {width}",
         )
         rig.shot(p, "inventory-empty")
@@ -479,6 +480,7 @@ def interaction_contrast(rig):
     task(p, "Tablets")
     for width, height in ((1440, 900), (390, 844)):
         p.set_viewport_size({"width": width, "height": height})
+        p.evaluate("()=>new Promise(resolve=>requestAnimationFrame(()=>requestAnimationFrame(resolve)))")
         for mode in ("hover", "focus"):
             target = p.locator("#tablet-label-save")
             if not target.is_visible():
@@ -632,19 +634,19 @@ def responsive(rig):
     rig.click("#tablet-label-save")
     expect(p.locator("#tablet-action-message")).to_contain_text("Name saved")
     rig.task("Arrange")
-    tab = p.get_by_role("tab", name="Arrange", exact=True)
+    tab = task_tab(p, "Arrange")
     tab.focus()
     tab.press("ArrowRight")
     rig.check(
-        p.get_by_role("tab", name="Saved", exact=True).get_attribute("aria-selected")
+        task_tab(p, "Saved").get_attribute("aria-selected")
         == "true",
         "Task tabs support ArrowRight roving navigation",
         focus(p),
         fatal=False,
     )
-    p.get_by_role("tab", name="Saved", exact=True).press("Home")
+    task_tab(p, "Saved").press("Home")
     rig.check(
-        p.get_by_role("tab", name="Images", exact=True).get_attribute("aria-selected")
+        task_tab(p, "Images").get_attribute("aria-selected")
         == "true",
         "Task tabs support Home navigation",
         focus(p),

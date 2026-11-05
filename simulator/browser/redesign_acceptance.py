@@ -22,6 +22,8 @@ import urllib.request
 from PIL import Image, ImageDraw
 from playwright.sync_api import expect, sync_playwright
 
+from _redesign_edge_cases import TASK_TABS, task_tab
+
 ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(ROOT))
 from deploy.hotspot import Settings, backend_environment  # noqa: E402
@@ -502,7 +504,11 @@ class Rig:
             locator.click()
 
     def task(self, name):
-        self.click(self.page.get_by_role("tab", name=name, exact=True), "Open " + name)
+        selector = self.page.locator("#compact-task-select")
+        if selector.is_visible():
+            selector.select_option(value=TASK_TABS[name])
+            return
+        self.click(task_tab(self.page, name), "Open " + name)
 
     def select(self, selector, value):
         self.open_disclosures(selector)
@@ -1026,7 +1032,7 @@ def first_wall(rig):
     rig.click("#grid-1x4", "Choose Row of 4")
     before = rig.config()
     rig.click("#grid-preview", "Preview arrangement")
-    expect(p.locator("#grid-message")).to_contain_text("Preview only")
+    expect(p.locator("body")).to_have_attribute("data-stage-mode", "arrangement-preview")
     labels = p.locator("#stage-identities li").evaluate_all(
         "es=>es.map(e=>({text:e.textContent,pixels:parseFloat(getComputedStyle(e).fontSize)}))"
     )
@@ -1051,7 +1057,7 @@ def first_wall(rig):
     )
     rig.viewport_shots("measured-review")
     rig.click("#btn-apply", "Apply arrangement")
-    expect(p.locator("#stage-mode-label")).to_have_text("Saved wall", timeout=15000)
+    expect(p.locator("body")).to_have_attribute("data-stage-mode", "live", timeout=15000)
     slots = rig.config()["layout"]["slots"]
     rig.check(
         len(slots) == 4
@@ -1102,7 +1108,7 @@ def first_wall(rig):
     before = rig.config()
     rig.click("#grid-2x2")
     rig.click("#grid-preview")
-    expect(p.locator("#grid-message")).to_contain_text("Preview only")
+    expect(p.locator("body")).to_have_attribute("data-stage-mode", "arrangement-preview")
     rig.check(
         rig.config()["layout"] == before["layout"]
         and rig.config()["revision"] == before["revision"],
@@ -1110,7 +1116,7 @@ def first_wall(rig):
     )
     rig.viewport_shots("two-by-two-review")
     rig.click("#btn-apply")
-    expect(p.locator("#stage-mode-label")).to_have_text("Saved wall", timeout=15000)
+    expect(p.locator("body")).to_have_attribute("data-stage-mode", "live", timeout=15000)
     expect(p.locator("#wall-health")).to_contain_text("4 of 4 showing the current image", timeout=15000)
     rig.check(
         rig.config()["scene"] == before["scene"],
@@ -1407,7 +1413,7 @@ def race_suite(rig):
     rig.observe(other_context, "second-operator")
     other = other_context.new_page()
     other.goto(rig.base + "/controller/physical.html")
-    other.get_by_role("tab", name="Tablets", exact=True).click()
+    task_tab(other, "Tablets").click()
     other.locator(f'.dev-pick[data-device-id="{ids[0]}"]').click()
     old = rig.config()
 

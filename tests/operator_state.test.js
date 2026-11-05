@@ -97,3 +97,31 @@ const fence = model.readFence();
 const slow = fence.start(); fence.event(); assert.equal(fence.accept(slow), false, "snapshot wins over a slower HTTP read");
 const first = fence.start(), second = fence.start(); assert.equal(fence.accept(second), true); assert.equal(fence.accept(first), false, "older requests cannot replace a newer accepted response");
 console.log("Operator tagged layout, fit, evidence, ordering and read-fence contracts passed");
+
+{
+    const base = { kind: "logical", width: 100, height: 50, placements: {} };
+    const image = { type: "image", asset: "applied", fit: "contain" };
+    const state = { base, draft: structuredClone(base), scene: { content: image }, tabName: "show" };
+    assert.equal(model.stageView(state).mode, "live");
+    assert.equal(model.stageView(state).editable, true);
+    state.previewContent = { type: "image", asset: "preview" };
+    assert.equal(model.stageView(state).content.asset, "preview");
+    assert.equal(model.stageView(state).mode, "image-preview");
+    assert.equal(model.stageView(state).editable, false);
+    state.viewLive = true;
+    assert.equal(model.stageView(state).content, image, "viewing applied output retains a separate pending image");
+    assert.equal(model.stageView(state).layout, base);
+    assert.equal(model.stageView(state).mode, "live");
+    state.viewLive = false; state.previewContent = null;
+    state.gridPreview = { layout: { ...base, width: 200 } };
+    assert.equal(model.stageView(state).layout.width, 200);
+    assert.equal(model.stageView(state).mode, "arrangement-preview");
+    assert.equal(model.stageView(state).editable, false);
+    state.gridPreview = null; state.draft.width = 300;
+    assert.equal(model.stageView(state).layout.width, 300);
+    assert.equal(model.stageView(state).mode, "arrangement-preview");
+    assert.equal(model.stageView(state).editable, true, "a manual arrangement remains editable");
+    state.activeImageUnavailableId = "applied";
+    assert.equal(model.stageView(state).content.available, false);
+    assert.equal(image.available, undefined, "unavailability does not mutate the authoritative scene");
+}

@@ -22,20 +22,21 @@ LOGIN_BODY_LIMIT = 8192
 SAFE_METHODS = frozenset({"GET", "HEAD", "OPTIONS"})
 LOGIN_STYLE = """
 * { box-sizing: border-box; }
-body { margin: 0; padding: 64px 24px; color: #25312b; background: #f6f8f5;
+body { margin: 0; padding: 64px 32px; color: #2d2822; background: #efece4;
     font: 16px/1.5 -apple-system, BlinkMacSystemFont, 'Segoe UI', Arial, sans-serif; }
 main { width: 100%; max-width: 28rem; margin: 0 auto; }
 h1 { margin: 0 0 32px; font-size: 28px; line-height: 1.25; letter-spacing: -.025em; }
 label { display: block; font-weight: 600; }
 input[type=password] { display: block; width: 100%; min-height: 48px; margin: 8px 0 24px;
-    padding: 10px 12px; border: 1px solid #7a887d; border-radius: 6px;
-    color: #25312b; background: #fcfdfa; font: inherit; }
+    padding: 10px 12px; border: 1px solid #67645d; border-radius: 6px;
+    color: #2d2822; background: #faf8f2; font: inherit; }
 button { min-height: 48px; padding: 10px 24px; border: 0; border-radius: 6px;
-    background: #23684f; color: #fcfdfa; font: inherit; font-weight: 600; cursor: pointer; }
-button:hover { background: #19533e; }
-input:focus-visible, button:focus-visible { outline: 2px solid #23684f; outline-offset: 3px; }
-[role=alert] { padding: 12px; margin: 0 0 24px; background: #f5e7e2; color: #893d32; }
-@media (max-width: 480px) { body { padding: 40px 20px; } button { width: 100%; } }
+    background: #2d2822; color: #efece4; font: inherit; font-weight: 600; cursor: pointer; }
+button:hover { background: #8f4014; }
+input:focus-visible, button:focus-visible { outline: 2px solid #8f4014; outline-offset: 3px; }
+[role=alert] { padding: 12px; margin: 0 0 24px; border: 1px solid currentColor;
+    border-radius: 6px; background: #faf8f2; color: #a12a24; }
+@media (max-width: 480px) { body { padding: 40px 16px; } button { width: 100%; } }
 """
 
 

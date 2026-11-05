@@ -104,7 +104,7 @@ def journey(rig, artwork):
     before = rig.config()
     rig.click("#grid-2x2")
     rig.click("#grid-preview")
-    expect(p.locator("#grid-message")).to_contain_text("Preview only")
+    expect(p.locator("body")).to_have_attribute("data-stage-mode", "arrangement-preview")
     assert rig.config()["revision"] == before["revision"]
     capture(rig, "arrangement-preview", tasks=("Arrange",))
     rig.tablets[0].close()

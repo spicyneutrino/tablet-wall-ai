@@ -89,6 +89,13 @@ a { color: var(--accent); text-underline-offset: 3px; }
 code, .mono, .coordinate { font-family: var(--mono); }
 [hidden] { display: none !important; }
 
+#compatibility-guard { max-width: 36rem; margin: 4rem auto; padding: 1.5rem; border: 1px solid var(--rule); border-radius: 12px; background: var(--field); font: 16px/1.5 var(--sans); overflow-wrap: anywhere; }
+#compatibility-guard h1 { margin-bottom: 1rem; font-size: 28px; line-height: 1.25; }
+#compatibility-guard p + p { margin-top: 1.5rem; }
+#compatibility-guard a { display: inline-flex; align-items: center; min-height: 44px; padding: .625rem 1rem; border-radius: var(--radius-control); background: var(--ink); color: var(--field); font-weight: 600; text-decoration: none; }
+#compatibility-guard a:hover { background: var(--accent); }
+@media (max-width: 48rem) { #compatibility-guard { margin: 1rem; padding: 1rem; } }
+
 :focus-visible {
     outline: var(--focus-width) solid var(--accent);
     outline-offset: var(--focus-offset);

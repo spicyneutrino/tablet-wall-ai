@@ -2,6 +2,41 @@
 (function (root) {
     const clone = value => JSON.parse(JSON.stringify(value));
     const entries = layout => layout && (layout.kind === "physical" ? layout.slots : layout.placements) || {};
+    function layoutSignature(layout) {
+        if (!layout) return "";
+        if (layout.kind === "logical") return JSON.stringify({ kind: "logical", width: layout.width, height: layout.height, placements: Object.entries(layout.placements || {}).sort(), sizing: layout.sizing });
+        const bounds = layout.bounds || {};
+        const slots = layout.slots || {};
+        return JSON.stringify({
+            bounds: [bounds.x, bounds.y, bounds.width, bounds.height],
+            sizing: layout.sizing || { mode: "fixed", padding: 0 },
+            slots: Object.keys(slots).sort().map(function (id) {
+                const slot = slots[id];
+                return [
+                    id,
+                    slot.center_x_mm,
+                    slot.center_y_mm,
+                    slot.mount_angle,
+                    slot.nudge_x_mm,
+                    slot.nudge_y_mm,
+                    slot.profile_revision,
+                    slot.calibration_revision,
+                    slot.participating !== false
+                ];
+            })
+        });
+    }
+
+    function stageView(state) {
+        const arrangement = !!state.gridPreview || !!state.base && !!state.draft && layoutSignature(state.draft) !== layoutSignature(state.base);
+        const preview = !state.viewLive && (arrangement || !!state.previewContent);
+        const layout = state.viewLive ? state.base : state.gridPreview ? state.gridPreview.layout : state.draft;
+        let content = !state.viewLive && state.previewContent || state.scene && state.scene.content;
+        if (content && content.asset && content.asset === state.activeImageUnavailableId) content = { ...content, available: false };
+        return { layout, content, preview,
+            mode: preview ? arrangement ? "arrangement-preview" : "image-preview" : "live",
+            editable: state.tabName === "show" && !state.gridPreview && !state.viewLive && !state.previewContent };
+    }
     function registrationCounts(config) {
         const devices = config && config.runtime && config.runtime.devices;
         if (!devices || typeof devices !== "object" || Array.isArray(devices)) return null;
@@ -151,7 +186,7 @@
         return { event() { epoch += 1; }, start() { return { epoch, sequence: ++issued }; }, current(ticket) { return ticket.epoch === epoch; },
             accept(ticket) { if (ticket.epoch !== epoch || ticket.sequence < accepted) return false; accepted = ticket.sequence; return true; } };
     }
-    const api = { fitLogical, arrangeLogical, rotateLogical, clone, entries, registrationCounts, layoutDraft, bounds, fitTransform, compareIds, sameToken, observeDevice, observeConfig, tabletState, aggregate, readFence };
+    const api = { stageView, layoutSignature, fitLogical, arrangeLogical, rotateLogical, clone, entries, registrationCounts, layoutDraft, bounds, fitTransform, compareIds, sameToken, observeDevice, observeConfig, tabletState, aggregate, readFence };
     if (typeof module !== "undefined" && module.exports) module.exports = api;
     else root.OperatorState = api;
 }(typeof window !== "undefined" ? window : globalThis));

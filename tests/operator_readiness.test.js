@@ -80,7 +80,7 @@ function factsText(nodes) {
     assert.equal(known.qr.state, "ready");
     assert.equal(known.qr.href, "/api/v3/join-qr");
     assert.equal(known.status.kind, "ok");
-    assert.match(known.status.text, /does not prove a tablet is displaying the wall/);
+    assert.match(known.status.text, /^Checked at /);
     const joined = known.facts.map(pair => pair.join(" = ")).join(" | ");
     const layoutFact = known.facts.find(pair => pair[0] === "Layout");
     assert.equal(layoutFact[0], "Layout");
@@ -173,7 +173,7 @@ function factsText(nodes) {
     assert.ok(page.nodes["tablet-qr"].attrs.src.startsWith("/api/v3/join-qr?tablet_url="));
     assert.equal(page.nodes["readiness-errors"].hidden, true);
     assert.equal(page.nodes["operator-readiness-advice"].children.length, 1);
-    assert.ok(page.nodes["readiness-refreshed"].textContent.startsWith("Last successful read at "));
+    assert.equal(page.nodes["readiness-refreshed"].hidden, true, "a healthy read has one timestamp");
     assert.ok(factsText(page.nodes).includes("Wall-Net"));
     assert.ok(!factsText(page.nodes).includes("Backup proof"), "routine server checks lead with connection facts");
     assert.ok(page.nodes["operator-readiness-details"].children.some(node => node.textContent === "Backup proof"),
@@ -182,12 +182,12 @@ function factsText(nodes) {
     page.state.operatorConfig = { layout: { kind: "logical", placements: { a: {}, b: {}, retained: {} } },
         runtime: { devices: { a: { online: true }, b: { online: true } } } };
     page.instance.render();
-    assert.ok(factsText(page.nodes).includes("2 connected · 2 registered · 1 retained wall position"),
-        "live tablet counts supersede an older server-check snapshot");
-    assert.ok(factsText(page.nodes).includes("Live tablet status"));
+    assert.ok(!factsText(page.nodes).includes("Live tablet status"), "live display evidence belongs to the header");
+    assert.ok(page.nodes["operator-readiness-details"].children.some(node => node.textContent === "Connected tablets"),
+        "server-reported connection counts remain in server details");
     page.state.rosterError = "offline";
     page.instance.render();
-    assert.ok(factsText(page.nodes).includes("Last known"), "lost runtime status labels the retained count stale");
+    assert.ok(!factsText(page.nodes).includes("Last known"), "roster failure does not rewrite independent server evidence");
     delete page.state.rosterError;
     page.instance.render();
     assert.equal(page.state.readiness.wifi.name, "Wall-Net");

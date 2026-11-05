@@ -1,7 +1,7 @@
 "use strict";
 window.OperatorWorkspace = {
     create({ state, labelFor, arrangementDirty, arrangementPreview, imageDirty, applyArrangement, showImage, discardArrangement, discardImage,
-        commitTask, renderStage, refreshReadiness, refreshStatus, selectTablet, canCommit }) {
+        commitTask, renderStage, onViewChange = () => {}, refreshReadiness, refreshStatus, selectTablet, canCommit }) {
         const $ = id => document.getElementById(id);
         let pending = null, resolving = false;
         const issues = new Map();
@@ -45,13 +45,14 @@ window.OperatorWorkspace = {
             if (name === "show" && !await resolve("Open Arrange", "arrangement")) return false;
             return commitTask(name, options);
         }
-        function render() {
+        function render(view = window.OperatorState.stageView(state)) {
             const arrangement = arrangementDirty(), image = imageDirty();
             if ($("operator-connection")) $("operator-connection").textContent = state.connectionText || "Connecting to the wall…";
             const hasPreview = arrangementPreview();
-            const mode = state.viewLive || !hasPreview && !image ? "live" : hasPreview ? "arrangement-preview" : "image-preview";
+            const mode = view.mode;
             document.body.dataset.task = { show: "arrange", tablet: "tablets", content: "images", saved: "saved", system: "settings" }[state.tabName] || "tablets";
             document.body.dataset.stageMode = mode;
+            $("compact-task-select").value = state.tabName;
             document.body.dataset.connection = state.rosterError ? "stale" : state.configLoaded ? "current" : "loading";
             document.body.dataset.outputDirty = String(arrangement || image);
             const wallEmpty = !state.base || !Object.keys(window.OperatorState.entries(state.base)).length;
@@ -61,21 +62,16 @@ window.OperatorWorkspace = {
                 host.append(stage);
                 stageTask = state.tabName;
             }
-            const connected = Object.values(state.roster).filter(device => device.online).length;
-            $("connected-summary").textContent = state.rosterError ? "Connections stale" : connected + " connected";
             const joining = $("tablet-joining");
             const empty = !Object.keys(state.roster).length;
             if (empty && emptyRoster !== true) joining.open = true;
             else if (!empty && emptyRoster === true && !joining.contains(document.activeElement)) joining.open = false;
             emptyRoster = empty;
-            $("stage-mode-label").textContent = { live: "Saved wall", "arrangement-preview": "Arrangement preview · not applied", "image-preview": "Image preview · not on tablets" }[mode];
+            $("stage-mode-label").textContent = mode === "live" ? "Applied" : "Preview";
+            const description = { live: "Applied wall", "arrangement-preview": "Arrangement preview, not applied", "image-preview": "Image preview, not shown" }[mode];
+            if ($("stage-mode-description").textContent !== description) $("stage-mode-description").textContent = description;
             $("view-live").hidden = mode === "live";
             $("view-preview").hidden = !state.viewLive || !hasPreview && !image;
-            const summary = $("arrange-review-summary");
-            if (summary) summary.textContent = hasPreview ? "Apply changes geometry only. The applied image stays unchanged."
-                : arrangement ? "Grid choices are local. Preview arrangement before applying. The diagram still shows the live wall."
-                : "No pending changes. Adjust positions or preview a grid.";
-            if (!arrangement && document.activeElement === $("btn-cancel")) $("task-arrange").focus({ preventScroll: true });
             $("btn-cancel").hidden = !arrangement;
             $("wall-empty").hidden = !state.configLoaded || hasPreview || !!state.base && Object.keys(window.OperatorState.entries(state.base)).length > 0;
             $("empty-add-tablets").textContent = !state.rosterError && Object.values(state.roster).some(device => device.online) ? "Arrange tablets" : "Add tablets";
@@ -104,13 +100,31 @@ window.OperatorWorkspace = {
                 $("issues-empty").hidden = !!visibleIssues;
                 $("issues-empty").textContent = state.rosterError ? "Status is stale. Use Refresh status to check the wall."
                     : !issues.size ? "No active positions yet. Arrange the connected tablets to begin."
-                    : "No current problems are reported for the participating wall. Image display still requires current matching paint reports.";
+                    : "No current issues.";
             }
             const wifi = state.readiness && state.readiness.wifi;
             $("join-network").textContent = wifi && wifi.known && wifi.name ? "Network · " + wifi.name : "Network name is not reported. Use the same network as the wall server.";
         }
-        $("view-live").addEventListener("click", () => { state.viewLive = true; render(); renderStage(); });
-        $("view-preview").addEventListener("click", () => { state.viewLive = false; render(); renderStage(); });
+        $("compact-task-select").addEventListener("change", async event => {
+            await open(event.target.value, { focus: false, persist: true });
+            event.target.value = state.tabName;
+        });
+        function focusComparison(target) {
+            const visible = el => el && (typeof el.getClientRects !== "function" || el.getClientRects().length > 0);
+            if (visible(target) && !target.disabled) { target.focus({ preventScroll: true }); return; }
+            const search = $("image-search");
+            if (visible(search)) search.focus({ preventScroll: true });
+        }
+        $("view-live").addEventListener("click", () => {
+            const restore = document.activeElement === $("view-live");
+            state.viewLive = true; onViewChange(); render(); renderStage();
+            if (restore) focusComparison($("view-preview"));
+        });
+        $("view-preview").addEventListener("click", () => {
+            const restore = document.activeElement === $("view-preview");
+            state.viewLive = false; onViewChange(); render(); renderStage();
+            if (restore) focusComparison($("view-live"));
+        });
         $("empty-add-tablets").addEventListener("click", () => open(!state.rosterError && Object.values(state.roster).some(device => device.online) ? "show" : "tablet", { focus: true, persist: true }));
         $("join-arrange").addEventListener("click", () => open("show", { focus: true, persist: true }));
         $("join-refresh").addEventListener("click", async () => { await Promise.all([refreshReadiness(), refreshStatus()]); render(); });

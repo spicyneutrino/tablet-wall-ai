@@ -42,7 +42,7 @@
                 return true;
             },
             discard(id, group) { const form = forms.get(key(id, group)); if (form) { form.values = copy(form.baseline); form.dirty = false; form.conflict = false; form.version += 1; } },
-            dirty(id) { return [...forms.values()].some(form => form.dirty && (id === undefined || form.id === id)); },
+            dirty(id, group) { return [...forms.values()].some(form => form.dirty && (id === undefined || form.id === id) && (group === undefined || form.group === group)); },
             clear() { forms.clear(); }
         };
     }

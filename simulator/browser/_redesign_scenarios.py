@@ -6,6 +6,32 @@ import urllib.request
 from PIL import Image
 from playwright.sync_api import expect
 
+from _redesign_edge_cases import task_tab
+
+
+def review_forget(rig, page):
+    subject = page.locator("#tablet-label-form").get_attribute("data-device-id")
+    for attempt in range(3):
+        rig.open_disclosures(page.locator("#tablet-forget-preview"))
+        page.locator("#tablet-forget-preview").click()
+        page.wait_for_function("""() => !document.querySelector('#tablet-forget-preview').disabled
+            && (!document.querySelector('#tablet-forget-impact').hidden
+                || document.querySelector('#tablet-action-message').textContent.includes('A newer update arrived. Refresh this task.'))""")
+        if page.locator("#tablet-forget-impact").is_visible():
+            break
+        rig.events.append({"operator_read_recovery": "Forget impact refused a newer update; explicitly refresh status before reviewing again", "attempt": attempt + 1})
+        sheet = page.locator("#device-sheet")
+        modal = sheet.get_attribute("data-modal") == "true"
+        if modal:
+            page.locator("#device-sheet-close").click()
+        with page.expect_response("**/api/v3/config") as response:
+            page.locator("#btn-roster-refresh").click()
+        response.value.finished()
+        page.evaluate("()=>new Promise(requestAnimationFrame)")
+        if modal:
+            page.locator(f'#device-list .dev-pick[data-device-id="{subject}"]').click()
+    expect(page.locator("#tablet-forget-impact")).to_be_visible()
+
 
 def parity(rig):
     page = rig.page
@@ -24,7 +50,9 @@ def parity(rig):
     )
 
     def task(name):
-        page.get_by_role("tab", name=name, exact=True).click()
+        if page.locator("#device-sheet").get_attribute("data-modal") == "true":
+            page.locator("#device-sheet-close").click()
+        rig.task(name)
 
     def pick(id):
         page.locator(f'#device-list .dev-pick[data-device-id="{id}"]').click()
@@ -40,21 +68,19 @@ def parity(rig):
         check(False, description)
 
     def showing(count=4):
-        expect(page.locator("#wall-health")).to_contain_text(
-            f"{count} of {count} showing the current image", timeout=10000
+        expect(page.locator("#btn-wall-health")).to_have_attribute(
+            "aria-label", f"{count} of {count} tablets showing the current image. Issues.", timeout=10000
         )
 
     def grid_preview():
         page.locator("#grid-preview").click()
-        expect(page.locator("#grid-message")).to_contain_text(
-            "Preview only", timeout=10000
-        )
+        expect(page.locator("body")).to_have_attribute("data-stage-mode", "arrangement-preview", timeout=10000)
         expect(page.locator("#stage-svg .slot")).to_have_count(4)
 
     def apply():
         page.locator("#btn-apply").click()
         expect(page.locator("#stage-mode-label")).to_have_text(
-            "Saved wall", timeout=10000
+            "Applied", timeout=10000
         )
 
     def save_arrangement(name):
@@ -95,12 +121,12 @@ def parity(rig):
     task("Images")
     expect(page.locator("#draft-resolution")).to_be_visible()
     page.locator("#resolve-stay").click()
-    expect(page.get_by_role("tab", name="Arrange", exact=True)).to_have_attribute(
+    expect(task_tab(page, "Arrange")).to_have_attribute(
         "aria-selected", "true"
     )
     task("Images")
     page.locator("#resolve-discard").click()
-    expect(page.get_by_role("tab", name="Images", exact=True)).to_have_attribute(
+    expect(task_tab(page, "Images")).to_have_attribute(
         "aria-selected", "true"
     )
     check(
@@ -206,7 +232,7 @@ def parity(rig):
         rig.open_disclosures(page.locator("#grid-common-mount"))
         page.locator("#grid-common-mount").select_option(angle)
         page.locator("#grid-preview").click()
-        expect(page.locator("#grid-message")).to_contain_text("Preview only")
+        expect(page.locator("body")).to_have_attribute("data-stage-mode", "arrangement-preview")
         submitted = json.loads(
             [r for r in requests if r["url"].endswith("/api/v3/grid/preview")][-1][
                 "body"
@@ -260,7 +286,7 @@ def parity(rig):
     expect(page.locator("#tablet-recovery")).to_contain_text(
         "calibrated", timeout=10000
     )
-    expect(page.locator("#tablet-next-action")).to_have_text("Review measurements")
+    expect(page.locator("#open-tablet-measurements")).to_be_visible()
     tablets[0].set_viewport_size({"width": 900, "height": 1280})
     showing()
     check(
@@ -287,7 +313,7 @@ def parity(rig):
             f"Actual {ext} upload selects locally and never auto-shows",
         )
         page.locator("#image-fit").select_option("cover" if ext == "png" else "contain")
-        selected_asset = page.locator("#image-select").input_value()
+        selected_asset = page.locator("#selected-image-controls").get_attribute("data-asset-id")
         page.locator("#show-image").click()
         wait_config(lambda c: c["scene"]["content"]["asset"] == selected_asset, "Show commits the exact uploaded asset before the next upload")
         showing()
@@ -536,6 +562,7 @@ def parity(rig):
         "Colour display preserves custom logical geometry",
     )
     task("Images")
+    rig.open_disclosures(page.locator("#restore-image"))
     page.locator("#restore-image").click()
     showing()
     check(
@@ -581,9 +608,7 @@ def parity(rig):
     pick(ids[3])
     expect(page.locator("#tablet-reconnect")).to_be_disabled()
     expect(page.locator("#tablet-recovery")).to_contain_text("power")
-    rig.open_disclosures(page.locator("#tablet-forget-preview"))
-    page.locator("#tablet-forget-preview").click()
-    expect(page.locator("#tablet-forget-impact")).to_be_visible()
+    review_forget(rig, page)
     rig.open_disclosures(page.locator("#tablet-forget-cancel"))
     page.locator("#tablet-forget-cancel").click()
     check(
@@ -681,7 +706,9 @@ def edges(rig):
     ]
 
     def task(name):
-        page.get_by_role("tab", name=name, exact=True).click()
+        if page.locator("#device-sheet").get_attribute("data-modal") == "true":
+            page.locator("#device-sheet-close").click()
+        rig.task(name)
 
     def pick(id):
         page.locator(f'#device-list .dev-pick[data-device-id="{id}"]').click()
@@ -698,12 +725,12 @@ def edges(rig):
 
     def preview():
         page.locator("#grid-preview").click()
-        expect(page.locator("#grid-message")).to_contain_text("Preview only")
+        expect(page.locator("body")).to_have_attribute("data-stage-mode", "arrangement-preview")
 
     def apply():
         page.locator("#btn-apply").click()
         expect(page.locator("#stage-mode-label")).to_have_text(
-            "Saved wall", timeout=10000
+            "Applied", timeout=10000
         )
 
     def row(id):
@@ -751,6 +778,7 @@ def edges(rig):
         }
     )
     expect(row(fifth_id).locator("input[type=checkbox]")).not_to_be_checked()
+    expect(row(fifth_id).get_by_role("button", name="Include Tablet 5", exact=True)).to_be_visible()
     check(
         row(fifth_id)
         .get_by_role("button", name="Include Tablet 5", exact=True)
@@ -759,14 +787,14 @@ def edges(rig):
     )
     page.locator("#grid-1x4").click()
     page.locator("#grid-rebuild").click()
-    expect(page.locator("#grid-message")).to_contain_text("Preview only")
+    expect(page.locator("body")).to_have_attribute("data-stage-mode", "arrangement-preview")
     other_ctx = browser.new_context(viewport={"width": 1440, "height": 900})
     contexts.append(other_ctx)
     rig.observe(other_ctx, "second-operator")
     other = other_ctx.new_page()
     other.on("dialog", lambda d: d.accept())
     other.goto(base + "/controller/physical.html")
-    other.get_by_role("tab", name="Tablets", exact=True).click()
+    task_tab(other, "Tablets").click()
     other.locator(f'#device-list .dev-pick[data-device-id="{ids[0]}"]').click()
     other.locator("#tablet-label").fill("Other operator")
     other.locator("#tablet-label-save").click()
@@ -778,7 +806,7 @@ def edges(rig):
         "Second operator conflict keeps the original preview and blocks apply",
     )
     page.locator("#grid-rebuild").click()
-    expect(page.locator("#grid-message")).to_contain_text("Preview only")
+    expect(page.locator("body")).to_have_attribute("data-stage-mode", "arrangement-preview")
     apply()
     task("Tablets")
     pick(ids[0])
@@ -827,7 +855,7 @@ def edges(rig):
     page.locator(f'#stage-svg .slot[data-device-id="{ids[-1]}"]').click()
     page.locator("#logical-x").fill("230")
     page.locator("#logical-x").press("Tab")
-    other.get_by_role("tab", name="Tablets", exact=True).click()
+    task_tab(other, "Tablets").click()
     other.locator(f'#device-list .dev-pick[data-device-id="{ids[2]}"]').click()
     other.locator("#tablet-label").fill("Manual conflict source")
     other.locator("#tablet-label-save").click()
@@ -848,7 +876,7 @@ def edges(rig):
     scene_before = config()["scene"]
     task("Images")
     page.locator("#resolve-commit").click()
-    expect(page.get_by_role("tab", name="Images", exact=True)).to_have_attribute(
+    expect(task_tab(page, "Images")).to_have_attribute(
         "aria-selected", "true"
     )
     check(
@@ -860,7 +888,7 @@ def edges(rig):
     task("Arrange")
     expect(page.locator("#resolve-commit")).to_have_text("Show image")
     page.locator("#resolve-commit").click()
-    expect(page.get_by_role("tab", name="Arrange", exact=True)).to_have_attribute(
+    expect(task_tab(page, "Arrange")).to_have_attribute(
         "aria-selected", "true"
     )
     check(
@@ -942,8 +970,7 @@ def edges(rig):
     task("Tablets")
     pick(ids[2])
     rig.open_disclosures(page.locator("#tablet-forget-preview"))
-    page.locator("#tablet-forget-preview").click()
-    expect(page.locator("#tablet-forget-impact")).to_be_visible()
+    review_forget(rig, page)
     rig.open_disclosures(page.locator("#tablet-forget-confirm"))
     page.locator("#tablet-forget-confirm").click()
     expect(page.locator("#tablet-action-message")).to_contain_text("acknowledge")
@@ -1002,7 +1029,7 @@ def batch(rig):
     expect(other.locator("#device-list .dev-pick")).to_have_count(4)
 
     def conflict_before_third(route):
-        other.get_by_role("tab", name="Tablets", exact=True).click()
+        task_tab(other, "Tablets").click()
         other.locator("#btn-roster-refresh").click()
         other.locator(f'#device-list .dev-pick[data-device-id="{ids[0]}"]').click()
         other.locator("#tablet-label").fill("Concurrent batch edit")

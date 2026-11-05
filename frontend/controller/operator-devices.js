@@ -22,37 +22,18 @@
         }
         return { status: "completed", completed, untouched: [], expectedEtag: expected };
     }
-    function create({ state, api, labelFor, profileFor, calibrationFor, ingestConfig, refreshRoster, showConflict, announce, tabletForms, resolveOutput = async () => true, removedFromWall = () => {}, selectTablet, openArrange }) {
+    function create({ state, api, labelFor, profileFor, calibrationFor, ingestConfig, refreshRoster, showConflict, announce, tabletForms, resolveOutput = async () => true, removedFromWall = () => {}, selectTablet, openArrange, renderRoster = () => {} }) {
         const $ = id => document.getElementById(id);
 
         let selectedId = null, impact = null, replacement = null, busy = false, snapshotsKey = "", replaceVersion = 0;
         const results = new Map();
-        const identifies = new Map();
         let nameReview = null;
         const message = text => { $("tablet-action-message").textContent = text; };
         const path = (id, suffix = "") => "/api/v3/devices/" + encodeURIComponent(id) + suffix;
         function config() { return state.operatorConfig || { layout: state.base, scene: state.scene, runtime: { devices: state.roster }, revision: state.revision, generation: state.generation }; }
         function clearPlans() { nameReview = null; $("tablet-name-review").hidden = true; impact = null; replacement = null; $("tablet-forget-impact").hidden = true; $("replace-apply").disabled = true; $("replace-cancel").disabled = true; }
         function render() {
-            for (const [id, button] of identifies) if (!state.roster[id] && !window.OperatorState.entries(state.base)[id]) {
-                button.remove(); identifies.delete(id);
-            }
-            for (const row of $("device-list").children) {
-                const id = row.dataset.deviceId, device = state.roster[id];
-                let button = identifies.get(id);
-                if (!button) {
-                    button = document.createElement("button"); button.type = "button"; button.className = "btn roster-identify";
-                    button.textContent = "Identify";
-                    button.addEventListener("click", () => run(async () => {
-                        await api("POST", path(id, "/identify"), { duration_ms: 5000 }, { etag: true });
-                        const text = "Identify requested for " + labelFor(id) + ". It temporarily covers the image; delivery needs a tablet report.";
-                        results.set(id, text); if (state.selectedId === id) message(text); announce(text);
-                    }, id));
-                    row.append(button); identifies.set(id, button);
-                }
-                button.setAttribute("aria-label", "Identify " + labelFor(id));
-                button.disabled = busy || !device?.online || !(device.caps || []).includes("identify") || state.etagState !== "current";
-            }
+            renderRoster();
             const id = state.selectedId;
             const device = state.roster[id];
             $("operator-device-actions").hidden = !id;
@@ -103,13 +84,8 @@
                 const button = $(action);
                 if (button) button.hidden = !tabletOnline;
             }
-            const next = $("tablet-next-action");
-            next.hidden = !device || (evidence?.status !== "unplaced" && !device.online) || evidence?.showing || ["hidden", "identifying", "unsupported_client", "unsupported_content", "unsupported"].includes(evidence?.status);
-            next.dataset.deviceId = id || "";
-            next.dataset.action = evidence?.status === "failed" ? "tablet-retry-image" : evidence?.status === "unplaced" ? "arrange"
-                : ["blocked", "invalid", "stale_calibration", "needs_calibration", "needs_profile", "viewport_mismatch", "zoom_changed", "missing_profile", "missing_calibration", "invalid_mapping"].includes(evidence?.status) ? "open-tablet-measurements" : "tablet-reconnect";
-            next.textContent = next.dataset.action === "tablet-retry-image" ? "Retry this image" : next.dataset.action === "arrange" ? "Place in Arrange"
-                : next.dataset.action === "open-tablet-measurements" ? "Review measurements" : "Reconnect this tablet";
+            $("open-tablet-measurements").hidden = !["blocked", "invalid", "stale_calibration", "needs_calibration", "needs_profile", "viewport_mismatch", "zoom_changed", "missing_profile", "missing_calibration", "invalid_mapping"].includes(evidence?.status);
+            $("tablet-arrange").hidden = !id || evidence?.status !== "unplaced";
             const oldIds = Object.keys(state.roster).filter(key => key !== id && !state.roster[key].online);
             $("replacement-offer").hidden = !device || !device.online || !!active || !oldIds.length;
             const oldSelect = $("replacement-old"), oldKey = oldIds.map(key => key + labelFor(key)).join("|");
@@ -144,8 +120,8 @@
             for (const action of ["tablet-label-save", "tablet-remove", "tablet-forget-preview", "replace-preview"]) $(action).disabled = !id || busy || state.etagState !== "current";
             for (const action of ["identify", "retry-image", "reconnect"]) {
                 const button = $("tablet-" + action);
-                button.disabled = !device || !device.online || busy || (action === "identify" && !(device.caps || []).includes("identify"));
-                button.title = !device || !device.online ? "Unavailable while offline" : action === "identify" && !(device.caps || []).includes("identify") ? "This client does not advertise Identify" : "";
+                button.disabled = action === "identify" ? !canIdentify(id) : !device || !device.online || busy;
+                button.title = !device || !device.online ? "Unavailable while offline" : action === "identify" && !(device.caps || []).includes("identify") ? "This client does not advertise Identify" : action === "identify" && state.etagState !== "current" ? "Refresh status before Identify" : "";
             }
             $("tablet-forget-confirm").disabled = busy || !impact;
             $("replace-apply").disabled = busy || !replacement;
@@ -197,11 +173,7 @@
                 }
             }
         }
-        $("tablet-next-action").addEventListener("click", () => {
-            const id = $("tablet-next-action").dataset.deviceId, action = $("tablet-next-action").dataset.action;
-            if (!id || id !== selectedId) return;
-            if (action === "arrange") openArrange(); else $(action).click();
-        });
+        $("tablet-arrange").addEventListener("click", () => { if (selectedId) openArrange(); });
         $("replacement-open").addEventListener("click", () => {
             const newId = selectedId, oldId = $("replacement-old").value;
             if (!newId || !oldId || !state.roster[newId]?.online || state.roster[oldId]?.online) { message("Choose an offline registration to replace with this connected tablet."); return; }
@@ -260,10 +232,26 @@
                 results.set(id, text); if (selectedId === id) message(text);
             }, id);
         });
-        for (const action of ["identify", "retry-image", "reconnect"]) $("tablet-" + action).addEventListener("click", () => {
+        const canIdentify = id => !busy && !!state.roster[id]?.online
+            && (state.roster[id].caps || []).includes("identify") && state.etagState === "current";
+        function identify(id) {
+            if (!canIdentify(id)) {
+                const text = "Identify unavailable for " + labelFor(id) + ". Refresh status and check that the tablet is online and supports Identify.";
+                results.set(id, text); if (selectedId === id) message(text); announce(text);
+                return;
+            }
+            return run(async () => {
+                await api("POST", path(id, "/identify"), { duration_ms: 5000 }, { etag: true });
+                const text = "Identify requested for " + labelFor(id) + ". Delivery is unconfirmed until the tablet reports it.";
+                results.set(id, text); if (selectedId === id) message(text); announce(text);
+                await refreshRoster();
+            }, id);
+        }
+        $("tablet-identify").addEventListener("click", () => identify(selectedId));
+        for (const action of ["retry-image", "reconnect"]) $("tablet-" + action).addEventListener("click", () => {
             const id = selectedId;
-            run(async () => { await api("POST", path(id, "/" + action), action === "identify" ? { duration_ms: 5000 } : undefined, { etag: true });
-                const text = action === "identify" ? "Identify requested. Delivery is unconfirmed until the tablet reports it." : action === "retry-image" ? "Image retry requested. Waiting for a fresh paint confirmation." : "Reconnect requested. The tablet keeps its identity.";
+            run(async () => { await api("POST", path(id, "/" + action), undefined, { etag: true });
+                const text = action === "retry-image" ? "Image retry requested. Waiting for a fresh paint confirmation." : "Reconnect requested. The tablet keeps its identity.";
                 results.set(id, text); if (selectedId === id) message(text);
                 await refreshRoster(); });
         });
@@ -342,7 +330,7 @@
                 if (selectedId === plan.id) clearPlans(); ingestConfig(result); await refreshRoster(); if (selectedId === plan.id) message("Replacement applied to the active arrangement and exactly the selected saved arrangements."); announce("Tablet replacement applied.");
             });
         });
-        return { render };
+        return { render, identify, canIdentify };
     }
     const exported = { confirmModels, create };
     if (typeof module !== "undefined" && module.exports) module.exports = exported;

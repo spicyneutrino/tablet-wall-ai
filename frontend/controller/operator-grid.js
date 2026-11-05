@@ -62,7 +62,7 @@
         }
         return result;
     }
-    function create({ state, api, labelFor, validPair, profileFor, calibrationFor, ingestConfig, renderStage, syncDraftUi, isDirty, announce, showConflict, modelBusy = () => false, modelReview = () => null }) {
+    function create({ state, api, labelFor, validPair, profileFor, calibrationFor, ingestConfig, renderStage, syncDraftUi, isDirty, announce, showConflict, modelBusy = () => false, modelReview = () => null, identifyTablet = () => {}, canIdentify = () => false }) {
         const $ = id => document.getElementById(id);
         let order = [], selected = new Set(), sizes = {}, angles = {}, storedAngles = {}, rows = new Map(), busy = false, initialized = false;
         let previewCommand = null, inputVersion = 0;
@@ -74,7 +74,7 @@
             state.viewLive = false;
             inputVersion += 1;
             state.gridPreview = null; previewCommand = null;
-            $("grid-cancel").disabled = true;
+            text("");
             syncDraftUi(); updateButtons(); renderStage();
         }
         function releases() { return Object.keys(model.entries(state.base)).filter(id => !selected.has(id)); }
@@ -109,6 +109,7 @@
                 const row = rows.get(id);
                 row.earlier.disabled = index === 0 || manualDirty; row.later.disabled = index === order.length - 1 || manualDirty;
                 row.check.disabled = manualDirty; row.angle.disabled = manualDirty;
+                row.identify.disabled = !canIdentify(id);
                 if (row.logical.querySelectorAll) row.logical.querySelectorAll("input").forEach(input => { input.disabled = manualDirty; });
                 row.label.textContent = labelFor(id) + (state.roster[id] && state.roster[id].online ? " · online" : " · offline reservation");
                 row.logical.hidden = $("grid-kind").value !== "logical";
@@ -132,8 +133,6 @@
             $("grid-preview").disabled = busy || !!state.gridPreview && !stale;
             $("grid-preview").hidden = !!state.gridPreview && !stale;
             $("grid-rebuild").hidden = !edited || !stale;
-            $("grid-cancel").hidden = !edited || !!state.gridPreview;
-            $("grid-cancel").disabled = busy || !edited;
             const ids = order.filter(id => selected.has(id));
             const physical = $("grid-kind").value === "physical";
             const required = releases().length || modelReview() || physical && ids.some(id => {
@@ -183,18 +182,15 @@
                 angle.value = angles[id]; angle.addEventListener("change", () => { angles[id] = angle.value; invalidate(); }); mount.append(angle); item.append(mount);
                 const actions = document.createElement("div"); actions.className = "operator-actions";
                 const earlier = document.createElement("button"), later = document.createElement("button");
-                const identify = document.createElement("button"); identify.type = "button"; identify.className = "btn btn-sm"; identify.textContent = "Identify";
-                identify.setAttribute("aria-label", "Identify " + labelFor(id));
-                identify.addEventListener("click", async () => {
-                    try { await api("POST", "/api/v3/devices/" + encodeURIComponent(id) + "/identify", { duration_ms: 5000 }, { etag: true }); announce("Identify requested for " + labelFor(id) + "."); }
-                    catch (error) { text("Identify for " + labelFor(id) + " failed. " + error.message); }
-                }); actions.append(identify);
                 const include = document.createElement("button"); include.type = "button"; include.className = "btn btn-sm"; include.textContent = "Include";
                 include.setAttribute("aria-label", "Include " + labelFor(id));
                 include.addEventListener("click", () => { members.include(id, true); selected.add(id); invalidate(); render(); renderReleases(); }); actions.append(include);
                 for (const [button, delta, name] of [[earlier, -1, "Move earlier"], [later, 1, "Move later"]]) {
                     button.type = "button"; button.className = "btn btn-sm"; button.textContent = name; button.setAttribute("aria-label", name + ", " + labelFor(id)); button.addEventListener("click", () => move(id, delta)); actions.append(button);
                 }
+                const identify = document.createElement("button"); identify.type = "button"; identify.className = "btn btn-sm"; identify.textContent = "Identify";
+                identify.setAttribute("aria-label", "Identify " + labelFor(id));
+                identify.addEventListener("click", () => identifyTablet(id)); actions.append(identify);
                 item.append(actions); rows.set(id, { item, label, check, logical, sizeSummary, mount, angle, pins, earlier, later, include, identify }); $("grid-order").append(item);
             });
             for (const id of ids) {
@@ -202,10 +198,12 @@
                 if (member.included) selected.add(id); else selected.delete(id);
                 row.check.checked = member.included;
                 if (!edited) storedAngles[id] = state.base.slots?.[id] ? String(state.base.slots[id].mount_angle) : "";
-                if (row.angle.options) row.angle.options[0].textContent = storedAngles[id] === "" ? "Use explicitly declared common mount" : "Common mount, otherwise current " + storedAngles[id] + "°";
+                if (row.angle.options) {
+                    row.angle.options[0].textContent = storedAngles[id] === "" ? "Use common mount" : "Common mount, else " + storedAngles[id] + "°";
+                    row.angle.options[0].title = "Keep the declared common mount when set; otherwise keep this tablet’s stored angle.";
+                }
                 row.sizeSummary.textContent = member.size.w + " × " + member.size.h + " relative units · " + member.sizeSource;
                 row.include.hidden = member.included || !(state.roster[id] || {}).online;
-                row.identify.disabled = !(state.roster[id] || {}).online || !((state.roster[id] || {}).caps || []).includes("identify");
                 sizes[id] = member.size;
                 row.item.dataset.deviceId = id;
                 row.item.dataset.membershipSource = member.membershipSource;
@@ -272,19 +270,21 @@
                 state.gridPreview = result;
                 previewCommand = Object.assign({}, previewCommand, { guards: result.guards });
                 const wall = model.bounds(result.layout);
-                text("Preview only. " + result.order.length + (result.order.length === 1 ? " tablet · " : " tablets · ") + previewCommand.rows + " row" + (previewCommand.rows === 1 ? "" : "s") + " × " + previewCommand.columns
+                text(result.order.length + (result.order.length === 1 ? " tablet · " : " tablets · ") + previewCommand.rows + " row" + (previewCommand.rows === 1 ? "" : "s") + " × " + previewCommand.columns
                     + " column" + (previewCommand.columns === 1 ? "" : "s") + " · wall " + Number(wall.width.toFixed(1)) + " × " + Number(wall.height.toFixed(1)) + (kind === "physical" ? " mm" : " logical units")
-                    + " · extra gap " + previewCommand.gap + " · orientation " + previewCommand.orientation + ". " + (result.warnings || []).join(" ")
+                    + " · gap " + previewCommand.gap + (kind === "physical" ? " mm" : " logical units") + ". "
+                    + { preserve: "Mounting and stored sizes preserved.", portrait: "Portrait orientation.", landscape: "Landscape orientation.", auto: "Orientation from current viewports and confirmed models." }[previewCommand.orientation]
+                    + (result.warnings || []).map(warning => " " + warning[0].toUpperCase() + warning.slice(1).replace(/[.!?\s]+$/, "") + ".").join("")
                     + (result.previous_kind !== kind ? " Apply will request a named safety copy of the current arrangement." : ""));
-                $("grid-cancel").disabled = false;
                 updateButtons(); syncDraftUi(); renderStage();
                 if ($("arrange-membership").dataset.required === "false") $("arrange-membership").open = false;
-                $("arrange-review-summary").focus({ preventScroll: true });
+                $("btn-apply").focus({ preventScroll: true });
             } catch (error) { text("Cannot preview arrangement. " + error.message + " The committed wall is unchanged."); }
             finally { busy = false; updateButtons(); }
         }
         async function apply() {
             if (!state.gridPreview || !previewCommand || busy) return;
+            const restoreFocus = document.activeElement === $("btn-apply");
             const preview = state.gridPreview;
             if (preview.previous_kind !== preview.layout.kind && !window.confirm("Replace the " + preview.previous_kind + " arrangement with " + preview.layout.kind + "? The server must save a named safety copy. Content stays unchanged.")) return;
             busy = true;
@@ -297,24 +297,29 @@
                     order.forEach(id => { angles[id] = ""; rows.get(id).angle.value = ""; });
                     if ($("grid-common-mount")) $("grid-common-mount").value = "";
                 }
-                ingestConfig(result, { preserveDraft: version !== inputVersion }); $("grid-cancel").disabled = true;
+                ingestConfig(result, { preserveDraft: version !== inputVersion });
                 text("Arrangement applied once." + (result.previous_layout_saved ? " Previous arrangement saved as “" + result.previous_layout_saved + "”." : "")); announce("Arrangement applied.");
             } catch (error) { if (error.status === 412) showConflict("The grid preview is stale. Your preview is retained. Reload and preview again."); text("Apply failed. " + error.message + " The preview is retained."); }
-            finally { busy = false; updateButtons(); syncDraftUi(); }
+            finally {
+                busy = false; updateButtons(); syncDraftUi();
+                if (restoreFocus && $("btn-apply").disabled) {
+                    const target = $("grid-preview");
+                    if (target && (typeof target.getClientRects !== "function" || target.getClientRects().length) && !target.disabled) target.focus({ preventScroll: true });
+                }
+            }
         }
         for (const id of ["grid-kind", "grid-rows", "grid-columns", "grid-gap", "grid-padding", "grid-orientation", "grid-sizing", "grid-holes"]) $(id).addEventListener("change", () => { invalidate(); updateButtons(); });
         for (const [id, twoRows] of [["grid-2x2", true], ["grid-1x4", false]]) $(id).addEventListener("click", () => {
             const count = selected.size, r = twoRows && count > 1 ? 2 : 1, c = Math.max(1, Math.ceil(count / r));
             $("grid-rows").value = r; $("grid-columns").value = c; $("grid-holes").checked = r * c > count;
             invalidate(); text(r + " row" + (r === 1 ? "" : "s") + " × " + c + " column" + (c === 1 ? "" : "s")
-                + " selected" + (r * c > count ? " with an empty trailing cell" : "") + ". Review the tablets, then Preview arrangement.");
+                + " selected" + (r * c > count ? " with an empty trailing cell" : "") + " · not previewed");
         });
         $("grid-preview").addEventListener("click", preview);
-        $("grid-cancel").addEventListener("click", () => { reset(); text("Preview discarded. The committed wall is unchanged."); });
         function reset() {
             inputVersion += 1;
+            text("");
             state.gridPreview = null; previewCommand = null; edited = false; baseEtag = null;
-            $("grid-cancel").disabled = true;
             rows.forEach(row => row.item.remove()); rows.clear(); order = []; selected.clear(); sizes = {}; angles = {}; storedAngles = {}; members = membership(); initialized = false;
             if ($("grid-common-mount")) $("grid-common-mount").value = "";
             render(); syncDraftUi(); renderStage();

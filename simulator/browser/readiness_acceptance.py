@@ -391,7 +391,7 @@ def image_id(name: str) -> str:
 
 def select_image(page, asset_id: str, fit: str) -> None:
     tab(page, "Wall")
-    page.locator("#image-select").select_option(asset_id)
+    page.locator(f'#image-gallery [data-asset-id="{asset_id}"] button').click()
     page.locator("#image-fit").select_option(fit)
 
 
@@ -671,9 +671,9 @@ def phase_logical_grid():
     page.locator("#grid-kind").select_option("logical")
     page.locator("#grid-2x2").click()
     page.locator("#grid-preview").click()
-    wait_until(lambda: page.locator("#grid-cancel").is_enabled(),
+    wait_until(lambda: page.locator("#btn-apply").is_enabled(),
                "logical 2x2 preview did not appear")
-    check("Preview only" in page.locator("#grid-message").inner_text(),
+    check(page.locator("body").get_attribute("data-stage-mode") == "arrangement-preview",
           "TWR-10 A5 the 2x2 preview is labelled before Apply")
     page.locator("#btn-apply").click()
     wait_until(lambda: len(config()["layout"].get("placements", {})) == 4,
@@ -713,10 +713,10 @@ def phase_physical_grid():
         angle.select_option("0")
     page.wait_for_timeout(250)
     page.locator("#grid-preview").click()
-    wait_until(lambda: page.locator("#grid-cancel").is_enabled(),
+    wait_until(lambda: page.locator("#btn-apply").is_enabled(),
                "physical 1x4 preview did not appear")
     preview = page.locator("#grid-message").inner_text()
-    check("Preview only" in preview and "1 rows × 4 columns" in preview,
+    check(page.locator("body").get_attribute("data-stage-mode") == "arrangement-preview" and "1 row × 4 columns" in preview,
           "TWR-10 A2 the physical 1x4 preview reports one row and four columns")
     check("Apply will request a named safety copy" in preview,
           "TWR-09 A5 the cross-kind preview warns that Apply requests a named safety copy")
@@ -771,7 +771,7 @@ def phase_content(return_name: str):
 
     show_image(page, marked, "contain")
     active = page.locator("#stage-applied-content").inner_text()
-    check("marked.png" in active and "Show whole image" in active and "2000 × 1000" in page.locator("#stage-dimensions").inner_text(),
+    check("marked.png" in active and "Fit whole image" in active and "2000 × 1000" in page.locator("#stage-dimensions").inner_text(),
           "TWR-04 A1 image B is named in the console with its fit and wall size")
     check(config()["scene"]["content"].get("fit") == "contain",
           "TWR-04 A1 image B is committed with the selected fit")
@@ -785,7 +785,7 @@ def phase_content(return_name: str):
     tab(page, "Wall")
     wait_until(lambda: "marked.png" in page.locator("#stage-applied-content").inner_text(),
                "reload did not show image B")
-    check("Show whole image" in page.locator("#stage-applied-content").inner_text(),
+    check("Fit whole image" in page.locator("#stage-applied-content").inner_text(),
           "TWR-04 A1 reload still names image B with Fit")
     check(config()["scene"]["content"].get("asset") == marked,
           "TWR-04 A1 reload still reads image B from the committed scene")
@@ -1169,7 +1169,7 @@ def phase_return_point():
     page.locator("#grid-kind").select_option("logical")
     page.locator("#grid-2x2").click()
     page.locator("#grid-preview").click()
-    wait_until(lambda: page.locator("#grid-cancel").is_enabled(),
+    wait_until(lambda: page.locator("#btn-apply").is_enabled(),
                "logical cross-kind preview did not appear")
     dialogs_before = len(dialogs)
     page.locator("#btn-apply").click()

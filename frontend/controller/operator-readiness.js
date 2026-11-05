@@ -169,7 +169,7 @@
             status = "Server checks reported" + (at ? " at " + at : "") + " with " + errors.length + " issue" + (errors.length === 1 ? "" : "s") + " below.";
             kind = "warn";
         } else {
-            status = "Server checks reported" + (at ? " at " + at : "") + ". This is server state only; it does not prove a tablet is displaying the wall.";
+            status = "Checked" + (at ? " at " + at : "") + ".";
             kind = "ok";
         }
 
@@ -226,12 +226,8 @@
                 ? "The server did not provide a usable same-origin QR address. Use the text address."
                 : "Scan to open the tablet page. The QR encodes only the join address, not a credential.";
 
-            const overview = new Set(["Wi-Fi", "Connected tablets", "Uploads", "Security trust"]);
-            const counts = root.OperatorState.registrationCounts(state.operatorConfig);
-            const facts = model.facts.filter(([name]) => overview.has(name)).map(([name, value]) =>
-                name === "Connected tablets" && counts ? ["Live tablet status",
-                    (state.rosterError ? "Last known · " : "") + counts.online + " connected · " + counts.registered + " registered"
-                    + (counts.retained ? " · " + counts.retained + (counts.retained === 1 ? " retained wall position" : " retained wall positions") : "")] : [name, value]);
+            const overview = new Set(["Wi-Fi", "Uploads", "Security trust"]);
+            const facts = model.facts.filter(([name]) => overview.has(name));
             const details = model.facts.filter(([name]) => !overview.has(name)).map(([name, value]) =>
                 [name === "Image content" ? "Content at last check" : name, value]);
             factList($("operator-readiness-facts"), facts, JSON.stringify(facts));
@@ -257,6 +253,7 @@
                 advice.dataset.key = JSON.stringify(model.advice);
             }
 
+            $("readiness-refreshed").hidden = !failure || fetchedAt === null;
             $("readiness-refreshed").textContent = fetchedAt === null
                 ? "Not read from the server yet."
                 : "Last successful read at " + new Date(fetchedAt).toLocaleTimeString() + ".";

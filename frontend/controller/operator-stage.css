@@ -1,15 +1,14 @@
 .wall-stage { display: grid; gap: 1rem; }
-.wall-head { display: flex; flex-wrap: wrap; align-items: center; gap: .5rem 1rem; }
+.wall-head { min-block-size: 2.75rem; display: flex; flex-wrap: wrap; align-items: center; gap: .5rem 1rem; }
 .wall-head h2 { flex: 1 1 auto; font-size: 1.25rem; letter-spacing: -.02em; }
 .stage-mode { display: flex; flex-wrap: wrap; align-items: center; gap: .5rem; }
 .stage-mode > strong { color: var(--muted); font-size: .875rem; font-weight: 600; letter-spacing: normal; }
 .stage-applied-content { font-size: .875rem; }
-.stage-dimensions { font-variant-numeric: tabular-nums; }
 .wall-head > .technical-details { flex-basis: 100%; }
 .physical-meta { display: flex; flex-wrap: wrap; gap: .5rem 1rem; }
 .etag-meta code { overflow-wrap: anywhere; }
 .wall-health { display: flex; justify-content: space-between; gap: 1rem; inline-size: 100%; min-block-size: 2.75rem; text-align: start; padding: .625rem .75rem; border: 1px solid var(--control); border-radius: var(--radius); background: var(--surface); font-size: .875rem; }
-.wall-health:hover { border-color: var(--accent); }
+@media (hover: hover) { .wall-health:hover { border-color: var(--accent); } }
 .health-action { text-decoration: underline; text-underline-offset: .2em; }
 .stage-scroll { overflow: auto; min-inline-size: 0; max-inline-size: 100%; justify-self: center; margin-inline: auto; background: var(--stage); border: 1px solid var(--control); border-radius: var(--radius); }
 .stage-svg { display: block; inline-size: 100%; block-size: auto; aspect-ratio: var(--stage-aspect, 1.5); background: var(--stage); }
@@ -34,7 +33,7 @@ body[data-stage-mode="live"] .wall-stage:has(.wall-empty:not([hidden])) :is(.sta
 .stage-legend { display: flex; flex-wrap: wrap; gap: .75rem 1rem; padding: 0; list-style: none; color: var(--muted); font-size: .875rem; }
 .lg { display: flex; gap: .5rem; align-items: center; }
 .lg > span { display: inline-block; inline-size: 1rem; block-size: .75rem; border: 1px solid var(--control); background: var(--stage); }
-.lg-active { border-color: var(--stage-text); }
+.lg > .lg-active { border: 3px double var(--control); background: var(--bg); }
 .lg > .lg-sel { border: 2px solid var(--accent); background: var(--selected); }
 .lg > .lg-grid { background: var(--bg); border-style: dashed; }
 .stage-details { border-block-start: 1px solid var(--border); }
@@ -47,4 +46,4 @@ body[data-connection="stale"] .wall-health { border-style: dashed; }
 .stage-identities li { min-inline-size: 0; overflow-wrap: anywhere; }
 
 .operator-slot[data-status="offline"] .operator-body-outline { stroke-dasharray: 4 3; }
-.lg-offline { border-style: dashed; }
+.lg > .lg-offline { border-style: dashed; background: transparent; }
