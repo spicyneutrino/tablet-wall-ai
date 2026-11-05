@@ -52,6 +52,22 @@ window.OperatorContent = {
             if (!await resolveOutput("Preview this image", "image") || version !== selectionVersion) { render(); return false; }
             select(id, nextFit); return true;
         }
+        function visibleGalleryButtons() {
+            const list = $("image-gallery");
+            if (!list || !list.children) return [];
+            const buttons = [];
+            for (const item of Array.from(list.children)) {
+                const button = item.children && item.children[0] || item.firstElementChild;
+                if (button && !item.hidden && !button.disabled) buttons.push(button);
+            }
+            return buttons;
+        }
+        function setGalleryTabStop(preferred) {
+            const buttons = visibleGalleryButtons();
+            if (!buttons.length) return;
+            const active = preferred && buttons.includes(preferred) ? preferred : buttons[0];
+            for (const button of buttons) button.tabIndex = button === active ? 0 : -1;
+        }
         function renderGallery() {
             const list = $("image-gallery");
             if (!list || typeof document.createElement !== "function") return;
@@ -89,6 +105,10 @@ window.OperatorContent = {
                 row.name.textContent = image.name;
             });
             $("image-search-empty").hidden = !search || images.some(image => image.name.toLocaleLowerCase().includes(search));
+            const focused = typeof document.activeElement !== "undefined" ? document.activeElement : null;
+            const selectedRow = selected && gallery.get(selected);
+            const fallback = focused && visibleGalleryButtons().includes(focused) ? focused : null;
+            setGalleryTabStop(selectedRow && !selectedRow.item.hidden ? selectedRow.button : fallback);
         }
         function render() {
             const content = state.scene && state.scene.content || {};
@@ -239,6 +259,20 @@ window.OperatorContent = {
             choose(selected, event.target.value);
         });
         $("image-search").addEventListener("input", renderGallery);
+        $("image-gallery").addEventListener("keydown", event => {
+            const step = { ArrowLeft: -1, ArrowUp: -1, ArrowRight: 1, ArrowDown: 1 }[event.key];
+            const buttons = visibleGalleryButtons();
+            const index = buttons.indexOf(document.activeElement);
+            if (index < 0) return;
+            let next = index;
+            if (event.key === "Home") next = 0;
+            else if (event.key === "End") next = buttons.length - 1;
+            else if (step) next = Math.max(0, Math.min(buttons.length - 1, index + step));
+            else return;
+            event.preventDefault();
+            buttons[next].focus({ preventScroll: true });
+            setGalleryTabStop(buttons[next]);
+        });
         $("edit-current-image").addEventListener("click", () => {
             const content = state.scene && state.scene.content;
             if (content && content.type === "image") return choose(content.asset, content.fit || "cover");
