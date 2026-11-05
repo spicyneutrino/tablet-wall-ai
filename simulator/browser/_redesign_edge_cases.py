@@ -897,7 +897,10 @@ def upload_ambiguous(rig, malformed=False):
                 fatal=False,
             )
         p.locator("#refresh-images").click()
-        expect(p.locator("#image-message")).to_contain_text("images available")
+        expect(p.locator("#image-message")).to_have_text("")
+        expect(
+            p.get_by_role("button", name="Preview ambiguous.png", exact=True)
+        ).to_be_visible()
         expect(p.locator("#upload-submit")).to_be_enabled()
         rig.check(
             rig.config()["scene"] == before["scene"]
