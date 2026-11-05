@@ -1658,6 +1658,7 @@ def corrections(rig):
 
     p.locator("#grid-1x4").click()
     p.locator("#grid-preview").click()
+    expect(p.locator("#btn-cancel")).to_be_enabled(timeout=15000)
     p.locator("#btn-cancel").focus()
     p.locator("#btn-cancel").press("Enter")
     expect(p.locator("#grid-preview")).to_be_focused()
