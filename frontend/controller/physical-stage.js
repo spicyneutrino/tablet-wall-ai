@@ -4,7 +4,7 @@
 function rosterSummary(config, stale) {
     const counts = window.OperatorState.registrationCounts(config);
     if (!counts) return "Tablet status unknown";
-    return (stale ? "Status stale · Last known: " : "") + counts.online + " online · " + counts.registered + " registered"
+    return (stale ? "Status stale · Last known: " : "") + counts.online + " online"
         + (counts.retained ? " · " + counts.retained + (counts.retained === 1 ? " retained wall position" : " retained wall positions") : "");
 }
 function configureDeviceSheet(deviceSheet, compact, previousCompact) {
@@ -63,7 +63,7 @@ window.PhysicalStage = {
             if (!summary.id) {
                 summary.id = "stage-identities";
                 summary.className = "stage-identities";
-                summary.innerHTML = "<summary>Tablet identities and status</summary><ul></ul>";
+                summary.innerHTML = "<summary>Tablet status</summary><ul></ul>";
                 (document.getElementById("stage-key") || el.stageSvg.parentElement).insertAdjacentElement("afterend", summary);
             }
             if (summary.dataset.presentation !== presentation) {
@@ -81,7 +81,7 @@ window.PhysicalStage = {
             }
             summary.hidden = !rows.length;
             const bounds = window.OperatorState.bounds(layout);
-            el.stageScale.textContent = " · " + formatNumber(bounds.width, 1) + " × " + formatNumber(bounds.height, 1)
+            el.stageScale.textContent = formatNumber(bounds.width, 1) + " × " + formatNumber(bounds.height, 1)
                 + (layout.kind === "physical" ? " mm" : " logical units");
         }
 
@@ -308,8 +308,8 @@ window.PhysicalStage = {
                 if (compact) el.wallHealth.textContent = (stale ? "Stale · " : "") + (result.total ? result.showing + "/" + result.total + " showing image" : "No wall");
                 el.btnWallHealth.setAttribute("aria-label", (stale ? "Status stale. " : "") + (result.total ? result.showing + " of " + result.total + " tablets showing the current image. Issues." : "No tablets on the wall. Issues."));
                 el.deviceCount.textContent = rosterSummary(state.operatorConfig, stale);
-                el.rosterStatus.textContent = stale ? "Status stale. " + state.rosterError + ". Refresh status to retry."
-                    : "Status checked " + new Date(state.rosterCheckedAt).toLocaleTimeString() + ".";
+                el.rosterStatus.hidden = !stale;
+                el.rosterStatus.textContent = stale ? "Status stale. " + state.rosterError + ". Refresh status to retry." : "";
                 return;
             }
             let online = 0;
@@ -347,10 +347,10 @@ window.PhysicalStage = {
             }
             if (el.rosterStatus) {
                 const stamp = checked ? new Date(state.rosterCheckedAt).toLocaleTimeString() : null;
+                el.rosterStatus.hidden = !stale;
                 el.rosterStatus.textContent = stale
                     ? "Tablet status could not refresh. " + (stamp ? "Last checked " + stamp + ". Showing last known status." : "No status has been loaded.")
-                    : stamp ? "Tablet status checked at " + stamp + ". Refresh to check again."
-                        : "Tablet status has not been checked.";
+                    : "";
                 el.rosterStatus.dataset.kind = stale ? "warn" : "info";
                 el.rosterStatus.title = state.rosterError || state.rosterCheckedAt || "";
             }
@@ -386,7 +386,7 @@ window.PhysicalStage = {
                 const status = current ? current.text : online ? "Connected · not on the wall" : "Offline";
                 row.number.textContent = numberTag(entry.id);
                 row.name.textContent = entry.label;
-                row.meta.textContent = status;
+                row.meta.textContent = current && current.showing ? "" : status;
                 row.item.dataset.status = current ? current.status : online ? "online" : "offline";
                 row.pick.setAttribute("aria-label", numberedLabel(entry.id) + ", " + status);
                 row.identify.setAttribute("aria-label", "Identify " + numberedLabel(entry.id));

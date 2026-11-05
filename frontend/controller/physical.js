@@ -1072,7 +1072,8 @@
     function syncDraftUi() {
         renderCalibrationHelper();
         if (!state.draft) {
-            el.draftFlag.textContent = "No draft";
+            el.draftFlag.hidden = true;
+            el.draftFlag.textContent = "";
             el.draftFlag.dataset.dirty = "false";
             el.btnApply.disabled = true;
             el.btnCancel.disabled = true;
@@ -1088,14 +1089,12 @@
         }
 
         const dirty = isDirty(), inputDirty = operatorGrid && operatorGrid.dirty();
+        el.draftFlag.hidden = !(dirty || inputDirty);
         if (dirty || inputDirty) {
             el.draftFlag.textContent = "Unapplied changes";
             el.draftFlag.dataset.dirty = "true";
-        } else if (state.base) {
-            el.draftFlag.textContent = "Matches the committed layout";
-            el.draftFlag.dataset.dirty = "false";
         } else {
-            el.draftFlag.textContent = "Draft not applied";
+            el.draftFlag.textContent = "";
             el.draftFlag.dataset.dirty = "false";
         }
 

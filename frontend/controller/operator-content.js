@@ -8,7 +8,6 @@ window.OperatorContent = {
         let retainMessage = false;
         const shownRevisions = new Map();
         const message = (text, retain = false, kind = "info", target = "image-message") => { shownRevisions.delete(target); if (target === "image-message") retainMessage = retain; $(target).dataset.kind = kind; $(target).textContent = text; };
-        const commandMessage = label => label + " updated. Check tablet status above.";
         function renderShownStatus() {
             for (const [target, revision] of shownRevisions) {
                 const config = state.operatorConfig, label = revision.image ? "Image" : "Content";
@@ -20,7 +19,7 @@ window.OperatorContent = {
                     kind = "warn";
                     text = "Wall content or arrangement changed after this command. Review current state.";
                 } else {
-                    text = commandMessage(label);
+                    text = "";
                 }
                 $(target).dataset.kind = kind;
                 $(target).textContent = text;
@@ -152,7 +151,7 @@ window.OperatorContent = {
             if (source && thumbnail.getAttribute("src") !== source.url) thumbnail.src = source.url;
             const transform = chosen && state.base && window.OperatorState.fitTransform(state.base, chosen);
             $("image-fit-note").textContent = transform ? (fit === "cover" ? "Fill crops about " + Math.round(transform.cropX * 100) + "% of the source width and " + Math.round(transform.cropY * 100) + "% of its height."
-                : "Fit keeps the whole image and adds bars where needed.") + " Tablet frames and gaps hide parts of the image." : "";
+                : "Fit keeps the whole image and adds bars where needed.") : "";
             const allowed = (state.capabilities || {}).uploads;
             $("images-check-connection").hidden = typeof allowed === "boolean";
             $("upload-form").hidden = allowed !== true;
@@ -195,9 +194,9 @@ window.OperatorContent = {
                     if (result && result.generation !== undefined && result.revision !== undefined) {
                         shownRevisions.set(feedback, { generation: result.generation, revision: result.revision, image: content.type === "image" });
                         renderShownStatus();
-                    } else message(commandMessage(content.type === "image" ? "Image" : "Content"), false, "ok", feedback);
+                    } else message("", false, "info", feedback);
                 }
-                announce("Content applied. Current tablet reports confirm display separately.");
+                announce("Content applied.");
                 return true;
             } catch (error) {
                 if (error.status === 412) showConflict("The wall changed. Your image choice is retained with its original guard. Review current state before rebuilding this preview.");

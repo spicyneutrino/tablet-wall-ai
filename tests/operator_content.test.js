@@ -42,8 +42,8 @@ const content = context.window.OperatorContent.create({ state, renderStage() {},
     assert.ok(!node("stage-applied-content").textContent.includes("Unavailable"));
     assert.ok(node("stage-applied-content").textContent.includes("black.png"));
     assert.equal(node("image-title").textContent, "black.png", "the composer names the applied image");
-    assert.equal(node("pattern-message").textContent, "Image updated. Check tablet status above.", "Settings commands report beside their controls");
-    assert.notEqual(node("image-message").textContent, node("pattern-message").textContent, "pattern feedback does not replace hidden Images feedback");
+    assert.equal(node("pattern-message").textContent, "", "routine pattern success is silent");
+    assert.doesNotMatch(node("image-message").textContent, /Image updated/, "pattern success never writes routine Images feedback");
     releaseInventory({ images: [] });
     await refresh;
     assert.equal(state.activeImageUnavailableId, null, "an older inventory read cannot erase a published pattern");

@@ -127,8 +127,6 @@
             });
             if ($("grid-1x4")) { $("grid-1x4").textContent = "1 × 4"; $("grid-1x4").setAttribute("aria-label", "Row of " + selected.size); }
             if ($("grid-2x2")) { $("grid-2x2").textContent = "2 × 2"; $("grid-2x2").setAttribute("aria-label", selected.size > 1 ? "Two rows, " + Math.ceil(selected.size / 2) + " columns" + (selected.size % 2 ? ", one empty cell" : "") : "One tablet"); }
-            $("grid-kind-note").textContent = $("grid-kind").value === "logical" ? "Relative screen shapes, without physical calibration."
-                : "Pinned measurements. Model dimensions remain approximate.";
             const stale = !!baseEtag && baseEtag !== state.etag;
             $("grid-preview").disabled = busy || !!state.gridPreview && !stale;
             $("grid-preview").hidden = !!state.gridPreview && !stale;
@@ -142,8 +140,9 @@
             });
             const names = ids.map(labelFor);
             const subjects = names.every(name => /^Tablet \d+$/.test(name)) ? "Tablets " + names.map(name => name.slice(7)).join(", ") : names.join(", ");
-            $("arrange-membership-summary").textContent = (ids.length ? subjects : "Choose tablets")
-                + (required ? " · review tablet sizes and mounting" : " · tablet order and measurements");
+            $("arrange-membership-summary").textContent = !ids.length ? "Choose tablets"
+                : required ? subjects + " · review tablet sizes and mounting"
+                    : "Tablet order and measurements";
             if (required) $("arrange-membership").open = true;
             $("arrange-membership").dataset.required = String(!!required);
         }
@@ -298,7 +297,7 @@
                     if ($("grid-common-mount")) $("grid-common-mount").value = "";
                 }
                 ingestConfig(result, { preserveDraft: version !== inputVersion });
-                text("Arrangement applied once." + (result.previous_layout_saved ? " Previous arrangement saved as “" + result.previous_layout_saved + "”." : "")); announce("Arrangement applied.");
+                text(result.previous_layout_saved ? "Previous arrangement saved as “" + result.previous_layout_saved + "”." : ""); announce("Arrangement applied.");
             } catch (error) { if (error.status === 412) showConflict("The grid preview is stale. Your preview is retained. Reload and preview again."); text("Apply failed. " + error.message + " The preview is retained."); }
             finally {
                 busy = false; updateButtons(); syncDraftUi();

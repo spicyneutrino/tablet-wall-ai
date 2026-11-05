@@ -110,7 +110,7 @@ const content = context.window.OperatorContent.create({ state, renderStage() {},
     assert.equal(node("edit-current-image").hidden, false, "a saved image has an explicit adjust action");
     assert.equal(node("image-preview-controls").hidden, true);
     assert.equal(node("show-image").disabled, true); assert.equal(node("image-fit").disabled, true);
-    assert.equal(node("image-message").textContent, "Image updated. Check tablet status above.");
+    assert.equal(node("image-message").textContent, "", "routine success is silent; the header carries the state");
     assert.equal(buttonA.attrs["aria-pressed"], "false", "a completed Show clears the rust draft outline");
     assert.equal(cardA.dataset.applied, "true", "the applied marker remains when no draft exists");
     const appliedNote = cardA.children[1];
@@ -120,7 +120,7 @@ const content = context.window.OperatorContent.create({ state, renderStage() {},
     assert.match(node("stage-applied-content").textContent, /a · Fill wall/);
     assert.equal(node("stage-applied-content").textContent.includes("source px"), false);
 
-    const confirm = "Image updated. Check tablet status above.";
+    const confirm = "";
     const render = config.runtime.devices.t.render;
     Object.assign(render, { state: "displayed", current: true, expected_token: token, accepted_token: { ...token }, age_ms: 0, observed_mono: 100 });
     content.render(); assert.equal(node("image-message").textContent, confirm);

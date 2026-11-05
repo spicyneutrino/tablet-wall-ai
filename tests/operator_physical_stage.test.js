@@ -11,14 +11,14 @@ const mixed = {
     layout: { kind: "physical", slots: { a: {}, b: {}, c: {}, d: {}, e: {}, f: {} } },
     runtime: { devices: { a: { online: false }, b: { online: false } } }
 };
-assert.equal(rosterSummary(mixed, false), "0 online · 2 registered · 4 retained wall positions");
-assert.equal(rosterSummary(mixed, true), "Status stale · Last known: 0 online · 2 registered · 4 retained wall positions");
+assert.equal(rosterSummary(mixed, false), "0 online · 4 retained wall positions");
+assert.equal(rosterSummary(mixed, true), "Status stale · Last known: 0 online · 4 retained wall positions");
 
 const allRegistered = {
     layout: { kind: "logical", placements: { a: {}, b: {} } },
     runtime: { devices: { a: { online: true }, b: { online: false } } }
 };
-assert.equal(rosterSummary(allRegistered, false), "1 online · 2 registered");
+assert.equal(rosterSummary(allRegistered, false), "1 online");
 assert.equal(rosterSummary({ layout: { kind: "logical", placements: {} } }, false), "Tablet status unknown");
 
 const sheet = {

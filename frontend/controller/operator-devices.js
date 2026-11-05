@@ -66,8 +66,9 @@
             $("tablet-action-name").textContent = id ? labelFor(id) : "Select a tablet in the list or stage.";
             const evidence = id ? window.OperatorState.tabletState(config(), id, performance.now()) : null;
             if (impact || replacement) $("tablet-lifecycle").open = true;
-            $("tablet-evidence").hidden = !evidence || evidence.status === "unplaced";
-            $("tablet-evidence").textContent = evidence && evidence.status !== "unplaced" ? evidence.text : "";
+            const keepEvidence = evidence && !evidence.showing && evidence.status !== "unplaced";
+            $("tablet-evidence").hidden = !keepEvidence;
+            $("tablet-evidence").textContent = keepEvidence ? evidence.text : "";
             $("tablet-recovery").textContent = !id ? "" : evidence.status === "unplaced"
                 ? "Not placed yet. The wall cannot address this tablet until it is placed in Arrange."
                 : !device || !device.online
