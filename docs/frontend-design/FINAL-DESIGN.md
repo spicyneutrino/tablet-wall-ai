@@ -54,11 +54,11 @@ Presets, membership, explicit mounting and measurement pins remain separate from
 
 The roster and selected-tablet inspector retain their desktop list/detail layout and phone native dialog. The actual tablet name heads the inspector. Naming stays visible. A context-specific recovery control names the real action instead of forwarding through another button.
 
-Roster and inspector Identify invoke the same captured-target command. Roster-row DOM belongs to PhysicalStage. Placement, participation, replacement, Remove and offline Forget remain reachable. Wall issues use a native disclosure which the header Issues control opens.
+Inspector and Arrange order Identify invoke the same captured-target command. Roster-row DOM belongs to PhysicalStage. Placement, participation, replacement, Remove and offline Forget remain reachable. Wall issues use a native disclosure which the header Issues control opens.
 
 ### Saved
 
-Arrangements and Scenes have distinct groups and actions. Each save form precedes its list and names the applied object it saves. Recall arrangement changes geometry; Preview scene creates a content preview. Neither group needs a repeated per-row exclusion sentence.
+Arrangements and Content have distinct groups and actions. Each save form precedes its list and names the applied object it saves. Recall arrangement changes geometry; Preview content creates a content preview. Neither group needs a repeated per-row exclusion sentence.
 
 One Refresh reloads both inventories. Each arrangement's exact tablet identities and revision pins remain in a named Tablet details disclosure. Invalid entries and missing assets stay visible before their action. Delete and return-point recovery retain their existing guards and confirmations.
 
@@ -74,7 +74,7 @@ OperatorState.stageView derives the drawn layout, content, mode and editability 
 
 OperatorContent owns inventory, selection, fit and content commands. OperatorGrid owns grid review and application. The controller coordinates manual geometry and cross-task resolution. OperatorDevices owns tablet commands and per-subject receipts. OperatorReadiness owns server checks. OperatorSession remains the authority and write boundary.
 
-A single stage node moves only when its task host changes. Runtime updates preserve focus. The visible stage state is Applied or Preview; a text-backed live status identifies whether the preview changes arrangement or image and whether it is applied. Viewing applied output retains the pending draft.
+A single stage node moves only when its task host changes. Runtime updates preserve focus. The stage label identifies what is showing or being previewed. A text-backed live status identifies whether the preview changes arrangement or image and whether it is applied. Viewing applied output retains the pending draft.
 
 Draft cues belong to their task, including when another task is active. Compact navigation names inactive draft owners. The native selector keeps focus across successive arrow changes and uses the same draft-resolution flow as tabs.
 
@@ -84,7 +84,7 @@ The header grows with its content from a 64px desktop, 56px portrait or 44px sho
 
 The stage keeps the wall aspect, geometry, gaps and bezels. Its dark field shrink-wraps the SVG and is centered when height-limited. Fitting measures available width and viewport chrome through CSS zoom and document position. A captured drag retains its starting screen matrix and field size until release. It does not use a fixed vh percentage.
 
-Portrait Images keeps a full-width scrollable wall below the chooser. Other layouts fit available height with a usable floor and page scrolling. Pending controls remain fixed when sufficient space exists and return to normal flow when enlarged controls would obscure the wall. Inline controls wrap within their composer and shed fixed-bar backgrounds and borders.
+Portrait Images keeps a full-width scrollable wall below the chooser. Other layouts fit available height with a usable floor and page scrolling. Arrange controls flow beside the wall on wide screens and below it on phones. Phone navigation has its own layout row, with task content scrolling above it. Image controls wrap within their composer.
 
 Screen-space tablet labels target 11–13px. Small labels retain tablet numbers, or yield to the external identity list when no readable label fits. The labels are operator geometry, not tablet content. Stage technical details remain reachable from Images and Arrange.
 
@@ -106,4 +106,4 @@ Tab activation retains focus on the visible tab or compact task selector. Discar
 
 Fit has a persistent visible label and concise Fill/Fit values. Inline composer actions remain a grouped row and wrap within their available width. Saved validation and command receipts precede their inventory and sit beside the form. One task-level Refresh saved updates both object inventories.
 
-Tablet placement/measurements and lifecycle controls are sibling disclosures. Exact replacement details remain nested within the deliberate replacement flow. Measurements has one visible heading at its entry. Identify in the roster, inspector and Arrange order list uses the same captured-subject command and availability predicate. Stale or missing authority disables the command; an activation-time refusal is announced with recovery guidance and makes no request.
+Tablet placement/measurements and lifecycle controls are sibling disclosures. Exact replacement details remain nested within the deliberate replacement flow. Measurements has one visible heading at its entry. Identify in the inspector and Arrange order list uses the same captured-subject command and availability predicate. Stale or missing authority disables the command; an activation-time refusal is announced with recovery guidance and makes no request.

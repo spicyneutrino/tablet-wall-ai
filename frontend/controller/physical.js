@@ -2813,18 +2813,46 @@
 
     function init() {
         const labelFor = id => numberedLabel(id, latestProfile(id));
-        operatorContent = window.OperatorContent.create({ state, api, ingestConfig, renderStage, announce, showConflict, resolveOutput, refreshConnection: () => session.refresh() });
-        operatorGrid = window.OperatorGrid.create({ state, api, labelFor, validPair, profileFor, calibrationFor, ingestConfig, renderStage, syncDraftUi, isDirty, announce, showConflict, modelBusy: () => confirmingModels, modelReview: () => modelBatchReview, identifyTablet: id => operatorDevices.identify(id), canIdentify: id => !!operatorDevices && operatorDevices.canIdentify(id) });
-        operatorDevices = window.OperatorDevices.create({ state, api, labelFor, profileFor, calibrationFor, ingestConfig, refreshRoster, showConflict, announce, tabletForms, resolveOutput, renderRoster: () => { renderDeviceList(); operatorGrid.render(); }, removedFromWall: id => operatorGrid.exclude(id), selectTablet: selectDevice, openArrange: () => showTab("show", { focus: true, persist: true }) });
+        operatorContent = window.OperatorContent.create({
+            state, api, ingestConfig, renderStage, announce, showConflict, resolveOutput,
+            refreshConnection: () => session.refresh()
+        });
+        operatorGrid = window.OperatorGrid.create({
+            state, api, labelFor, validPair, profileFor, calibrationFor,
+            ingestConfig, renderStage, syncDraftUi, isDirty, announce, showConflict,
+            modelBusy: () => confirmingModels,
+            modelReview: () => modelBatchReview,
+            identifyTablet: id => operatorDevices.identify(id),
+            canIdentify: id => !!operatorDevices && operatorDevices.canIdentify(id)
+        });
+        operatorDevices = window.OperatorDevices.create({
+            state, api, labelFor, profileFor, calibrationFor,
+            ingestConfig, refreshRoster, showConflict, announce, tabletForms, resolveOutput,
+            renderRoster: () => {
+                renderDeviceList();
+                operatorGrid.render();
+            },
+            removedFromWall: id => operatorGrid.exclude(id),
+            selectTablet: selectDevice,
+            openArrange: () => showTab("show", { focus: true, persist: true })
+        });
         for (const event of ["input", "click"]) document.getElementById("tablet-label-form").addEventListener(event, syncTabDots);
         operatorReadiness = window.OperatorReadiness.create({ state, api, copyText });
         session.subscribe(observeSession);
-        workspace = window.OperatorWorkspace.create({ state, labelFor,
-            arrangementDirty: () => isDirty() || operatorGrid.dirty(), arrangementPreview: isDirty, imageDirty: () => operatorContent.dirty(),
-            applyArrangement: applyLayout, showImage: () => operatorContent.showSelected(),
-            discardArrangement: cancelDraft, discardImage: () => operatorContent.discard(),
+        workspace = window.OperatorWorkspace.create({
+            state, labelFor,
+            arrangementDirty: () => isDirty() || operatorGrid.dirty(),
+            arrangementPreview: isDirty,
+            imageDirty: () => operatorContent.dirty(),
+            applyArrangement: applyLayout,
+            showImage: () => operatorContent.showSelected(),
+            discardArrangement: cancelDraft,
+            discardImage: () => operatorContent.discard(),
             canCommit: kind => kind === "image" ? !document.getElementById("show-image").disabled : isDirty() && !el.btnApply.disabled,
-            selectTablet: selectDevice, commitTask, renderStage, stageNames: () => operatorContent.stageNames(), onViewChange: () => operatorContent.viewChanged() });
+            selectTablet: selectDevice, commitTask, renderStage,
+            stageNames: () => operatorContent.stageNames(),
+            onViewChange: () => operatorContent.viewChanged()
+        });
         document.getElementById("refresh-command-status").addEventListener("click", () => session.refresh().catch(error => showError(error.message)));
         window.addEventListener("beforeunload", event => {
             if (hasUnsavedEdits()) { event.preventDefault(); event.returnValue = ""; }
