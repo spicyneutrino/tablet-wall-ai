@@ -65,7 +65,7 @@
     function create({ state, api, labelFor, validPair, profileFor, calibrationFor, ingestConfig, renderStage, syncDraftUi, isDirty, announce, showConflict, modelBusy = () => false, modelReview = () => null, identifyTablet = () => {}, canIdentify = () => false }) {
         const $ = id => document.getElementById(id);
         let order = [], selected = new Set(), sizes = {}, angles = {}, storedAngles = {}, rows = new Map(), busy = false, initialized = false;
-        let previewCommand = null, inputVersion = 0;
+        let previewCommand = null, inputVersion = 0, releaseRows = new Map();
         let members = membership(), edited = false, baseEtag = null;
         const text = value => { $("grid-message").textContent = order.reduce((line, id) => line.split(id).join(labelFor(id)), value); };
         function invalidate() {
@@ -78,16 +78,6 @@
             syncDraftUi(); updateButtons(); renderStage();
         }
         function releases() { return Object.keys(model.entries(state.base)).filter(id => !selected.has(id)); }
-        function renderReleases() {
-            const box = $("grid-releases");
-            box.replaceChildren();
-            releases().forEach(id => {
-                const label = document.createElement("label"); label.className = "check-label";
-                const check = document.createElement("input"); check.type = "checkbox"; check.dataset.release = id;
-                label.append(check, document.createTextNode(" Release " + labelFor(id) + " from the active arrangement"));
-                box.append(label);
-            });
-        }
         function move(id, delta) {
             members.freeze();
             const index = order.indexOf(id), next = index + delta;
@@ -162,7 +152,7 @@
                 const choice = document.createElement("label"); choice.className = "check-label";
                 const check = document.createElement("input"); check.type = "checkbox"; check.checked = selected.has(id);
                 const label = document.createElement("span"); choice.append(check, label); item.append(choice);
-                check.addEventListener("change", () => { members.include(id, check.checked); if (check.checked) selected.add(id); else selected.delete(id); invalidate(); renderReleases(); });
+                check.addEventListener("change", () => { members.include(id, check.checked); if (check.checked) selected.add(id); else selected.delete(id); invalidate(); render(); });
                 const logical = document.createElement("details"); logical.className = "tablet-size-details";
                 const sizeSummary = document.createElement("summary"); logical.append(sizeSummary);
                 for (const [key, name] of [["w", "Width (relative units)"], ["h", "Height (relative units)"]]) {
@@ -183,7 +173,7 @@
                 const earlier = document.createElement("button"), later = document.createElement("button");
                 const include = document.createElement("button"); include.type = "button"; include.className = "btn btn-sm"; include.textContent = "Include";
                 include.setAttribute("aria-label", "Include " + labelFor(id));
-                include.addEventListener("click", () => { members.include(id, true); selected.add(id); invalidate(); render(); renderReleases(); }); actions.append(include);
+                include.addEventListener("click", () => { members.include(id, true); selected.add(id); invalidate(); render(); }); actions.append(include);
                 for (const [button, delta, name] of [[earlier, -1, "Move earlier"], [later, 1, "Move later"]]) {
                     button.type = "button"; button.className = "btn btn-sm"; button.textContent = name; button.setAttribute("aria-label", name + ", " + labelFor(id)); button.addEventListener("click", () => move(id, delta)); actions.append(button);
                 }
@@ -217,8 +207,19 @@
             if (additions.length) {
                 if (!edited) order.sort((a, b) => model.compareIds(state.roster, state.deviceLabels || {}, a, b));
                 order.forEach(id => $("grid-order").append(rows.get(id).item));
-                renderReleases();
             }
+            const released = releases(), box = $("grid-releases");
+            for (const id of releaseRows.keys()) if (!released.includes(id)) releaseRows.delete(id);
+            const releaseLabels = released.map(id => {
+                if (!releaseRows.has(id)) {
+                    const label = document.createElement("label"); label.className = "check-label";
+                    const check = document.createElement("input"); check.type = "checkbox"; check.dataset.release = id;
+                    label.append(check, document.createTextNode(" Release " + labelFor(id) + " from the active arrangement"));
+                    releaseRows.set(id, label);
+                }
+                return releaseRows.get(id);
+            });
+            if (releaseLabels.length !== box.children.length || releaseLabels.some((label, index) => box.children[index] !== label)) box.replaceChildren(...releaseLabels);
             updateButtons();
             const subjects = $("group-subjects"), groupModel = $("group-model");
             if ($("group-model-title")) $("group-model-title").closest("section").hidden = $("grid-kind").value !== "physical";
@@ -319,7 +320,7 @@
             inputVersion += 1;
             text("");
             state.gridPreview = null; previewCommand = null; edited = false; baseEtag = null;
-            rows.forEach(row => row.item.remove()); rows.clear(); order = []; selected.clear(); sizes = {}; angles = {}; storedAngles = {}; members = membership(); initialized = false;
+            rows.forEach(row => row.item.remove()); rows.clear(); releaseRows.clear(); order = []; selected.clear(); sizes = {}; angles = {}; storedAngles = {}; members = membership(); initialized = false;
             if ($("grid-common-mount")) $("grid-common-mount").value = "";
             render(); syncDraftUi(); renderStage();
         }
@@ -332,7 +333,7 @@
         return { render, apply, cancel: reset, reset, dirty: () => edited,
             selectedIds: () => order.filter(id => selected.has(id)),
             freezeSelection: () => members.freeze(),
-            exclude(id) { if (members.view()[id]) { members.include(id, false); selected.delete(id); render(); renderReleases(); } },
+            exclude(id) { if (members.view()[id]) { members.include(id, false); selected.delete(id); render(); } },
             modelSetupComplete(expected) { if (!expected || state.etag !== expected) return false; baseEtag = expected; return true; } };
     }
     const api = { command, membership, create };
