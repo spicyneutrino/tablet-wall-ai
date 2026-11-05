@@ -2,6 +2,7 @@
 const assert = require("node:assert/strict");
 const fs = require("node:fs");
 const vm = require("node:vm");
+(async () => {
 const nodes = new Map();
 const document = { activeElement: null, body: { dataset: {} }, getElementById: node, querySelector: selector => node(selector === ".arrange-tools" ? "arrange-tools" : "shared-stage") };
 function node(id) {
@@ -18,7 +19,7 @@ let dirty = false, applied = "a.png";
 const context = { window: { OperatorState: require("../frontend/controller/operator-state.js") }, document };
 vm.runInNewContext(fs.readFileSync(require.resolve("../frontend/controller/operator-workspace.js"), "utf8"), context);
 const workspace = context.window.OperatorWorkspace.create({ state, arrangementDirty: () => false, arrangementPreview: () => false,
-    imageDirty: () => dirty, canCommit: () => true, stageNames: () => ({ applied, pending: "b.png" }) });
+    imageDirty: () => dirty, canCommit: () => true, stageNames: () => ({ applied, pending: "b.png" }), commitTask: name => { state.tabName = name; } });
 workspace.render();
 assert.equal(node("shared-stage").parent, node("wall-context-content"));
 assert.equal(node("stage-mode-label").textContent, "Showing a.png");
@@ -53,6 +54,16 @@ state.roster = {}; workspace.render();
 assert.deepEqual(tabletOnly.map(id => node(id).hidden), [true, true, true], "with no tablets, Images and Arrange offer only Add tablets");
 state.roster = { a: { online: true } }; workspace.render();
 assert.deepEqual(tabletOnly.map(id => node(id).hidden), [false, false, false], "details and arrange tools return once a tablet joins");
+state.rosterError = false; state.base = { placements: {} }; state.tabName = "content"; state.roster = { a: { online: true } }; workspace.render();
+assert.equal(node("wall-empty").hidden, false);
+assert.equal(node("empty-add-tablets").textContent, "Arrange tablets", "online tablets lead the empty Images card to Arrange");
+await node("empty-add-tablets").listeners.click();
+assert.equal(state.tabName, "show", "the empty Images action opens Arrange");
+for (const task of ["show", "tablet"]) { state.tabName = task; workspace.render(); assert.equal(node("wall-empty").hidden, true, "no empty card on " + task); }
+state.tabName = "content"; state.roster = { a: { online: false } }; workspace.render();
+assert.equal(node("empty-add-tablets").textContent, "Add tablets");
+await node("empty-add-tablets").listeners.click();
+assert.equal(state.tabName, "tablet", "without online tablets the action opens Tablets");
 console.log("Workspace relocates one stage only on task changes and preserves keyed field focus and admitted entry points");
 
 const controller = fs.readFileSync(require.resolve("../frontend/controller/physical.js"), "utf8");
@@ -111,3 +122,5 @@ console.log("Task commit draws the new task immediately after moving the origina
     assert.equal(note.textContent, "", "discard clears the named draft hint");
     assert.ok(entries.every(e => !e.tab.dot || e.tab.dot.hidden));
 }
+
+})().catch(error => { console.error(error); process.exitCode = 1; });

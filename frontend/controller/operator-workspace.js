@@ -7,6 +7,7 @@ window.OperatorWorkspace = {
         const issues = new Map();
         const stage = document.querySelector(".wall-stage"), arrangeTools = document.querySelector(".arrange-tools");
         let stageTask = null;
+        const anyOnline = () => !state.rosterError && Object.values(state.roster).some(device => device.online);
         async function resolve(reason, except) {
             const nextKind = () => arrangementDirty() && except !== "arrangement" ? "arrangement"
                 : imageDirty() && except !== "image" ? "image" : null;
@@ -74,8 +75,8 @@ window.OperatorWorkspace = {
             $("view-toggle").hidden = mode === "live" && (!state.viewLive || !hasPreview && !image);
             $("view-toggle").textContent = state.viewLive ? "View preview" : "View applied";
             $("btn-cancel").hidden = !arrangement;
-            $("wall-empty").hidden = !state.configLoaded || hasPreview || !!state.base && Object.keys(window.OperatorState.entries(state.base)).length > 0;
-            $("empty-add-tablets").textContent = !state.rosterError && Object.values(state.roster).some(device => device.online) ? "Arrange tablets" : "Add tablets";
+            $("wall-empty").hidden = state.tabName !== "content" || !state.configLoaded || hasPreview || !wallEmpty;
+            $("empty-add-tablets").textContent = anyOnline() ? "Arrange tablets" : "Add tablets";
             const config = state.operatorConfig;
             if (config) {
                 const ids = Object.keys(window.OperatorState.entries(config.layout));
@@ -115,7 +116,7 @@ window.OperatorWorkspace = {
             state.viewLive = !state.viewLive; onViewChange(); render(); renderStage();
             if (restore && toggle.hidden && (typeof search.getClientRects !== "function" || search.getClientRects().length)) search.focus({ preventScroll: true });
         });
-        $("empty-add-tablets").addEventListener("click", () => open(!state.rosterError && Object.values(state.roster).some(device => device.online) ? "show" : "tablet", { focus: true, persist: true }));
+        $("empty-add-tablets").addEventListener("click", () => open(anyOnline() ? "show" : "tablet", { focus: true, persist: true }));
         $("add-image").addEventListener("click", () => {
             $("image-addition").open = true;
             ($("upload-form").hidden ? $("image-addition").querySelector("summary") : $("upload-file")).focus();

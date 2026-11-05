@@ -288,14 +288,16 @@ window.PhysicalStage = {
             if (window.OperatorState && state.operatorConfig) {
                 const result = window.OperatorState.aggregate(state.operatorConfig, performance.now());
                 const stale = !!state.rosterError;
+                const counts = window.OperatorState.registrationCounts(state.operatorConfig);
+                const empty = counts && counts.online ? counts.online + " online · none on the wall" : "No tablets on the wall";
                 const paint = result.total
                     ? (stale ? "Current image evidence unavailable" : result.showing + " of " + result.total + " showing the current image")
-                    : "No tablets on the wall";
+                    : empty;
                 el.wallHealth.textContent = (stale ? "Status stale · " : "") + paint;
                 el.btnWallHealth.dataset.kind = stale || result.states.some(item => !["displayed", "offline", "excluded"].includes(item.status)) ? "warn" : "info";
                 const compact = typeof window.matchMedia === "function" && window.matchMedia("(max-width: 36rem)").matches;
-                if (compact) el.wallHealth.textContent = (stale ? "Stale · " : "") + (result.total ? result.showing + "/" + result.total + " showing image" : "No wall");
-                el.btnWallHealth.setAttribute("aria-label", (stale ? "Status stale. " : "") + (result.total ? result.showing + " of " + result.total + " tablets showing the current image. Issues." : "No tablets on the wall. Issues."));
+                if (compact) el.wallHealth.textContent = (stale ? "Stale · " : "") + (result.total ? result.showing + "/" + result.total + " showing image" : counts && counts.online ? counts.online + " online · none on wall" : "No wall");
+                el.btnWallHealth.setAttribute("aria-label", (stale ? "Status stale. " : "") + (result.total ? result.showing + " of " + result.total + " tablets showing the current image. Issues." : empty + ". Issues."));
                 el.deviceCount.textContent = rosterSummary(state.operatorConfig, stale);
                 el.rosterStatus.hidden = !stale;
                 el.rosterStatus.textContent = stale ? "Status stale. " + state.rosterError + ". Refresh status to retry." : "";

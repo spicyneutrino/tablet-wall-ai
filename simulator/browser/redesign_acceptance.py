@@ -839,11 +839,15 @@ class Rig:
             "Console opens before any tablet registers",
         )
         self.viewport_shots("empty")
-        self.click("#empty-add-tablets", "Open Add tablets")
+        expect(self.page.locator("#wall-empty")).to_be_hidden()
         for i in range(4):
             self.new_tablet(i, delay=i == 0)
         expect(self.page.locator("#device-count")).to_contain_text("4")
-        self.task("Arrange")
+        expect(self.page.locator("#wall-health")).to_contain_text("4 online · none on the wall")
+        self.task("Images")
+        expect(self.page.locator("#wall-empty")).to_be_visible()
+        self.click("#empty-add-tablets", "Arrange joined tablets")
+        expect(self.page.locator("#wall-empty")).to_be_hidden()
         expect(
             self.page.locator("#grid-order input[type=checkbox]:checked")
         ).to_have_count(4)
