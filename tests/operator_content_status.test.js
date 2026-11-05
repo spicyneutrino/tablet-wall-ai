@@ -163,6 +163,7 @@ const content = context.window.OperatorContent.create({ state, renderStage() {},
     assert.equal(cardA.dataset.applied, "true", "Show moves the applied marker to the submitted image");
     state.viewLive = true; content.render();
     assert.equal(node("image-title").textContent, "b", "comparison keeps the pending filename in the inspector");
+    assert.equal(node("show-image").textContent, "Show b", "while the applied wall is visible, Show names what it will show");
     state.viewLive = false; content.render();
     node("image-discard").focus(); content.discard(); assert.equal(document.activeElement, node("image-search"));
     assert.equal(content.dirty(), false); assert.equal(state.previewContent, null);

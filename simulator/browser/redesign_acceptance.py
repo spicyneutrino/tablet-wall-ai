@@ -1462,7 +1462,7 @@ def recovery(rig):
     expect(p.locator("#layout-msg")).to_contain_text("saved")
     p.locator("#scene-name").fill("Durable recovery scene")
     rig.click("#scene-save")
-    expect(p.locator("#scene-message")).to_contain_text("Scene saved")
+    expect(p.locator("#scene-message")).to_contain_text("Content saved")
     durable = rig.config()
     client = rig.tablets[0]
     rig.task("Tablets")

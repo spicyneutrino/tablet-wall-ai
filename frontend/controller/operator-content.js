@@ -118,7 +118,7 @@ window.OperatorContent = {
         }
         function pendingName() {
             const image = images.find(item => item.id === selected);
-            return image ? image.name : savedScene ? savedScene.name || "Saved scene" : selected ? "Unavailable image" : "Saved scene";
+            return image ? image.name : savedScene ? savedScene.name || "Saved content" : selected ? "Unavailable image" : "Saved content";
         }
         function render() {
             const content = state.scene && state.scene.content || {};
@@ -137,7 +137,7 @@ window.OperatorContent = {
             contextual("image-rebuild", selectionDirty && baseEtag !== state.etag); contextual("image-discard", selectionDirty);
             contextual("restore-image", !!previous);
             $("image-rebuild").disabled = !selectionDirty || busy; $("image-discard").disabled = !selectionDirty || busy;
-            $("show-image").textContent = savedScene ? "Show saved scene" : "Show image";
+            $("show-image").textContent = state.viewLive ? "Show " + pendingName() : savedScene ? "Show saved content" : "Show image";
             $("restore-image").disabled = busy || !previous || state.etagState !== "current";
             $("refresh-images").disabled = loading;
             const chosen = selectedContent();

@@ -2731,7 +2731,7 @@
         try {
             const result = await api("PUT", (kind === "logical" ? "/api/v3/logical-layouts" : API_LAYOUTS) + "/" + encodeURIComponent(name) + (existing ? "?replace=true" : ""), undefined, { ifMatch: guard });
             ingestConfig(result, { preserveDraft: true });
-            setMsg(el.layoutMsg, "Arrangement “" + result.name + "” saved. Image excluded.", "ok");
+            setMsg(el.layoutMsg, "Arrangement “" + result.name + "” saved.", "ok");
             await loadLayouts();
         } catch (error) { handleWriteError(error, el.layoutMsg); }
         finally { setBusy(false); }
@@ -2792,19 +2792,19 @@
                 for (const verb of ["Preview", "Delete"]) {
                     const button = document.createElement("button"); button.type = "button"; button.className = "btn btn-sm";
                     if (verb === "Delete") button.classList.add("btn-danger");
-                    button.textContent = verb; button.setAttribute("aria-label", verb + " scene “" + entry.name + "”"); button.disabled = verb === "Preview" && entry.valid === false;
+                    button.textContent = verb; button.setAttribute("aria-label", verb + " content “" + entry.name + "”"); button.disabled = verb === "Preview" && entry.valid === false;
                     button.addEventListener("click", async () => {
-                        if (!await resolveOutput(verb + " saved scene “" + entry.name + "”")) return;
-                        if (!snapshotMatches(entry, "scenes")) { document.getElementById("scene-message").textContent = "The saved scene changed. Refresh saved and review it again."; return; }
+                        if (!await resolveOutput(verb + " saved content “" + entry.name + "”")) return;
+                        if (!snapshotMatches(entry, "scenes")) { document.getElementById("scene-message").textContent = "The saved content changed. Refresh saved and review it again."; return; }
                         if (verb === "Preview") {
                             operatorContent.previewScene(entry, state.etag); await showTab("content", { focus: true, persist: true });
                             return;
                         }
-                        if (!window.confirm("Delete saved scene “" + entry.name + "”? Applied content is unchanged.")) return;
+                        if (!window.confirm("Delete saved content “" + entry.name + "”? Applied content is unchanged.")) return;
                         try {
                             const result = await api("DELETE", "/api/v3/scenes/" + encodeURIComponent(entry.name), undefined, { etag: true });
                             ingestConfig(result, { preserveDraft: true }); await loadScenes();
-                            document.getElementById("scene-message").textContent = "Saved scene deleted."; document.getElementById("scene-name").focus();
+                            document.getElementById("scene-message").textContent = "Saved content deleted."; document.getElementById("scene-name").focus();
                         } catch (error) { document.getElementById("scene-message").textContent = error.message; }
                     });
                     actions.append(button);
@@ -2812,8 +2812,8 @@
                 row.append(actions);
                 list.append(row);
             }
-            if (!savedScenes.length) document.getElementById("scene-message").textContent = "No saved scenes yet.";
-        } catch (error) { if (version === scenesVersion) document.getElementById("scene-message").textContent = "Saved scenes could not be read. " + error.message + " Use Refresh saved to retry."; }
+            if (!savedScenes.length) document.getElementById("scene-message").textContent = "No saved content yet.";
+        } catch (error) { if (version === scenesVersion) document.getElementById("scene-message").textContent = "Saved content could not be read. " + error.message + " Use Refresh saved to retry."; }
     }
 
     function bindDiagnosticColours() {
@@ -2962,13 +2962,13 @@
         document.getElementById("scene-save-form").addEventListener("submit", async event => {
             event.preventDefault();
             const name = document.getElementById("scene-name").value.trim(), message = document.getElementById("scene-message");
-            if (!name) { message.textContent = "Enter a scene name."; document.getElementById("scene-name").focus(); return; }
-            if (!await resolveOutput("Save the applied scene")) return;
+            if (!name) { message.textContent = "Enter a content name."; document.getElementById("scene-name").focus(); return; }
+            if (!await resolveOutput("Save the applied content")) return;
             const existing = savedScenes.find(entry => entry.name === name);
-            if (existing && !window.confirm("Overwrite saved scene “" + name + "” with the applied content? Geometry is excluded.")) return;
+            if (existing && !window.confirm("Overwrite saved content “" + name + "” with the applied content? Geometry is excluded.")) return;
             try {
                 const result = await api("PUT", "/api/v3/scenes/" + encodeURIComponent(name) + (existing ? "?replace=true" : ""), undefined, { etag: true });
-                ingestConfig(result, { preserveDraft: true }); await loadScenes(); message.textContent = "Scene saved. Arrangement excluded.";
+                ingestConfig(result, { preserveDraft: true }); await loadScenes(); message.textContent = "Content saved.";
             } catch (error) { message.textContent = error.message; }
         });
     }

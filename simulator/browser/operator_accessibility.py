@@ -660,10 +660,10 @@ def responsive(rig):
     p.locator("#scene-name").focus()
     p.keyboard.insert_text("Keyboard scene")
     rig.click("#scene-save")
-    expect(p.locator("#scene-message")).to_contain_text("Scene saved")
-    rig.click(p.get_by_role("button", name="Delete scene “Keyboard scene”", exact=True))
+    expect(p.locator("#scene-message")).to_contain_text("Content saved")
+    rig.click(p.get_by_role("button", name="Delete content “Keyboard scene”", exact=True))
     expect(
-        p.get_by_role("button", name="Preview scene “Keyboard scene”", exact=True)
+        p.get_by_role("button", name="Preview content “Keyboard scene”", exact=True)
     ).to_have_count(0)
     rig.check(
         focus(p)["tag"] != "BODY" and focus(p)["visible"],

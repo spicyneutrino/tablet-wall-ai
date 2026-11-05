@@ -92,7 +92,7 @@ def parity(rig):
         page.locator("#scene-name").fill(name)
         page.locator("#scene-save").click()
         expect(page.locator("#scene-message")).to_contain_text(
-            "Scene saved", timeout=10000
+            "Content saved", timeout=10000
         )
 
     def recall(name):
@@ -486,8 +486,8 @@ def parity(rig):
         config()["layout"] == relative_saved,
         "Saved custom relative geometry recalls after returning from a measured arrangement",
     )
-    page.get_by_role("button", name="Preview scene “Landscape”", exact=True).click()
-    expect(page.locator("#show-image")).to_have_text("Show saved scene")
+    page.get_by_role("button", name="Preview content “Landscape”", exact=True).click()
+    expect(page.locator("#show-image")).to_have_text("Show saved content")
     before = config()
     page.locator("#show-image").click()
     showing()
@@ -516,10 +516,10 @@ def parity(rig):
     save_scene("Disposable scene")
     save_scene("Disposable scene")
     page.get_by_role(
-        "button", name="Delete scene “Disposable scene”", exact=True
+        "button", name="Delete content “Disposable scene”", exact=True
     ).click()
     expect(
-        page.get_by_role("button", name="Preview scene “Disposable scene”", exact=True)
+        page.get_by_role("button", name="Preview content “Disposable scene”", exact=True)
     ).to_have_count(0)
     save_arrangement("Disposable arrangement")
     save_arrangement("Disposable arrangement")
@@ -894,7 +894,7 @@ def edges(rig):
     task("Saved")
     page.locator("#scene-name").fill("Missing source")
     page.locator("#scene-save").click()
-    expect(page.locator("#scene-message")).to_contain_text("Scene saved")
+    expect(page.locator("#scene-message")).to_contain_text("Content saved")
     missing_asset = config()["scene"]["content"]["asset"]
     (RUN / "assets" / "supplied.png").unlink()
     task("Images")

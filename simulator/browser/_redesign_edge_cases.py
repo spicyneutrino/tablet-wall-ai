@@ -921,8 +921,8 @@ def stale_scene(rig):
     task(p, "Saved")
     p.locator("#scene-name").fill("Guarded scene")
     p.locator("#scene-save").click()
-    expect(p.locator("#scene-message")).to_contain_text("Scene saved")
-    p.get_by_role("button", name="Preview scene “Guarded scene”", exact=True).click()
+    expect(p.locator("#scene-message")).to_contain_text("Content saved")
+    p.get_by_role("button", name="Preview content “Guarded scene”", exact=True).click()
     old_guard = rig.config()["etag"]
     task(other, "Settings")
     other.get_by_text("Check patterns", exact=True).click()
@@ -932,7 +932,7 @@ def stale_scene(rig):
     task(other, "Saved")
     other.locator("#scene-name").fill("Guarded scene")
     other.locator("#scene-save").click()
-    expect(other.locator("#scene-message")).to_contain_text("Scene saved")
+    expect(other.locator("#scene-message")).to_contain_text("Content saved")
     before = rig.config()
     with rig.fault(
         "saved scene changed after real preview", [(r"/scenes/.*/recall", [412])]
