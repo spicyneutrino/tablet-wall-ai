@@ -34,6 +34,7 @@ function harness() {
     const copied = [];
     let copyResult = true;
     const context = vm.createContext({ window: { OperatorState: require("../frontend/controller/operator-state.js"), location: { origin: "http://127.0.0.1:8000" } }, document: document, URL: URL, Date: Date, JSON: JSON });
+    vm.runInContext(fs.readFileSync(require.resolve("../frontend/controller/operator-dom.js"), "utf8"), context);
     vm.runInContext(fs.readFileSync(require.resolve("../frontend/controller/operator-readiness.js"), "utf8"), context);
     const model = context.window.OperatorReadiness;
     const instance = model.create({

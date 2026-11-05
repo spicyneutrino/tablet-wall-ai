@@ -25,6 +25,7 @@ function fixture() {
         scene: { content: { type: "color" } } };
     const context = vm.createContext({ window: { OperatorState: model }, document: { getElementById: node },
         Option: function () {}, XMLHttpRequest: Request });
+    vm.runInContext(fs.readFileSync(require.resolve("../frontend/controller/operator-dom.js"), "utf8"), context);
     vm.runInContext(fs.readFileSync(require.resolve("../frontend/controller/operator-content.js"), "utf8"), context);
     const content = context.window.OperatorContent.create({ state, renderStage() {}, announce() {}, showConflict() {},
         api(method, path) {

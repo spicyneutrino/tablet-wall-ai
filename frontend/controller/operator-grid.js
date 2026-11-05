@@ -63,7 +63,7 @@
         return result;
     }
     function create({ state, api, labelFor, validPair, profileFor, calibrationFor, ingestConfig, renderStage, syncDraftUi, isDirty, announce, showConflict, modelBusy = () => false, modelReview = () => null, identifyTablet = () => {}, canIdentify = () => false }) {
-        const $ = id => document.getElementById(id);
+        const { $ } = typeof module !== "undefined" && module.exports ? require("./operator-dom.js") : root.OperatorDom;
         let order = [], selected = new Set(), sizes = {}, angles = {}, storedAngles = {}, rows = new Map(), busy = false, initialized = false;
         let previewCommand = null, inputVersion = 0, releaseRows = new Map(), selectedPreset = null;
         let members = membership(), edited = false, baseEtag = null;

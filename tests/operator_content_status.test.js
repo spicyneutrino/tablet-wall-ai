@@ -41,6 +41,7 @@ const state = { layoutKind: "logical", etag: "e", etagState: "current", capabili
 const images = ["a", "b"].map(id => ({ id, name: id, width: 100, height: 100, thumbnail_url: "/" + id }));
 let failInventory = false, release;
 const context = vm.createContext({ window: { OperatorState: model }, document, Option, performance: { now: () => 100 } });
+vm.runInContext(fs.readFileSync(require.resolve("../frontend/controller/operator-dom.js"), "utf8"), context);
 vm.runInContext(fs.readFileSync(require.resolve("../frontend/controller/operator-content.js"), "utf8"), context);
 const content = context.window.OperatorContent.create({ state, renderStage() {}, announce() {}, showConflict() {},
     ingestConfig(result) { state.operatorConfig = result; state.scene = result.scene; },

@@ -22,6 +22,7 @@ const calls = [];
 let releaseInventory;
 const oldInventory = new Promise(resolve => { releaseInventory = resolve; });
 const context = vm.createContext({ window: { OperatorState: model }, document, Option: function () {} });
+vm.runInContext(fs.readFileSync(require.resolve("../frontend/controller/operator-dom.js"), "utf8"), context);
 vm.runInContext(fs.readFileSync(require.resolve("../frontend/controller/operator-content.js"), "utf8"), context);
 const content = context.window.OperatorContent.create({ state, renderStage() {}, announce() {}, showConflict() {}, isDirty: () => false,
     ingestConfig(config) { state.scene = config.scene; },

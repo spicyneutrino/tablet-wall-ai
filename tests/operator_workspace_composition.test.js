@@ -17,6 +17,8 @@ function node(id) {
 const state = { tabName: "content", roster: { a: { online: true }, b: { online: false } }, configLoaded: true, base: { placements: { a: {} } }, draft: { placements: { a: {} } } };
 let dirty = false, applied = "a.png";
 const context = { window: { OperatorState: require("../frontend/controller/operator-state.js") }, document };
+vm.createContext(context);
+vm.runInContext(fs.readFileSync(require.resolve("../frontend/controller/operator-dom.js"), "utf8"), context);
 vm.runInNewContext(fs.readFileSync(require.resolve("../frontend/controller/operator-workspace.js"), "utf8"), context);
 const workspace = context.window.OperatorWorkspace.create({ state, arrangementDirty: () => false, arrangementPreview: () => false,
     imageDirty: () => dirty, canCommit: () => true, stageNames: () => ({ applied, pending: "b.png" }), commitTask: name => { state.tabName = name; } });

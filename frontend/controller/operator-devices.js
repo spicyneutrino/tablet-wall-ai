@@ -23,7 +23,7 @@
         return { status: "completed", completed, untouched: [], expectedEtag: expected };
     }
     function create({ state, api, labelFor, profileFor, calibrationFor, ingestConfig, refreshRoster, showConflict, announce, tabletForms, resolveOutput = async () => true, removedFromWall = () => {}, selectTablet, openArrange, renderRoster = () => {} }) {
-        const $ = id => document.getElementById(id);
+        const { $ } = typeof module !== "undefined" && module.exports ? require("./operator-dom.js") : root.OperatorDom;
 
         let selectedId = null, impact = null, replacement = null, busy = false, snapshotsKey = "", replaceVersion = 0;
         const results = new Map();

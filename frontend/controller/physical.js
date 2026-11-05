@@ -1,6 +1,7 @@
 "use strict";
 
 (function () {
+    const { setTextIfChanged, clearChildren, appendText } = window.OperatorDom;
     const API_LAYOUT = "/api/v3/layout";
     const API_LAYOUTS = "/api/v3/layouts";
     const API_PLAYLIST = "/api/v3/playlist";
@@ -375,22 +376,6 @@
         const parsed = Number(value);
         if (!Number.isFinite(parsed)) return MIN_DWELL_MS;
         return Math.min(MAX_DWELL_MS, Math.max(MIN_DWELL_MS, Math.round(parsed)));
-    }
-
-    function setTextIfChanged(node, text) {
-        if (node && node.textContent !== text) node.textContent = text;
-    }
-
-    function clearChildren(node) {
-        if (node) node.textContent = "";
-    }
-
-    function appendText(parent, tag, className, text) {
-        const node = document.createElement(tag);
-        if (className) node.className = className;
-        node.textContent = text;
-        parent.appendChild(node);
-        return node;
     }
 
     function finiteOr(value, fallback) {

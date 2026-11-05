@@ -1,7 +1,7 @@
 "use strict";
 window.OperatorContent = {
     create({ state, api, ingestConfig, renderStage, announce, showConflict, resolveOutput = async () => true, refreshConnection }) {
-        const $ = id => document.getElementById(id);
+        const { $ } = window.OperatorDom;
         let images = [], selected = null, fit = "cover", selectionDirty = false, loading = false, busy = false, inventoryReady = false;
         let previous = null, xhr = null, inventoryVersion = 0, selectionVersion = 0, baseEtag = null, savedScene = null, uploadUncertain = false;
         const gallery = new Map();

@@ -2,7 +2,7 @@
 window.OperatorWorkspace = {
     create({ state, labelFor, arrangementDirty, arrangementPreview, imageDirty, applyArrangement, showImage, discardArrangement, discardImage,
         commitTask, renderStage, stageNames, onViewChange = () => {}, selectTablet, canCommit }) {
-        const $ = id => document.getElementById(id);
+        const { $ } = window.OperatorDom;
         let pending = null, resolving = false;
         const issues = new Map();
         const stage = document.querySelector(".wall-stage"), arrangeTools = document.querySelector(".arrange-tools");

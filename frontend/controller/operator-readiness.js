@@ -185,7 +185,7 @@
     }
 
     function create({ state, api, copyText }) {
-        const $ = id => document.getElementById(id);
+        const { $ } = typeof module !== "undefined" && module.exports ? require("./operator-dom.js") : root.OperatorDom;
 
         let data = null, fetchedAt = null, failure = null, qrFailed = false, loading = false, qrRetry = 0;
 
