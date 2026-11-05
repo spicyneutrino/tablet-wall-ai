@@ -910,7 +910,7 @@ async def main(artifacts_arg: Path) -> int:
                 pauseVisible: !!pause.getClientRects().length,
                 cardHeight: card.getBoundingClientRect().height,
                 moreVisible: !!more.getClientRects().length,
-                moreExpanded: more.getAttribute('aria-expanded'),
+                moreExpanded: String(more.parentElement.open),
                 extraVisible: !!extra.getClientRects().length,
                 stageTabIndex: stage.getAttribute('tabindex'),
                 stageRole: stage.getAttribute('role'),

@@ -3282,13 +3282,8 @@
             el.playbackPolicy.addEventListener("change", renderPlayback);
         }
         if (el.playbackMore) {
-            el.playbackMore.addEventListener("click", function () {
-                const expanded = el.playbackMore.getAttribute("aria-expanded") === "true";
-                el.playbackMore.setAttribute("aria-expanded", expanded ? "false" : "true");
-                if (el.playbackCard) {
-                    el.playbackCard.dataset.expanded = expanded ? "false" : "true";
-                }
-                el.playbackMore.textContent = expanded ? "More" : "Less";
+            el.playbackMore.parentElement.addEventListener("toggle", function (event) {
+                if (el.playbackCard) el.playbackCard.dataset.expanded = String(event.target.open);
             });
         }
 
@@ -3427,23 +3422,6 @@
             window.OperatorStage.fit(el.stageSvg);
         });
         for (const chrome of [imageActions, workspaceNav]) imageActionObserver.observe(chrome);
-        function toggleStageTechnical() {
-            const details = document.getElementById("stage-technical");
-            const expanded = document.body.classList.toggle("show-stage-details", !(document.body.classList.contains("show-stage-details") && details.open));
-            for (const id of ["show-stage-technical-inline", "show-arrange-technical"]) {
-                document.getElementById(id)?.setAttribute("aria-expanded", String(expanded));
-            }
-            details.open = true;
-            const identities = document.getElementById("stage-identities");
-            if (identities) identities.open = true;
-            if (document.body.classList.contains("show-stage-details")) details.scrollIntoView({ block: "start" });
-        }
-        document.getElementById("stage-technical").addEventListener("toggle", event => {
-            const expanded = document.body.classList.contains("show-stage-details") && event.target.open;
-            for (const id of ["show-stage-technical-inline", "show-arrange-technical"]) document.getElementById(id).setAttribute("aria-expanded", String(expanded));
-        });
-        document.getElementById("show-stage-technical-inline")?.addEventListener("click", toggleStageTechnical);
-        document.getElementById("show-arrange-technical")?.addEventListener("click", toggleStageTechnical);
         state.onParticipation = (id, participating) => mutateDraft(draft => { draft.slots[id].participating = participating; });
         document.getElementById("experimental-opt-in").addEventListener("change", event => {
             document.getElementById("experimental-controls").hidden = !event.target.checked;

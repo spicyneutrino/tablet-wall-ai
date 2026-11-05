@@ -530,8 +530,6 @@ def interaction_contrast(rig):
             p.locator("#device-sheet-close").click()
         task(p, "Arrange")
         tile = p.locator("#stage-svg .slot").first
-        if not p.locator("#stage-identities").is_visible():
-            p.locator(".stage-technical-toggle:visible").click()
         rig.open_disclosures("#stage-identities li")
         native_tab_to(p, "#stage-svg .slot")
         tile.hover()

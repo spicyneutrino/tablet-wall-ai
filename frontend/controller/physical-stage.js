@@ -59,17 +59,7 @@ window.PhysicalStage = {
                 stageKey.hidden = !(share > 0 && share < 100);
                 stageKey.textContent = placed.length + (placed.length === 1 ? " tablet covers " : " tablets cover ") + share + "% of the wall.";
             }
-            const summary = document.getElementById("stage-identities") || document.createElement("details");
-            if (!summary.id) {
-                summary.id = "stage-identities";
-                summary.className = "stage-identities";
-                summary.innerHTML = "<summary>Tablet status</summary><ul></ul>";
-                (document.getElementById("stage-key") || el.stageSvg.parentElement).insertAdjacentElement("afterend", summary);
-            }
-            if (summary.dataset.presentation !== presentation) {
-                summary.open = presentation === "tablets";
-                summary.dataset.presentation = presentation;
-            }
+            const summary = document.getElementById("stage-identities");
             const identities = summary.querySelector("ul");
             const rows = window.OperatorStage.panels(layout, profileFor).map(panel => {
                 const status = preview ? "Local preview · not tablet output" : state.rosterError
