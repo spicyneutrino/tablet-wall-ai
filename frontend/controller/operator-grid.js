@@ -77,6 +77,11 @@
             text("");
             syncDraftUi(); updateButtons(); renderStage();
         }
+        const presets = [["grid-2x2", true], ["grid-1x4", false]];
+        function preset(twoRows) {
+            const count = selected.size, r = twoRows && count > 1 ? 2 : 1, c = Math.max(1, Math.ceil(count / r));
+            return { r, c, holes: r * c > count, label: r + " × " + c };
+        }
         function releases() { return Object.keys(model.entries(state.base)).filter(id => !selected.has(id)); }
         function move(id, delta) {
             members.freeze();
@@ -115,8 +120,10 @@
                     + (/model|approximate/i.test(profile.provenance + " " + calibration.method) ? "approximate " : "")
                     + "±" + Number(calibration.uncertainty_mm.toFixed(1)) + " mm" : "Pinned physical measurements are unavailable. Confirm a model or save measurements before previewing.";
             });
-            if ($("grid-1x4")) { $("grid-1x4").textContent = "1 × 4"; $("grid-1x4").setAttribute("aria-label", "Row of " + selected.size); }
-            if ($("grid-2x2")) { $("grid-2x2").textContent = "2 × 2"; $("grid-2x2").setAttribute("aria-label", selected.size > 1 ? "Two rows, " + Math.ceil(selected.size / 2) + " columns" + (selected.size % 2 ? ", one empty cell" : "") : "One tablet"); }
+            for (const [id, twoRows] of presets) {
+                const { label, holes } = preset(twoRows);
+                $(id).textContent = label; $(id).setAttribute("aria-label", label + " grid" + (holes ? ", one empty cell" : ""));
+            }
             const stale = !!baseEtag && baseEtag !== state.etag;
             $("grid-preview").disabled = busy || !!state.gridPreview && !stale;
             $("grid-preview").hidden = !!state.gridPreview && !stale;
@@ -309,11 +316,11 @@
             }
         }
         for (const id of ["grid-kind", "grid-rows", "grid-columns", "grid-gap", "grid-padding", "grid-orientation", "grid-sizing", "grid-holes"]) $(id).addEventListener("change", () => { invalidate(); updateButtons(); });
-        for (const [id, twoRows] of [["grid-2x2", true], ["grid-1x4", false]]) $(id).addEventListener("click", () => {
-            const count = selected.size, r = twoRows && count > 1 ? 2 : 1, c = Math.max(1, Math.ceil(count / r));
-            $("grid-rows").value = r; $("grid-columns").value = c; $("grid-holes").checked = r * c > count;
+        for (const [id, twoRows] of presets) $(id).addEventListener("click", () => {
+            const { r, c, holes } = preset(twoRows);
+            $("grid-rows").value = r; $("grid-columns").value = c; $("grid-holes").checked = holes;
             invalidate(); text(r + " row" + (r === 1 ? "" : "s") + " × " + c + " column" + (c === 1 ? "" : "s")
-                + " selected" + (r * c > count ? " with an empty trailing cell" : "") + " · not previewed");
+                + " selected" + (holes ? " with an empty trailing cell" : "") + " · not previewed");
         });
         $("grid-preview").addEventListener("click", preview);
         function reset() {

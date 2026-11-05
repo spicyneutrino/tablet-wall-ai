@@ -5,7 +5,7 @@ class Node {
     constructor(tag) { this.tag = tag; this.children = []; this.dataset = {}; this.value = ""; this.listeners = {}; }
     append(...nodes) { this.children.push(...nodes); }
     replaceChildren(...nodes) { this.children = nodes; }
-    setAttribute() {}
+    setAttribute(name, value) { this[name] = value; }
     add(option) { this.append(option); }
     addEventListener(type, callback) { this.listeners[type] = callback; }
     querySelectorAll(tag) { const all = node => (node.children || []).flatMap(child => [child, ...all(child)]); return all(this).filter(node => node.tag === tag); }
@@ -33,5 +33,9 @@ owner.render();
 assert.equal(releases()[0].checked, true, "a later authority render keeps the acknowledgement");
 nodes.get("grid-preview").listeners.click().then(() => {
     assert.match(nodes.get("grid-message").textContent, /^Cannot preview arrangement\./, "the acknowledgement satisfies the release guard");
-    console.log("Grid release acknowledgements follow authority updates");
+    const twoByTwo = nodes.get("grid-2x2");
+    assert.deepEqual([twoByTwo.textContent, twoByTwo["aria-label"]], ["1 × 1", "1 × 1 grid"], "the preset names the grid it will build for one tablet");
+    twoByTwo.listeners.click();
+    assert.deepEqual([nodes.get("grid-rows").value, nodes.get("grid-columns").value], [1, 1]);
+    console.log("Grid release acknowledgements and preset labels follow authority updates");
 }).catch(error => { console.error(error); process.exitCode = 1; });
