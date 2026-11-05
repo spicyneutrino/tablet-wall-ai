@@ -318,6 +318,9 @@ def visual_states(rig):
                 fatal=False,
             )
             rig.shot(p, "long-names-" + name)
+            if p.locator("#device-sheet-close").is_visible():
+                p.locator("#device-sheet-close").click()
+                expect(p.locator("#device-sheet:modal")).to_have_count(0)
     p.set_viewport_size({"width": 1440, "height": 900})
     task(p, "Images")
     with p.expect_response("**/api/v3/images") as inventory:
