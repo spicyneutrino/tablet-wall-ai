@@ -15,10 +15,10 @@ window.OperatorSync = {
             const ticket = fence.start();
             try {
                 const config = await api("GET", "/api/v3/config");
-                if (!fence.accept(ticket)) return;
+                if (!fence.accept(ticket)) { queued ||= state.etagState === "stale"; return; }
                 if (!config.runtime || !config.runtime.devices) {
                     const roster = await api("GET", "/devices");
-                    if (!fence.accept(ticket)) return;
+                    if (!fence.accept(ticket)) { queued ||= state.etagState === "stale"; return; }
                     state.roster = roster;
                 }
                 receive(config); state.rosterError = null;
