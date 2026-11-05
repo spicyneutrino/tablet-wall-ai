@@ -179,13 +179,13 @@
         </section></details></aside></div>
 
 <div class="arrangement-history operator-actions" role="group" aria-label="Layout draft">
-                <button type="button" class="btn btn-ghost" id="btn-undo" disabled data-action="btn-undo">Undo</button>
-                <button type="button" class="btn btn-ghost" id="btn-redo" disabled data-action="btn-redo">Redo</button>
+                <button type="button" class="btn btn-ghost" id="btn-undo" disabled hidden data-action="btn-undo">Undo</button>
+                <button type="button" class="btn btn-ghost" id="btn-redo" disabled hidden data-action="btn-redo">Redo</button>
                 <span class="toolbar-gap" aria-hidden="true"></span>
 
-                <button type="button" class="btn btn-ghost" id="btn-reload" aria-label="Reload configuration" data-action="btn-reload">Reload</button>
+                <button type="button" class="btn btn-ghost" id="btn-reload" aria-label="Refresh configuration" data-action="btn-reload">Refresh</button>
             </div></section>
-            <section class="rail-panel task-panel" id="panel-tablet" role="tabpanel" aria-labelledby="tab-tablet" tabindex="0" hidden data-task="tablets"><div class="task-heading"><h2 class="task-title sr-only" tabindex="-1" id="task-tablets">Tablets</h2><div class="roster-tools"><span class="sec-count" id="device-count">0 online</span><button type="button" class="btn btn-ghost btn-sm" id="btn-roster-refresh" data-action="btn-roster-refresh">Refresh status</button></div></div>
+            <section class="rail-panel task-panel" id="panel-tablet" role="tabpanel" aria-labelledby="tab-tablet" tabindex="0" hidden data-task="tablets"><div class="task-heading"><h2 class="task-title sr-only" tabindex="-1" id="task-tablets">Tablets</h2><div class="roster-tools"><span class="sec-count" id="device-count">0 online</span><button type="button" class="btn btn-ghost btn-sm" id="btn-roster-refresh" aria-label="Refresh status" data-action="btn-roster-refresh">Refresh</button></div></div>
 
             <div class="tablets-workspace"><div class="roster-workspace"><section class="card devices-card task-section" aria-labelledby="task-tablets">
             <p class="hint" id="roster-status" role="status" hidden>Tablet status has not been checked.</p>
@@ -210,7 +210,7 @@
             <section class="rail-panel task-panel" id="panel-content" role="tabpanel" aria-labelledby="tab-content" tabindex="0" hidden data-task="images"><h2 class="task-title sr-only" tabindex="-1" id="task-images">Images</h2><div class="images-workspace" id="images-workspace">
   <div class="image-rail">
   <section class="image-library task-section" aria-labelledby="library-title">
-    <div class="library-head"><div class="sec-head"><h3 id="library-title">Library</h3><button class="btn btn-ghost" id="refresh-images" type="button" data-action="refresh-images">Refresh images</button></div><div class="library-toolbar"><div class="field"><label class="sr-only" for="image-search">Search images</label><input class="inp" type="search" id="image-search" placeholder="Search images" autocomplete="off" data-field="image-search"></div><button type="button" class="btn" id="add-image" aria-label="Add image">Add</button></div></div>
+    <div class="library-head"><div class="sec-head"><h3 id="library-title">Library</h3><button class="btn btn-ghost" id="refresh-images" type="button" aria-label="Refresh images" data-action="refresh-images">Refresh</button></div><div class="library-toolbar"><div class="field"><label class="sr-only" for="image-search">Search images</label><input class="inp" type="search" id="image-search" placeholder="Search images" autocomplete="off" data-field="image-search"></div><button type="button" class="btn" id="add-image" aria-label="Add image">Add</button></div></div>
     <ul id="image-gallery" class="image-gallery" aria-label="Image library"></ul>
   <p id="image-search-empty" class="empty-note" role="status" hidden>No images match your search.</p><div class="image-utilities"><details id="image-addition"><summary>Upload</summary><button class="btn" type="button" id="images-check-connection" data-action="images-check-connection">Check image-addition connection</button><p id="upload-instruction">Checking upload availability…</p><form id="upload-form" hidden data-form="upload-form"><label class="field" for="upload-file">Upload a still image<input class="inp" type="file" id="upload-file" accept="image/png,image/jpeg" data-field="upload-file" required></label>
                 <button class="btn" id="upload-submit" data-action="upload-submit">Upload image</button><progress id="upload-progress" max="100" value="0" aria-label="Image upload progress" hidden></progress></form><p id="upload-message" class="form-msg" role="status" aria-live="polite"></p></details></div></section>
@@ -234,7 +234,7 @@
   </div>
 </div></section>
             <section class="rail-panel task-panel" id="panel-system" role="tabpanel" aria-labelledby="tab-system" tabindex="0" hidden data-task="settings"><h2 class="task-title sr-only" tabindex="-1" id="task-settings">Settings</h2>
-        <div id="operator-readiness"><section class="card task-section" aria-labelledby="readiness-title"><div class="sec-head"><h2 id="readiness-title">Server checks</h2><button class="btn btn-ghost" type="button" id="btn-readiness-refresh" data-action="btn-readiness-refresh">Refresh server checks</button></div>
+        <div id="operator-readiness"><section class="card task-section" aria-labelledby="readiness-title"><div class="sec-head"><h2 id="readiness-title">Server checks</h2><button class="btn btn-ghost" type="button" id="btn-readiness-refresh" aria-label="Refresh server checks" data-action="btn-readiness-refresh">Refresh</button></div>
             <p id="readiness-status" role="status" aria-live="polite">Reading server checks…</p>
             <p id="readiness-errors" role="alert" hidden></p>
 
@@ -586,7 +586,7 @@
         </section><details><summary>Check patterns</summary><p class="hint">Patterns use the current wall size. A generated grid or black wall is an ordinary image. Keep your prior content with Restore previous content.</p>
                 <div class="operator-actions"><button class="btn" type="button" id="show-colours" data-action="show-colours">Tablet colours</button><button class="btn" type="button" id="show-calibration" data-action="show-calibration">Logical calibration pattern</button><button class="btn" type="button" id="pattern-grid" data-action="pattern-grid">Wall-sized grid</button><button class="btn" type="button" id="pattern-black" data-action="pattern-black">Black wall</button></div><p id="pattern-message" class="form-msg" role="status" aria-live="polite"></p>
             </details><section class="diagnostic-colours task-section" aria-labelledby="diagnostic-colours-title"><h3 id="diagnostic-colours-title">Tablet test colours</h3><p id="diagnostic-colour-subject">Select a tablet in Tablets.</p><label class="field" for="diagnostic-colour">Test colour<input type="color" id="diagnostic-colour" value="#ef4444" data-field="diagnostic-colour"></label><div class="operator-actions"><button type="button" class="btn" id="diagnostic-colour-one" data-action="diagnostic-colour-one">Set selected tablet colour</button><button type="button" class="btn" id="diagnostic-colour-all" data-action="diagnostic-colour-all">Set all tablet colours</button><button type="button" class="btn" id="diagnostic-colour-refresh" data-action="diagnostic-colour-refresh">Read selected colour</button></div><p id="diagnostic-colour-message" role="status"></p></section><details class="destructive-area"><summary>Destructive wall actions</summary><p>Clear removes the applied arrangement. Review the confirmation before continuing.</p><button type="button" class="btn btn-danger" id="clear-wall" data-action="clear-wall">Clear wall</button></details></section>
-        <section class="rail-panel task-panel" id="panel-saved" data-task="saved" role="tabpanel" aria-labelledby="tab-saved" hidden><h2 class="task-title sr-only" tabindex="-1">Saved</h2><div class="operator-actions saved-toolbar"><button type="button" class="btn btn-ghost btn-sm" id="btn-layouts-refresh" data-action="btn-layouts-refresh">Refresh saved</button></div><section class="card saved-card task-section" aria-labelledby="saved-title">
+        <section class="rail-panel task-panel" id="panel-saved" data-task="saved" role="tabpanel" aria-labelledby="tab-saved" hidden><h2 class="task-title sr-only" tabindex="-1">Saved</h2><div class="operator-actions saved-toolbar"><button type="button" class="btn btn-ghost btn-sm" id="btn-layouts-refresh" aria-label="Refresh saved" data-action="btn-layouts-refresh">Refresh</button></div><section class="card saved-card task-section" aria-labelledby="saved-title">
             <div class="sec-head">
                 <h3 id="saved-title">Arrangements</h3>
             </div>

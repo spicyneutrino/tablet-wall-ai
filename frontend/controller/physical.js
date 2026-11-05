@@ -1068,8 +1068,8 @@
         if (!state.draft) {
             el.btnApply.disabled = true;
             el.btnCancel.disabled = true;
-            el.btnUndo.disabled = true;
-            el.btnRedo.disabled = true;
+            el.btnUndo.disabled = el.btnUndo.hidden = true;
+            el.btnRedo.disabled = el.btnRedo.hidden = true;
             el.boundsMode.disabled = true;
             el.boundsPadding.disabled = true;
             el.btnPackTablets.disabled = true;
@@ -1086,8 +1086,8 @@
             || !dirty || (emptyPhysical && !state.gridPreview);
         el.btnApply.title = emptyPhysical ? "This arrangement has no tablets. Use an explicit Remove action to clear a slot." : "Apply the entire previewed layout once";
         el.btnCancel.disabled = state.busy || !dirty && !inputDirty;
-        el.btnUndo.disabled = state.busy || state.undo.length === 0;
-        el.btnRedo.disabled = state.busy || state.redo.length === 0;
+        el.btnUndo.disabled = el.btnUndo.hidden = state.busy || state.undo.length === 0;
+        el.btnRedo.disabled = el.btnRedo.hidden = state.busy || state.redo.length === 0;
         el.btnReload.disabled = state.busy;
         el.btnProfileSave.disabled = state.busy;
         el.btnCalibrationSave.disabled = state.busy || rulerSaveBlocked();

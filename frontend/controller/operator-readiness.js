@@ -258,7 +258,8 @@
                 : "Last successful read at " + new Date(fetchedAt).toLocaleTimeString() + ".";
             const refresh = $("btn-readiness-refresh");
             refresh.disabled = loading;
-            refresh.textContent = loading ? "Refreshing…" : failure ? "Retry server checks" : "Refresh server checks";
+            refresh.textContent = loading ? "Refreshing…" : failure ? "Retry" : "Refresh";
+            refresh.setAttribute("aria-label", loading ? "Refreshing server checks…" : failure ? "Retry server checks" : "Refresh server checks");
             return model;
         }
 

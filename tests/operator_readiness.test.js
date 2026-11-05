@@ -156,7 +156,7 @@ function factsText(nodes) {
     const page = harness();
     page.instance.render();
     assert.equal(page.nodes["readiness-status"].dataset.kind, "info");
-    assert.equal(page.nodes["btn-readiness-refresh"].textContent, "Refresh server checks");
+    assert.equal(page.nodes["btn-readiness-refresh"].textContent, "Refresh");
 
     const loading = page.instance.load();
     assert.deepEqual(page.calls, [["GET", "/api/v3/readiness"]], "readiness must read its own endpoint");
@@ -234,7 +234,8 @@ function factsText(nodes) {
     assert.equal(failed.nodes["readiness-status"].dataset.kind, "err");
     assert.match(failed.nodes["readiness-status"].textContent, /403 forbidden/);
     assert.match(failed.nodes["readiness-status"].textContent, /Refresh to try again/);
-    assert.equal(failed.nodes["btn-readiness-refresh"].textContent, "Retry server checks");
+    assert.equal(failed.nodes["btn-readiness-refresh"].textContent, "Retry");
+    assert.equal(failed.nodes["btn-readiness-refresh"].attrs["aria-label"], "Retry server checks", "the accessible name keeps the visible verb and names its region");
     assert.equal(failed.nodes["btn-readiness-refresh"].disabled, false);
     assert.equal(failed.nodes["tablet-join-line"].hidden, true, "no address means no line and no Copy");
 
@@ -242,7 +243,7 @@ function factsText(nodes) {
     failed.pending.shift().resolve(JSON.parse(JSON.stringify(full)));
     assert.equal(await retried, true);
     assert.equal(failed.nodes["readiness-status"].dataset.kind, "ok");
-    assert.equal(failed.nodes["btn-readiness-refresh"].textContent, "Refresh server checks");
+    assert.equal(failed.nodes["btn-readiness-refresh"].textContent, "Refresh");
 
     /* A body with none of the documented fields is an error, not "ready". */
     const wrong = harness();

@@ -100,7 +100,7 @@
             const details = [];
             if (slot) {
                 details.push("Pinned profile r" + slot.profile_revision + ", calibration r" + slot.calibration_revision + ".");
-                if (!profile || !calibration) details.push("Pinned records unavailable. Reload configuration; no substitute measurement is assumed.");
+                if (!profile || !calibration) details.push("Pinned records unavailable. Refresh configuration; no substitute measurement is assumed.");
                 else {
                     details.push("Panel source “" + profile.provenance + "”; CSS scale method “" + calibration.method + "”, uncertainty ±" + calibration.uncertainty_mm + " mm.");
                     details.push("Calibrated " + calibration.viewport_width + " × " + calibration.viewport_height + " CSS px, DPR " + calibration.dpr + ", browser " + calibration.orientation + "°, " + calibration.mode + "; calibration quarter-turn " + calibration.quarter_turn + ", wall mount " + slot.mount_angle + "°.");

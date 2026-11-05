@@ -1732,7 +1732,7 @@ def corrections(rig):
     expect(p.locator("#layout-name")).to_be_focused()
     rig.shot(p, "saved-local-feedback")
     rig.check(
-        p.locator("#btn-layouts-refresh").inner_text() == "Refresh saved"
+        p.locator("#btn-layouts-refresh").inner_text() == "Refresh"
         and p.locator("#scenes-refresh").count() == 0,
         "One task-level Refresh saved names both object inventories",
     )
