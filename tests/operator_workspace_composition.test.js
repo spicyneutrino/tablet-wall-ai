@@ -22,11 +22,14 @@ const workspace = context.window.OperatorWorkspace.create({ state, arrangementDi
     imageDirty: () => dirty, canCommit: () => true, stageNames: () => ({ applied, pending: "b.png" }), commitTask: name => { state.tabName = name; } });
 workspace.render();
 assert.equal(node("shared-stage").parent, node("wall-context-content"));
-assert.equal(node("stage-mode-label").textContent, "Showing a.png");
+assert.equal(node("stage-mode-label").textContent, "Showing");
+state.tabName = "show"; workspace.render();
+assert.equal(node("stage-mode-label").textContent, "Showing a.png", "other tasks retain the applied filename");
+state.tabName = "content"; workspace.render();
 assert.equal(node("stage-mode-description").textContent, "");
 node("edited-field").focus();
 workspace.render(); workspace.render();
-assert.equal(node("wall-context-content").appends.length, 1, "runtime updates do not detach the stage or SVG focus");
+assert.equal(node("wall-context-content").appends.length, 2, "runtime updates do not detach the stage or SVG focus");
 assert.equal(document.activeElement, node("edited-field"));
 state.tabName = "tablet"; dirty = true; state.previewContent = { type: "image" }; workspace.render();
 assert.equal(node("shared-stage").parent, node("wall-context-tablet"));

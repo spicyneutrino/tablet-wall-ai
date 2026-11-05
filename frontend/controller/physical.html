@@ -241,7 +241,7 @@
             <p class="hint" id="readiness-refreshed" hidden></p>
             <dl id="operator-readiness-facts" class="operator-facts"></dl>
             </section></div>
-        <details class="card" id="measurement-details"><summary>Details</summary><section class="task-section"><h3>Server and connection</h3><dl id="operator-readiness-details" class="operator-facts"></dl></section><section class="task-section" id="readiness-paths"><h3>Data paths</h3><dl class="operator-facts" id="operator-readiness-paths"></dl></section><section class="task-section" id="readiness-advice"><h3>What this server cannot do</h3><ul id="operator-readiness-advice"></ul></section><section class="field-review" id="measurement-review" hidden><h3>Review changed saved fields</h3><pre class="form-comparison" id="measurement-comparison"></pre><button type="button" class="btn" id="measurement-keep" data-action="measurement-keep">Use my edited measurements</button></section>        <section class="card device-card task-section" aria-labelledby="device-card-title">
+        <details class="card" id="measurement-details"><summary>Measurements and diagnostics</summary><section class="task-section"><h3>Server and connection</h3><dl id="operator-readiness-details" class="operator-facts"></dl></section><section class="task-section" id="readiness-paths"><h3>Data paths</h3><dl class="operator-facts" id="operator-readiness-paths"></dl></section><section class="task-section" id="readiness-advice"><h3>What this server cannot do</h3><ul id="operator-readiness-advice"></ul></section><section class="field-review" id="measurement-review" hidden><h3>Review changed saved fields</h3><pre class="form-comparison" id="measurement-comparison"></pre><button type="button" class="btn" id="measurement-keep" data-action="measurement-keep">Use my edited measurements</button></section>        <section class="card device-card task-section" aria-labelledby="device-card-title">
             <h3 id="device-card-title">Measurements</h3>
             <p class="empty-note" id="device-card-empty">Select a tablet to edit its measurements.</p>
 
@@ -638,7 +638,7 @@
 </div>
 
 <div class="sr-only" aria-label="Status">
-    <span class="status-stamp" id="status-stamp"></span>
+    <span class="status-stamp" id="status-stamp" aria-hidden="true"></span>
     <span class="status-text" id="page-status" role="status" aria-live="polite" aria-atomic="true">Loading</span>
 </div>
 
@@ -655,7 +655,7 @@
 <script src="operator-readiness.js?v=3"></script>
 <script src="operator-sync.js?v=2"></script>
 <script src="operator-session.js?v=2"></script>
-<script src="operator-workspace.js?v=8"></script>
+<script src="operator-workspace.js?v=9"></script>
 <script src="physical-playback.js?v=2"></script>
 <script src="physical-sizing.js?v=1"></script>
 <script src="physical-stage.js?v=10"></script>
