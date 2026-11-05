@@ -99,5 +99,22 @@ nodes.get("grid-preview").listeners.click().then(async () => {
     assert.equal(nodes.get("grid-columns").value, "5", "membership changes preserve custom dimensions after leaving the preset");
     assert.equal(twoByTwo["aria-pressed"], "false");
     assert.equal(oneRow["aria-pressed"], "false");
+    for (const [id, typed] of [["grid-rows", "3"], ["grid-columns", "12"]]) {
+        owner.reset();
+        oneRow.listeners.click();
+        const input = nodes.get(id), sent = requests.length;
+        document.activeElement = input;
+        input.value = typed;
+        input.listeners.input?.({ target: input });
+        owner.render();
+        assert.equal(input.value, typed, "a live render preserves a focused " + id + " edit before blur");
+        assert.equal(oneRow["aria-pressed"], "false", "typing custom dimensions leaves the preset immediately");
+        assert.equal(twoByTwo["aria-pressed"], "false");
+        assert.equal(document.activeElement, input, "runtime rendering preserves the active field");
+        assert.equal(requests.length, sent, "typing and rendering do not preview or apply geometry");
+        input.listeners.change();
+        owner.render();
+        assert.equal(input.value, typed, "committing the field does not restore the previous preset");
+    }
     console.log("Grid release acknowledgements and preset labels follow authority updates");
 }).catch(error => { console.error(error); process.exitCode = 1; });

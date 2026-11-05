@@ -334,7 +334,9 @@
                 }
             }
         }
-        for (const id of ["grid-kind", "grid-rows", "grid-columns", "grid-gap", "grid-padding", "grid-orientation", "grid-sizing", "grid-holes"]) $(id).addEventListener("change", () => { selectedPreset = null; invalidate(); updateButtons(); });
+        const editGrid = () => { selectedPreset = null; invalidate(); };
+        for (const id of ["grid-kind", "grid-rows", "grid-columns", "grid-gap", "grid-padding", "grid-orientation", "grid-sizing", "grid-holes"]) $(id).addEventListener("change", editGrid);
+        for (const id of ["grid-rows", "grid-columns"]) $(id).addEventListener("input", editGrid);
         for (const [id] of presets) $(id).addEventListener("click", () => {
             selectedPreset = id; invalidate();
         });
