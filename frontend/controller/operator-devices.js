@@ -61,7 +61,7 @@
                 $("tablet-label-form").dataset.deviceId = id;
                 $("tablet-label-review").hidden = !form.dirty;
                 $("tablet-label-discard").hidden = !form.dirty;
-                if (form.conflict) message("This tablet’s saved name changed elsewhere. Your name is retained. Discard to use the current name, or review before saving.");
+                if (form.conflict) message("This tablet’s saved name changed elsewhere. Discard to use the current name, or review before saving.");
             }
             $("tablet-action-name").textContent = id ? labelFor(id) : "Select a tablet in the list or stage.";
             const evidence = id ? window.OperatorState.tabletState(config(), id, performance.now()) : null;
@@ -203,7 +203,7 @@
                 message("The name or wall changed after this comparison. Review the current name again."); return;
             }
             $("tablet-name-review").hidden = true; nameReview = null;
-            message("Your name is retained against the reviewed saved value. Save name is a separate command."); render();
+            message("Save name to replace the reviewed saved value."); render();
         });
         $("tablet-label").addEventListener("input", () => {
             nameReview = null; $("tablet-name-review").hidden = true;
@@ -271,7 +271,7 @@
         $("tablet-forget-preview").addEventListener("click", async () => {
             const id = selectedId;
             if (!await resolveOutput("Review offline Forget")) return;
-            if (tabletForms.dirty(id)) { message("Save or discard this tablet’s unsaved name and measurement fields before Forget. They are retained."); return; }
+            if (tabletForms.dirty(id)) { message("Save or discard this tablet’s unsaved name and measurement fields before Forget."); return; }
             run(async () => {
                 const result = await api("GET", path(id, "/impact"), undefined, { fenced: true });
                 if (id !== selectedId || result.online || !result.etag || result.etag !== state.etag) throw new Error("Tablet state changed. Forget requires an offline socket and current impact ETag.");
@@ -287,7 +287,7 @@
             const plan = impact, subject = labelFor(impact.id);
             if (plan.active_entry && !$("tablet-forget-active").checked) { message("Explicitly acknowledge removal of the active slot before Forget."); return; }
             run(async () => { const result = await api("DELETE", path(plan.id), { remove_active: $("tablet-forget-active").checked, saved_layouts: "keep" }, { ifMatch: plan.etag });
-                if (selectedId === plan.id) clearPlans(); ingestConfig(result); await refreshRoster(); if (selectedId === plan.id) message("Tablet forgotten. Saved reservations and measurements retained."); announce("Forgot " + subject + ". Saved reservations and measurements are retained."); });
+                if (selectedId === plan.id) clearPlans(); ingestConfig(result); await refreshRoster(); if (selectedId === plan.id) message("Tablet forgotten. Saved reservations and measurements retained."); announce("Forgot " + subject + "."); });
         });
         $("tablet-forget-cancel").addEventListener("click", () => { clearPlans(); $("tablet-forget-preview").focus(); });
         $("replace-cancel").addEventListener("click", () => {
@@ -302,7 +302,7 @@
             const inputVersion = replaceVersion;
             if (!await resolveOutput("Review tablet replacement")) return;
             if (id !== selectedId || inputVersion !== replaceVersion) return;
-            if (tabletForms.dirty(id) || tabletForms.dirty(target)) { message("Save or discard unsaved fields for the old and replacement tablets before replacement. Their values are retained."); return; }
+            if (tabletForms.dirty(id) || tabletForms.dirty(target)) { message("Save or discard unsaved fields for the old and replacement tablets before replacement."); return; }
             const body = { replaces: id, hardware: $("replace-hardware").value, active: $("replace-active").checked,
                 saved_layouts: Array.from($("replace-saved").querySelectorAll("input:checked")).map(input => ({ name: input.dataset.name, etag: input.dataset.etag })), transfer_label: $("replace-label").checked };
             if ($("replace-number").value !== "") body.number = Number($("replace-number").value);

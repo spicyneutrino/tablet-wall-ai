@@ -173,7 +173,7 @@ window.OperatorContent = {
                 images = result.images; inventoryReady = true; uploadUncertain = false;
                 message(images.length ? "" : "No images available.");
             } catch (error) {
-                if (version === inventoryVersion) message("Image library unavailable. " + error.message.replace(/[.!?\s]+$/, "") + ". Use Refresh images to retry. Your selection is retained.", true, "err");
+                if (version === inventoryVersion) message("Image library unavailable. " + error.message.replace(/[.!?\s]+$/, "") + ". Use Refresh images to retry.", true, "err");
             } finally { if (version === inventoryVersion) { loading = false; render(); renderStage(); } }
         }
         async function show(content, { guard = baseEtag || state.etag, scene = null, feedback = "image-message" } = {}) {
@@ -199,7 +199,7 @@ window.OperatorContent = {
                 return true;
             } catch (error) {
                 if (error.status === 412) showConflict("The wall changed. Your image choice is retained with its original guard. Review current state before rebuilding this preview.");
-                message("Could not show this content. " + error.message.replace(/[.!?\s]+$/, "") + ". Your selection and geometry are retained.", false, "err", feedback);
+                message("Could not show this content. " + error.message.replace(/[.!?\s]+$/, "") + ". Use Refresh images to retry.", false, "err", feedback);
                 return false;
             } finally {
                 busy = false; render(); renderStage();
@@ -238,7 +238,7 @@ window.OperatorContent = {
                     inventoryVersion += 1;
                     const selectedUpload = selectionVersion === selectionAtUpload && await choose(id);
                     $("upload-message").textContent = selectedUpload ? "Image added and selected. Review Fit / Fill, then Show image. Nothing was shown automatically."
-                        : "Image added to the library. Your newer choice is retained. Nothing was shown automatically.";
+                        : "Image added to the library. Nothing was shown automatically.";
                     await refresh();
                 } else $("upload-message").textContent = "Image addition refused. " + (result && (typeof result.detail === "string" ? result.detail : result.detail && result.detail.message) || "HTTP " + request.status) + ". Check the file or launch admission, then retry.";
             };
