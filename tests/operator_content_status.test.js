@@ -133,7 +133,16 @@ const content = context.window.OperatorContent.create({ state, renderStage() {},
     assert.equal(node("image-message").textContent, confirm, "offline tablets are not enumerated in the inspector");
     assert.doesNotMatch(node("image-message").textContent, /offline|failed|failure|cannot confirm|stale/i);
     config.runtime.devices.t.online = true; config.revision = 3; content.render();
-    assert.match(node("image-message").textContent, /changed after this command/);
+    assert.equal(node("image-message").textContent, "", "revision-only drift with unchanged generation, content and arrangement needs no warning");
+    const warning = /changed after this command/;
+    config.scene.content.asset = "b"; content.render(); assert.match(node("image-message").textContent, warning, "another asset retains the warning");
+    config.scene.content.asset = "a"; config.scene.content.fit = "contain"; content.render(); assert.match(node("image-message").textContent, warning, "changed scaling retains the warning");
+    config.scene.content.fit = "cover"; config.scene.content.type = "color"; content.render(); assert.match(node("image-message").textContent, warning, "changed content type retains the warning");
+    config.scene.content.type = "image";
+    config.layout.width = 200; content.render(); assert.match(node("image-message").textContent, warning, "changed arrangement retains the warning even for the same image");
+    config.layout.width = 100;
+    config.generation = "new"; content.render(); assert.match(node("image-message").textContent, warning, "another server generation cannot inherit the receipt");
+    config.generation = "g"; content.render(); assert.equal(node("image-message").textContent, "");
     config.revision = 2; content.render();
     assert.equal(node("image-message").textContent, confirm);
 

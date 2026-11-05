@@ -15,9 +15,10 @@ window.OperatorContent = {
                 if (!config || state.rosterError || state.etagState !== "current") {
                     kind = "warn";
                     text = label + " applied. Tablet reports may be stale; refresh status in the header or Issues.";
-                } else if (config.generation !== revision.generation || config.revision !== revision.revision) {
+                } else if (config.generation !== revision.generation || config.revision !== revision.revision && (!revision.content || !revision.layout
+                        || JSON.stringify(config.scene?.content) !== revision.content || JSON.stringify(config.layout) !== revision.layout)) {
                     kind = "warn";
-                    text = "Wall content or arrangement changed after this command. Review current state.";
+                    text = "Wall content or arrangement changed after this command. Review current state. Open Images and Arrange before relying on this command.";
                 } else {
                     text = "";
                 }
@@ -191,7 +192,8 @@ window.OperatorContent = {
                 ingestConfig(result, { preserveDraft: true });
                 if (feedback !== "image-message" || !retainMessage) {
                     if (result && result.generation !== undefined && result.revision !== undefined) {
-                        shownRevisions.set(feedback, { generation: result.generation, revision: result.revision, image: content.type === "image" });
+                        shownRevisions.set(feedback, { generation: result.generation, revision: result.revision, image: content.type === "image",
+                            content: JSON.stringify(result.scene?.content), layout: JSON.stringify(result.layout) });
                         renderShownStatus();
                     } else message("", false, "info", feedback);
                 }
