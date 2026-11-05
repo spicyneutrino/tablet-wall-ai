@@ -472,3 +472,5 @@ body[data-image-actions-inline="true"][data-output-dirty="true"] .image-primary-
 .roster-tools { display: flex; flex-wrap: wrap; align-items: center; gap: .5rem; margin-inline-start: auto; }
 
 .arrange-controls .btn[aria-pressed="true"] { background: var(--selected); border-color: var(--accent); }
+
+.grid-warnings { display: block; margin-block-start: .5rem; }
