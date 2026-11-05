@@ -368,9 +368,7 @@ dialog.tablet-selection::backdrop { background: var(--backdrop); }
 
 .image-primary-actions { align-items: center; }
 .image-primary-actions .btn-primary { flex: 0 1 auto; }
-.panel-details { border-block-start: 1px solid var(--border); }
-.panel-details > details:not([hidden]) + details { border-block-start: 1px solid var(--border); }
-.panel-details > details[open], .image-utilities > details[open] { padding-block-end: 1rem; }
+.image-utilities > details[open] { padding-block-end: 1rem; }
 
 @media (min-width: 48.01rem) {
     dialog.tablet-selection { position: static; margin: 0; inline-size: auto; max-inline-size: none; max-block-size: none; overflow: visible; border: 0; border-inline-start: 1px solid var(--border); border-radius: 0; padding: 0 0 0 2rem; background: transparent; }

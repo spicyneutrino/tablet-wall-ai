@@ -241,14 +241,9 @@
 
             <p class="hint" id="readiness-refreshed" hidden></p>
             <dl id="operator-readiness-facts" class="operator-facts"></dl>
-            <div class="panel-details">
-            <details><summary>Server and connection details</summary><dl id="operator-readiness-details" class="operator-facts"></dl></details>
-            <details id="readiness-paths"><summary>Data paths</summary><dl class="operator-facts" id="operator-readiness-paths"></dl></details>
-            <details id="readiness-advice"><summary>What this server cannot do</summary><ul id="operator-readiness-advice"></ul></details>
-            </div>
             </section></div>
-        <details class="card" id="measurement-details"><summary>Measurements</summary><section class="field-review" id="measurement-review" hidden><h3>Review changed saved fields</h3><pre class="form-comparison" id="measurement-comparison"></pre><button type="button" class="btn" id="measurement-keep" data-action="measurement-keep">Use my edited measurements</button></section>        <section class="card device-card task-section" aria-labelledby="device-card-title">
-            <h2 id="device-card-title" class="sr-only">Measurements</h2>
+        <details class="card" id="measurement-details"><summary>Details</summary><section class="task-section"><h3>Server and connection</h3><dl id="operator-readiness-details" class="operator-facts"></dl></section><section class="task-section" id="readiness-paths"><h3>Data paths</h3><dl class="operator-facts" id="operator-readiness-paths"></dl></section><section class="task-section" id="readiness-advice"><h3>What this server cannot do</h3><ul id="operator-readiness-advice"></ul></section><section class="field-review" id="measurement-review" hidden><h3>Review changed saved fields</h3><pre class="form-comparison" id="measurement-comparison"></pre><button type="button" class="btn" id="measurement-keep" data-action="measurement-keep">Use my edited measurements</button></section>        <section class="card device-card task-section" aria-labelledby="device-card-title">
+            <h3 id="device-card-title">Measurements</h3>
             <p class="empty-note" id="device-card-empty">Select a tablet to edit its measurements.</p>
 
             <div id="device-card-body" hidden>
@@ -437,9 +432,8 @@
                 </form>
             </div>
         </section>
-        </details>
-        <details class="card field-card task-section" aria-labelledby="field-title">
-            <summary><span><span id="field-title">Diagnostics</span> <span class="chip" id="diag-state" data-kind="info">loading</span></span></summary>
+        <section class="field-card task-section" aria-labelledby="field-title">
+            <h3><span id="field-title">Diagnostics</span> <span class="chip" id="diag-state" data-kind="info">loading</span></h3>
             <div class="field-actions">
                 <button type="button" class="btn" id="btn-diag-refresh" data-action="btn-diag-refresh">Refresh diagnostics</button>
                 <button type="button" class="btn btn-ghost" id="btn-diag-verify" data-action="btn-diag-verify">Verify object bytes</button>
@@ -453,6 +447,7 @@
                 <p class="diag-integrity-text" id="diag-integrity-text"></p>
                 <ul class="diag-problems" id="diag-problems" aria-label="Damaged objects"></ul>
             </div>
+        </section>
         </details>
 
             <section class="card task-section"><h2>Experimental playback</h2><p>Software evidence only. Playback has not been validated on tablets.</p>
