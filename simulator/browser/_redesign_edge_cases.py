@@ -44,7 +44,7 @@ def second_operator(rig):
     page = context.new_page()
     page.set_default_timeout(7000)
     page.goto(rig.base + "/controller/physical.html")
-    expect(page.locator("#device-count")).to_contain_text(str(len(ids(rig))))
+    expect(page.locator("#device-list .dev-pick")).to_have_count(len(ids(rig)))
     return page
 
 
