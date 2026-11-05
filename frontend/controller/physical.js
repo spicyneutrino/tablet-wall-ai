@@ -3435,32 +3435,14 @@
             if (hasUnsavedEdits()) { event.preventDefault(); event.returnValue = ""; }
         });
         document.getElementById("open-tablet-measurements").addEventListener("click", () => { showTab("system", { persist: true }); document.getElementById("measurement-details").open = true; document.getElementById("tablet-model").focus(); });
-        const arrangeCommit = document.querySelector(".arrange-commit");
-        const arrangeResult = document.querySelector(".arrange-result");
-        const arrangeTools = document.querySelector(".arrange-tools");
-        const shortLandscape = window.matchMedia ? window.matchMedia("(max-height: 32rem) and (orientation: landscape)") : null;
-        function syncArrangeLayout() {
-            if (!arrangeCommit || !arrangeResult || !arrangeTools) return;
-            const target = shortLandscape && shortLandscape.matches ? arrangeTools : arrangeResult;
-            if (arrangeCommit.parentElement !== target) {
-                if (target === arrangeTools) arrangeTools.prepend(arrangeCommit);
-                else arrangeResult.append(arrangeCommit);
-                if (window.OperatorStage && el.stageSvg) window.OperatorStage.fit(el.stageSvg);
-            }
-        }
-        if (shortLandscape) shortLandscape.addEventListener("change", syncArrangeLayout);
-        window.addEventListener("resize", syncArrangeLayout);
-        syncArrangeLayout();
         const imageActions = document.querySelector(".image-actions");
         const workspaceNav = document.querySelector(".workspace-nav-landmark");
-        const arrangeActions = document.getElementById("arrange-footer-actions");
         const imageActionObserver = new ResizeObserver(() => {
             document.body.style.setProperty("--task-nav-height", workspaceNav.clientHeight - parseFloat(getComputedStyle(workspaceNav).paddingBottom) + "px");
             document.body.style.setProperty("--image-action-height", imageActions.offsetHeight + "px");
-            document.body.style.setProperty("--arrange-action-height", arrangeActions.offsetHeight + "px");
             window.OperatorStage.fit(el.stageSvg);
         });
-        for (const chrome of [imageActions, workspaceNav, arrangeActions]) imageActionObserver.observe(chrome);
+        for (const chrome of [imageActions, workspaceNav]) imageActionObserver.observe(chrome);
         function toggleStageTechnical() {
             const details = document.getElementById("stage-technical");
             const expanded = document.body.classList.toggle("show-stage-details", !(document.body.classList.contains("show-stage-details") && details.open));

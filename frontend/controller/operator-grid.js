@@ -285,7 +285,7 @@
                     + (result.previous_kind !== kind ? " Apply will request a named safety copy of the current arrangement." : ""));
                 updateButtons(); syncDraftUi(); renderStage();
                 if ($("arrange-membership").dataset.required === "false") $("arrange-membership").open = false;
-                $("btn-apply").focus({ preventScroll: true });
+                $("btn-apply").focus();
             } catch (error) { text("Cannot preview arrangement. " + error.message + " The committed wall is unchanged."); }
             finally { busy = false; updateButtons(); }
         }

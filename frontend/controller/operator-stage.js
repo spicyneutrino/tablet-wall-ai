@@ -107,13 +107,13 @@
         const fieldTop = (fieldRect.top + win.scrollY) / zoom;
         let bottom = win.innerHeight / zoom;
         const navigation = options.navigation || doc.querySelector(".workspace-nav-landmark");
-        const actionBar = options.actionBar || doc.querySelector(doc.body.dataset.task === "arrange" ? "#arrange-footer-actions" : ".image-actions");
+        const actionBar = options.actionBar || doc.body.dataset.task !== "arrange" && doc.querySelector(".image-actions");
         for (const bar of [navigation, doc.body.dataset.outputDirty === "true" && actionBar]) {
             if (!bar || !bar.getClientRects().length) continue;
             const rect = bar.getBoundingClientRect();
             if (bar === actionBar) {
                 const inline = compact && bottom - fieldTop - rect.height / zoom - 16 < 120 / zoom;
-                doc.body.dataset[doc.body.dataset.task === "arrange" ? "arrangeActionsInline" : "imageActionsInline"] = String(inline);
+                doc.body.dataset.imageActionsInline = String(inline);
                 if (inline) continue;
             }
             const style = win.getComputedStyle(bar);
@@ -123,10 +123,7 @@
         const borderHeight = parseFloat(fieldStyle.borderTopWidth) + parseFloat(fieldStyle.borderBottomWidth);
         const aspect = svg.viewBox.baseVal.width / svg.viewBox.baseVal.height;
         const width = Math.max(0, availableWidth - borderWidth);
-        const commit = doc.body.dataset.task === "arrange" ? doc.querySelector(".arrange-result .arrange-commit") : null;
-        const stageTail = Math.max(0, (state.parent.getBoundingClientRect().bottom - fieldRect.bottom) / zoom);
-        const reserved = !compact && commit && commit.getClientRects().length ? commit.offsetHeight + stageTail + 16 : 0;
-        const availableHeight = bottom - fieldTop - 16 - borderHeight - reserved;
+        const availableHeight = bottom - fieldTop - 16 - borderHeight;
         // A short viewport keeps a usable field and falls back to page scrolling.
         const taskSelector = doc.getElementById("compact-task-select");
         const reflow = taskSelector && taskSelector.getClientRects().length;
