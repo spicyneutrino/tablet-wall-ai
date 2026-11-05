@@ -1,6 +1,8 @@
 # tablet-wall-ai: codebase guide
 
-> **Read this first.** It describes the architecture and the current code of this repository.
+> **Historical snapshot, 7 October 2026.** This guide describes commit `0899e04`, not the current workspace.
+> Use the [current field guide](field-guide/GUIDE.md), [README](../README.md), and
+> [operator runbook](../deploy/IMAGE-WALL-RUNBOOK.md) for current code and controls.
 > Companion file: `docs/codebase-explorer.html`. It has the same content in visual, interactive form.
 > The two files must agree. When the code changes, update both.
 >

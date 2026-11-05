@@ -1,5 +1,13 @@
 # Frontend redesign verification
 
+## Operator workflow follow-up
+
+The [operator simplification record](OPERATOR-SIMPLICITY.md) covers the later
+workflow changes reviewed at `ff1f4b7`. The results below belong to the earlier
+redesign candidates named in each section. They are not reruns of the later
+source. PR #29 has since merged into `main`; its earlier stacked status below
+is part of the historical record.
+
 ## Candidate and scope
 
 The executed application candidate is `3994d2191a7513f80e130efab9764c6b3538678b`
