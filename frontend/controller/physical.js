@@ -41,7 +41,6 @@
         layoutKindNote: document.getElementById("layout-kind-note"),
         btnUndo: document.getElementById("btn-undo"),
         btnRedo: document.getElementById("btn-redo"),
-        draftFlag: document.getElementById("draft-flag"),
         btnApply: document.getElementById("btn-apply"),
         btnCancel: document.getElementById("btn-cancel"),
         btnReload: document.getElementById("btn-reload"),
@@ -1072,9 +1071,6 @@
     function syncDraftUi() {
         renderCalibrationHelper();
         if (!state.draft) {
-            el.draftFlag.hidden = true;
-            el.draftFlag.textContent = "";
-            el.draftFlag.dataset.dirty = "false";
             el.btnApply.disabled = true;
             el.btnCancel.disabled = true;
             el.btnUndo.disabled = true;
@@ -1089,14 +1085,6 @@
         }
 
         const dirty = isDirty(), inputDirty = operatorGrid && operatorGrid.dirty();
-        el.draftFlag.hidden = !(dirty || inputDirty);
-        if (dirty || inputDirty) {
-            el.draftFlag.textContent = "Unapplied changes";
-            el.draftFlag.dataset.dirty = "true";
-        } else {
-            el.draftFlag.textContent = "";
-            el.draftFlag.dataset.dirty = "false";
-        }
 
         const emptyPhysical = state.draft.kind === "physical" && Object.keys(state.draft.slots).length === 0;
         el.btnApply.disabled = state.busy || !state.etag || state.etagState !== "current" || !!sizingError()

@@ -90,8 +90,6 @@ form > .btn { justify-self: start; }
 .task-footer[data-task-footer="images"] > .operator-actions { display: flex; flex-wrap: wrap; gap: .5rem; }
 .task-footer[data-task-footer="images"] .btn-primary { flex: 0 1 auto; }
 .arrangement-history { padding-block: 1rem; border-block-start: 1px solid var(--border); }
-.draft-flag { color: var(--muted); font-size: .875rem; }
-.draft-flag[data-dirty="true"] { color: var(--accent); font-weight: 600; }
 .toolbar-gap, .playback-action-gap { flex: 1; }
 details { min-inline-size: 0; }
 summary { min-block-size: 2.75rem; padding: .625rem .25rem; color: var(--muted); font-size: .875rem; font-weight: 500; }
