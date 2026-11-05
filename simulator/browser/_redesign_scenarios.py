@@ -112,9 +112,9 @@ def parity(rig):
         page.locator("#stage-svg .slot[data-preview=true]").count() == 4,
         "Preview tiles carry preview state instead of live paint proof",
     )
-    page.locator("#view-live").click()
+    page.locator("#view-toggle").click()
     expect(page.locator("#stage-svg .slot")).to_have_count(0)
-    page.locator("#view-preview").click()
+    page.locator("#view-toggle").click()
     expect(page.locator("#stage-svg .slot")).to_have_count(4)
     task("Images")
     expect(page.locator("#draft-resolution")).to_be_visible()

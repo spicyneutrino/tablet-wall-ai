@@ -1595,14 +1595,17 @@ def corrections(rig):
     )
     (rig.out / "image-preview-ax.yml").write_text(tree)
 
-    p.locator("#view-live").focus()
-    p.locator("#view-live").press("Enter")
-    expect(p.locator("#view-preview")).to_be_focused()
-    rig.check(True, "View applied hands focus to View preview when it hides itself")
-    p.locator("#view-preview").focus()
-    p.locator("#view-preview").press("Enter")
-    expect(p.locator("#view-live")).to_be_focused()
-    rig.check(True, "View preview hands focus to View applied when it hides itself")
+    toggle = p.locator("#view-toggle")
+    expect(toggle).to_have_text("View applied")
+    toggle.focus()
+    toggle.press("Enter")
+    expect(toggle).to_be_focused()
+    expect(toggle).to_have_text("View preview")
+    rig.check(True, "View applied keeps focus and relabels the toggle View preview")
+    toggle.press("Enter")
+    expect(toggle).to_be_focused()
+    expect(toggle).to_have_text("View applied")
+    rig.check(True, "View preview keeps focus and relabels the toggle View applied")
 
     for width, height in ((320, 844), (390, 844), (667, 375), (844, 390)):
         for scale in (1, 2):

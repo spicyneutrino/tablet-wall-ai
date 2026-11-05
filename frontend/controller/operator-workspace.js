@@ -73,8 +73,8 @@ window.OperatorWorkspace = {
             if ($("stage-mode-label").textContent !== label) $("stage-mode-label").textContent = label;
             const description = { live: "", "arrangement-preview": "Arrangement preview, not applied", "image-preview": "Image preview, not shown" }[mode];
             if ($("stage-mode-description").textContent !== description) $("stage-mode-description").textContent = description;
-            $("view-live").hidden = mode === "live";
-            $("view-preview").hidden = !state.viewLive || !hasPreview && !image;
+            $("view-toggle").hidden = mode === "live" && (!state.viewLive || !hasPreview && !image);
+            $("view-toggle").textContent = state.viewLive ? "View preview" : "View applied";
             $("btn-cancel").hidden = !arrangement;
             $("wall-empty").hidden = !state.configLoaded || hasPreview || !!state.base && Object.keys(window.OperatorState.entries(state.base)).length > 0;
             $("empty-add-tablets").textContent = !state.rosterError && Object.values(state.roster).some(device => device.online) ? "Arrange tablets" : "Add tablets";
@@ -112,21 +112,10 @@ window.OperatorWorkspace = {
             await open(event.target.value, { focus: false, persist: true });
             event.target.value = state.tabName;
         });
-        function focusComparison(target) {
-            const visible = el => el && (typeof el.getClientRects !== "function" || el.getClientRects().length > 0);
-            if (visible(target) && !target.disabled) { target.focus({ preventScroll: true }); return; }
-            const search = $("image-search");
-            if (visible(search)) search.focus({ preventScroll: true });
-        }
-        $("view-live").addEventListener("click", () => {
-            const restore = document.activeElement === $("view-live");
-            state.viewLive = true; onViewChange(); render(); renderStage();
-            if (restore) focusComparison($("view-preview"));
-        });
-        $("view-preview").addEventListener("click", () => {
-            const restore = document.activeElement === $("view-preview");
-            state.viewLive = false; onViewChange(); render(); renderStage();
-            if (restore) focusComparison($("view-live"));
+        $("view-toggle").addEventListener("click", () => {
+            const toggle = $("view-toggle"), search = $("image-search"), restore = document.activeElement === toggle;
+            state.viewLive = !state.viewLive; onViewChange(); render(); renderStage();
+            if (restore && toggle.hidden && (typeof search.getClientRects !== "function" || search.getClientRects().length)) search.focus({ preventScroll: true });
         });
         $("empty-add-tablets").addEventListener("click", () => open(!state.rosterError && Object.values(state.roster).some(device => device.online) ? "show" : "tablet", { focus: true, persist: true }));
         $("join-arrange").addEventListener("click", () => open("show", { focus: true, persist: true }));
