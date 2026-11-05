@@ -119,10 +119,10 @@ def native_keyboard(rig):
     )
     native_tab_to(p, "#scene-save")
     p.keyboard.press("Enter")
-    expect(p.locator("#scene-message")).to_contain_text("Enter a scene name")
+    expect(p.locator("#scene-message")).to_contain_text("Enter a content name")
     rig.check(
         focus(p)["id"] == "scene-name",
-        "Invalid empty scene submission focuses its own name field",
+        "Invalid empty content submission focuses its own name field",
         focus(p),
         fatal=False,
     )
