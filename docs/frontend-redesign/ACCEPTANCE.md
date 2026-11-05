@@ -21,7 +21,10 @@ rtk proxy .venv/bin/python simulator/browser/redesign_acceptance.py --artifacts 
 rtk proxy .venv/bin/python simulator/browser/redesign_acceptance.py --artifacts /tmp/tablet-wall-recovery-NEW --scenario recovery
 rtk proxy .venv/bin/python simulator/browser/redesign_acceptance.py --artifacts /tmp/tablet-wall-parity-NEW --scenario parity
 rtk proxy .venv/bin/python simulator/browser/redesign_acceptance.py --artifacts /tmp/tablet-wall-layout-NEW --scenario responsive
+rtk proxy .venv/bin/python simulator/browser/redesign_acceptance.py --artifacts /tmp/tablet-wall-corrections-NEW --scenario corrections
 ```
+
+`--scenario corrections` runs the round-3 corrective checks: keyboard tab focus, the image-gallery tab stop, the preview accessibility trees, fit-label geometry at four widths and two text scales, the View applied/preview, Show image and Apply/Discard focus handoffs, the captured Arrange Identify and its stale recovery, both phone recovery paths, and Saved feedback adjacency. It writes the same identity, results, console/network and screenshot artifacts as the other scenarios.
 
 The driver refuses an existing artifact directory and cannot target an arbitrary already-running server. `--ingress-proof <manifest.json>` can attach read-only generated-ingress evidence only when its source hashes match. A full run returns nonzero while native/hardware gates remain open; inspect `pass`, `software_complete`, `acceptance_complete` and `mandatory_uncovered` separately.
 
