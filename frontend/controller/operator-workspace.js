@@ -1,7 +1,7 @@
 "use strict";
 window.OperatorWorkspace = {
     create({ state, labelFor, arrangementDirty, arrangementPreview, imageDirty, applyArrangement, showImage, discardArrangement, discardImage,
-        commitTask, renderStage, onViewChange = () => {}, refreshReadiness, refreshStatus, selectTablet, canCommit }) {
+        commitTask, renderStage, stageNames, onViewChange = () => {}, refreshReadiness, refreshStatus, selectTablet, canCommit }) {
         const $ = id => document.getElementById(id);
         let pending = null, resolving = false;
         const issues = new Map();
@@ -67,8 +67,11 @@ window.OperatorWorkspace = {
             if (empty && emptyRoster !== true) joining.open = true;
             else if (!empty && emptyRoster === true && !joining.contains(document.activeElement)) joining.open = false;
             emptyRoster = empty;
-            $("stage-mode-label").textContent = mode === "live" ? "Applied" : "Preview";
-            const description = { live: "Applied wall", "arrangement-preview": "Arrangement preview, not applied", "image-preview": "Image preview, not shown" }[mode];
+            const names = stageNames();
+            const label = mode === "live" ? names.applied ? "Showing " + names.applied : "Nothing shown"
+                : "Preview · " + (mode === "image-preview" ? names.pending : "Arrangement");
+            if ($("stage-mode-label").textContent !== label) $("stage-mode-label").textContent = label;
+            const description = { live: "", "arrangement-preview": "Arrangement preview, not applied", "image-preview": "Image preview, not shown" }[mode];
             if ($("stage-mode-description").textContent !== description) $("stage-mode-description").textContent = description;
             $("view-live").hidden = mode === "live";
             $("view-preview").hidden = !state.viewLive || !hasPreview && !image;

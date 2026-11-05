@@ -1,9 +1,7 @@
 .wall-stage { display: grid; gap: 1rem; }
 .wall-head { min-block-size: 2.75rem; display: flex; flex-wrap: wrap; align-items: center; gap: .5rem 1rem; }
 .wall-head h2 { flex: 1 1 auto; font-size: 1.25rem; letter-spacing: -.02em; }
-.stage-mode { display: flex; flex-wrap: wrap; align-items: center; gap: .5rem; }
-.stage-mode > strong { color: var(--muted); font-size: .875rem; font-weight: 600; letter-spacing: normal; }
-.stage-applied-content { font-size: .875rem; }
+.stage-mode { position: relative; flex: 1 1 auto; contain: inline-size; margin: 0; min-inline-size: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--text); font-size: .875rem; font-weight: 600; }
 .wall-head > .technical-details { flex-basis: 100%; }
 .physical-meta { display: flex; flex-wrap: wrap; gap: .5rem 1rem; }
 .etag-meta code { overflow-wrap: anywhere; }
@@ -39,8 +37,7 @@ body[data-stage-mode="live"] .wall-stage:has(.wall-empty:not([hidden])) :is(.sta
 .stage-details { border-block-start: 1px solid var(--border); }
 .wall-empty { padding-block: 1.5rem; border-block-start: 1px solid var(--border); }
 .wall-empty .btn { justify-self: start; }
-body[data-stage-mode="arrangement-preview"] .stage-mode > strong,
-body[data-stage-mode="image-preview"] .stage-mode > strong { color: var(--accent); }
+body:not([data-stage-mode="live"]) .stage-mode { color: var(--accent); }
 body[data-connection="stale"] .wall-health { border-style: dashed; }
 .stage-identities ul { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 19rem), 1fr)); gap: .35rem 1.5rem; padding-inline-start: 1.25rem; }
 .stage-identities li { min-inline-size: 0; overflow-wrap: anywhere; }

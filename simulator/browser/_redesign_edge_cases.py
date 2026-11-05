@@ -109,7 +109,7 @@ def quick_wall(rig):
     p.locator("#grid-preview").click()
     expect(p.locator("body")).to_have_attribute("data-stage-mode", "arrangement-preview")
     p.locator("#btn-apply").click()
-    expect(p.locator("#stage-mode-label")).to_have_text("Applied")
+    expect(p.locator("body")).to_have_attribute("data-stage-mode", "live")
     rig.check(
         len(rig.config()["layout"]["placements"]) == 4,
         "Real UI applies a relative four-tablet fixture",
@@ -171,7 +171,7 @@ def pointer_drag(rig):
     p.mouse.up()
     proposed = float(p.locator("#slot-center-x").input_value())
     p.locator("#btn-apply").click()
-    expect(p.locator("#stage-mode-label")).to_have_text("Applied")
+    expect(p.locator("body")).to_have_attribute("data-stage-mode", "live")
     current = rig.config()
     rig.check(
         abs(current["layout"]["slots"][device]["center_x_mm"] - proposed) < 0.01
@@ -240,7 +240,7 @@ def snap_spacing(rig):
     )
     p.locator("#btn-redo").click()
     p.locator("#btn-apply").click()
-    expect(p.locator("#stage-mode-label")).to_have_text("Applied")
+    expect(p.locator("body")).to_have_attribute("data-stage-mode", "live")
     rig.check(
         rig.config()["layout"]["placements"][device]["x"] == 90,
         "Snapped draft applies through the guarded arrangement action",
@@ -479,7 +479,7 @@ def mixed_models(rig):
     p.locator("#grid-preview").click()
     expect(p.locator("body")).to_have_attribute("data-stage-mode", "arrangement-preview")
     p.locator("#btn-apply").click()
-    expect(p.locator("#stage-mode-label")).to_have_text("Applied")
+    expect(p.locator("body")).to_have_attribute("data-stage-mode", "live")
     rig.check(
         rig.config()["tablet_assignments"][subjects[0]]["model_id"] == "ipad-air-2"
         and all(
@@ -928,7 +928,7 @@ def stale_scene(rig):
     other.get_by_text("Check patterns", exact=True).click()
     rig.open_disclosures(other.locator("#show-colours"))
     other.locator("#show-colours").click()
-    expect(other.locator("#stage-applied-content")).to_contain_text("Tablet colours")
+    expect(other.locator("#stage-mode-label")).to_have_text("Nothing shown")
     task(other, "Saved")
     other.locator("#scene-name").fill("Guarded scene")
     other.locator("#scene-save").click()
@@ -980,7 +980,7 @@ def missing_live(rig):
         )
         task(p, "Images")
         p.locator("#refresh-images").click()
-        expect(p.locator("#stage-applied-content")).to_contain_text("Unavailable")
+        expect(p.locator("#stage-mode-label")).to_contain_text("Unavailable")
         rig.check(
             rig.config()["scene"]["content"]["asset"]
             == before["scene"]["content"]["asset"]
@@ -1181,7 +1181,7 @@ def replacement_digest(rig):
         other.locator(f'#stage-svg .slot[data-device-id="{ids(rig)[1]}"]').focus()
         other.keyboard.press("ArrowRight")
         other.locator("#btn-apply").click()
-        expect(other.locator("#stage-mode-label")).to_have_text("Applied")
+        expect(other.locator("body")).to_have_attribute("data-stage-mode", "live")
         save_arrangement(other, "Exact reservation")
         latest = rig.config()
         captured.update(
@@ -1416,7 +1416,7 @@ def refused_grid(rig):
         {"field": p.locator("#logical-w").input_value(), "stage_width": rendered},
     )
     p.locator("#btn-apply").click()
-    expect(p.locator("#stage-mode-label")).to_have_text("Applied")
+    expect(p.locator("body")).to_have_attribute("data-stage-mode", "live")
     rig.check(
         rig.config()["layout"]["placements"][device]["w"] == 95,
         "46a9f24 manual stage and committed geometry agree after refused grid preview",

@@ -764,14 +764,14 @@ def phase_content(return_name: str):
     first = image_id("first.png")
     marked = image_id("marked.png")
     show_image(page, first, "cover")
-    active = page.locator("#stage-applied-content").inner_text()
-    check("first.png" in active and "Fill wall" in active and "2000 × 1400" in page.locator("#stage-dimensions").inner_text(),
+    active = page.locator("#stage-mode-label").inner_text()
+    check("first.png" in active and config()["scene"]["content"].get("fit") == "cover" and "2000 × 1400" in page.locator("#stage-dimensions").inner_text(),
           "TWR-04 A1 image A is named in the console with its fill and wall size")
     wait_painted(first)
 
     show_image(page, marked, "contain")
-    active = page.locator("#stage-applied-content").inner_text()
-    check("marked.png" in active and "Fit whole image" in active and "2000 × 1000" in page.locator("#stage-dimensions").inner_text(),
+    active = page.locator("#stage-mode-label").inner_text()
+    check("marked.png" in active and "2000 × 1000" in page.locator("#stage-dimensions").inner_text(),
           "TWR-04 A1 image B is named in the console with its fit and wall size")
     check(config()["scene"]["content"].get("fit") == "contain",
           "TWR-04 A1 image B is committed with the selected fit")
@@ -783,10 +783,8 @@ def phase_content(return_name: str):
     wait_until(lambda: "online" in page.locator("#device-count").inner_text(),
                "console did not recover after reload")
     tab(page, "Wall")
-    wait_until(lambda: "marked.png" in page.locator("#stage-applied-content").inner_text(),
+    wait_until(lambda: "marked.png" in page.locator("#stage-mode-label").inner_text(),
                "reload did not show image B")
-    check("Fit whole image" in page.locator("#stage-applied-content").inner_text(),
-          "TWR-04 A1 reload still names image B with Fit")
     check(config()["scene"]["content"].get("asset") == marked,
           "TWR-04 A1 reload still reads image B from the committed scene")
     wait_painted(marked)

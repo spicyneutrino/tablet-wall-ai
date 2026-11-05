@@ -56,7 +56,7 @@ const content = context.window.OperatorContent.create({ state, renderStage() {},
     assert.equal(node("image-preview-controls").hidden, true, "an idle wall does not present an inactive edit form");
     assert.equal(node("edit-current-image").hidden, true, "test colours have no saved image to adjust");
     assert.equal(node("image-fit").disabled, true, "Fit needs a draft");
-    assert.equal(node("image-title").textContent, "Tablet colours");
+    assert.equal(node("image-title").textContent, "Nothing shown", "diagnostic colours are never named as content");
     assert.equal(node("image-details").textContent, "", "idle state needs no instructional paragraph");
 
     node("image-fit").value = "contain";
@@ -73,7 +73,7 @@ const content = context.window.OperatorContent.create({ state, renderStage() {},
         "library cards show filename only, not dimensions");
     assert.equal(buttonA.attrs["aria-pressed"], "false");
     assert.equal(cardA.dataset.selected, undefined, "selection uses one outline marker, not a duplicate badge");
-    assert.equal(node("stage-applied-content").textContent, "Tablet colours");
+    assert.equal(content.stageNames().applied, null, "test colours report no applied content name");
 
     await buttonA.click();
     assert.equal(content.dirty(), true, "clicking a library image creates a draft");
@@ -84,13 +84,12 @@ const content = context.window.OperatorContent.create({ state, renderStage() {},
     assert.equal(node("image-source-details").textContent, "100 × 100 source px");
     assert.equal(node("show-image").disabled, false);
     assert.equal(node("image-fit").disabled, false);
-    assert.equal(node("stage-applied-content").textContent, "Applied: Tablet colours",
-        "the stage mode area keeps the applied content while a draft exists");
+    assert.equal(content.stageNames().pending, "a");
 
     content.discard();
     assert.equal(content.dirty(), false);
     assert.equal(buttonA.attrs["aria-pressed"], "false");
-    assert.equal(node("image-title").textContent, "Tablet colours");
+    assert.equal(node("image-title").textContent, "Nothing shown");
     assert.equal(node("image-details").textContent, "", "idle state needs no instructional paragraph");
     assert.equal(node("show-image").disabled, true);
     assert.equal(node("image-fit").disabled, true);
@@ -117,8 +116,7 @@ const content = context.window.OperatorContent.create({ state, renderStage() {},
     assert.match(appliedNote.textContent, /Applied configuration/);
     assert.match(appliedNote.textContent, /tablet reports are separate/);
     assert.equal(buttonA.attrs["aria-describedby"], appliedNote.id, "the applied marker has an accessible description");
-    assert.match(node("stage-applied-content").textContent, /a · Fill wall/);
-    assert.equal(node("stage-applied-content").textContent.includes("source px"), false);
+    assert.equal(content.stageNames().applied, "a");
 
     const confirm = "";
     const render = config.runtime.devices.t.render;
@@ -158,14 +156,13 @@ const content = context.window.OperatorContent.create({ state, renderStage() {},
     assert.equal(state.previewContent.asset, "b"); assert.equal(content.dirty(), true); assert.equal(node("image-discard").hidden, false);
     assert.equal(node("image-title").textContent, "b");
     assert.equal(node("image-source-details").textContent, "100 × 100 source px");
-    assert.match(node("stage-applied-content").textContent, /^Applied: a · Fill wall$/,
-        "the inspector shows draft facts and the stage mode area shows applied content");
+    assert.deepEqual({ ...content.stageNames() }, { applied: "a", pending: "b" },
+        "the inspector shows draft facts and the stage chip can name applied content");
     assert.equal(buttonA.attrs["aria-pressed"], "false", "Show cleared the draft it submitted");
     assert.equal(buttonB.attrs["aria-pressed"], "true", "a newer draft keeps its own rust outline");
     assert.equal(cardA.dataset.applied, "true", "Show moves the applied marker to the submitted image");
     state.viewLive = true; content.render();
-    assert.equal(node("image-title").textContent, "Preview: b", "comparison keeps the pending filename distinct from applied output");
-    assert.match(node("stage-applied-content").textContent, /^a · Fill wall$/);
+    assert.equal(node("image-title").textContent, "b", "comparison keeps the pending filename in the inspector");
     state.viewLive = false; content.render();
     node("image-discard").focus(); content.discard(); assert.equal(document.activeElement, node("image-search"));
     assert.equal(content.dirty(), false); assert.equal(state.previewContent, null);

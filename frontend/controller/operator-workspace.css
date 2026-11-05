@@ -211,8 +211,6 @@ details > :not(summary, [hidden], :is(div, p, ul, ol, dl, pre):empty) { margin-b
 .image-composer-head { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: .5rem 1rem; }
 .image-composer-head h3 { min-inline-size: 0; font-size: 1.125rem; }
 .image-recovery:not(:has(> :not([hidden]))), #image-details:empty { display: none; }
-body[data-task="images"] .stage-applied-content { display: none; }
-body[data-task="images"][data-stage-mode="live"][data-output-dirty="true"] .stage-applied-content { display: inline; }
 .stage-view-actions:not(:has(> :not([hidden]))) { display: none; }
 .library-head { display: grid; gap: .75rem; }
 .library-head h3 { font-size: 1.125rem; }
@@ -299,9 +297,7 @@ dialog.tablet-selection::backdrop { background: var(--backdrop); }
     .wall-stage { gap: .75rem; }
     .wall-head { align-items: center; }
     .wall-head h2 { display: none; }
-    .stage-mode { flex: 1 1 10rem; min-inline-size: 0; justify-content: flex-start; }
-    .stage-mode > strong { flex: 0 1 auto; }
-    .stage-applied-content { font-size: .875rem; }
+    .stage-mode { flex: 1 1 10rem; }
         .physical-meta { display: grid; }
     .tablet-selection { border-inline-start: 0; padding-inline-start: 0; padding-block-start: .75rem; }
     .task-panel[data-task="images"] { gap: .75rem; }
@@ -367,8 +363,6 @@ dialog.tablet-selection::backdrop { background: var(--backdrop); }
     .arrange-result { grid-row: 1; gap: .5rem; }
     body[data-stage-mode="arrangement-preview"] :is(#grid-2x2, #grid-1x4) { display: none; }
     .arrange-tools { grid-row: 2; }
-    .stage-mode { flex-wrap: nowrap; align-items: baseline; min-inline-size: 0; }
-    .stage-applied-content { min-inline-size: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
         .topbar { min-block-size: 44px; block-size: auto; flex-wrap: wrap; padding-block: 0; }
     body { display: block; block-size: auto; }
     .workspace-nav-landmark { position: sticky; inset-block-start: 0; inset-block-end: auto; padding: 0; border-block-start: 0; border-block-end: 1px solid var(--border); }
@@ -386,7 +380,6 @@ dialog.tablet-selection::backdrop { background: var(--backdrop); }
 #image-fit-note:empty { display: none; }
 #measurement-details, #tablet-details, #tablet-details > details { border-block-start: 1px solid var(--border); }
 #measurement-details { margin-block-start: -1rem; }
-.stage-applied-content { color: var(--text); font-weight: 600; }
 
 .image-primary-actions { align-items: center; }
 .image-primary-actions .btn-primary { flex: 0 1 auto; }

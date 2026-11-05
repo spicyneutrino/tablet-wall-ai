@@ -3429,7 +3429,7 @@
             applyArrangement: applyLayout, showImage: () => operatorContent.showSelected(),
             discardArrangement: cancelDraft, discardImage: () => operatorContent.discard(),
             canCommit: kind => kind === "image" ? !document.getElementById("show-image").disabled : isDirty() && !el.btnApply.disabled,
-            selectTablet: selectDevice, commitTask, renderStage, onViewChange: () => operatorContent.viewChanged(), refreshReadiness: () => operatorReadiness.load(), refreshStatus: refreshRoster });
+            selectTablet: selectDevice, commitTask, renderStage, stageNames: () => operatorContent.stageNames(), onViewChange: () => operatorContent.viewChanged(), refreshReadiness: () => operatorReadiness.load(), refreshStatus: refreshRoster });
         document.getElementById("refresh-command-status").addEventListener("click", () => session.refresh().catch(error => showError(error.message)));
         window.addEventListener("beforeunload", event => {
             if (hasUnsavedEdits()) { event.preventDefault(); event.returnValue = ""; }

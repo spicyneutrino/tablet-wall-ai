@@ -109,19 +109,22 @@ window.OperatorContent = {
             const fallback = focused && visibleGalleryButtons().includes(focused) ? focused : null;
             setGalleryTabStop(selectedRow && !selectedRow.item.hidden ? selectedRow.button : fallback);
         }
+        function appliedName() {
+            const content = state.scene && state.scene.content || {};
+            if (content.type !== "image") return null;
+            const active = images.find(item => item.id === content.asset);
+            const unavailable = content.available === false || content.availability === "unavailable" || state.activeImageUnavailableId ? " · Unavailable" : "";
+            return (active ? active.name : content.name || content.asset) + unavailable;
+        }
+        function pendingName() {
+            const image = images.find(item => item.id === selected);
+            return image ? image.name : savedScene ? savedScene.name || "Saved scene" : selected ? "Unavailable image" : "Saved scene";
+        }
         function render() {
             const content = state.scene && state.scene.content || {};
             const active = images.find(item => item.id === content.asset);
             state.activeImageUnavailableId = inventoryReady && content.type === "image" && !active ? content.asset : null;
-            let appliedText;
-            if (content.type === "image") {
-                const unavailable = content.available === false || content.availability === "unavailable" || state.activeImageUnavailableId ? " · Unavailable" : "";
-                appliedText = (active ? active.name : content.name || content.asset) + " · "
-                    + (content.fit === "contain" ? "Fit whole image" : "Fill wall") + unavailable;
-            } else {
-                appliedText = content.type === "color" ? "Tablet colours" : content.type === "calibration" ? "Calibration pattern" : "No content";
-            }
-            $("stage-applied-content").textContent = (selectionDirty && !state.viewLive ? "Applied: " : "") + appliedText;
+
 
             const image = images.find(item => item.id === selected);
             $("selected-image-controls").dataset.assetId = selectionDirty ? selected || "" : "";
@@ -138,9 +141,8 @@ window.OperatorContent = {
             $("restore-image").disabled = busy || !previous || state.etagState !== "current";
             $("refresh-images").disabled = loading;
             const chosen = selectedContent();
-            const draftName = image ? image.name : savedScene ? savedScene.name || "Saved scene" : null;
-            $("image-title").textContent = selectionDirty ? (state.viewLive ? "Preview: " : "") + (draftName || (selected ? "Unavailable image" : "Saved scene"))
-                : active ? active.name : content.type === "image" ? content.name || content.asset : appliedText;
+            $("image-title").textContent = selectionDirty ? pendingName()
+                : active ? active.name : content.type === "image" ? content.name || content.asset : "Nothing shown";
             $("image-details").textContent = selectionDirty && selected && !image
                 ? "Selected image unavailable. Refresh images or choose a replacement." : "";
             $("image-preview-controls").hidden = !selectionDirty;
@@ -294,6 +296,7 @@ window.OperatorContent = {
             } catch (error) { message("Pattern unavailable. " + error.message.replace(/[.!?\s]+$/, "") + ". Choose a prepared grid or black image from the library.", true, "err", "pattern-message"); }
         });
         return { render, refresh, dirty: () => selectionDirty,
+            stageNames: () => ({ applied: appliedName(), pending: pendingName() }),
             imageFor: id => images.find(image => image.id === id),
             showSelected: () => show(selectedContent(), { scene: savedScene, guard: baseEtag || state.etag }),
             previewScene(entry, guard) {

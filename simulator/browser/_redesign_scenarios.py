@@ -79,9 +79,7 @@ def parity(rig):
 
     def apply():
         page.locator("#btn-apply").click()
-        expect(page.locator("#stage-mode-label")).to_have_text(
-            "Applied", timeout=10000
-        )
+        expect(page.locator("body")).to_have_attribute("data-stage-mode", "live", timeout=10000)
 
     def save_arrangement(name):
         task("Saved")
@@ -729,9 +727,7 @@ def edges(rig):
 
     def apply():
         page.locator("#btn-apply").click()
-        expect(page.locator("#stage-mode-label")).to_have_text(
-            "Applied", timeout=10000
-        )
+        expect(page.locator("body")).to_have_attribute("data-stage-mode", "live", timeout=10000)
 
     def row(id):
         return page.locator(f'#grid-order li[data-device-id="{id}"]')
@@ -903,7 +899,7 @@ def edges(rig):
     (RUN / "assets" / "supplied.png").unlink()
     task("Images")
     page.locator("#refresh-images").click()
-    expect(page.locator("#stage-applied-content")).to_contain_text("Unavailable")
+    expect(page.locator("#stage-mode-label")).to_contain_text("Unavailable")
     expect(page.locator("#show-image")).to_be_disabled()
     check(
         config()["layout"] == layout_before
