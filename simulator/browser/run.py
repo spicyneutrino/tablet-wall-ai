@@ -77,10 +77,12 @@ def artifact_directory(path: Path | None) -> Path:
 
 def child_environment(root: Path) -> dict[str, str]:
     env = {key: value for key, value in os.environ.items() if not key.startswith("TABLET_WALL_")}
+    (root / "backups").mkdir(parents=True, exist_ok=True)
     env.update({
         "TABLET_WALL_DB": str(root / "wall.db"),
         "TABLET_WALL_ASSET_DIR": str(root / "assets"),
         "TABLET_WALL_MEDIA_DIR": str(root / "media"),
+        "TABLET_WALL_BACKUP_DIR": str(root / "backups"),
         "PYTHONDONTWRITEBYTECODE": "1",
         "TMPDIR": str(root / "tmp"),
     })
