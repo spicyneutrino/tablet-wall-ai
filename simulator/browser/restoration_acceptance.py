@@ -148,12 +148,20 @@ CLIENT_SPECS = (
     {"name": "compact-d", "width": 390, "height": 844, "dpr": 2.0, "orientation": 0, "mobile": True},
 )
 CLIENT_COLOURS = ("#7c2d12", "#14532d", "#1e3a8a", "#4c1d95")
+TASK_VALUES = {"Images": "content", "Tablets": "tablet", "Arrange": "show", "Settings": "system"}
+FIXTURE_COVERAGE_NOTE = (
+    "Fixture groups 0 and 8 are generated and unit-tested but no scenario serves them. "
+    "Current servers serve 24 assets (gallery-focus, library-composer) or 1 "
+    "(recovery-sheet, scene-paint). Empty-library and 8-asset server states remain "
+    "explicit M0-03 coverage."
+)
 LIMITATIONS = [
     "Software browser evidence only. No physical tablet, optical seam, sleep/wake, "
     "native screen reader, native browser zoom, network ingress or hardware certification.",
     "The client pages are real shipped pages. Protocol-only or mutated state copies are "
     "labelled state_rule_probe and are never counted as painted evidence.",
     "An incomplete registry entry fails explicitly. It is not a skipped pass.",
+    FIXTURE_COVERAGE_NOTE,
 ]
 
 
@@ -174,13 +182,26 @@ def _inside(path: Path, root: Path) -> bool:
     return path == root or root in path.parents
 
 
-def new_artifacts(path: Path | str, source_root: Path, driver_root: Path = REPO) -> Path:
-    """Create a new artifacts directory outside both repositories."""
+def new_artifacts(
+    path: Path | str,
+    source_root: Path,
+    driver_root: Path = REPO,
+    *,
+    create: bool = True,
+) -> Path:
+    """Validate a new artifacts directory outside both repositories.
+
+    With ``create=False`` the destination must still not exist, but the caller
+    owns creation (a single scenario creates its own target in run_scenario).
+    """
     destination = Path(path).expanduser().resolve()
     for root in (source_root.resolve(), driver_root.resolve()):
         if _inside(destination, root):
             raise ValueError("artifacts must be outside the repository and source root")
-    destination.mkdir(parents=True, exist_ok=False)
+    if create:
+        destination.mkdir(parents=True, exist_ok=False)
+    elif destination.exists():
+        raise FileExistsError(f"artifacts directory already exists: {destination}")
     return destination
 
 
@@ -393,6 +414,19 @@ def restoration_environment(data_root: Path, port: int, uploads: bool = True) ->
     root = Path(data_root)
     for name in ("assets", "media", "backups", "tmp"):
         (root / name).mkdir(parents=True, exist_ok=True)
+    xdg_root = root / "xdg"
+    private_home = xdg_root / "home"
+    private_home.mkdir(parents=True, exist_ok=True, mode=0o700)
+    xdg_paths: dict[str, str] = {"HOME": str(private_home)}
+    for key, name in (
+        ("XDG_CONFIG_HOME", "config"),
+        ("XDG_CACHE_HOME", "cache"),
+        ("XDG_DATA_HOME", "data"),
+        ("XDG_RUNTIME_DIR", "run"),
+    ):
+        directory = xdg_root / name
+        directory.mkdir(parents=True, exist_ok=True, mode=0o700)
+        xdg_paths[key] = str(directory)
     environment = {
         key: value
         for key, value in os.environ.items()
@@ -413,6 +447,7 @@ def restoration_environment(data_root: Path, port: int, uploads: bool = True) ->
             "PYTHONDONTWRITEBYTECODE": "1",
         }
     )
+    environment.update(xdg_paths)
     return environment
 
 
@@ -498,6 +533,39 @@ def stop_owned_server(process: subprocess.Popen[bytes] | None) -> dict[str, Any]
                 pass
             process.wait(timeout=5)
     return {"pid": process.pid, "exit": process.returncode, "alive": process.poll() is None}
+
+
+def wait_until(
+    page: Any,
+    expression: str,
+    timeout: float = 10,
+    arg: Any = None,
+    interval: float = 0.1,
+) -> bool:
+    """CSP-safe bounded polling.
+
+    ``page.evaluate`` runs through the debugger and is allowed under the
+    application's ``script-src 'self'``; string ``page.wait_for_function``
+    polling uses ``eval`` and is blocked.
+    """
+    deadline = time.monotonic() + timeout
+    last_error: Exception | None = None
+    while True:
+        try:
+            if page.evaluate(expression, arg):
+                return True
+        except Exception as error:
+            last_error = error
+        if time.monotonic() >= deadline:
+            raise TimeoutError(
+                f"bounded wait expired after {timeout}s: {expression} ({last_error!r})"
+            )
+        page.wait_for_timeout(interval * 1000)
+
+
+def launch_browser(playwright: Any, environment: dict[str, str]) -> Any:
+    """Use Playwright's tested default headless browser, not a forced executable."""
+    return playwright.chromium.launch(headless=True, env=environment)
 
 
 # ---------------------------------------------------------------------------
@@ -639,6 +707,7 @@ class Rig:
         self.server_cwd: str | None = None
         self.fixtures: list[dict[str, Any]] = []
         self.assets: list[dict[str, Any]] = []
+        self.browser_version: str | None = None
         self.interrupted = False
 
     # -- environment -------------------------------------------------------
@@ -667,11 +736,8 @@ class Rig:
         self.server_cwd = process_cwd(self.server.pid)
         self.api_client = Api(self.base)
         self.api_calls = self.api_client.calls
-        self.browser = playwright.chromium.launch(
-            headless=True,
-            executable_path=playwright.chromium.executable_path,
-            env=self.env,
-        )
+        self.browser = launch_browser(playwright, self.env)
+        self.browser_version = getattr(self.browser, "version", None)
         context = self.browser.new_context(
             viewport={"width": 1440, "height": 900}, reduced_motion="reduce"
         )
@@ -734,7 +800,7 @@ class Rig:
         label = f"tablet-{index + 1}"
         self.observe(page, label)
         page.goto(self.base + "/client/")
-        page.wait_for_function("document.querySelector('#status').dataset.state === 'connected'")
+        wait_until(page, "() => document.querySelector('#status')?.dataset.state === 'connected'")
         device_id = page.evaluate("localStorage.getItem('tablet-wall-device-id')")
         self.clients.append(
             {
@@ -813,7 +879,7 @@ class Rig:
     def task(self, name: str) -> None:
         selector = self.page.locator("#compact-task-select")
         if selector.is_visible():
-            selector.select_option(value={"Images": "content", "Tablets": "tablet", "Arrange": "show"}[name])
+            selector.select_option(value=TASK_VALUES[name])
             return
         self.page.get_by_role(
             "tab", name=re.compile(rf"^{re.escape(name)}(?:, unsaved changes)?$")
@@ -951,7 +1017,13 @@ class Rig:
                 "private_paths": {
                     key: value
                     for key, value in self.env.items()
-                    if key.startswith("TABLET_WALL_") or key == "TMPDIR"
+                    if key.startswith(("TABLET_WALL_", "XDG_"))
+                    or key in {"TMPDIR", "HOME"}
+                },
+                "browser": {
+                    "engine": "chromium",
+                    "launch": "playwright-default-headless",
+                    "version": self.browser_version,
                 },
                 "fixtures": self.fixtures,
                 "assets": self.assets,
@@ -1053,59 +1125,67 @@ def _aggregate(page: Any) -> dict[str, Any]:
     return page.evaluate(
         """async () => {
             const config = await (await fetch('/api/v3/config', {cache: 'no-store'})).json();
-            return {config, aggregate: window.OperatorState.aggregate(config, performance.now())};
+            const now = performance.now();
+            const observed = window.OperatorState.observeConfig(config, now);
+            return {config, aggregate: window.OperatorState.aggregate(observed, now)};
         }"""
     )
 
 
-def _state_probes(page: Any) -> dict[str, Any]:
-    """State-rule probes over the current real token; never painted evidence."""
+def _state_probes(page: Any, negatives: bool = True) -> dict[str, Any]:
+    """State-rule probes over the current real token; never painted evidence.
+
+    The config is projected with OperatorState.observeConfig exactly as
+    operator-session does before tabletState/aggregate read the page clock.
+    """
     return page.evaluate(
-        """() => {
-            const source = window.__restorationConfig;
-            const id = Object.keys(source.runtime.devices)[0];
+        """negatives => {
+            const raw = window.__restorationConfig;
             const now = performance.now();
-            const clone = () => JSON.parse(JSON.stringify(source));
+            const id = Object.keys(raw.runtime.devices)[0];
+            const observed = () => window.OperatorState.observeConfig(
+                JSON.parse(JSON.stringify(raw)), now);
             const state = config => window.OperatorState.tabletState(config, id, now);
-            const result = {};
-            result.current = state(clone());
-            let config = clone();
+            const result = { current: state(observed()) };
+            if (!negatives) return result;
+            let config = observed();
             config.runtime.devices[id].connection_id = 'foreign-connection';
             result.connection = state(config);
-            config = clone();
+            config = observed();
             config.generation = 'foreign-generation';
             result.generation = state(config);
-            config = clone();
+            config = observed();
             config.revision = Number(config.revision) + 1;
             result.revision = state(config);
-            config = clone();
+            config = observed();
             config.runtime.devices[id].render.expected_token.mapping_revision = 'foreign-mapping';
             result.mapping = state(config);
-            config = clone();
+            config = observed();
             config.runtime.devices[id].render.expected_token.asset = 'sha256:' + '0'.repeat(64);
             result.asset = state(config);
-            config = clone();
+            config = observed();
             config.runtime.devices[id].render.expected_token.render_seq += 1;
             result.render_seq = state(config);
-            config = clone();
+            config = observed();
             config.runtime.devices[id].render.age_ms = 15000;
             config.runtime.devices[id].render.observed_mono = now;
             result.age = state(config);
-            config = clone();
+            config = observed();
             config.runtime.devices[id].render.state = 'hidden';
             result.hidden = state(config);
-            config = clone();
+            config = observed();
             config.runtime.devices[id].render.state = 'blocked';
             config.runtime.devices[id].render.reason = 'zoom';
             result.zoomed = state(config);
-            config = clone();
+            config = observed();
             delete config.layout.placements[id];
             result.unplaced = state(config);
-            config = clone();
+            config = observed();
             config.runtime.presentation.owner = 'playback';
             result.playback = state(config);
             return result;
-        }"""
+        }""",
+        negatives,
     )
 
 
@@ -1113,7 +1193,7 @@ def gallery_focus(rig: Rig) -> None:
     page = rig.page
     rig.place_logical_clients(2)
     rig.task("Images")
-    page.wait_for_function("document.querySelectorAll('#image-gallery > li').length === 24")
+    wait_until(page, "() => document.querySelectorAll('#image-gallery > li').length === 24")
     names = page.evaluate(
         "() => [...document.querySelectorAll('#image-gallery .image-choice-name')].map(node => node.textContent)"
     )
@@ -1226,7 +1306,7 @@ def library_composer(rig: Rig) -> None:
     page = rig.page
     rig.place_logical_clients(2)
     rig.task("Images")
-    page.wait_for_function("document.querySelectorAll('#image-gallery > li').length === 24")
+    wait_until(page, "() => document.querySelectorAll('#image-gallery > li').length === 24")
     names = rig.asset_names()
 
     counts = {
@@ -1250,8 +1330,10 @@ def library_composer(rig: Rig) -> None:
     last_name = gallery_names[-1]
     last.scroll_into_view_if_needed()
     last.click()
-    page.wait_for_function(
-        "name => document.querySelector('#image-title').textContent === name", arg=last_name
+    wait_until(
+        page,
+        "(name) => document.querySelector('#image-title')?.textContent === name",
+        arg=last_name,
     )
     after = rig.config()
     scene_writes = [
@@ -1313,17 +1395,23 @@ def library_composer(rig: Rig) -> None:
     page.evaluate(
         "() => { const item = document.querySelector('#image-gallery > li'); item.dataset.restorationProbe = 'kept'; }"
     )
-    page.locator("#image-gallery li:not([hidden]) .image-choice-button").first.focus()
+    page.locator("#image-search").focus()
     rig.search("north-gallery")
     rig.search("")
     kept = page.evaluate(
         "() => document.querySelector('#image-gallery > li')?.dataset.restorationProbe === 'kept'"
     )
+    focus_in_search = page.evaluate(
+        "() => document.activeElement === document.getElementById('image-search')"
+    )
+    roving = page.evaluate(
+        "() => document.querySelectorAll('#image-gallery .image-choice-button[tabindex=\"0\"]').length"
+    )
     rig.check(
-        "Filtering preserves stable library DOM and the focused element",
-        kept and page.evaluate("() => document.activeElement?.closest('#image-gallery') !== null"),
-        {"stable_dom": kept, "focus_in_gallery": page.evaluate("() => document.activeElement?.closest('#image-gallery') !== null")},
-        {"stable_dom": True, "focus_in_gallery": True},
+        "Filtering keeps focus in the search field and preserves stable library DOM",
+        kept and focus_in_search and roving == 1,
+        {"stable_dom": kept, "focus_in_search": focus_in_search, "roving_tab_stops": roving},
+        {"stable_dom": True, "focus_in_search": True, "roving_tab_stops": 1},
         fatal=False,
     )
 
@@ -1366,8 +1454,10 @@ def recovery_sheet(rig: Rig) -> None:
     # Desktop keyboard action: the sheet is a static inspector here.
     issue.focus()
     issue.press("Enter")
-    page.wait_for_function(
-        "id => document.querySelector('#device-list .dev-row[data-selected=\"true\"]')?.dataset.deviceId === id",
+    wait_until(
+        page,
+        "(id) => [...document.querySelectorAll('#device-list .dev-row')]"
+        ".some(row => row.dataset.selected === 'true' && row.dataset.deviceId === id)",
         arg=ids[1],
     )
     heading = page.locator("#tablet-action-name").inner_text()
@@ -1397,9 +1487,11 @@ def recovery_sheet(rig: Rig) -> None:
     issue.click()
     opened = False
     try:
-        page.wait_for_function(
-            "() => { const sheet = document.getElementById('device-sheet'); return sheet.open && sheet.dataset.modal === 'true'; }",
-            timeout=3000,
+        wait_until(
+            page,
+            "() => { const sheet = document.getElementById('device-sheet'); "
+            "return !!sheet && sheet.open && sheet.dataset.modal === 'true'; }",
+            timeout=3,
         )
         opened = True
     except Exception:
@@ -1420,7 +1512,7 @@ def recovery_sheet(rig: Rig) -> None:
             "selected tablet",
         )
         page.keyboard.press("Escape")
-        page.wait_for_function("() => !document.getElementById('device-sheet').open")
+        wait_until(page, "() => !document.getElementById('device-sheet').open")
         rig.check(
             "Escape closes the recovery sheet and returns focus to a visible control",
             page.evaluate(
@@ -1436,9 +1528,11 @@ def recovery_sheet(rig: Rig) -> None:
         pick.scroll_into_view_if_needed()
         pick.click()
         try:
-            page.wait_for_function(
-                "() => { const sheet = document.getElementById('device-sheet'); return sheet.open && sheet.dataset.modal === 'true'; }",
-                timeout=3000,
+            wait_until(
+                page,
+                "() => { const sheet = document.getElementById('device-sheet'); "
+                "return !!sheet && sheet.open && sheet.dataset.modal === 'true'; }",
+                timeout=3,
             )
             rig.check(
                 "Same online device opens through the roster reveal path",
@@ -1447,7 +1541,7 @@ def recovery_sheet(rig: Rig) -> None:
                 "selected online tablet",
             )
             page.keyboard.press("Escape")
-            page.wait_for_function("() => !document.getElementById('device-sheet').open")
+            wait_until(page, "() => !document.getElementById('device-sheet').open")
             rig.check(
                 "Escape returns focus to the visible roster trigger",
                 page.evaluate("() => document.activeElement?.classList.contains('dev-pick') === true"),
@@ -1467,10 +1561,12 @@ def recovery_sheet(rig: Rig) -> None:
     status, payload = rig.request("DELETE", f"/devices/{ids[1]}")
     rig.check("Offline reservation can be removed deliberately", status in (200, 404), status, 200)
     try:
-        page.wait_for_function(
-            "id => !document.querySelector(`#wall-issues .issue-row[data-device-id=\"${id}\"]`)",
+        wait_until(
+            page,
+            "(id) => ![...document.querySelectorAll('#wall-issues .issue-row')]"
+            ".some(row => row.dataset.deviceId === id)",
             arg=ids[1],
-            timeout=5000,
+            timeout=5,
         )
         removed = True
     except Exception:
@@ -1508,16 +1604,18 @@ def scene_paint(rig: Rig) -> None:
         status, _ = rig.request("POST", f"/devices/{device_id}/color", {"color": colour})
         rig.check(f"Test colour accepted for {device_id[-6:]}", status == 200, status, 200)
 
-    rig.task("Arrange")
+    rig.task("Settings")
     rig.click("#show-colours")
     page.wait_for_timeout(300)
     for index, (client_page, device_id) in enumerate(clients):
         colour = CLIENT_COLOURS[index]
         try:
-            client_page.wait_for_function(
-                "colour => getComputedStyle(document.documentElement).getPropertyValue('--surface-color').trim().toLowerCase() === colour",
+            wait_until(
+                client_page,
+                "(colour) => getComputedStyle(document.documentElement)"
+                ".getPropertyValue('--surface-color').trim().toLowerCase() === colour",
                 arg=colour,
-                timeout=5000,
+                timeout=5,
             )
             applied = True
         except Exception:
@@ -1613,35 +1711,46 @@ def scene_paint(rig: Rig) -> None:
     # honest to mutate.
     if image_painted:
         page.evaluate("config => { window.__restorationConfig = config; }", rig.config())
-        probes = _state_probes(page)
-        rig.check(
+        current = _state_probes(page, negatives=False)["current"]
+        positive = rig.check(
             "Current real token is displayed before negative probes",
-            probes["current"]["status"] == "displayed" and probes["current"]["showing"] is True,
-            probes["current"],
+            current["status"] == "displayed" and current["showing"] is True,
+            current,
             "displayed",
             fatal=False,
             classification="state_rule_probe",
         )
-        for name, label in (
-            ("connection", "foreign connection"),
-            ("generation", "foreign generation"),
-            ("revision", "foreign revision"),
-            ("mapping", "foreign mapping revision"),
-            ("asset", "foreign asset"),
-            ("render_seq", "foreign render sequence"),
-            ("age", "age 15000 ms"),
-            ("hidden", "hidden report"),
-            ("zoomed", "zoomed/blocked report"),
-            ("unplaced", "unplaced slot"),
-            ("playback", "playback presentation"),
-        ):
+        if positive:
+            probes = _state_probes(page)
+            for name, label in (
+                ("connection", "foreign connection"),
+                ("generation", "foreign generation"),
+                ("revision", "foreign revision"),
+                ("mapping", "foreign mapping revision"),
+                ("asset", "foreign asset"),
+                ("render_seq", "foreign render sequence"),
+                ("age", "age 15000 ms"),
+                ("hidden", "hidden report"),
+                ("zoomed", "zoomed/blocked report"),
+                ("unplaced", "unplaced slot"),
+                ("playback", "playback presentation"),
+            ):
+                rig.check(
+                    f"Negative token/state probe rejects {label}",
+                    probes[name]["showing"] is False,
+                    probes[name],
+                    {"showing": False},
+                    fatal=False,
+                    classification="state_rule_probe",
+                )
+        else:
             rig.check(
-                f"Negative token/state probe rejects {label}",
-                probes[name]["showing"] is False,
-                probes[name],
-                {"showing": False},
+                "Negative token/state probes are not driven without a fresh displayed real token",
+                False,
+                current,
+                "fresh displayed token",
                 fatal=False,
-                classification="state_rule_probe",
+                classification="not_driven_after_previous_failure",
             )
     else:
         rig.check(
@@ -1719,6 +1828,11 @@ def run_scenario(
         "source_root": str(Path(source_root).resolve()),
         "fixtures": rig.fixtures,
         "clients": rig.clients,
+        "browser": {
+            "engine": "chromium",
+            "launch": "playwright-default-headless",
+            "version": rig.browser_version,
+        },
         "cleanup": cleanup,
         "limitations": LIMITATIONS,
     }
@@ -1748,15 +1862,18 @@ def main(argv: list[str] | None = None) -> int:
         help="read-only application source to serve; defaults to this checkout",
     )
     args = parser.parse_args(argv)
+    selected = tuple(SCENARIOS) if args.scenario == "all" else (args.scenario,)
+    single_implemented = len(selected) == 1 and SCENARIOS[selected[0]]["status"] == "implemented"
     try:
         source_root = resolve_source_root(args.source_root)
-        artifacts = new_artifacts(args.artifacts, source_root)
+        artifacts = new_artifacts(
+            args.artifacts, source_root, create=not single_implemented
+        )
     except (OSError, ValueError) as error:
         parser.error(str(error))
 
     application_before = application_identity(source_root)
     driver = driver_identity()
-    selected = tuple(SCENARIOS) if args.scenario == "all" else (args.scenario,)
     reports: list[dict[str, Any]] = []
     for name in selected:
         entry = SCENARIOS[name]
@@ -1807,6 +1924,11 @@ def main(argv: list[str] | None = None) -> int:
             for entry in SCENARIO_ENTRIES
         ],
         "fixtures": reports[0].get("fixtures", []) if reports and reports[0].get("fixtures") else [],
+        "fixture_coverage": {
+            "generated_groups": list(FIXTURE_COUNTS),
+            "served_by_scenario": dict(SCENARIO_FIXTURES),
+            "note": FIXTURE_COVERAGE_NOTE,
+        },
         "reports": reports,
         "pass": passed,
         "acceptance_complete": False,

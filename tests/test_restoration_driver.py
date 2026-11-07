@@ -65,6 +65,64 @@ def test_artifacts_must_be_new_and_outside_both_repositories(tmp_path):
         driver.new_artifacts(source / "inside-source", source)
 
 
+def test_new_artifacts_can_defer_creation_to_the_scenario(tmp_path):
+    source = fake_source(tmp_path / "source")
+    deferred = driver.new_artifacts(tmp_path / "deferred", source, create=False)
+    assert not deferred.exists()
+    deferred.mkdir()
+    with pytest.raises(FileExistsError):
+        driver.new_artifacts(deferred, source, create=False)
+    with pytest.raises(FileExistsError):
+        driver.new_artifacts(deferred, source)
+
+
+def test_wait_until_polls_evaluate_and_never_uses_wait_for_function():
+    class FakePage:
+        def __init__(self, results):
+            self.results = list(results)
+            self.calls = []
+
+        def evaluate(self, expression, arg=None):
+            self.calls.append((expression, arg))
+            return self.results.pop(0) if self.results else False
+
+        def wait_for_timeout(self, _milliseconds):
+            return None
+
+    page = FakePage([False, True])
+    assert driver.wait_until(page, "() => ready", timeout=1, arg="x") is True
+    assert len(page.calls) == 2
+    assert page.calls[0] == ("() => ready", "x")
+
+    expired = FakePage([])
+    with pytest.raises(TimeoutError, match="bounded wait expired"):
+        driver.wait_until(expired, "() => never", timeout=0.01)
+    assert not hasattr(expired, "wait_for_function")
+
+
+def test_launch_browser_uses_playwright_default_headless_browser():
+    class FakeBrowser:
+        version = "test-version"
+
+    class FakeChromium:
+        def __init__(self):
+            self.kwargs = None
+
+        def launch(self, **kwargs):
+            self.kwargs = kwargs
+            return FakeBrowser()
+
+    class FakePlaywright:
+        def __init__(self):
+            self.chromium = FakeChromium()
+
+    playwright = FakePlaywright()
+    environment = {"PRIVATE": "1"}
+    browser = driver.launch_browser(playwright, environment)
+    assert browser.version == "test-version"
+    assert playwright.chromium.kwargs == {"headless": True, "env": environment}
+
+
 def test_environment_is_private_complete_and_does_not_mutate_ambient(tmp_path, monkeypatch):
     for key, value in {
         "TABLET_WALL_DB": "/operator/live.db",
@@ -99,6 +157,15 @@ def test_environment_is_private_complete_and_does_not_mutate_ambient(tmp_path, m
     }
     assert environment["TMPDIR"] == str(data / "tmp")
     assert environment["PYTHONDONTWRITEBYTECODE"] == "1"
+    assert environment["HOME"] == str(data / "xdg" / "home")
+    for key, name in (
+        ("XDG_CONFIG_HOME", "config"),
+        ("XDG_CACHE_HOME", "cache"),
+        ("XDG_DATA_HOME", "data"),
+        ("XDG_RUNTIME_DIR", "run"),
+    ):
+        assert environment[key] == str(data / "xdg" / name)
+        assert (data / "xdg" / name).is_dir()
     for name in ("assets", "media", "backups", "tmp"):
         assert (data / name).is_dir()
     for key in ("TABLET_ORIGIN", "AUTH_TOKEN", "OPERATOR_CREDENTIAL"):
@@ -248,6 +315,95 @@ def test_incomplete_scenario_writes_explicit_failure_without_a_server(tmp_path, 
     assert result["fixtures"] == []
     assert not (out / "fit-feedback").exists()
     assert list(out.iterdir()) == [out / "results.json"]
+
+
+def _fake_report(name: str) -> dict:
+    return {
+        "scenario": name,
+        "status": "fail",
+        "pass": False,
+        "checks": 1,
+        "failures": [{"pass": False}],
+        "fixtures": [],
+        "cleanup": {"errors": []},
+    }
+
+
+def test_single_implemented_scenario_creates_its_own_artifacts_target(tmp_path, monkeypatch):
+    source = fake_source(tmp_path / "source")
+    calls = []
+
+    def fake_run(out, name, source_root, identity):
+        assert not out.exists()
+        out.mkdir(parents=True)
+        calls.append((out, name, source_root, identity))
+        return _fake_report(name)
+
+    monkeypatch.setattr(driver, "run_scenario", fake_run)
+    out = tmp_path / "single"
+    code = driver.main(
+        [
+            "--scenario",
+            "gallery-focus",
+            "--artifacts",
+            str(out),
+            "--source-root",
+            str(source),
+        ]
+    )
+    assert code == 1
+    assert [call[0] for call in calls] == [out.resolve()]
+    assert calls[0][1] == "gallery-focus"
+    assert calls[0][2] == source.resolve()
+    result = json.loads((out / "results.json").read_text())
+    assert result["scenario"] == "gallery-focus"
+    assert result["fixture_coverage"] == {
+        "generated_groups": [0, 1, 8, 24],
+        "served_by_scenario": {
+            "gallery-focus": 24,
+            "recovery-sheet": 1,
+            "library-composer": 24,
+            "scene-paint": 1,
+        },
+        "note": driver.FIXTURE_COVERAGE_NOTE,
+    }
+
+
+def test_all_scenario_uses_new_child_artifact_directories(tmp_path, monkeypatch):
+    source = fake_source(tmp_path / "source")
+    calls = []
+
+    def fake_run(out, name, source_root, identity):
+        assert out.parent.is_dir()
+        assert not out.exists()
+        out.mkdir()
+        calls.append((out, name))
+        return _fake_report(name)
+
+    monkeypatch.setattr(driver, "run_scenario", fake_run)
+    out = tmp_path / "all"
+    code = driver.main(
+        [
+            "--scenario",
+            "all",
+            "--artifacts",
+            str(out),
+            "--source-root",
+            str(source),
+        ]
+    )
+    assert code == 1
+    assert [call[1] for call in calls] == list(driver.IMPLEMENTED)
+    assert [call[0] for call in calls] == [out.resolve() / name for name in driver.IMPLEMENTED]
+    result = json.loads((out / "results.json").read_text())
+    assert len(result["incomplete"]) == 6
+    assert all(row["status"] == "incomplete" for row in result["incomplete"])
+    assert result["fixture_coverage"]["generated_groups"] == [0, 1, 8, 24]
+
+
+def test_task_values_include_the_settings_panel():
+    assert driver.TASK_VALUES["Settings"] == "system"
+    assert driver.TASK_VALUES["Arrange"] == "show"
 
 
 def test_unknown_or_missing_scenario_is_a_usage_error(tmp_path):
