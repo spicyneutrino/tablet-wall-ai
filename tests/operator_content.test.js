@@ -153,7 +153,7 @@ async function galleryNavigation() {
     assert.equal(focused(), buttons()[2]);
     event = press("ArrowRight");
     assert.equal(focused(), buttons()[2], "Right never wraps out of its rendered row");
-    assert.equal(event.defaultPrevented, false);
+    assert.equal(event.defaultPrevented, true);
     event = press("ArrowLeft");
     assert.equal(focused(), buttons()[1], "Left moves within the rendered row");
     event = press("ArrowDown");
@@ -162,20 +162,22 @@ async function galleryNavigation() {
     assert.equal(focused(), buttons()[7]);
     event = press("ArrowDown");
     assert.equal(focused(), buttons()[7], "Down stops when no rendered row follows");
-    assert.equal(event.defaultPrevented, false);
+    assert.equal(event.defaultPrevented, true);
     event = press("ArrowUp");
     assert.equal(focused(), buttons()[4]);
     event = press("ArrowUp");
     assert.equal(focused(), buttons()[1]);
     event = press("ArrowUp");
     assert.equal(focused(), buttons()[1], "Up stops when no rendered row precedes");
-    assert.equal(event.defaultPrevented, false);
+    assert.equal(event.defaultPrevented, true);
     event = press("Home");
     assert.equal(focused(), buttons()[0], "Home focuses the first visible choice");
     assert.equal(event.defaultPrevented, true);
+    assert.equal(press("Home").defaultPrevented, true, "Home at the first choice prevents native scrolling");
     event = press("End");
     assert.equal(focused(), buttons()[8], "End focuses the last visible choice");
     assert.equal(event.defaultPrevented, true);
+    assert.equal(press("End").defaultPrevented, true, "End at the last choice prevents native scrolling");
     assert.equal(buttons()[8].scrollIntoViewCalls.length, 1, "a page-level reveal runs once");
     assert.equal(buttons()[8].scrollIntoViewCalls[0].block, "nearest", "a page-level reveal asks for nearest block scrolling");
     assert.equal(buttons()[8].scrollIntoViewCalls[0].inline, "nearest", "a page-level reveal asks for nearest inline scrolling");
@@ -243,7 +245,7 @@ async function galleryNavigation() {
     assert.equal(focused(), buttons()[3]);
     event = press("ArrowLeft");
     assert.equal(focused(), buttons()[3], "Left stops at the visible row edge");
-    assert.equal(event.defaultPrevented, false);
+    assert.equal(event.defaultPrevented, true);
     assertTabStop(buttons()[3], "a hidden or disabled choice is never the roving tab entry");
 
     rows()[1].hidden = false;

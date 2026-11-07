@@ -369,8 +369,9 @@ window.OperatorContent = {
             else if (event.key === "ArrowUp") next = nextRowButton(current, -1, rows);
             else if (event.key === "ArrowDown") next = nextRowButton(current, 1, rows);
             else return;
-            if (!next || next === current) return;
+            if (rows.length === 1 && (event.key === "ArrowUp" || event.key === "ArrowDown")) return;
             event.preventDefault();
+            if (!next || next === current) return;
             focusTarget(next);
             setGalleryTabStop(next);
         });
