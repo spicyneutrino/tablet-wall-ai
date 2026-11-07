@@ -39,15 +39,18 @@ const config = { generation: "g", revision: 2, layout: { kind: "logical", width:
         caps: ["render_ack"], mapping: { state: "ready" }, render: { state: "loading" } } } } };
 const state = { layoutKind: "logical", etag: "e", etagState: "current", capabilities: {}, scene: { content: { type: "color" } }, base: config.layout };
 const images = ["a", "b"].map(id => ({ id, name: id, width: 100, height: 100, thumbnail_url: "/" + id }));
+const requests = [];
 let failInventory = false, release;
 const context = vm.createContext({ window: { OperatorState: model }, document, Option, performance: { now: () => 100 } });
 vm.runInContext(fs.readFileSync(require.resolve("../frontend/controller/operator-dom.js"), "utf8"), context);
 vm.runInContext(fs.readFileSync(require.resolve("../frontend/controller/operator-content.js"), "utf8"), context);
 const content = context.window.OperatorContent.create({ state, renderStage() {}, announce() {}, showConflict() {},
     ingestConfig(result) { state.operatorConfig = result; state.scene = result.scene; },
-    async api(method, path) {
+    async api(method, path, body, options) {
+        requests.push({ method, path, body, options });
         if (path === "/api/v3/images") { if (failInventory) throw Error("network"); return { images }; }
         if (path === "/api/v3/scene") return release ? await new Promise(resolve => { release.resolve = resolve; }) : config;
+        if (path.startsWith("/api/v3/scenes/")) return config;
         throw Error(path);
     } });
 (async () => {
@@ -85,6 +88,8 @@ const content = context.window.OperatorContent.create({ state, renderStage() {},
 
     await buttonA.click();
     assert.equal(content.dirty(), true, "clicking a library image creates a draft");
+    assert.equal(state.previewContent.fit, "cover", "a genuinely new image starts at the cover default");
+    assert.equal(state.previewContent.background, "#0b1120", "a genuinely new image carries the renderer background default");
     assert.equal(node("image-preview-controls").hidden, false);
     assert.equal(buttonA.attrs["aria-pressed"], "true");
     assert.equal(cardA.dataset.selected, undefined);
@@ -191,5 +196,80 @@ const content = context.window.OperatorContent.create({ state, renderStage() {},
     assert.equal(state.previewContent.asset, "a");
     content.discard();
     assert.equal(content.dirty(), false);
+
+    state.scene = { content: { type: "image", asset: "a", fit: "contain" } };
+    content.render();
+    await buttonA.click();
+    assert.equal(state.previewContent.fit, "contain", "reselected applied image retains its applied fit");
+    assert.equal(state.previewContent.background, "#0b1120", "an omitted applied background falls back to the renderer default");
+
+    content.discard();
+    state.scene = { content: { type: "image", asset: "a", fit: "contain", background: "#123456" } };
+    content.render();
+    await buttonA.click();
+    assert.equal(state.previewContent.background, "#123456", "reselected applied image retains its explicit background");
+    node("image-fit").value = "cover";
+    node("image-fit").change({ target: node("image-fit") });
+    await new Promise(resolve => setImmediate(resolve));
+    assert.equal(state.previewContent.fit, "cover");
+    assert.equal(state.previewContent.background, "#123456", "changing fit keeps the explicit background");
+
+    await buttonB.click();
+    assert.equal(state.previewContent.fit, "cover", "a different image keeps the current fit choice");
+    assert.equal(state.previewContent.background, "#0b1120", "a different image never inherits another image's background");
+
+    content.discard();
+    state.scene = { content: { type: "color" } };
+    content.render();
+    await buttonA.click();
+    assert.equal(state.previewContent.fit, "cover", "a genuinely new image starts at cover");
+    node("image-fit").value = "contain";
+    node("image-fit").change({ target: node("image-fit") });
+    await new Promise(resolve => setImmediate(resolve));
+    assert.equal(state.previewContent.fit, "contain");
+    assert.equal(state.previewContent.background, "#0b1120", "changing fit never invents a background");
+    await buttonB.click();
+    assert.equal(state.previewContent.fit, "contain", "a deliberate fit choice applies to the next new image");
+    assert.equal(state.previewContent.background, "#0b1120", "but its background never carries over");
+
+    content.discard();
+    content.previewScene({ name: "Amber", content: { type: "image", asset: "a", fit: "contain", background: "#ABCDEF" } }, "e");
+    assert.equal(state.previewContent.background, "#abcdef", "a saved explicit background previews at its normalized value");
+    assert.equal(state.previewContent.fit, "contain");
+    node("image-fit").value = "cover";
+    node("image-fit").change({ target: node("image-fit") });
+    await new Promise(resolve => setImmediate(resolve));
+    assert.equal(state.previewContent.fit, "cover");
+    assert.equal(state.previewContent.background, "#abcdef", "changing fit keeps a saved explicit background");
+
+    await buttonB.click();
+    assert.equal(state.previewContent.background, "#0b1120", "a new asset after a saved preview uses the new-image default");
+    assert.equal(state.previewContent.fit, "cover");
+
+    content.previewScene({ name: "Legacy", content: { type: "image", asset: "a" } }, "e");
+    assert.equal(state.previewContent.background, "#0b1120", "a legacy saved scene without a background previews at the client fallback");
+    assert.equal(state.previewContent.fit, "cover");
+    assert.equal(state.previewContent.asset, "a");
+    content.previewScene({ name: "Red", content: { type: "color" } }, "e");
+    assert.deepEqual({ ...state.previewContent }, { type: "color" }, "test content carries no image fields");
+
+    content.discard();
+    state.scene = { content: { type: "image", asset: "a", fit: "contain", background: "#123456" } };
+    content.render();
+    content.previewScene({ name: "Amber", content: { type: "image", asset: "a", fit: "contain", background: "#abcdef" } }, "e");
+    assert.equal(await content.showSelected(), true);
+    const recalled = requests.at(-1);
+    assert.equal(recalled.method, "POST");
+    assert.equal(recalled.path, "/api/v3/scenes/Amber/recall");
+    assert.equal(recalled.body, undefined, "saved-scene recall never rewrites the scene body");
+    assert.equal(recalled.options.ifMatch, "e");
+    await node("restore-image").click();
+    const restored = requests.at(-1);
+    assert.equal(restored.method, "PUT");
+    assert.equal(restored.path, "/api/v3/scene");
+    assert.equal(restored.body.content.background, "#123456", "restore previous keeps the explicit applied background");
+    assert.equal(restored.body.content.fit, "contain");
+    assert.deepEqual(Object.keys(restored.body.content).sort(), ["asset", "background", "fit", "type"],
+        "restore previous never adds controller chrome to the scene body");
     console.log("Content status, applied/draft ownership, command feedback, error retention and draft races passed");
 })().catch(error => { console.error(error); process.exitCode = 1; });

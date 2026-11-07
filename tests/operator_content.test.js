@@ -39,6 +39,10 @@ const content = context.window.OperatorContent.create({ state, renderStage() {},
     assert.deepEqual(calls.map(call => call.path), ["/api/v3/images", "/api/v3/test-pattern", "/api/v3/scene"]);
     assert.equal(calls[2].body.content.asset, image.id, "the generated flat image DTO is shown without fixture-only aliases");
     assert.equal(calls[2].body.content.fit, "contain");
+    assert.equal(calls[2].body.content.background, "#0b1120", "a still-image request carries the renderer's own uncovered-wall default");
+    assert.deepEqual(Object.keys(calls[2].body.content).sort(), ["asset", "background", "fit", "type"],
+        "controller stage chrome never enters the scene body");
+    assert.equal(JSON.stringify(calls[2].body).includes("#22252a"), false);
     assert.equal(state.activeImageUnavailableId, null, "the new pattern is inventoried before its scene is shown");
     assert.equal(content.stageNames().applied, "black.png");
     assert.equal(node("image-title").textContent, "black.png", "the composer names the applied image");

@@ -2,7 +2,7 @@
 window.OperatorContent = {
     create({ state, api, ingestConfig, renderStage, announce, showConflict, resolveOutput = async () => true, refreshConnection }) {
         const { $ } = window.OperatorDom;
-        let images = [], selected = null, fit = "cover", selectionDirty = false, loading = false, busy = false, inventoryReady = false;
+        let images = [], selected = null, fit = "cover", background = "#0b1120", selectionDirty = false, loading = false, busy = false, inventoryReady = false;
         let previous = null, xhr = null, inventoryVersion = 0, selectionVersion = 0, baseEtag = null, savedScene = null, uploadUncertain = false;
         const gallery = new Map();
         let retainMessage = false;
@@ -32,18 +32,28 @@ window.OperatorContent = {
             if (!visible && !control.hidden && document.activeElement === control) $("image-search").focus();
             control.hidden = !visible;
         }
+        const normalizedBackground = value => typeof value === "string" && /^#[0-9a-f]{6}$/i.test(value)
+            ? value.toLowerCase() : "#0b1120";
         const sceneInput = content => content.type === "image"
-            ? { type: "image", asset: content.asset, fit: content.fit || "cover", ...(content.background ? { background: content.background } : {}) }
+            ? { type: "image", asset: content.asset, fit: content.fit || "cover", background: normalizedBackground(content.background) }
             : { type: content.type };
         function selectedContent() {
             if (savedScene && savedScene.content.type !== "image") return savedScene.content;
             const image = images.find(item => item.id === selected);
             return image ? { type: "image", asset: image.id, url: image.url, intrinsicWidth: image.width,
-                intrinsicHeight: image.height, fit, background: savedScene && savedScene.content.background || "#22252a" } : null;
+                intrinsicHeight: image.height, fit, background } : null;
         }
-        function select(id, nextFit = fit) {
+        function select(id, nextFit = fit, nextBackground = background) {
             if (!selectionDirty) baseEtag = state.etag;
-            selected = id; fit = nextFit; savedScene = null; selectionDirty = true; selectionVersion += 1;
+            if (!selectionDirty || id !== selected) {
+                const applied = state.scene && state.scene.content;
+                if (applied && applied.type === "image" && applied.asset === id) {
+                    nextFit = applied.fit || "cover";
+                    nextBackground = applied.background;
+                } else nextBackground = "#0b1120";
+            }
+            selected = id; fit = nextFit; background = normalizedBackground(nextBackground); savedScene = null;
+            selectionDirty = true; selectionVersion += 1;
             state.viewLive = false; if (!retainMessage) message(""); render(); renderStage();
         }
         async function choose(id, nextFit = fit) {
@@ -304,6 +314,7 @@ window.OperatorContent = {
             showSelected: () => show(selectedContent(), { scene: savedScene, guard: baseEtag || state.etag }),
             previewScene(entry, guard) {
                 savedScene = { ...entry }; selected = entry.content.asset || null; fit = entry.content.fit || "cover";
+                background = normalizedBackground(entry.content.background);
                 baseEtag = guard; selectionDirty = true; selectionVersion += 1; state.viewLive = false; render(); renderStage();
             },
             viewChanged: render,

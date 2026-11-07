@@ -1,5 +1,6 @@
 """Images-only operator inventory and authoritative v3 scene updates."""
 
+import asyncio
 import hashlib
 from concurrent.futures import ThreadPoolExecutor
 from copy import deepcopy
@@ -213,11 +214,12 @@ def test_scene_a_to_b_and_restart_expose_the_real_scene(image_environment, asset
         assert after["scene"]["content"] == {
             "type": "image", "asset": second["id"], "fit": "cover",
             "intrinsicWidth": 45, "intrinsicHeight": 90, "url": second["url"],
-            "background": "#22252a", "available": True,
+            "background": "#0b1120", "available": True,
         }
         assert client.get("/api/v3/config").json() == after
         stored = persist.load_state()
         assert "url" not in stored["scene"]["content"]
+        assert "background" not in stored["scene"]["content"]
     main.wall.clear()
     main.wall.update(main._fresh_wall())
     with TestClient(main.app, base_url="http://127.0.0.1") as restarted:
@@ -241,7 +243,7 @@ def test_managed_selection_preserves_immutable_object_metadata(operator, monkeyp
     assert media.find_object(managed["id"]) == original
     legacy = operator.get("/wall").json()["scene"]
     projected = deepcopy(response.json()["scene"])
-    assert projected["content"].pop("background") == "#22252a"
+    assert projected["content"].pop("background") == "#0b1120"
     assert projected["content"].pop("available") is True
     assert legacy == projected
 
@@ -276,6 +278,109 @@ def test_v3_reuses_legacy_scene_validation(operator, content):
             "If-Match": before["etag"],
         }).status_code == 422
     assert operator.get("/api/v3/config").json() == before
+
+
+def test_omitted_background_projects_the_renderer_default_without_migration(operator, asset_dir):
+    entry = curated(asset_dir)
+    before = operator.get("/api/v3/config").json()
+    selected = operator.put(
+        "/api/v3/scene", json={"content": {"type": "image", "asset": entry["id"]}},
+        headers={"If-Match": before["etag"]},
+    )
+    assert selected.status_code == 200, selected.text
+    assert selected.json()["scene"]["content"]["background"] == "#0b1120"
+    assert "background" not in persist.load_state()["scene"]["content"]
+
+    saved = operator.put(
+        "/api/v3/scenes/Legacy", headers={"If-Match": selected.json()["etag"]},
+    )
+    assert saved.status_code == 200, saved.text
+    assert "background" not in dict(persist.load_scenes())["Legacy"]
+
+    color = operator.put(
+        "/api/v3/scene", json={"content": {"type": "color"}},
+        headers={"If-Match": saved.json()["etag"]},
+    )
+    assert color.status_code == 200, color.text
+    recalled = operator.post(
+        "/api/v3/scenes/Legacy/recall", headers={"If-Match": color.json()["etag"]},
+    )
+    assert recalled.status_code == 200, recalled.text
+    assert recalled.json()["scene"]["content"]["background"] == "#0b1120"
+    assert "background" not in persist.load_state()["scene"]["content"]
+
+
+def test_saved_explicit_background_survives_save_and_recall(operator, asset_dir):
+    first = curated(asset_dir)
+    second = curated(asset_dir, "second.png", (45, 90), "green")
+    before = operator.get("/api/v3/config").json()
+    selected = operator.put(
+        "/api/v3/scene",
+        json={"content": {
+            "type": "image", "asset": first["id"], "fit": "contain", "background": "#123456",
+        }},
+        headers={"If-Match": before["etag"]},
+    )
+    assert selected.status_code == 200, selected.text
+    explicit = selected.json()
+    assert explicit["scene"]["content"]["background"] == "#123456"
+    assert persist.load_state()["scene"]["content"]["background"] == "#123456"
+
+    saved = operator.put(
+        "/api/v3/scenes/Amber", headers={"If-Match": explicit["etag"]},
+    )
+    assert saved.status_code == 200, saved.text
+    assert dict(persist.load_scenes())["Amber"]["background"] == "#123456"
+
+    changed = select(operator, second["id"], saved.json()["etag"])
+    assert changed.status_code == 200, changed.text
+    assert changed.json()["scene"]["content"]["background"] == "#0b1120"
+
+    recalled = operator.post(
+        "/api/v3/scenes/Amber/recall", headers={"If-Match": changed.json()["etag"]},
+    )
+    assert recalled.status_code == 200, recalled.text
+    content = recalled.json()["scene"]["content"]
+    assert (content["asset"], content["fit"], content["background"]) == (
+        first["id"], "contain", "#123456",
+    )
+
+
+def test_non_image_scene_projection_omits_image_fields(operator):
+    etag = operator.get("/api/v3/config").json()["etag"]
+    for kind in ("color", "calibration"):
+        response = operator.put(
+            "/api/v3/scene", json={"content": {"type": kind}},
+            headers={"If-Match": etag},
+        )
+        assert response.status_code == 200, response.text
+        assert response.json()["scene"]["content"] == {"type": kind}
+        etag = response.json()["etag"]
+
+
+def test_opt_in_still_playback_uses_the_renderer_background_default(monkeypatch, asset_dir):
+    """A prepared still descriptor shares the client's #0b1120 fallback; video is untouched."""
+    entry = curated(asset_dir)
+    device = "0f8fad5b-d9cb-469f-a165-70867728950e"
+    session = playback.start(
+        [{"asset": entry["id"], "dwell_ms": 1000}], False, [device], main._now_ms(),
+        generation=main.wall["generation"], clock_epoch="test",
+    )
+    frame = {}
+
+    async def capture(_socket, value, stamp=None):
+        frame.update(value)
+
+    monkeypatch.setattr(main, "_send_to", capture)
+    monkeypatch.setattr(main, "_physical_plan_for", lambda *_args: ({}, {"revision": 1}))
+    monkeypatch.setitem(main.devices, device, {
+        "caps": ["image"], "connection_id": "connection", "viewport": {},
+    })
+    monkeypatch.setitem(main.device_sockets, device, object())
+
+    assert asyncio.run(main._send_prepare(session, session.pending, device)) is True
+    assert frame["asset"]["fit"] == "cover"
+    assert frame["asset"]["background"] == "#0b1120"
 
 
 def test_a_change_during_resolution_refuses_the_stale_commit(operator, asset_dir, monkeypatch):
