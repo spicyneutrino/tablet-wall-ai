@@ -28,7 +28,7 @@ window.OperatorWorkspace = {
             const strip = $("exception-strip"), roster = $("exception-roster");
             if (strip) {
                 for (const [id, row] of stripRows) if (!wantedStrip.includes(id)) { row.remove(); stripRows.delete(id); }
-                wantedStrip.forEach(id => {
+                wantedStrip.forEach((id, index) => {
                     const item = evidence.get(id);
                     let row = stripRows.get(id);
                     if (!row) {
@@ -45,12 +45,12 @@ window.OperatorWorkspace = {
                     row.button.dataset.deviceId = id;
                     row.button.textContent = (tag ? tag + " " : "") + shortEvidence(item);
                     row.button.setAttribute("aria-label", name + ", " + item.text + ". Review recovery.");
-                    strip.append(row);
+                    if (strip.children[index] !== row) strip.insertBefore(row, strip.children[index] || null);
                 });
             }
             if (roster) {
                 for (const [id, row] of rosterRows) if (!ordered.includes(id)) { row.remove(); rosterRows.delete(id); }
-                ordered.forEach(id => {
+                ordered.forEach((id, index) => {
                     const item = evidence.get(id);
                     let row = rosterRows.get(id);
                     if (!row) {
@@ -74,7 +74,7 @@ window.OperatorWorkspace = {
                     row.name.textContent = name;
                     row.state.textContent = item.text;
                     row.button.setAttribute("aria-label", name + ", " + item.text + ". Review recovery.");
-                    roster.append(row);
+                    if (roster.children[index] !== row) roster.insertBefore(row, roster.children[index] || null);
                 });
             }
             if ($("exception-count")) $("exception-count").textContent = attention.length
