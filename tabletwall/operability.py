@@ -203,8 +203,9 @@ def asset_available(asset_id: str) -> bool:
 
     A managed lookup is a database row; its object file is checked too, so a
     vanished upload reads as unavailable rather than as a successful scene.
-    Curated lookups re-scan and validate the directory. Neither path hashes
-    the bytes on every readiness read.
+    A curated lookup re-hashes the cached candidate (one capped read) and,
+    only when that candidate is gone or changed, re-scans at most once per
+    bounded cooldown. A stale cached entry never counts.
     """
     try:
         entry = media.find_object(asset_id)
@@ -217,7 +218,7 @@ def asset_available(asset_id: str) -> bool:
         ):
             return True
     try:
-        return assets.find(asset_id) is not None
+        return assets.available(asset_id)
     except (OSError, ValueError):
         return False
 
