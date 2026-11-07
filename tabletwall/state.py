@@ -522,7 +522,9 @@ def _render_frame(
             frame["scene"]["content"] = {"type": "color"}
     frame["mapping"] = mapping
     if record.get("connection_id"):
+        delivered = frame["scene"]["content"]
         frame["token"] = {"connection_id": record["connection_id"], "generation": wall["generation"],
                           "revision": wall["revision"], "render_seq": record["render_seq"],
-                          "mapping_revision": mapping["revision"], "asset": wall["scene"]["content"].get("asset")}
+                          "mapping_revision": mapping["revision"],
+                          "asset": delivered.get("asset") if delivered.get("type") == "image" else None}
     return frame

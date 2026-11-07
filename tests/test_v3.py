@@ -107,6 +107,7 @@ def test_v3_render_plan_matches_the_hand_derived_matrix():
             frame = socket.receive_json()
         assert frame["type"] == "render" and frame["mode"] == "physical"
         assert frame["calibration"]["status"] == "valid"
+        assert frame["token"]["asset"] == frame["scene"]["content"]["asset"]
         assert frame["render_seq"] == 1
         plan = frame["plan"]
         expected = [-6, 0, 0, -6, 3877.5, 3700]
@@ -146,6 +147,23 @@ def test_physical_image_is_not_sent_without_advertised_support(caps):
         assert frame["scene"]["content"] == {"type": "color"}
         assert frame["plan"] is None
         assert frame["calibration"]["reason"] == "tablet does not advertise image support"
+        assert frame["token"]["asset"] is None
+
+
+def test_logical_v3_token_asset_matches_downgraded_scene():
+    with TestClient(main.app) as client:
+        setup_scene(client)
+        with client.websocket_connect(device_url(
+            w=600, h=800, dpr=1, orientation=0, mode="tab", caps="render_ack"
+        )) as socket:
+            welcome = socket.receive_json()
+            assert welcome["type"] == "welcome"
+            frame = socket.receive_json()
+            if frame["type"] == "clock_bootstrap":
+                frame = socket.receive_json()
+        assert frame["type"] == "render"
+        assert frame["scene"]["content"] == {"type": "color"}
+        assert frame["token"]["asset"] is None
 
 
 def test_unplaced_physical_device_reports_the_missing_slot_before_capability():

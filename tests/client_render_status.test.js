@@ -172,6 +172,60 @@ test("physical color uses assigned CSS color with no image plan and keeps unplac
     assert.equal(h.bitmapCalls(), 0);
 });
 
+test("a colour scene reports displayed after one animation frame", async t => {
+    const h = await connected(t);
+    h.emit(instruction(1, { scene: { content: { type: "color" } } }));
+    await drain();
+    assert.equal(displayed(h).length, 0, "evidence waits for a painted frame");
+    assert.equal(last(h).status, "loading");
+    h.runAnimationFrames();
+    assert.equal(last(h).status, "displayed");
+    assert.equal(last(h).token.asset, null);
+    assert.deepEqual(Object.keys(last(h)).sort(), ["type", "token", "report_seq", "status", "reason", "viewport", "visible"].sort());
+});
+
+test("a colour scene stays silent when hidden, zoomed or unplaced", async t => {
+    const h = await connected(t);
+    h.document.visibilityState = "hidden";
+    h.emit(instruction(1, { scene: { content: { type: "color" } } }));
+    await drain(); h.runAnimationFrames();
+    assert.equal(displayed(h).length, 0, "a hidden page cannot claim a painted scene");
+    assert.equal(last(h).status, "hidden");
+    h.document.visibilityState = "visible";
+    h.window.visualViewport = { scale: 2, width: 300, height: 300 };
+    h.emit(instruction(2, { scene: { content: { type: "color" } } }));
+    await drain(); h.runAnimationFrames();
+    assert.equal(displayed(h).length, 0, "a zoomed page cannot claim a painted scene");
+    assert.equal(last(h).status, "blocked");
+    h.window.visualViewport = undefined;
+    h.emit(instruction(3, { scene: { content: { type: "color" } }, placement: null }));
+    await drain(); h.runAnimationFrames();
+    assert.equal(displayed(h).length, 0, "an unplaced tablet cannot claim a painted scene");
+    assert.equal(last(h).status, "unplaced");
+});
+
+test("a logical calibration scene reports a surface failure without drawing and recovers after paint", async t => {
+    const h = await connected(t);
+    h.setContextAvailable(false);
+    h.emit(instruction(1, { scene: { content: { type: "calibration" } } }));
+    await drain();
+    assert.equal(displayed(h).length, 0);
+    assert.equal(h.named("drawImage").length, 0, "calibration draws the pattern, not the asset");
+    h.runAnimationFrames();
+    assert.equal(last(h).status, "failed");
+    assert.equal(last(h).reason, "surface");
+
+    h.setContextAvailable(true);
+    h.emit(instruction(2, { scene: { content: { type: "calibration" } } }));
+    await drain();
+    assert.ok(h.named("stroke").length > 0, "a valid context draws the calibration pattern");
+    assert.equal(displayed(h).length, 0, "the next animation frame still fences success");
+    h.runAnimationFrames();
+    assert.equal(last(h).status, "displayed");
+    assert.deepEqual(displayed(h).map(f => f.token.render_seq), [2]);
+    assert.equal(last(h).token.asset, null);
+});
+
 test("an unresponsive socket is retired even without close event, and reconnect preserves identity and number", async t => {
     const h = await connected(t);
     const original = JSON.parse(h.fetchLog[0].options.body).device_id;
@@ -251,7 +305,7 @@ test("viewport changes discard a pending decode and never paint it over a change
     pending.resolve(bitmap); await drain(); h.runAnimationFrames();
     assert.equal(bitmap.closed, true);
     assert.equal(h.named("drawImage").length, 0);
-    assert.equal(displayed(h).length, 0);
+    assert.deepEqual(displayed(h).map(f => f.token.render_seq), [2], "only the colour scene may report; the stale decode cannot");
 });
 
 test("surface recovery repaints before displayed and restores canvas clipping after a failed draw", async t => {
@@ -297,6 +351,90 @@ for (const [fit, expected] of [[undefined, [0, -1000, 2000, 3000]], ["contain", 
     });
 }
 
+
+test("a cache hit settles and releases a different picture still decoding", async t => {
+    const h = await connected(t);
+    h.setCreateImageBitmap(false);
+    const other = "sha256:" + "b".repeat(64);
+    h.setFetch(route({
+        ["a".repeat(64)]: okResponse(assetBlob("A", 400, 400)),
+        ["b".repeat(64)]: okResponse(assetBlob("B", 400, 400)),
+    }));
+    h.emit(instruction(1)); await drain(); h.runAnimationFrames();
+    assert.equal(last(h).status, "displayed", "the first picture is cached and on the wall");
+    assert.equal(h.objectUrls.filter(entry => !entry.revoked).length, 1);
+    const abandoned = deferred();
+    h.setImageBehaviour({ decode: () => abandoned.promise, load: () => {} });
+    h.emit(instruction(2, { scene: { content: imageContent({ asset: other, url: "/assets/" + other }) } }));
+    await drain();
+    assert.equal(h.objectUrls.length, 2, "the second picture reached its object URL");
+    assert.equal(h.objectUrls[1].revoked, false);
+    assert.notEqual(h.images[1].src, "");
+    h.emit(instruction(3)); await drain();
+    assert.equal(h.objectUrls[1].revoked, true, "the abandoned decode must give back its object URL");
+    assert.equal(h.images[1].src, "", "the abandoned <img> must stop pulling bytes");
+    assert.equal(h.objectUrls[0].revoked, false, "the cached picture stays available");
+    assert.equal(h.named("drawImage").at(-1).args[0], h.images[0]);
+    abandoned.resolve(); await drain(); h.runAnimationFrames();
+    assert.equal(h.named("drawImage").at(-1).args[0], h.images[0], "a late decode never paints over the cached picture");
+    assert.equal(displayed(h).filter(f => f.token.render_seq === 2).length, 0, "the superseded picture never reports displayed");
+    assert.equal(last(h).token.render_seq, 3);
+    assert.equal(h.objectUrls[0].revoked, false);
+});
+
+test("superseding an image aborts its in-flight fetch immediately", async t => {
+    class Controller {
+        constructor() {
+            const listeners = [];
+            this.signal = { aborted: false, addEventListener: (_type, listener) => listeners.push(listener) };
+            this.abort = () => { this.signal.aborted = true; listeners.forEach(listener => listener()); };
+        }
+    }
+    const h = await connected(t, { AbortController: Controller });
+    let signal;
+    let firstAsset = true;
+    h.setFetch((url, options) => {
+        if (String(url).includes("/assets/") && firstAsset) {
+            firstAsset = false;
+            signal = options.signal;
+            return new Promise((_resolve, reject) => signal.addEventListener("abort", () => {
+                reject(Object.assign(new Error("request aborted"), { name: "AbortError" }));
+            }));
+        }
+        if (String(url).includes("/assets/")) return okResponse(assetBlob("B", 400, 400));
+        return { ok: true, status: 200 };
+    });
+    h.emit(instruction(1)); await drain();
+    assert.equal(signal.aborted, false);
+    h.emit(instruction(2, { scene: { content: { type: "color" } } })); await drain();
+    assert.equal(signal.aborted, true, "obsolete network work should stop when the scene changes");
+    await drain();
+    assert.equal(h.sent("render_ack").some(frame => frame.status === "failed"), false,
+        "the aborted obsolete fetch must not report a scene failure");
+    h.emit(instruction(3)); await drain(); h.runAnimationFrames();
+    assert.equal(last(h).status, "displayed", "the current image can still fetch, decode, and display");
+    assert.equal(last(h).token.render_seq, 3);
+});
+
+for (const phase of ["headers", "body"]) test("a superseded image never decodes late " + phase + " without AbortController", async t => {
+    const h = await connected(t);
+    h.setCreateImageBitmap(false);
+    h.setImageBehaviour({ decode: () => new Promise(() => {}), load: () => {} });
+    const response = deferred(), body = deferred();
+    h.setFetch(() => phase === "headers" ? response.promise : Promise.resolve({
+        ok: true, status: 200, blob: () => body.promise,
+    }));
+    h.emit(instruction(1)); await drain();
+    h.emit(instruction(2, { scene: { content: { type: "color" } } }));
+    await drain(); h.runAnimationFrames();
+    response.resolve(okResponse(assetBlob("late", 400, 400)));
+    body.resolve(assetBlob("late", 400, 400));
+    await drain();
+    assert.equal(h.objectUrls.length, 0, "released work cannot allocate another object URL");
+    assert.equal(h.images.length, 0, "released work cannot start another decoder");
+    assert.equal(last(h).status, "displayed");
+    assert.equal(last(h).token.render_seq, 2);
+});
 
 test("registration timeout stays bounded without AbortController and a late response cannot start a socket", async t => {
     const pending = deferred();
