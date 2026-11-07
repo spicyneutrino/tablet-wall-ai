@@ -67,20 +67,68 @@ window.OperatorContent = {
             if (!list || !list.children) return [];
             const buttons = [];
             for (const item of Array.from(list.children)) {
-                const button = item.children && item.children[0] || item.firstElementChild;
-                if (button && !item.hidden && !button.disabled) buttons.push(button);
+                const button = galleryButton(item);
+                if (button && !item.hidden && !button.hidden && !button.disabled) buttons.push(button);
             }
             return buttons;
         }
+        function galleryButton(item) {
+            return item && (item.children && item.children[0] || item.firstElementChild) || null;
+        }
+        function galleryRows(buttons) {
+            const rows = [];
+            for (const button of buttons) {
+                const rect = button.getBoundingClientRect();
+                let row = rows.find(candidate => Math.abs(candidate.top - rect.top) < 4);
+                if (!row) { row = { top: rect.top, items: [] }; rows.push(row); }
+                row.items.push({ button, rect });
+            }
+            rows.sort((a, b) => a.top - b.top);
+            for (const row of rows) row.items.sort((a, b) => a.rect.left - b.rect.left);
+            return rows;
+        }
+        function adjacentButton(button, offset, rows) {
+            for (const row of rows) {
+                const index = row.items.findIndex(item => item.button === button);
+                if (index >= 0) return row.items[index + offset] ? row.items[index + offset].button : null;
+            }
+            return null;
+        }
+        function nextRowButton(button, offset, rows) {
+            const index = rows.findIndex(row => row.items.some(item => item.button === button));
+            if (index < 0) return null;
+            const row = rows[index + offset];
+            if (!row || !row.items.length) return null;
+            const rect = button.getBoundingClientRect();
+            const middle = rect.left + rect.width / 2;
+            return row.items.reduce((best, item) => {
+                const distance = Math.abs(item.rect.left - rect.left);
+                const center = Math.abs(item.rect.left + item.rect.width / 2 - middle);
+                return !best || distance < best.distance || (distance === best.distance && center < best.center)
+                    ? { button: item.button, distance, center } : best;
+            }, null).button;
+        }
+        function focusTarget(button) {
+            button.focus({ preventScroll: true });
+            button.scrollIntoView({ block: "nearest", inline: "nearest" });
+        }
         function setGalleryTabStop(preferred) {
+            const list = $("image-gallery");
+            if (list && list.children) for (const item of Array.from(list.children)) {
+                const button = galleryButton(item);
+                if (button) button.tabIndex = -1;
+            }
             const buttons = visibleGalleryButtons();
             if (!buttons.length) return;
             const active = preferred && buttons.includes(preferred) ? preferred : buttons[0];
-            for (const button of buttons) button.tabIndex = button === active ? 0 : -1;
+            active.tabIndex = 0;
         }
         function renderGallery() {
             const list = $("image-gallery");
             if (!list || typeof document.createElement !== "function") return;
+            const focusedBefore = typeof document.activeElement !== "undefined" ? document.activeElement : null;
+            const focusedWasGallery = Boolean(focusedBefore
+                && Array.from(list.children).some(item => galleryButton(item) === focusedBefore));
             const search = $("image-search").value.toLocaleLowerCase();
             for (const [id, row] of gallery) if (!images.some(image => image.id === id)) { row.item.remove(); gallery.delete(id); }
             images.forEach(image => {
@@ -116,9 +164,24 @@ window.OperatorContent = {
             });
             $("image-search-empty").hidden = !search || images.some(image => image.name.toLocaleLowerCase().includes(search));
             const focused = typeof document.activeElement !== "undefined" ? document.activeElement : null;
+            const buttons = visibleGalleryButtons();
             const selectedRow = selected && gallery.get(selected);
-            const fallback = focused && visibleGalleryButtons().includes(focused) ? focused : null;
-            setGalleryTabStop(selectedRow && !selectedRow.item.hidden ? selectedRow.button : fallback);
+            const fallback = focused && buttons.includes(focused) ? focused : null;
+            const selectedButton = selectedRow && !selectedRow.item.hidden && !selectedRow.button.disabled ? selectedRow.button : null;
+            setGalleryTabStop(fallback || selectedButton);
+            if (focusedWasGallery) {
+                const shown = buttons.includes(focused) && !focused.hidden
+                    && !(focused.parentElement && focused.parentElement.hidden);
+                if (!shown) {
+                    const next = buttons[0];
+                    if (next) { focusTarget(next); setGalleryTabStop(next); }
+                    else {
+                        const searchField = $("image-search");
+                        if (searchField && typeof searchField.focus === "function") searchField.focus({ preventScroll: true });
+                        setGalleryTabStop(null);
+                    }
+                }
+            }
         }
         function appliedUnavailable() {
             const content = state.scene && state.scene.content || {};
@@ -274,18 +337,23 @@ window.OperatorContent = {
         });
         $("image-search").addEventListener("input", renderGallery);
         $("image-gallery").addEventListener("keydown", event => {
-            const step = { ArrowLeft: -1, ArrowUp: -1, ArrowRight: 1, ArrowDown: 1 }[event.key];
             const buttons = visibleGalleryButtons();
-            const index = buttons.indexOf(document.activeElement);
-            if (index < 0) return;
-            let next = index;
-            if (event.key === "Home") next = 0;
-            else if (event.key === "End") next = buttons.length - 1;
-            else if (step) next = Math.max(0, Math.min(buttons.length - 1, index + step));
+            const current = typeof document.activeElement !== "undefined" ? document.activeElement : null;
+            if (!buttons.length || !buttons.includes(current)) return;
+            const rows = galleryRows(buttons);
+            let next = null;
+            if (event.key === "Home") next = buttons[0];
+            else if (event.key === "End") next = buttons[buttons.length - 1];
+            else if (event.key === "ArrowLeft") next = adjacentButton(current, -1, rows);
+            else if (event.key === "ArrowRight") next = adjacentButton(current, 1, rows);
+            else if (event.key === "ArrowUp") next = nextRowButton(current, -1, rows);
+            else if (event.key === "ArrowDown") next = nextRowButton(current, 1, rows);
             else return;
+            if (rows.length === 1 && (event.key === "ArrowUp" || event.key === "ArrowDown")) return;
             event.preventDefault();
-            buttons[next].focus({ preventScroll: true });
-            setGalleryTabStop(buttons[next]);
+            if (!next || next === current) return;
+            focusTarget(next);
+            setGalleryTabStop(next);
         });
         $("edit-current-image").addEventListener("click", () => {
             const content = state.scene && state.scene.content;

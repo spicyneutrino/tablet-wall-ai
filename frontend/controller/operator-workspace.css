@@ -122,6 +122,7 @@ details > :not(summary, [hidden], :is(div, p, ul, ol, dl, pre):empty) { margin-b
 .image-gallery { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 1rem; }
 .image-choice { position: relative; min-inline-size: 0; overflow: hidden; }
 .image-choice-button { position: relative; display: grid; grid-template-rows: auto auto 1.5rem; align-content: start; gap: .25rem; inline-size: 100%; block-size: 100%; min-inline-size: 0; min-block-size: 2.75rem; overflow: hidden; padding: .25rem; background: var(--surface); border: 2px solid transparent; border-radius: var(--radius); text-align: start; }
+.image-choice-button:focus-visible { outline-offset: -4px; outline-width: 3px; }
 .image-choice-button[aria-pressed="true"] { border: 2px solid var(--accent); background: var(--selected); }
 .image-choice-button img { inline-size: 100%; aspect-ratio: 4 / 3; block-size: auto; object-fit: cover; background: var(--stage); border-radius: 3px; }
 .image-choice-button::after { content: ""; min-block-size: 1.5rem; grid-row: 3; color: var(--muted); font-size: .875rem; font-weight: 400; }
