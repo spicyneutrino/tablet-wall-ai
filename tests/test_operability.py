@@ -7,12 +7,33 @@ an unrecorded rehearsal stays ``recorded: false``.
 
 from __future__ import annotations
 
+import hashlib
+import io
 import json
 import os
 
 import pytest
+from PIL import Image
 
 from tabletwall import assets, media, operability, persist
+
+
+def png_bytes(color="red"):
+    output = io.BytesIO()
+    Image.new("RGB", (16, 12), color).save(output, "PNG")
+    return output.getvalue()
+
+
+def content_id(data):
+    return "sha256:" + hashlib.sha256(data).hexdigest()
+
+
+class FakeClock:
+    def __init__(self, now=0.0):
+        self.now = now
+
+    def __call__(self):
+        return self.now
 
 
 @pytest.fixture(autouse=True)
@@ -270,3 +291,38 @@ def test_managed_asset_requires_its_object_file(tmp_path, monkeypatch):
     (tmp_path / "objects").mkdir()
     (tmp_path / "objects" / "missing").write_bytes(b"present")
     assert operability.asset_available(asset) is True
+
+
+def test_curated_asset_availability_recovers_after_restore_within_the_bound(
+    asset_dir, monkeypatch
+):
+    data = png_bytes("red")
+    target = content_id(data)
+    path = asset_dir / "poster.png"
+    path.write_bytes(data)
+    assets.refresh()
+    image_snapshot = snapshot(content_type="image", content_asset=target)
+    assert operability.asset_available(target) is True
+    assert operability.readiness(image_snapshot, operability.read_config())[
+        "content"
+    ]["available"] is True
+
+    clock = FakeClock(10.0)
+    monkeypatch.setattr(assets, "_clock", clock)
+    path.unlink()
+    assert operability.asset_available(target) is False
+    path.write_bytes(data)
+    assert operability.asset_available(target) is False
+    clock.now = 12.0
+    assert operability.asset_available(target) is True
+    assert operability.readiness(image_snapshot, operability.read_config())[
+        "content"
+    ]["available"] is True
+
+
+def test_curated_availability_rejects_a_malformed_id_without_scanning(monkeypatch):
+    def forbidden(*_args, **_kwargs):
+        raise AssertionError("a malformed id must not scan")
+
+    monkeypatch.setattr(assets.os, "scandir", forbidden)
+    assert operability.asset_available("not-an-id") is False
