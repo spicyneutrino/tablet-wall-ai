@@ -218,29 +218,63 @@ window.PhysicalStage = {
             const compact = compactSheet();
             deviceSheetCompactMode = configureDeviceSheet(deviceSheet, compact, deviceSheetCompactMode);
         }
+        function focusNode(node) {
+            if (!node || node.isConnected === false || node.disabled) return false;
+            if (typeof node.getClientRects === "function" && !node.getClientRects().length) return false;
+            try { node.focus({ preventScroll: true }); }
+            catch (error) { node.focus(); }
+            return true;
+        }
+        function focusSheetFallback() {
+            for (const id of ["issues-title", "btn-wall-health", "tab-tablet"]) {
+                const node = document.getElementById(id);
+                if (node && focusNode(node)) return;
+            }
+        }
+        function originVisible(trigger) {
+            return !!trigger && trigger.isConnected !== false && !trigger.disabled
+                && (typeof trigger.getClientRects !== "function" || trigger.getClientRects().length > 0);
+        }
         function openDeviceSheet(trigger) {
-            if (!deviceSheet || !compactSheet()) return;
+            if (!deviceSheet || !compactSheet()) return false;
+            if (deviceSheet.open && deviceSheet.dataset.modal !== "true") deviceSheet.close();
             state.sheetTrigger = trigger || document.activeElement;
             if (!deviceSheet.open) { deviceSheet.dataset.modal = "true"; deviceSheet.showModal(); }
             const heading = document.getElementById("tablet-action-name");
-            if (heading) heading.focus({ preventScroll: true });
+            if (focusNode(heading) && typeof heading.scrollIntoView === "function") heading.scrollIntoView({ block: "nearest" });
+            return true;
+        }
+        function revealSheet(id, trigger) {
+            if (state.selectedId !== id) return false;
+            if (compactSheet()) return openDeviceSheet(trigger);
+            const heading = document.getElementById("tablet-action-name");
+            if (!focusNode(heading)) return false;
+            if (typeof heading.scrollIntoView === "function") heading.scrollIntoView({ block: "nearest" });
+            return true;
+        }
+        function revealAfterTask(id, trigger, taskOpened) {
+            if (!id) return Promise.resolve(false);
+            const opening = taskOpened ? Promise.resolve(true) : Promise.resolve(showTab("tablet", { persist: true }));
+            return opening.then(function (opened) {
+                if (!opened || state.tabName !== "tablet" || state.selectedId !== id) return false;
+                return revealSheet(id, trigger);
+            });
         }
         function revealInspector() {
             if (state.drag || state.tabName === "show") return;
             const id = state.selectedId, trigger = document.activeElement;
-            Promise.resolve(showTab("tablet", { persist: true })).then(opened => {
-                if (!opened || state.selectedId !== id || state.tabName !== "tablet") return;
-                if (compactSheet()) { openDeviceSheet(trigger); return; }
-                const heading = document.getElementById("tablet-action-name");
-                if (heading) { heading.focus({ preventScroll: true }); heading.scrollIntoView({ block: "nearest" }); }
-            });
+            revealAfterTask(id, trigger, state.tabName === "tablet");
         }
         if (deviceSheet && deviceSheet.addEventListener) {
             deviceSheet.addEventListener("close", function () {
+                const modal = deviceSheet.dataset.modal === "true";
+                const inside = typeof deviceSheet.contains === "function" && deviceSheet.contains(document.activeElement);
                 deviceSheet.dataset.modal = "";
                 const trigger = state.sheetTrigger;
                 state.sheetTrigger = null;
-                if (trigger && trigger.isConnected && !trigger.disabled) trigger.focus({ preventScroll: true });
+                if (!modal && !trigger && !inside) return;
+                if (originVisible(trigger)) { trigger.focus({ preventScroll: true }); return; }
+                focusSheetFallback();
             });
             document.getElementById("device-sheet-close")?.addEventListener("click", function () { deviceSheet.close(); });
             window.addEventListener("resize", syncDeviceSheetMode);
@@ -264,11 +298,8 @@ window.PhysicalStage = {
             }
             selectionChanged();
             if (options && options.reveal) {
-                const trigger = typeof document !== "undefined" ? document.activeElement : null;
-                Promise.resolve(showTab("tablet", { persist: true })).then(function (opened) {
-                    if (!opened) return;
-                    if (compactSheet()) openDeviceSheet(trigger);
-                });
+                const trigger = options.trigger || (typeof document !== "undefined" ? document.activeElement : null);
+                revealAfterTask(id, trigger, options.taskOpened === true);
             }
         }
 

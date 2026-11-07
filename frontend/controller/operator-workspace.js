@@ -3,7 +3,7 @@ window.OperatorWorkspace = {
     create({ state, labelFor, arrangementDirty, arrangementPreview, imageDirty, applyArrangement, showImage, discardArrangement, discardImage,
         commitTask, renderStage, stageNames, onViewChange = () => {}, selectTablet, canCommit }) {
         const { $ } = window.OperatorDom;
-        let pending = null, resolving = false;
+        let pending = null, resolving = false, issueRequest = 0;
         const issues = new Map();
         const stage = document.querySelector(".wall-stage"), arrangeTools = document.querySelector(".arrange-tools");
         let stageTask = null, joiningHasTablets = null;
@@ -44,6 +44,19 @@ window.OperatorWorkspace = {
             if (name === "content" && !await resolve("Open Images", "image")) return false;
             if (name === "show" && !await resolve("Open Arrange", "arrangement")) return false;
             return commitTask(name, options);
+        }
+        function issuePresent(id) {
+            const config = state.operatorConfig;
+            return !!config && !!window.OperatorState.entries(config.layout)[id];
+        }
+        function revealIssue(id, row, trigger) {
+            const request = ++issueRequest;
+            return Promise.resolve(open("tablet", { persist: true })).then(opened => {
+                if (!opened || request !== issueRequest) return false;
+                if (!row || row.isConnected === false || !issuePresent(id)) return false;
+                selectTablet(id, { reveal: true, taskOpened: true, trigger: trigger || row.firstElementChild });
+                return true;
+            });
         }
         function render(view = window.OperatorState.stageView(state)) {
             const arrangement = arrangementDirty(), image = imageDirty();
@@ -89,7 +102,7 @@ window.OperatorWorkspace = {
                     if (!row) {
                         row = document.createElement("li"); row.className = "issue-row"; row.dataset.deviceId = id;
                         const button = document.createElement("button"); button.type = "button"; button.className = "btn issue-action";
-                        button.addEventListener("click", () => { selectTablet(id); open("tablet", { focus: true, persist: true }); });
+                        button.addEventListener("click", () => revealIssue(id, row, button));
                         row.append(button); $("wall-issues").append(row); issues.set(id, row);
                     }
                     row.hidden = evidence.showing || evidence.status === "excluded";
@@ -123,6 +136,6 @@ window.OperatorWorkspace = {
             $("image-addition").open = true;
             ($("upload-form").hidden ? $("image-addition").querySelector("summary") : $("upload-file")).focus();
         });
-        return { open, resolve, render, destroy() { if (pending) pending("stay"); $("draft-resolution").close(); } };
+        return { open, resolve, render, revealIssue, destroy() { if (pending) pending("stay"); $("draft-resolution").close(); } };
     }
 };
