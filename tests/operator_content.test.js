@@ -219,8 +219,9 @@ async function galleryNavigation() {
     focusButton(0);
     press("End");
     assert.equal(focused(), buttons()[8]);
-    assert.equal(list.scrollLeft, buttons()[8].rect.right - 300, "the horizontal chooser scrolls just enough to expose the focus target");
-    assert.equal(buttons()[8].scrollIntoViewCalls, undefined, "inner scrolling never scrolls the outer page");
+    assert.equal(buttons()[8].scrollIntoViewCalls.length, 1, "nested scrolling delegates one reveal to the browser");
+    assert.equal(buttons()[8].scrollIntoViewCalls[0].block, "nearest");
+    assert.equal(buttons()[8].scrollIntoViewCalls[0].inline, "nearest");
 
     list.style = { overflowX: "visible", overflowY: "visible" };
     list.scrollLeft = 0;

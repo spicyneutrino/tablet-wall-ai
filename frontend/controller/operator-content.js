@@ -110,26 +110,6 @@ window.OperatorContent = {
         }
         function focusTarget(button) {
             button.focus({ preventScroll: true });
-            let container = button.parentElement;
-            while (container) {
-                const style = window.getComputedStyle(container);
-                const scrollX = /(auto|scroll)/.test(style.overflowX) && container.scrollWidth > container.clientWidth;
-                const scrollY = /(auto|scroll)/.test(style.overflowY) && container.scrollHeight > container.clientHeight;
-                if (scrollX || scrollY) {
-                    const target = button.getBoundingClientRect();
-                    const box = container.getBoundingClientRect();
-                    if (scrollY) {
-                        if (target.top < box.top) container.scrollTop -= box.top - target.top;
-                        else if (target.bottom > box.bottom) container.scrollTop += target.bottom - box.bottom;
-                    }
-                    if (scrollX) {
-                        if (target.left < box.left) container.scrollLeft -= box.left - target.left;
-                        else if (target.right > box.right) container.scrollLeft += target.right - box.right;
-                    }
-                    return;
-                }
-                container = container.parentElement;
-            }
             button.scrollIntoView({ block: "nearest", inline: "nearest" });
         }
         function setGalleryTabStop(preferred) {
