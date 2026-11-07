@@ -248,6 +248,22 @@ def test_managed_selection_preserves_immutable_object_metadata(operator, monkeyp
     assert legacy == projected
 
 
+def test_non_display_renditions_cannot_replace_the_scene(operator, monkeypatch):
+    managed = upload(operator, monkeypatch, (3000, 1500))
+    with persist._connection() as connection:
+        rows = connection.execute(
+            "SELECT role, object_id FROM media_renditions "
+            "WHERE asset_id = ? AND role != 'display'",
+            (managed["asset_id"],),
+        ).fetchall()
+    assert {role for role, _object_id in rows} == {"master", "fallback", "thumbnail"}
+    before = operator.get("/api/v3/config").json()
+    for _role, object_id in rows:
+        assert media.find_servable(object_id) is not None
+        assert select(operator, object_id).status_code == 422
+    assert operator.get("/api/v3/config").json() == before
+
+
 def test_invalid_asset_missing_and_stale_etags_never_mutate(operator, asset_dir):
     entry = curated(asset_dir)
     before = operator.get("/api/v3/config").json()

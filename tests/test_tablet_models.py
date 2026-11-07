@@ -274,7 +274,10 @@ def test_rebind_keeps_model_rotation_and_existing_measurement_history(client, au
                                              "height": 768, "device_type": "ios"}).raise_for_status()
     original_target_profile = displays.profile(target, 1)
     original_source_profile = displays.profile(DEVICE, 1)
-    response = client.post(f"/devices/{target}/rebind", json={"replaces": DEVICE})
+    response = client.post(
+        f"/devices/{target}/rebind", json={"replaces": DEVICE},
+        headers={"If-Match": client.get("/api/v3/config").json()["etag"]},
+    )
     assert response.status_code == 200, response.text
     config = client.get("/api/v3/config").json()
     slot = config["layout"]["slots"][target]

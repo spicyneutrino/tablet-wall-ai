@@ -19,15 +19,20 @@ The policy is written for the pages this project actually serves:
   ``Blob`` object URL so a scene change can cancel a decode.
 * ``media-src 'self' blob:``: the experimental video path serves bytes from
   this origin and may play a staged blob.
-* ``connect-src 'self'``: same-origin ``fetch`` and the same-origin
-  ``/ws/device`` and ``/ws/controller`` WebSockets. CSP3 treats ``'self'`` as
-  matching ``ws:``/``wss:`` on the page's own host and port.
+* ``connect-src 'self'`` plus one exact same-origin ``ws:``/``wss:`` source
+  for the page's own host. ``'self'`` alone is enough under CSP3, but older
+  Safari releases need the explicit scheme source. The host comes from the
+  request ``Host`` header, is re-validated as a DNS name/IPv4/bracketed IPv6
+  literal with an optional in-range port, and falls back to the static policy
+  when it cannot be trusted. ``X-Forwarded-Host`` is never read.
 * ``frame-ancestors 'none'`` plus ``object-src 'none'``: no embedding and no
   plugin content. ``base-uri`` and ``form-action`` stay on this origin.
 """
 
 from __future__ import annotations
 
+import ipaddress
+import re
 from collections.abc import Callable
 from urllib.parse import urlsplit
 
@@ -48,6 +53,71 @@ CONTENT_SECURITY_POLICY = (
     "font-src 'self'; "
     "connect-src 'self'"
 )
+
+_HOST_LABEL = r"[A-Za-z0-9](?:[A-Za-z0-9-]{0,61}[A-Za-z0-9])?"
+_HOSTNAME = re.compile(rf"^{_HOST_LABEL}(?:\.{_HOST_LABEL})*$")
+
+
+def _socket_source(scope: Scope) -> str | None:
+    """The page's exact WebSocket origin from one well-formed Host header.
+
+    The value is a CSP source, so every character is untrusted. Only a single
+    Host header that parses as ``host[:port]`` with no userinfo, path, query,
+    fragment, wildcard, separator or out-of-range port is accepted. The scheme
+    follows the ASGI request scheme (``https`` -> ``wss``), which is what a
+    correctly configured proxy sets after TLS termination.
+    """
+    hosts = Headers(scope=scope).getlist("host")
+    if len(hosts) != 1:
+        return None
+    raw = hosts[0]
+    if (
+        not raw
+        or not raw.isascii()
+        or raw != raw.strip()
+        or any(ch.isspace() or not 0x21 <= ord(ch) <= 0x7E for ch in raw)
+        or any(ch in raw for ch in "*@\\;,")
+    ):
+        return None
+    try:
+        parts = urlsplit("//" + raw)
+        hostname = parts.hostname
+        port = parts.port
+    except ValueError:
+        return None
+    if (
+        hostname is None
+        or parts.username is not None
+        or parts.password is not None
+        or parts.path
+        or parts.query
+        or parts.fragment
+        or (port is not None and not 1 <= port <= 65535)
+    ):
+        return None
+    if ":" in hostname:
+        try:
+            ipaddress.IPv6Address(hostname)
+        except ValueError:
+            return None
+        host = f"[{hostname}]"
+    else:
+        if _HOSTNAME.fullmatch(hostname) is None:
+            return None
+        host = hostname
+    scheme = "wss" if str(scope.get("scheme", "http")).lower() == "https" else "ws"
+    return f"{scheme}://{host}:{port}" if port is not None else f"{scheme}://{host}"
+
+
+def content_security_policy(scope: Scope) -> str:
+    """The static policy, plus the exact socket source when the Host is safe."""
+    source = _socket_source(scope)
+    if source is None:
+        return CONTENT_SECURITY_POLICY
+    return CONTENT_SECURITY_POLICY.replace(
+        "connect-src 'self'", f"connect-src 'self' {source}"
+    )
+
 
 STATIC_HEADERS = {
     "Content-Security-Policy": CONTENT_SECURITY_POLICY,
@@ -104,6 +174,8 @@ class SecurityHeadersMiddleware:
             await self.app(scope, receive, send)
             return
 
+        policy = content_security_policy(scope)
+
         async def send_with_headers(message: Message) -> None:
             if message["type"] == "http.response.start":
                 raw = message.setdefault("headers", [])
@@ -111,7 +183,8 @@ class SecurityHeadersMiddleware:
                 for name, value in STATIC_HEADERS.items():
                     encoded = name.lower().encode("latin-1")
                     if encoded not in present:
-                        raw.append((encoded, value.encode("latin-1")))
+                        chosen = policy if name == "Content-Security-Policy" else value
+                        raw.append((encoded, chosen.encode("latin-1")))
             await send(message)
 
         await self.app(scope, receive, send_with_headers)

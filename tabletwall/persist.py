@@ -19,6 +19,7 @@ import fcntl
 import json
 import hashlib
 import os
+import re
 import secrets
 import sqlite3
 from collections.abc import Iterator, Mapping
@@ -505,6 +506,73 @@ def _runtime_scene(document: Any) -> Any:
     return document
 
 
+def _validate_scene_content(content: Any, where: str) -> None:
+    """Reject scene content that a later render would not understand.
+
+    Unknown fields are left alone: the persisted document is the operator's
+    only copy, and a field this build does not use must not make startup
+    refuse a row that an older build legitimately wrote. The discriminator and
+    the fields each variant needs are checked exactly as the wire model
+    requires.
+    """
+    if not isinstance(content, dict):
+        raise SchemaError(f"{where} has scene content that is not a mapping")
+    kind = content.get("type")
+    if kind in ("color", "calibration"):
+        return
+    if kind != "image":
+        raise SchemaError(f"{where} has scene content with an unknown type")
+    from tabletwall.protocol import SUPPORTED_FITS, _is_asset_id
+
+    asset = content.get("asset")
+    if not isinstance(asset, str) or not _is_asset_id(asset):
+        raise SchemaError(f"{where} has scene content without a valid asset id")
+    for field in ("intrinsicWidth", "intrinsicHeight"):
+        value = content.get(field)
+        if type(value) is not int or value <= 0:
+            raise SchemaError(f"{where} has scene content with invalid {field}")
+    if content.get("fit", "cover") not in SUPPORTED_FITS:
+        raise SchemaError(f"{where} has scene content with an unsupported fit")
+    if "background" in content:
+        background = content["background"]
+        if not isinstance(background, str) or re.fullmatch(r"#[0-9a-f]{6}", background) is None:
+            raise SchemaError(f"{where} has scene content with an invalid background")
+
+
+def _validate_logical_layout(layout: dict[str, Any], where: str) -> None:
+    """Validate placements with the same rules the write path applies."""
+    from tabletwall.protocol import MAX_DEVICES, _parse_device_id
+
+    for key in ("width", "height"):
+        value = layout.get(key)
+        if type(value) is not int or value <= 0:
+            raise SchemaError(f"{where} has an invalid layout document")
+    placements = layout.get("placements")
+    if not isinstance(placements, dict) or len(placements) > MAX_DEVICES:
+        raise SchemaError(f"{where} has an invalid layout document")
+    for device_id, placement in placements.items():
+        if (
+            not isinstance(device_id, str)
+            or _parse_device_id(device_id) != device_id
+            or not isinstance(placement, dict)
+            or set(placement) != {"device_id", "x", "y", "w", "h", "bezel"}
+            or placement.get("device_id") != device_id
+        ):
+            raise SchemaError(f"{where} has an invalid logical placement")
+        if any(type(placement.get(field)) is not int for field in ("x", "y", "w", "h")):
+            raise SchemaError(f"{where} has a placement with non-integer geometry")
+        bezel = placement["bezel"]
+        if not isinstance(bezel, dict) or set(bezel) != {"top", "right", "bottom", "left"}:
+            raise SchemaError(f"{where} has a placement without four bezel edges")
+        if any(type(value) is not int or value < 0 for value in bezel.values()):
+            raise SchemaError(f"{where} has a placement with invalid bezel edges")
+        if (
+            placement["w"] - bezel["left"] - bezel["right"] <= 0
+            or placement["h"] - bezel["top"] - bezel["bottom"] <= 0
+        ):
+            raise SchemaError(f"{where} has a placement with no visible rectangle")
+
+
 def _validate_wall_state(wall: Any, where: str) -> dict[str, Any]:
     """The persisted wall row must be a complete, usable document.
 
@@ -549,23 +617,14 @@ def _validate_wall_state(wall: Any, where: str) -> dict[str, Any]:
                 raise SchemaError(f"{where} has a slot without a revision")
             if not isinstance(slot.get("participating", True), bool):
                 raise SchemaError(f"{where} has an invalid participating flag")
-    elif (
-        not isinstance(layout.get("width"), int)
-        or isinstance(layout["width"], bool)
-        or layout["width"] <= 0
-        or not isinstance(layout.get("height"), int)
-        or isinstance(layout["height"], bool)
-        or layout["height"] <= 0
-        or not isinstance(layout.get("placements"), dict)
-    ):
-        raise SchemaError(f"{where} has an invalid layout document")
-    elif "sizing" in layout and wall_sizing.validate_sizing(layout["sizing"], logical=True) is None:
-        raise SchemaError(f"{where} has an invalid sizing configuration")
-    if (
-        not isinstance(scene.get("content"), dict)
-        or not isinstance(scene.get("layout"), str)
-    ):
+    else:
+        _validate_logical_layout(layout, where)
+        if "sizing" in layout and wall_sizing.validate_sizing(layout["sizing"], logical=True) is None:
+            raise SchemaError(f"{where} has an invalid sizing configuration")
+    content = scene.get("content")
+    if not isinstance(content, dict) or not isinstance(scene.get("layout"), str):
         raise SchemaError(f"{where} has an invalid scene document")
+    _validate_scene_content(content, where)
     revision = wall.get("revision")
     if not isinstance(revision, int) or isinstance(revision, bool) or revision < 0:
         raise SchemaError(f"{where} has an invalid revision")
@@ -643,6 +702,24 @@ def save_state(wall: Mapping[str, Any]) -> None:
                 str(wall["generation"]),
             ),
         )
+
+
+def save_generation(generation: str) -> None:
+    """Replace only the stored generation of an existing wall row.
+
+    Startup mints a fresh generation so clients resynchronise, but it must not
+    rewrite the layout and scene it just validated: those bytes are the
+    operator's only copy, and a full-document rewrite would also silently drop
+    fields this build does not model. The targeted update also makes the
+    failure atomic for a missing row.
+    """
+    with _connection() as connection:
+        updated = connection.execute(
+            "UPDATE wall_state SET generation = ? WHERE id = 1",
+            (str(generation),),
+        ).rowcount
+    if updated != 1:
+        raise SchemaError("wall_state row disappeared before its generation was saved")
 
 
 # ---------------------------------------------------------------------------

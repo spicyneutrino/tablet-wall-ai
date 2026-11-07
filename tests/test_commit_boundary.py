@@ -35,6 +35,10 @@ def controller_url() -> str:
     return "/ws/controller?protocol=2"
 
 
+def config_etag(client) -> str:
+    return client.get("/api/v3/config").json()["etag"]
+
+
 def device_url(caps: str | None = "calibration") -> str:
     url = f"/ws/device?device_id={DEVICE_ID}&protocol=2"
     if caps is not None:
@@ -132,7 +136,10 @@ class TestAFailedSaveChangesNothing:
             monkeypatch.setattr(main, "save_state", broken_save)
 
             with pytest.raises(RuntimeError, match="disk full"):
-                client.delete(f"/devices/{DEVICE_ID}")
+                client.delete(
+                    f"/devices/{DEVICE_ID}",
+                    headers={"If-Match": config_etag(client)},
+                )
 
             # Still on the roster …
             assert DEVICE_ID in client.get("/devices").json()

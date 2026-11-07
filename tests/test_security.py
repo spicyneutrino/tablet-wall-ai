@@ -157,7 +157,10 @@ class TestAuthorizedRequests:
     def test_delete(self, guarded, device_payload):
         guarded.post("/devices/register", json=device_payload)
 
-        response = call(guarded, "delete", f"/devices/{DEVICE_ID}", OPERATOR_ORIGIN)
+        response = call(
+            guarded, "delete", f"/devices/{DEVICE_ID}", OPERATOR_ORIGIN,
+            headers={"If-Match": guarded.get("/api/v3/config").json()["etag"]},
+        )
 
         assert response.status_code == 200
         assert response.json() == {"removed": True, "device_id": DEVICE_ID}

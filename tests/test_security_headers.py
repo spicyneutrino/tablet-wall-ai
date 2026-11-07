@@ -10,6 +10,7 @@ from __future__ import annotations
 
 from pathlib import Path
 
+import pytest
 from fastapi import FastAPI
 from fastapi.responses import HTMLResponse
 from fastapi.staticfiles import StaticFiles
@@ -20,10 +21,20 @@ from tabletwall.auth import AuthMiddleware
 from tabletwall.security_headers import (
     CONTENT_SECURITY_POLICY,
     SecurityHeadersMiddleware,
+    content_security_policy,
 )
 
 ROOT = Path(__file__).resolve().parents[1]
 FRONTEND = ROOT / "frontend"
+
+
+def policy_for(headers, scheme="http"):
+    scope = {
+        "type": "http",
+        "scheme": scheme,
+        "headers": [(b"host", value.encode("ascii")) for value in headers],
+    }
+    return content_security_policy(scope)
 
 
 def directive(policy: str, name: str) -> str:
@@ -73,11 +84,12 @@ def test_headers_are_present_on_real_client_and_controller_pages():
             assert response.headers["X-Content-Type-Options"] == "nosniff", path
             assert response.headers["X-Frame-Options"] == "DENY", path
             assert response.headers["Referrer-Policy"] == "same-origin", path
-            assert response.headers["Content-Security-Policy"] == CONTENT_SECURITY_POLICY
+            assert response.headers["Content-Security-Policy"] == policy_for(
+                ["testserver"]), path
 
 
 def test_policy_allows_local_scripts_styles_blobs_and_same_origin_sockets():
-    policy = CONTENT_SECURITY_POLICY
+    policy = policy_for(["wall.example"], scheme="https")
     assert directive(policy, "default-src") == "default-src 'self'"
     assert directive(policy, "script-src") == "script-src 'self'"
     assert "'unsafe-eval'" not in policy
@@ -85,10 +97,33 @@ def test_policy_allows_local_scripts_styles_blobs_and_same_origin_sockets():
     assert directive(policy, "style-src") == "style-src 'self' 'unsafe-inline'"
     assert "blob:" in directive(policy, "img-src")
     assert "blob:" in directive(policy, "media-src")
-    assert directive(policy, "connect-src") == "connect-src 'self'"
+    assert directive(policy, "connect-src") == (
+        "connect-src 'self' wss://wall.example")
     assert directive(policy, "object-src") == "object-src 'none'"
     assert directive(policy, "frame-ancestors") == "frame-ancestors 'none'"
     assert directive(policy, "base-uri") == "base-uri 'none'"
+
+
+@pytest.mark.parametrize(("headers", "scheme", "expected"), [
+    (["wall.example"], "http", "connect-src 'self' ws://wall.example"),
+    (["wall.example:8444"], "https", "connect-src 'self' wss://wall.example:8444"),
+    (["[::1]:8443"], "https", "connect-src 'self' wss://[::1]:8443"),
+    (["[2001:db8::1]"], "http", "connect-src 'self' ws://[2001:db8::1]"),
+    # Injection attempts and malformed Host values fall back to 'self' only.
+    (["wall.example;connect-src *"], "https", "connect-src 'self'"),
+    (["*.example"], "https", "connect-src 'self'"),
+    (["wall.example:99999"], "https", "connect-src 'self'"),
+    (["wall.example:0"], "https", "connect-src 'self'"),
+    (["user@wall.example"], "https", "connect-src 'self'"),
+    (["wall.example/evil"], "https", "connect-src 'self'"),
+    (["wall.example", "other.example"], "https", "connect-src 'self'"),
+    ([], "https", "connect-src 'self'"),
+])
+def test_only_one_valid_host_adds_the_exact_socket_source(headers, scheme, expected):
+    policy = policy_for(headers, scheme=scheme)
+    assert directive(policy, "connect-src") == expected
+    assert directive(policy, "script-src") == "script-src 'self'"
+    assert policy.count("ws://") + policy.count("wss://") <= 1
 
 
 def test_policy_names_no_external_origin():

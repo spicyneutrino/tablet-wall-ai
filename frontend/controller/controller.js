@@ -2397,7 +2397,17 @@
         if (tile) tile.el.dataset.busy = "true";
 
         try {
-            await requestJson("DELETE", "/devices/" + encodeURIComponent(deviceId));
+            // The legacy delete is a guarded write: read the current durable
+            // configuration etag immediately before asking the server to
+            // forget the tablet. A 412 here means another operator changed
+            // the wall first, which is surfaced rather than retried silently.
+            const current = await requestJson("GET", "/api/v3/config");
+            await requestJson(
+                "DELETE",
+                "/devices/" + encodeURIComponent(deviceId),
+                undefined,
+                current.etag
+            );
             dropDevice(deviceId);
             logStatus("Forgot tablet " + shortId(deviceId) + ".", "ok");
         } catch (err) {

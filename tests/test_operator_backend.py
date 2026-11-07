@@ -478,7 +478,7 @@ def test_remove_and_offline_only_forget_preserve_saved_reservations(client, kind
         receive(socket, "render")
         assert client.request("DELETE", f"/api/v3/devices/{A}", headers=headers(client),
             json={"remove_active": True, "saved_layouts": "keep"}).status_code == 409
-        assert client.delete(f"/devices/{A}").status_code == 409
+        assert client.delete(f"/devices/{A}", headers=headers(client)).status_code == 409
     body = {"remove_active": False, "saved_layouts": "keep"}
     assert client.request("DELETE", f"/api/v3/devices/{A}", headers=headers(client), json=body).status_code == 409
     body["remove_active"] = True
