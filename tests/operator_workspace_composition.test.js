@@ -44,11 +44,15 @@ const attached = node("wall-context-content").appends.length;
 workspace.render(); workspace.render();
 assert.equal(node("wall-context-content").appends.length, attached, "runtime updates do not detach the stage or SVG focus");
 assert.equal(document.activeElement, node("edited-field"));
+assert.equal(node("stage-applied-chip").textContent, "Applied: a.png", "the workbench stage names the applied content");
+assert.equal(node("stage-draft-chip").hidden, true, "no draft chip without a pending image");
 state.tabName = "tablet"; dirty = true; state.previewContent = { type: "image" }; workspace.render();
 assert.equal(node("shared-stage").parent, node("wall-context-tablet"));
 assert.equal(node("stage-mode-label").textContent, "Preview · b.png");
 assert.equal(node("stage-mode-description").textContent, "Image preview, not shown");
 assert.equal(document.body.dataset.stageMode, "image-preview");
+assert.equal(node("stage-draft-chip").textContent, "Draft: b.png", "the workbench stage names the pending image");
+assert.equal(node("draft-state").textContent, "Draft · not on wall", "the shelf names the draft state");
 state.rosterError = true; workspace.render();
 assert.equal(document.body.dataset.connection, "stale");
 node("add-image").listeners.click();
@@ -143,6 +147,24 @@ console.log("Task commit draws the new task immediately after moving the origina
     forms.discard("A", "name"); ctx.syncTabDots();
     assert.equal(note.textContent, "", "discard clears the named draft hint");
     assert.ok(entries.every(e => !e.tab.dot || e.tab.dot.hidden));
+}
+
+{
+    const html = fs.readFileSync(require.resolve("../frontend/controller/physical.html"), "utf8");
+    const count = id => (html.match(new RegExp('id="' + id + '"', "g")) || []).length;
+    for (const id of ["workbench-stage", "commit-shelf", "wall-status", "exception-rail", "exception-strip", "exception-roster", "device-list", "show-image", "stage-svg", "image-gallery", "draft-resolution", "device-sheet"]) {
+        assert.equal(count(id), 1, "the shell owns exactly one #" + id);
+    }
+    const images = html.slice(html.indexOf('id="panel-content"'), html.indexOf('id="panel-system"'));
+    for (const id of ["workbench-stage", "commit-shelf", "wall-status", "exception-rail", "exception-strip", "exception-roster", "wall-context-content"]) {
+        assert.ok(images.includes('id="' + id + '"'), "Images contains #" + id);
+    }
+    assert.equal(images.includes('id="device-list"'), false, "the Images rail never duplicates the Tablets roster");
+    const tablets = html.slice(html.indexOf('id="panel-tablet"'), html.indexOf('id="panel-content"'));
+    assert.ok(tablets.includes('id="device-list"'), "Tablets keeps the real device roster");
+    assert.ok(!tablets.includes('id="exception-roster"'), "the exception roster is not the Tablets roster");
+    assert.equal((html.match(/id="wall-context-content"/g) || []).length, 1, "one Images stage host");
+    console.log("The shared shell owns one stage, one commit surface and the exact workbench slots");
 }
 
 })().catch(error => { console.error(error); process.exitCode = 1; });

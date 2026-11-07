@@ -663,8 +663,8 @@
     function tabEntries() {
         return [
             { name: "content", tab: el.tabContent, panel: el.panelContent },
-            { name: "tablet", tab: el.tabTablet, panel: el.panelTablet },
             { name: "show", tab: el.tabShow, panel: el.panelShow },
+            { name: "tablet", tab: el.tabTablet, panel: el.panelTablet },
             { name: "saved", tab: document.getElementById("tab-saved"), panel: document.getElementById("panel-saved") },
             { name: "system", tab: el.tabSystem, panel: el.panelSystem }
         ];
@@ -1307,9 +1307,21 @@
         });
     }
 
+    function syncStageSummary(view) {
+        const node = document.getElementById("stage-wall-summary");
+        if (!node) return;
+        if (!view || !view.layout) { node.textContent = "Waiting for the wall."; return; }
+        const bounds = window.OperatorState.bounds(view.layout);
+        const placed = Object.keys(window.OperatorState.entries(view.layout)).length;
+        node.textContent = formatNumber(bounds.width, 1) + " × " + formatNumber(bounds.height, 1)
+            + (view.layout.kind === "physical" ? " mm" : " wall units")
+            + " · " + placed + (placed === 1 ? " tablet" : " tablets");
+    }
+
     function renderStage() {
         const view = window.OperatorState.stageView(state);
         syncTabDots();
+        syncStageSummary(view);
         if (workspace) workspace.render(view);
         drawStage(view);
     }
@@ -2854,6 +2866,13 @@
             onViewChange: () => operatorContent.viewChanged()
         });
         document.getElementById("refresh-command-status").addEventListener("click", () => session.refresh().catch(error => showError(error.message)));
+        const refreshStatus = document.getElementById("refresh-status");
+        if (refreshStatus) refreshStatus.addEventListener("click", async () => {
+            refreshStatus.disabled = true;
+            try { await Promise.all([refreshRoster(), operatorReadiness.load()]); workspace.render(); }
+            catch (error) { showError(error.message); }
+            finally { refreshStatus.disabled = false; }
+        });
         window.addEventListener("beforeunload", event => {
             if (hasUnsavedEdits()) { event.preventDefault(); event.returnValue = ""; }
         });

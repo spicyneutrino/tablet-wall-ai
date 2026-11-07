@@ -7,20 +7,29 @@
     <meta name="description" content="Manage the wall, its tablets, show and content.">
     <title>Tablet wall · tablet-wall-ai</title>
     <link rel="icon" href="favicon.svg" type="image/svg+xml">
-    <link rel="stylesheet" href="operator-tokens.css?v=2">
-    <link rel="stylesheet" href="operator-workspace.css?v=27">
-    <link rel="stylesheet" href="operator-stage.css?v=4">
+    <link rel="stylesheet" href="operator-tokens.css?v=3">
+    <link rel="stylesheet" href="operator-workspace.css?v=29">
+    <link rel="stylesheet" href="operator-stage.css?v=6">
 </head>
 <body class="physical">
 <a class="skip" href="#rail">Skip to active task</a>
-<a class="skip skip-controls" href="#task-navigation">Skip to controls</a>
+<a class="skip skip-nav" href="#task-navigation">Skip to controls</a>
+<a class="skip skip-controls" href="#compact-task-select">Skip to task controls</a>
 
 <header class="topbar">
-    <h1 class="brand"><svg class="brand-mark" viewBox="0 0 16 16" aria-hidden="true" focusable="false"><rect width="7" height="7" rx="1" fill="currentColor"></rect><rect x="9" width="7" height="7" rx="1" fill="currentColor"></rect><rect y="9" width="7" height="7" rx="1" fill="currentColor"></rect><rect x="9" y="9" width="7" height="7" rx="1" fill="var(--accent)"></rect></svg>Tablet wall</h1>
-    <div class="wall-summary"><button type="button" class="wall-health" id="btn-wall-health" data-kind="info" data-action="btn-wall-health">
-                <span id="wall-health">Checking tablet status…</span>
-                <span class="health-action">Issues</span>
-            </button></div>
+    <h1 class="brand"><svg class="brand-mark" viewBox="0 0 16 16" aria-hidden="true" focusable="false"><rect width="7" height="7" rx="1"></rect><rect x="9" width="7" height="7" rx="1"></rect><rect y="9" width="7" height="7" rx="1"></rect><rect x="9" y="9" width="7" height="7" rx="1" class="brand-mark-accent"></rect></svg>Tablet wall</h1>
+    <div class="compact-task-navigation">
+        <span id="task-drafts" class="hint task-drafts" role="status" aria-live="polite"></span>
+        <select id="compact-task-select" aria-label="Wall task"><option value="content">Images</option><option value="show">Arrange</option><option value="tablet">Tablets</option><option value="saved">Saved</option><option value="system">Settings</option></select>
+    </div>
+    <div class="wall-summary">
+        <button type="button" class="wall-health" id="btn-wall-health" data-kind="info" data-action="btn-wall-health">
+            <span id="wall-health">Checking tablet status…</span>
+            <span class="health-action">Issues</span>
+        </button>
+        <span class="checked" id="wall-checked" hidden></span>
+        <button type="button" class="btn" id="refresh-status" data-action="refresh-status">Refresh status</button>
+    </div>
     <div class="topbar-transport" id="topbar-transport" hidden role="group" aria-label="Playback transport">
         <span class="topbar-playback" id="topbar-playback-state" data-state="stopped">stopped</span>
         <button type="button" class="btn btn-sm btn-primary" id="btn-topbar-start" data-action="btn-topbar-start">Start</button>
@@ -32,14 +41,10 @@
 <nav class="workspace-nav-landmark" id="task-navigation" tabindex="-1" aria-label="Wall tasks">
     <div class="rail-tabs workspace-nav" id="rail-tabs" role="tablist" aria-label="Wall tasks" tabindex="-1">
         <button type="button" class="rail-tab" id="tab-content" role="tab" aria-selected="false" aria-controls="panel-content" tabindex="-1" data-action="tab-content">Images<span class="tab-dot" id="tab-content-dot" aria-hidden="true" hidden></span></button>
-        <button type="button" class="rail-tab" id="tab-tablet" role="tab" aria-selected="false" aria-controls="panel-tablet" tabindex="-1" data-action="tab-tablet">Tablets<span class="tab-dot" id="tab-tablet-dot" aria-hidden="true" hidden></span></button>
         <button type="button" class="rail-tab" id="tab-show" role="tab" aria-selected="true" aria-controls="panel-show" tabindex="0" data-action="tab-show">Arrange<span class="tab-dot" id="tab-show-dot" aria-hidden="true" hidden></span></button>
+        <button type="button" class="rail-tab" id="tab-tablet" role="tab" aria-selected="false" aria-controls="panel-tablet" tabindex="-1" data-action="tab-tablet">Tablets<span class="tab-dot" id="tab-tablet-dot" aria-hidden="true" hidden></span></button>
         <button type="button" class="rail-tab" id="tab-saved" role="tab" aria-selected="false" aria-controls="panel-saved" tabindex="-1" data-action="tab-saved">Saved</button>
         <button type="button" class="rail-tab" id="tab-system" role="tab" aria-selected="false" aria-controls="panel-system" tabindex="-1" data-action="tab-system">Settings<span class="tab-dot" id="tab-system-dot" aria-hidden="true" hidden></span></button>
-    </div>
-    <div class="compact-task-navigation">
-        <span id="task-drafts" class="hint task-drafts" role="status" aria-live="polite"></span>
-        <select id="compact-task-select" aria-label="Wall task"><option value="content">Images</option><option value="tablet">Tablets</option><option value="show">Arrange</option><option value="saved">Saved</option><option value="system">Settings</option></select>
     </div>
 </nav>
 <div class="layout console operator-workspace">
@@ -367,64 +372,94 @@
 </section>
             <section class="rail-panel task-panel" id="panel-content" role="tabpanel" aria-labelledby="tab-content" tabindex="0" hidden data-task="images">
                 <h2 class="task-title sr-only" tabindex="-1" id="task-images">Images</h2>
-                <div class="images-workspace" id="images-workspace">
-  <div class="image-rail">
-  <section class="image-library task-section" aria-labelledby="library-title">
-    <div class="library-head">
-        <div class="sec-head">
-            <h3 id="library-title">Library</h3>
-            <button class="btn btn-ghost" id="refresh-images" type="button" aria-label="Refresh images" data-action="refresh-images">Refresh</button>
-        </div>
-        <div class="library-toolbar">
-            <div class="field">
-                <label class="sr-only" for="image-search">Search images</label>
-                <input class="inp" type="search" id="image-search" placeholder="Search images" autocomplete="off" data-field="image-search">
-            </div>
-            <button type="button" class="btn" id="add-image" aria-label="Add image">Add</button>
-        </div>
+                <div class="work-grid" id="images-workspace">
+  <section class="stage-region" id="workbench-stage" aria-labelledby="stage-title">
+    <figure class="stage-figure">
+      <div class="stage-viewport" id="wall-context-content"></div>
+    </figure>
+    <div class="wall-status" id="wall-status" role="group" aria-label="Wall status and exceptions">
+      <p class="wall-summary" id="wall-status-summary"></p>
+      <ul class="exception-inline" id="exception-strip" aria-label="Positions that need attention"></ul>
     </div>
-    <ul id="image-gallery" class="image-gallery" aria-label="Image library"></ul>
-  <p id="image-search-empty" class="empty-note" role="status" hidden>No images match your search.</p>
-  <div class="image-utilities">
-      <details id="image-addition">
-          <summary>Upload</summary>
-          <button class="btn" type="button" id="images-check-connection" data-action="images-check-connection">Check image-addition connection</button>
-          <p id="upload-instruction">Checking upload availability…</p>
-          <form id="upload-form" hidden data-form="upload-form">
-              <label class="field" for="upload-file">Upload a still image<input class="inp" type="file" id="upload-file" accept="image/png,image/jpeg" data-field="upload-file" required></label>
-                <button class="btn" id="upload-submit" data-action="upload-submit">Upload image</button>
-                <progress id="upload-progress" max="100" value="0" aria-label="Image upload progress" hidden></progress>
-            </form>
-            <p id="upload-message" class="form-msg" role="status" aria-live="polite"></p>
-        </details>
-    </div>
-</section>
-</div>
-  <div class="image-result">
-  <section class="image-composer" id="selected-image-controls" aria-labelledby="image-title">
-    <div class="image-composer-head">
-      <h3 class="image-title" id="image-title">No image</h3>
-      <div class="operator-actions"><button class="btn btn-ghost" type="button" id="edit-current-image" hidden>Adjust image</button></div>
-    </div>
-    <p class="hint" id="image-details"></p>
-    <div class="image-actions" id="image-preview-controls" hidden>
-      <label class="field" id="image-fit-field" for="image-fit">Scaling<select class="inp" id="image-fit" data-field="image-fit"><option value="cover">Fill</option><option value="contain">Fit</option></select></label>
-      <div class="image-action-row image-primary-actions">
-          <button class="btn btn-primary" id="show-image" type="button" disabled data-action="show-image">Show image</button>
-          <button class="btn" id="image-discard" type="button" aria-label="Discard image preview" data-action="image-discard">Discard</button>
-      </div>
-    </div>
-    <div class="image-action-row image-recovery"><button class="btn" id="image-rebuild" type="button" hidden data-action="image-rebuild">Rebuild preview</button></div>
-    <p id="image-message" class="form-msg" role="status" aria-live="polite"></p>
   </section>
-  <div class="wall-stage-slot" id="wall-context-content"></div>
-  <details class="technical-details" id="image-details-disclosure">
-      <summary>Image details</summary>
-      <button class="btn btn-ghost" id="restore-image" type="button" hidden data-action="restore-image">Restore previous content</button>
-      <p class="hint" id="image-source-details"></p>
-      <img id="image-thumbnail" loading="lazy" decoding="async" alt="Uncropped source image" hidden>
-  </details>
-  </div>
+
+  <section class="commit-shelf" id="commit-shelf" aria-labelledby="image-title">
+    <h2 class="sr-only" id="commit-title">Commit the draft image</h2>
+    <div class="commit-first">
+      <div class="draft-identity">
+        <span class="state" id="draft-state">Draft · not on wall</span>
+        <h3 class="image-title" id="image-title">No image</h3>
+        <p class="hint" id="image-details"></p>
+      </div>
+      <section class="image-composer" id="selected-image-controls" aria-labelledby="image-title">
+        <div class="image-actions" id="image-preview-controls" hidden>
+          <label class="field" id="image-fit-field" for="image-fit">Scaling<select class="inp" id="image-fit" data-field="image-fit"><option value="cover">Fill</option><option value="contain">Fit</option></select></label>
+          <div class="image-action-row image-primary-actions">
+              <button class="btn" id="image-discard" type="button" aria-label="Discard image preview" data-action="image-discard">Discard</button>
+              <button class="btn btn-primary" id="show-image" type="button" disabled data-action="show-image">Show image</button>
+          </div>
+        </div>
+        <div class="operator-actions image-adjust-row">
+          <button class="btn btn-ghost" type="button" id="edit-current-image" hidden>Adjust image</button>
+        </div>
+      </section>
+    </div>
+    <p id="image-message" class="form-msg" role="status" aria-live="polite"></p>
+    <div class="commit-evidence">
+      <div class="image-action-row image-recovery"><button class="btn" id="image-rebuild" type="button" hidden data-action="image-rebuild">Rebuild preview</button></div>
+    </div>
+  </section>
+
+  <aside class="side-rail" id="exception-rail" aria-label="Library and exceptions">
+    <section class="image-library task-section" aria-labelledby="library-title">
+      <div class="library-head">
+          <div class="sec-head">
+              <h3 id="library-title">Library</h3>
+          </div>
+          <div class="library-toolbar">
+              <div class="field">
+                  <label class="sr-only" for="image-search">Search images</label>
+                  <input class="inp" type="search" id="image-search" placeholder="Search images" autocomplete="off" data-field="image-search">
+              </div>
+              <button type="button" class="btn" id="add-image" aria-label="Add image">Add</button>
+              <button class="btn" id="refresh-images" type="button" aria-label="Refresh images" data-action="refresh-images">Refresh images</button>
+          </div>
+      </div>
+      <ul id="image-gallery" class="image-gallery" aria-label="Image library"></ul>
+    <p id="image-search-empty" class="empty-note" role="status" hidden>No images match your search.</p>
+    <div class="image-utilities">
+        <details id="image-addition">
+            <summary>Upload a still image</summary>
+            <button class="btn" type="button" id="images-check-connection" data-action="images-check-connection">Check image-addition connection</button>
+            <p id="upload-instruction">Checking upload availability…</p>
+            <form id="upload-form" hidden data-form="upload-form">
+                <label class="field" for="upload-file">Upload a still image<input class="inp" type="file" id="upload-file" accept="image/png,image/jpeg" data-field="upload-file" required></label>
+                  <button class="btn" id="upload-submit" data-action="upload-submit">Upload image</button>
+                  <progress id="upload-progress" max="100" value="0" aria-label="Image upload progress" hidden></progress>
+              </form>
+              <p id="upload-message" class="form-msg" role="status" aria-live="polite"></p>
+          </details>
+      </div>
+    </section>
+
+    <section class="exceptions" aria-labelledby="exceptions-title">
+      <header class="section-head">
+        <h2 id="exceptions-title">Exceptions</h2>
+        <span class="count" id="exception-count"></span>
+      </header>
+      <p class="hint" id="position-count"></p>
+      <p class="rail-sticky" id="attention-heading" hidden></p>
+      <ul id="exception-roster" class="device-list" aria-label="Positions that need attention, then all positions"></ul>
+      <p class="empty-note" id="exception-empty" hidden>No positions yet. Arrange the connected tablets to begin.</p>
+    </section>
+
+    <details class="technical-details image-details-rail" id="image-details-disclosure">
+        <summary>Image details</summary>
+        <button class="btn btn-ghost" id="restore-image" type="button" hidden data-action="restore-image">Restore previous content</button>
+        <p class="hint" id="image-source-details"></p>
+        <img id="image-thumbnail" loading="lazy" decoding="async" alt="Uncropped source image" hidden>
+    </details>
+  </aside>
 </div></section>
             <section class="rail-panel task-panel" id="panel-system" role="tabpanel" aria-labelledby="tab-system" tabindex="0" hidden data-task="settings"><h2 class="task-title sr-only" tabindex="-1" id="task-settings">Settings</h2>
         <div id="operator-readiness">
@@ -898,11 +933,17 @@
     </div>
     <div id="wall-context-park" hidden><section class="card stage-card wall-stage" aria-labelledby="stage-title">
             <div class="wall-head">
-                <h2 id="stage-title" class="sr-only" tabindex="-1">Wall</h2>
-
+                <div class="stage-title">
+                    <h2 id="stage-title" tabindex="-1">Wall</h2>
+                    <p class="stage-sub" id="stage-wall-summary"></p>
+                </div>
             <p class="stage-mode" id="stage-mode" role="status" aria-live="polite" aria-atomic="true"><span id="stage-mode-label">Nothing shown</span> <span id="stage-mode-description" class="sr-only"></span></p>
-            <div class="operator-actions stage-view-actions" role="group" aria-label="Wall comparison">
-                <button type="button" class="btn btn-ghost" id="view-toggle" hidden data-action="view-toggle">View applied</button>
+            <div class="operator-actions stage-tools">
+                <span class="stage-chip" id="stage-applied-chip" hidden></span>
+                <span class="stage-chip stage-chip-draft" id="stage-draft-chip" hidden></span>
+                <div class="stage-view-actions" role="group" aria-label="Wall comparison">
+                    <button type="button" class="btn btn-ghost" id="view-toggle" hidden data-action="view-toggle">View applied</button>
+                </div>
             </div>
         </div>
 
@@ -973,13 +1014,13 @@
 <script src="operator-readiness.js?v=4"></script>
 <script src="operator-sync.js?v=2"></script>
 <script src="operator-session.js?v=2"></script>
-<script src="operator-workspace.js?v=10"></script>
+<script src="operator-workspace.js?v=12"></script>
 <script src="physical-playback.js?v=2"></script>
 <script src="physical-sizing.js?v=1"></script>
 <script src="physical-stage.js?v=12"></script>
 <script src="physical-calibration.js?v=1"></script>
 <script src="operator-measurements.js?v=1"></script>
-<script src="physical.js?v=34"></script>
+<script src="physical.js?v=35"></script>
 <dialog class="draft-resolution" id="draft-resolution" aria-labelledby="draft-resolution-title">
     <h2 id="draft-resolution-title">Resolve your preview</h2>
     <p id="draft-resolution-text"></p>

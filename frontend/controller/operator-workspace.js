@@ -4,10 +4,93 @@ window.OperatorWorkspace = {
         commitTask, renderStage, stageNames, onViewChange = () => {}, selectTablet, canCommit }) {
         const { $ } = window.OperatorDom;
         let pending = null, resolving = false, issueRequest = 0;
-        const issues = new Map();
+        const issues = new Map(), rosterRows = new Map(), stripRows = new Map();
         const stage = document.querySelector(".wall-stage"), arrangeTools = document.querySelector(".arrange-tools");
         let stageTask = null, joiningHasTablets = null;
         const anyOnline = () => !state.rosterError && Object.values(state.roster).some(device => device.online);
+        const shortEvidence = evidence => String(evidence.text || "").split(" · ")[0] || "Needs review";
+        const positionTag = id => {
+            const number = (state.roster[id] || {}).number;
+            return Number.isInteger(number) && number > 0 ? "#" + number : "";
+        };
+        const orderedIds = ids => ids.slice().sort((a, b) => typeof window.OperatorState.compareIds === "function"
+            ? window.OperatorState.compareIds(state.roster, state.deviceLabels || {}, a, b) : a.localeCompare(b));
+        function revealRow(id, trigger) {
+            return revealIssue(id, trigger && trigger.closest ? trigger.closest("li") : trigger, trigger);
+        }
+        function renderExceptionRail(ids, evidence) {
+            const attention = ids.filter(id => {
+                const item = evidence.get(id);
+                return !item.showing && item.status !== "excluded";
+            });
+            const ordered = orderedIds(ids);
+            const wantedStrip = attention.slice(0, 4);
+            const strip = $("exception-strip"), roster = $("exception-roster");
+            if (strip) {
+                for (const [id, row] of stripRows) if (!wantedStrip.includes(id)) { row.remove(); stripRows.delete(id); }
+                wantedStrip.forEach(id => {
+                    const item = evidence.get(id);
+                    let row = stripRows.get(id);
+                    if (!row) {
+                        row = document.createElement("li");
+                        row.button = document.createElement("button");
+                        row.button.type = "button";
+                        row.button.className = "chip exception-chip";
+                        row.button.addEventListener("click", () => revealRow(id, row.button));
+                        row.append(row.button);
+                        stripRows.set(id, row);
+                    }
+                    const tag = positionTag(id), name = labelFor ? labelFor(id) : id;
+                    row.dataset.status = item.status;
+                    row.button.dataset.deviceId = id;
+                    row.button.textContent = (tag ? tag + " " : "") + shortEvidence(item);
+                    row.button.setAttribute("aria-label", name + ", " + item.text + ". Review recovery.");
+                    strip.append(row);
+                });
+            }
+            if (roster) {
+                for (const [id, row] of rosterRows) if (!ordered.includes(id)) { row.remove(); rosterRows.delete(id); }
+                ordered.forEach(id => {
+                    const item = evidence.get(id);
+                    let row = rosterRows.get(id);
+                    if (!row) {
+                        row = document.createElement("li");
+                        row.className = "exception-item";
+                        row.button = document.createElement("button");
+                        row.button.type = "button";
+                        row.button.className = "exception-review";
+                        row.number = document.createElement("span"); row.number.className = "exception-number";
+                        row.name = document.createElement("span"); row.name.className = "exception-name";
+                        row.state = document.createElement("span"); row.state.className = "exception-state";
+                        row.button.append(row.number, row.name, row.state);
+                        row.button.addEventListener("click", () => revealRow(id, row.button));
+                        row.append(row.button);
+                        rosterRows.set(id, row);
+                    }
+                    const tag = positionTag(id), name = labelFor ? labelFor(id) : id;
+                    row.dataset.deviceId = id; row.dataset.status = item.status;
+                    row.button.dataset.deviceId = id;
+                    row.number.textContent = tag || "–";
+                    row.name.textContent = name;
+                    row.state.textContent = item.text;
+                    row.button.setAttribute("aria-label", name + ", " + item.text + ". Review recovery.");
+                    roster.append(row);
+                });
+            }
+            if ($("exception-count")) $("exception-count").textContent = attention.length
+                ? attention.length + (attention.length === 1 ? " needs attention" : " need attention") : "No attention";
+            if ($("position-count")) $("position-count").textContent = ids.length + (ids.length === 1 ? " position" : " positions");
+            if ($("attention-heading")) {
+                $("attention-heading").hidden = !attention.length;
+                $("attention-heading").textContent = "Needs attention (" + attention.length + ")";
+            }
+            if ($("exception-empty")) $("exception-empty").hidden = !!ids.length;
+            const health = $("wall-health");
+            if ($("wall-status-summary") && health) {
+                $("wall-status-summary").textContent = health.textContent + (attention.length ? " · " + attention.length + (attention.length === 1 ? " needs attention" : " need attention") : "");
+            }
+            return attention;
+        }
         async function resolve(reason, except) {
             const nextKind = () => arrangementDirty() && except !== "arrangement" ? "arrangement"
                 : imageDirty() && except !== "image" ? "image" : null;
@@ -83,6 +166,25 @@ window.OperatorWorkspace = {
             const label = mode === "live" ? names.unavailable ? "Unavailable image" : names.applied ? state.tabName === "content" ? "Showing" : "Showing " + names.applied
                 : !wallEmpty && { color: "Showing tablet colours", calibration: "Showing calibration pattern" }[shownType] || "Nothing shown"
                 : "Preview · " + (mode === "image-preview" ? names.pending : "Arrangement");
+            if ($("stage-applied-chip")) {
+                $("stage-applied-chip").hidden = !names.applied && !names.unavailable;
+                $("stage-applied-chip").textContent = names.unavailable ? "Applied: unavailable" : names.applied ? "Applied: " + names.applied : "";
+            }
+            if ($("stage-draft-chip")) {
+                $("stage-draft-chip").hidden = !image || !names.pending;
+                $("stage-draft-chip").textContent = image && names.pending ? "Draft: " + names.pending : "";
+            }
+            if ($("draft-state")) {
+                $("draft-state").textContent = image ? "Draft · not on wall"
+                    : state.scene && state.scene.content ? "Applied content" : "No image selected";
+            }
+            document.body.dataset.stageIdentity = !names.unavailable && (!!names.applied || image) ? "chips" : "text";
+            if ($("wall-checked")) {
+                const checked = state.rosterCheckedAt ? Date.parse(state.rosterCheckedAt) : NaN;
+                $("wall-checked").hidden = !Number.isFinite(checked);
+                $("wall-checked").textContent = Number.isFinite(checked)
+                    ? "Checked " + new Date(checked).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }) : "";
+            }
             if ($("stage-mode-label").textContent !== label) $("stage-mode-label").textContent = label;
             $("stage-mode").hidden = state.tabName === "content" && mode === "live" && label === $("image-title").textContent;
             const description = { live: "", "arrangement-preview": "Arrangement preview, not applied", "image-preview": "Image preview, not shown" }[mode];
@@ -95,9 +197,10 @@ window.OperatorWorkspace = {
             const config = state.operatorConfig;
             if (config) {
                 const ids = Object.keys(window.OperatorState.entries(config.layout));
+                const evidence = new Map(ids.map(id => [id, window.OperatorState.tabletState(config, id, performance.now())]));
                 for (const [id, row] of issues) if (!ids.includes(id)) { row.remove(); issues.delete(id); }
                 for (const id of ids) {
-                    const evidence = window.OperatorState.tabletState(config, id, performance.now());
+                    const item = evidence.get(id);
                     let row = issues.get(id);
                     if (!row) {
                         row = document.createElement("li"); row.className = "issue-row"; row.dataset.deviceId = id;
@@ -105,12 +208,13 @@ window.OperatorWorkspace = {
                         button.addEventListener("click", () => revealIssue(id, row, button));
                         row.append(button); $("wall-issues").append(row); issues.set(id, row);
                     }
-                    row.hidden = evidence.showing || evidence.status === "excluded";
+                    row.hidden = item.showing || item.status === "excluded";
                     const device = state.roster[id] || {}, number = device.number;
                     const name = labelFor ? labelFor(id) : state.deviceLabels[id] || device.label || "Tablet " + (number || "unassigned");
-                    row.firstElementChild.textContent = name + " · " + evidence.text + " · Review recovery";
-                    row.dataset.status = evidence.status;
+                    row.firstElementChild.textContent = name + " · " + item.text + " · Review recovery";
+                    row.dataset.status = item.status;
                 }
+                renderExceptionRail(ids, evidence);
             }
             if ($("issues-empty")) {
                 const visibleIssues = [...issues.values()].filter(row => !row.hidden).length;
