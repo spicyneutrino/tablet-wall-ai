@@ -3,6 +3,8 @@
 import hashlib
 import logging
 import os
+import subprocess
+import sys
 from io import BytesIO
 
 import pytest
@@ -62,6 +64,40 @@ def test_stat_preserving_malicious_swap_is_not_a_cache_hit(asset_dir):
     os.utime(path, ns=(previous.st_atime_ns, previous.st_mtime_ns))
     assert assets.list_assets() == []
     assert assets.fetch(asset_id) is None
+
+
+@pytest.mark.skipif(not hasattr(os, "mkfifo"), reason="requires named pipes")
+def test_cached_fifo_replacement_does_not_block_readiness(asset_dir):
+    path = asset_dir / "poster.png"
+    path.write_bytes(image_bytes("red"))
+    result = subprocess.run(
+        [sys.executable, "-c", """
+import os
+from pathlib import Path
+from tabletwall import assets
+path = Path(assets.asset_dir()) / "poster.png"
+identity = assets.list_assets()[0]["id"]
+path.unlink()
+os.mkfifo(path)
+assert assets.available(identity) is False
+"""],
+        capture_output=True, text=True, timeout=3,
+    )
+    assert result.returncode == 0, result.stderr
+
+
+def test_failed_scan_does_not_delay_recovery(asset_dir):
+    assets.refresh()
+    data = image_bytes("blue")
+    identity = asset_id(data)
+    asset_dir.rmdir()
+    asset_dir.write_text("not a directory")
+    with pytest.raises(NotADirectoryError):
+        assets.available(identity)
+    asset_dir.unlink()
+    asset_dir.mkdir()
+    (asset_dir / "restored.png").write_bytes(data)
+    assert assets.available(identity) is True
 
 
 def test_cached_content_is_rechecked_for_extension_and_symlinks(asset_dir):

@@ -84,7 +84,7 @@ _NORMAL_ORIENTATION = 1
 
 # ``O_NOFOLLOW`` is the symlink half of the race defence: a path swapped for
 # a link between listing and opening fails here instead of being followed.
-_OPEN_FLAGS = os.O_RDONLY | os.O_CLOEXEC | getattr(os, "O_NOFOLLOW", 0)
+_OPEN_FLAGS = os.O_RDONLY | os.O_CLOEXEC | getattr(os, "O_NOFOLLOW", 0) | getattr(os, "O_NONBLOCK", 0)
 _READ_CHUNK = 1 << 20
 
 
@@ -270,8 +270,8 @@ def available(asset_id: str) -> bool:
         last = _negative_refresh.get(directory)
         if last is not None and now - last < NEGATIVE_REFRESH_SECONDS:
             return False
-        _negative_refresh[directory] = now
         fresh = _scan(directory)
+        _negative_refresh[directory] = now
     return asset_id in fresh
 
 
