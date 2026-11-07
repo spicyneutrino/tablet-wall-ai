@@ -178,6 +178,7 @@ def test_child_environment_fences_operator_data(tmp_path, monkeypatch):
         "TABLET_WALL_DB": str(tmp_path / "wall.db"),
         "TABLET_WALL_ASSET_DIR": str(tmp_path / "assets"),
         "TABLET_WALL_MEDIA_DIR": str(tmp_path / "media"),
+        "TABLET_WALL_BACKUP_DIR": str(tmp_path / "backups"),
     }
     assert os.environ["TABLET_WALL_DB"] == "/operator/live.db"
 
