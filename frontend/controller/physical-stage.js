@@ -84,6 +84,91 @@ window.PhysicalStage = {
             return point.matrixTransform(matrix.inverse());
         }
 
+        function snapEnabled() {
+            const input = typeof document !== "undefined" ? document.getElementById("logical-snap-enabled") : null;
+            return !input || input.checked !== false;
+        }
+
+        function snapStep() {
+            const input = typeof document !== "undefined" ? document.getElementById("logical-snap") : null;
+            return Math.max(1, Math.round(Number(input && input.value) || 1));
+        }
+
+        function viewZoom() {
+            const body = typeof document !== "undefined" ? document.body : null;
+            return body && body.dataset && body.dataset.viewZoom === "2x" ? "2x" : "fit";
+        }
+
+        function stageTransformKey() {
+            const matrix = typeof el.stageSvg.getScreenCTM === "function" ? el.stageSvg.getScreenCTM() : null;
+            const stage = state.stage || {};
+            const numbers = matrix ? [matrix.a, matrix.b, matrix.d, matrix.e, matrix.f] : [];
+            return [viewZoom(), el.stageSvg.style && el.stageSvg.style.inlineSize,
+                el.stageSvg.style && el.stageSvg.style.blockSize, stage.scale, stage.offX, stage.offY,
+                numbers.map(value => Number(value).toFixed(6)).join(",")].join("|");
+        }
+
+        function setViewZoom(zoom) {
+            const next = zoom === "2x" ? "2x" : "fit";
+            if (state.drag) endDrag(false, "view");
+            if (typeof document !== "undefined" && document.body && document.body.dataset) {
+                document.body.dataset.viewZoom = next;
+            }
+            renderStage();
+            announce(next === "2x" ? "Wall view zoomed to 2x. The arrangement is unchanged." : "Wall view fitted. The arrangement is unchanged.");
+            return next;
+        }
+
+        function helpText() {
+            const kind = state.draft && state.draft.kind;
+            return window.OperatorStage && window.OperatorStage.helpText
+                ? window.OperatorStage.helpText(true, kind)
+                : "Select a tablet and drag it, or use the arrow keys to move it by 1 wall unit (Shift for 10). Escape cancels a drag. Use the numeric fields for exact geometry.";
+        }
+
+        function matchStatus() {
+            if (!state.draft) return { available: false, reason: "The arrangement has not loaded yet." };
+            if (state.draft.kind !== "logical") {
+                return { available: false, measured: true, reason: "Measured mode keeps pinned profile and calibration revisions and the declared mounting. Match screen shape is available only in relative units; review measurements instead." };
+            }
+            if (state.tabName !== "show" || state.viewLive || state.previewContent || state.gridPreview || state.busy) {
+                return { available: false, reason: "Match screen shape is available while editing an editable arrangement draft." };
+            }
+            const id = state.selectedId;
+            if (!id || !state.draft.placements[id]) return { available: false, reason: "Select a placed tablet before matching its screen shape." };
+            return window.PhysicalSizing.freshViewport(state.roster[id], { stale: !!state.rosterError });
+        }
+
+        function matchScreenShape() {
+            const status = matchStatus();
+            if (!status.available) {
+                announce(status.reason);
+                return { changed: false, reason: status.reason, measured: !!status.measured };
+            }
+            if (!canManualEdit()) {
+                return { changed: false, reason: "Finish or discard the current proposal before matching the screen shape." };
+            }
+            const id = state.selectedId, slot = state.draft.placements[id];
+            const result = window.PhysicalSizing.matchScreenShape(slot, status.viewport);
+            if (result.error) {
+                announce(result.error);
+                return { changed: false, error: result.error };
+            }
+            if (!result.changed) {
+                announce("The active screen already matches the current online viewport shape.");
+                return { changed: false };
+            }
+            const changed = mutateDraft(draft => {
+                const target = draft.placements[id];
+                target.h = result.placement.h;
+                target.y = result.placement.y;
+            });
+            if (changed) {
+                announce("Matched " + deviceLabel(id, latestProfile(id)) + " to the current online viewport shape. The draft is not applied.");
+            }
+            return { changed: !!changed };
+        }
+
         function onPointerDown(event) {
             if (event.button !== 0 && event.pointerType === "mouse") return;
             const group = event.target && event.target.closest
@@ -114,6 +199,7 @@ window.PhysicalStage = {
                 startStageY: point.y,
                 scale: state.stage.scale,
                 viewport: state.stage,
+                transformKey: stageTransformKey(),
                 moved: false,
                 preDraft: clone(state.draft)
             };
@@ -125,6 +211,11 @@ window.PhysicalStage = {
         function onPointerMove(event) {
             const drag = state.drag;
             if (!drag || event.pointerId !== drag.pointerId) return;
+
+            if (drag.transformKey !== stageTransformKey()) {
+                endDrag(false, "view");
+                return;
+            }
 
             const distance = Math.hypot(
                 event.clientX - drag.startClientX,
@@ -144,12 +235,17 @@ window.PhysicalStage = {
             const deltaX = (point.x - drag.startStageX) / drag.scale;
             const deltaY = (point.y - drag.startStageY) / drag.scale;
             if (state.draft.kind === "logical") {
-                const step = Math.max(1, Math.round(Number(document.getElementById("logical-snap").value) || 1));
-                const snap = value => Math.round(value / step) * step;
-                if (drag.mode === "resize") {
-                    slot.w = Math.max(slot.bezel.left + slot.bezel.right + 1, snap(before.w + deltaX));
-                    slot.h = Math.max(slot.bezel.top + slot.bezel.bottom + 1, snap(before.h + deltaY));
-                } else { slot.x = snap(before.x + deltaX); slot.y = snap(before.y + deltaY); }
+                const matrixScale = Math.hypot(drag.screenMatrix.a, drag.screenMatrix.b) || 1;
+                const proposed = drag.mode === "resize"
+                    ? { ...slot, w: before.w + deltaX, h: before.h + deltaY }
+                    : { ...slot, x: before.x + deltaX, y: before.y + deltaY };
+                const next = window.PhysicalSizing.snapLogical(proposed, state.draft, {
+                    id: drag.id, mode: drag.mode, step: snapStep(),
+                    enabled: snapEnabled() && !event.altKey,
+                    threshold: window.PhysicalSizing.edgeThreshold(
+                        window.PhysicalSizing.LOGICAL_EDGE_THRESHOLD_PX, matrixScale * drag.scale)
+                });
+                slot.x = next.x; slot.y = next.y; slot.w = next.w; slot.h = next.h;
             } else {
                 slot.center_x_mm = roundTo(finiteOr(before.center_x_mm, 0) + deltaX, 2);
                 slot.center_y_mm = roundTo(finiteOr(before.center_y_mm, 0) + deltaY, 2);
@@ -158,9 +254,13 @@ window.PhysicalStage = {
             afterDraftChange();
         }
 
-        function endDrag(commit) {
+        function endDrag(commit, reason) {
             const drag = state.drag;
             if (!drag) return;
+            if (commit && drag.transformKey !== stageTransformKey()) {
+                commit = false;
+                reason = "view";
+            }
             state.drag = null;
             el.stageSvg.classList.remove("is-dragging");
             try {
@@ -176,7 +276,7 @@ window.PhysicalStage = {
             if (!commit) {
                 state.draft = drag.preDraft;
                 afterDraftChange();
-                announce("Move cancelled.");
+                announce(reason === "view" ? "Move cancelled because the wall view changed." : "Move cancelled.");
                 return;
             }
             pushUndo(drag.preDraft);
@@ -603,6 +703,6 @@ window.PhysicalStage = {
          * Bounds and slot inputs
          * ---------------------------------------------------------------- */
 
-        return { addSelectedDevice, deleteSelectedSlot, endDrag, nudgeSelected, onPointerCancel, onPointerDown, onPointerMove, onPointerUp, renderDeviceHealth, renderDeviceList, renderStage, rotateSelected, selectDevice, syncInspector };
+        return { addSelectedDevice, deleteSelectedSlot, endDrag, geometryHelp: helpText, matchScreenShape, matchStatus, nudgeSelected, onPointerCancel, onPointerDown, onPointerMove, onPointerUp, renderDeviceHealth, renderDeviceList, renderStage, rotateSelected, selectDevice, setViewZoom, syncInspector, viewZoom };
     }
 };
