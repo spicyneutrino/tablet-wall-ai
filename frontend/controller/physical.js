@@ -1049,6 +1049,7 @@
     }
 
     function syncDraftUi() {
+        syncGeometryControls();
         renderCalibrationHelper();
         if (!state.draft) {
             el.btnApply.disabled = true;
@@ -1224,13 +1225,81 @@
      * ---------------------------------------------------------------- */
 
     const {
-        addSelectedDevice, deleteSelectedSlot, endDrag, nudgeSelected, onPointerCancel, onPointerDown, onPointerMove, onPointerUp, renderDeviceHealth, renderDeviceList, renderStage: drawStage, rotateSelected, selectDevice, syncInspector
+        addSelectedDevice, deleteSelectedSlot, endDrag, geometryHelp, matchScreenShape, matchStatus, nudgeSelected, onPointerCancel, onPointerDown, onPointerMove, onPointerUp, renderDeviceHealth, renderDeviceList, renderStage: drawStage, rotateSelected, selectDevice, setViewZoom, syncInspector, viewZoom
     } = window.PhysicalStage.create({
         selectionChanged: () => {
             if (operatorDevices) operatorDevices.render(); renderLogicalEditor();
             if (state.tabName === "show") document.getElementById("arrange-custom").open = true;
         },
         DRAG_THRESHOLD_PX, afterDraftChange, announce, bodyMetrics, calibrationFor, beginManual, canManualEdit, clearMsg, clone, deviceEntries, deviceLabel, deviceNumber, deviceRows, el, finiteOr, formatNumber, isOnline, latestProfile, mutateDraft, numberTag, numberedLabel, populateDeviceCard, profileFor, pushUndo, roundTo, selectedSlot, setInputValue, showError, showTab, state, syncTabDots, validPair
+    });
+
+    const geometryReady = typeof setViewZoom === "function" && typeof viewZoom === "function"
+        && typeof matchStatus === "function" && typeof matchScreenShape === "function" && typeof geometryHelp === "function";
+
+    function syncGeometryControls() {
+        const zoom = geometryReady && typeof viewZoom === "function" ? viewZoom() : "fit";
+        for (const [id, value] of [["view-zoom-fit", "fit"], ["view-zoom-2x", "2x"]]) {
+            const button = document.getElementById(id);
+            if (!button) continue;
+            button.disabled = !geometryReady;
+            button.setAttribute("aria-pressed", String(value === zoom));
+            if (!geometryReady) button.title = "Available with the reviewed geometry update.";
+        }
+        const snap = document.getElementById("logical-snap-enabled"), snapNote = document.getElementById("logical-snap-note");
+        if (snap) {
+            snap.disabled = !geometryReady;
+            snap.title = geometryReady
+                ? "Uncheck to disable grid and edge snapping for relative drags."
+                : "Available with the reviewed geometry update.";
+            if (snapNote) snapNote.textContent = geometryReady
+                ? "Mouse and pen: hold Alt to pause snapping. Touch uses this checkbox."
+                : "Edge snapping controls are available with the reviewed geometry update.";
+        }
+        const match = document.getElementById("btn-match-shape"), matchNote = document.getElementById("match-shape-note");
+        if (match) {
+            if (!geometryReady) {
+                match.disabled = true;
+                match.title = "Available with the reviewed geometry update.";
+                if (matchNote) matchNote.textContent = "Match screen shape is available with the reviewed geometry update.";
+            } else {
+                let status;
+                try { status = matchStatus(); }
+                catch (error) { status = { available: false, reason: "Match screen shape is unavailable until the wall loads." }; }
+                match.disabled = !status.available;
+                match.title = status.reason || "Match the selected relative slot to its current online viewport shape.";
+                if (matchNote) matchNote.textContent = status.available
+                    ? "Uses the selected tablet's current online viewport shape. It changes height and vertical centre only; the draft stays unapplied."
+                    : status.reason;
+            }
+        }
+        const help = document.getElementById("geometry-help-text");
+        if (help) {
+            let text = "Geometry help is available with the reviewed geometry update.";
+            if (geometryReady) {
+                try { text = geometryHelp(); }
+                catch (error) { text = "Geometry help is unavailable until the wall loads."; }
+            }
+            if (help.textContent !== text) help.textContent = text;
+        }
+    }
+
+    document.getElementById("btn-match-shape").addEventListener("click", () => {
+        if (!geometryReady) return;
+        matchScreenShape();
+        syncGeometryControls();
+    });
+    document.getElementById("view-zoom-fit").addEventListener("click", () => {
+        if (geometryReady) setViewZoom("fit");
+        syncGeometryControls();
+    });
+    document.getElementById("view-zoom-2x").addEventListener("click", () => {
+        if (geometryReady) setViewZoom("2x");
+        syncGeometryControls();
+    });
+    document.getElementById("logical-snap-enabled").addEventListener("change", event => {
+        if (!geometryReady) { event.target.checked = true; return; }
+        announce(event.target.checked ? "Relative drag snapping is on." : "Relative drag snapping is off.");
     });
 
     const logicalFields = new Map();
@@ -1324,6 +1393,7 @@
         syncStageSummary(view);
         if (workspace) workspace.render(view);
         drawStage(view);
+        syncGeometryControls();
     }
 
     function bindNumberInput(input, write, validate) {

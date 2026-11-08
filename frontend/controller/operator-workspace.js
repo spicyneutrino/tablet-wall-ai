@@ -6,7 +6,22 @@ window.OperatorWorkspace = {
         let pending = null, resolving = false, issueRequest = 0;
         const issues = new Map(), rosterRows = new Map(), stripRows = new Map();
         const stage = document.querySelector(".wall-stage"), arrangeTools = document.querySelector(".arrange-tools");
+        const chooserButton = $("image-chooser-summary"), chooserBody = $("image-chooser-body");
+        const chooserQuery = typeof window.matchMedia === "function" ? window.matchMedia("(min-width: 48.01rem)") : null;
         let stageTask = null, joiningHasTablets = null;
+        function setChooser(open, moveFocus) {
+            if (!chooserBody || !chooserButton) return;
+            chooserBody.hidden = !open;
+            chooserButton.setAttribute("aria-expanded", String(open));
+            if (moveFocus) (open ? $("image-search") : chooserButton).focus({ preventScroll: true });
+        }
+        if (chooserQuery && chooserButton && chooserBody) {
+            if (typeof chooserQuery.addEventListener === "function") chooserQuery.addEventListener("change", () => {
+                if (chooserQuery.matches) setChooser(true, false);
+            });
+            setChooser(chooserQuery.matches || !chooserBody.hidden, false);
+            chooserButton.addEventListener("click", () => setChooser(chooserBody.hidden, true));
+        }
         const anyOnline = () => !state.rosterError && Object.values(state.roster).some(device => device.online);
         const shortEvidence = evidence => String(evidence.text || "").split(" · ")[0] || "Needs review";
         const positionTag = id => {
@@ -155,7 +170,7 @@ window.OperatorWorkspace = {
             if ($("wall-context-tablet")) $("wall-context-tablet").hidden = !wallEmpty;
             const noTablets = !Object.keys(state.roster).length;
             if (joiningHasTablets !== !noTablets) { $("tablet-joining").open = noTablets; joiningHasTablets = !noTablets; }
-            $("image-details-disclosure").hidden = $("stage-technical").hidden = arrangeTools.hidden = noTablets;
+            $("image-details-disclosure").hidden = $("presentation-checks").hidden = $("stage-technical").hidden = arrangeTools.hidden = noTablets;
             if (stageTask !== state.tabName) {
                 const host = $("wall-context-" + state.tabName) || $("wall-context-park");
                 host.append(stage);

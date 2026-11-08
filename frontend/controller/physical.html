@@ -8,7 +8,7 @@
     <title>Tablet wall · tablet-wall-ai</title>
     <link rel="icon" href="favicon.svg" type="image/svg+xml">
     <link rel="stylesheet" href="operator-tokens.css?v=3">
-    <link rel="stylesheet" href="operator-workspace.css?v=29">
+    <link rel="stylesheet" href="operator-workspace.css?v=30">
     <link rel="stylesheet" href="operator-stage.css?v=6">
 </head>
 <body class="physical">
@@ -69,7 +69,11 @@
 
         <div class="rail-panels" id="rail-panels">
             <section class="rail-panel task-panel" id="panel-show" role="tabpanel" aria-labelledby="tab-show" tabindex="0" data-task="arrange"><h2 class="task-title sr-only" tabindex="-1" id="task-arrange">Arrange</h2>
-        <div id="operator-wall" class="arrange-workspace"><div class="arrange-result"><div id="wall-context-show"></div></div>
+        <div id="operator-wall" class="arrange-workspace"><div class="arrange-result"><div id="wall-context-show"></div>
+        <details class="geometry-help" id="geometry-help">
+            <summary>Wall controls and shortcuts</summary>
+            <p class="hint" id="geometry-help-text">Loading wall controls…</p>
+        </details></div>
 
         <aside class="arrange-tools"><section class="card task-section" aria-labelledby="grid-title"><h3 id="grid-title">Shape</h3>
             <div class="grid-sizing-choice"><label for="grid-kind">Screen sizing</label><select class="inp" id="grid-kind" data-field="grid-kind"><option value="logical">Relative</option><option value="physical">Measured</option></select></div>
@@ -220,15 +224,22 @@
                     <input class="inp" id="bounds-height" type="number" min="1" step="any" inputmode="decimal" autocomplete="off" data-field="bounds-height">
                 </div>
             </div>
+            <p class="hint" id="match-shape-measured-note">Match screen shape is relative-only. Measured slots keep pinned profile and calibration revisions; review measurements instead.</p>
         </section><section class="logical-editor task-section" id="logical-editor" hidden aria-labelledby="logical-title">
             <h3 id="logical-title">Relative arrangement</h3>
             <div id="logical-fields" class="operator-fields"></div>
             <label class="field" for="logical-snap">Snap spacing (relative units)<input class="inp" id="logical-snap" type="number" min="1" value="1" step="1" data-field="logical-snap"></label>
+            <label class="check-label"><input type="checkbox" id="logical-snap-enabled" checked disabled data-field="logical-snap-enabled"> Snap drags to grid and tablet edges</label>
+            <p class="hint" id="logical-snap-note">Mouse and pen: hold Alt to pause snapping. Touch uses this checkbox.</p>
             <label class="field" for="logical-width">Wall width (relative units)<input class="inp" id="logical-width" type="number" min="1" step="1" data-field="logical-width"></label>
             <label class="field" for="logical-height">Wall height (relative units)<input class="inp" id="logical-height" type="number" min="1" step="1" data-field="logical-height"></label>
             <label class="field" for="logical-mode">Bounds<select class="inp" id="logical-mode" data-field="logical-mode"><option value="tablets">Fit to tablets</option><option value="fixed">Fixed bounds</option></select></label>
             <label class="field" for="logical-padding">Outer padding (relative units)<input class="inp" id="logical-padding" type="number" min="0" step="1" value="0" data-field="logical-padding"></label>
-            <button type="button" class="btn" id="logical-rotate" data-action="logical-rotate">Rotate selected 90°</button>
+            <div class="operator-actions">
+                <button type="button" class="btn" id="logical-rotate" data-action="logical-rotate">Rotate selected 90°</button>
+                <button type="button" class="btn" id="btn-match-shape" data-action="btn-match-shape" disabled>Match screen shape</button>
+            </div>
+            <p class="hint" id="match-shape-note">Uses the selected tablet's current online viewport shape. Relative units only: it changes height and vertical centre, never measured millimetres or calibration.</p>
             <details class="logical-tiling task-section">
                 <summary>Tile or pack tablets</summary>
                 <div class="operator-fields">
@@ -411,36 +422,39 @@
   </section>
 
   <aside class="side-rail" id="exception-rail" aria-label="Library and exceptions">
-    <section class="image-library task-section" aria-labelledby="library-title">
-      <div class="library-head">
-          <div class="sec-head">
-              <h3 id="library-title">Library</h3>
-          </div>
-          <div class="library-toolbar">
-              <div class="field">
-                  <label class="sr-only" for="image-search">Search images</label>
-                  <input class="inp" type="search" id="image-search" placeholder="Search images" autocomplete="off" data-field="image-search">
-              </div>
-              <button type="button" class="btn" id="add-image" aria-label="Add image">Add</button>
-              <button class="btn" id="refresh-images" type="button" aria-label="Refresh images" data-action="refresh-images">Refresh images</button>
-          </div>
+    <div class="image-library image-chooser task-section" id="image-chooser">
+      <button type="button" class="image-chooser-summary" id="image-chooser-summary" aria-expanded="true" aria-controls="image-chooser-body">Choose an image</button>
+      <div class="image-chooser-body" id="image-chooser-body">
+        <div class="library-head">
+            <div class="sec-head">
+                <h3 id="library-title">Library</h3>
+            </div>
+            <div class="library-toolbar">
+                <div class="field">
+                    <label class="sr-only" for="image-search">Search images</label>
+                    <input class="inp" type="search" id="image-search" placeholder="Search images" autocomplete="off" data-field="image-search">
+                </div>
+                <button type="button" class="btn" id="add-image" aria-label="Add image">Add</button>
+                <button class="btn" id="refresh-images" type="button" aria-label="Refresh images" data-action="refresh-images">Refresh</button>
+            </div>
+        </div>
+        <ul id="image-gallery" class="image-gallery" aria-label="Image library"></ul>
+      <p id="image-search-empty" class="empty-note" role="status" hidden>No images match your search.</p>
+      <div class="image-utilities">
+          <details id="image-addition">
+              <summary>Upload a still image</summary>
+              <button class="btn" type="button" id="images-check-connection" data-action="images-check-connection">Check image-addition connection</button>
+              <p id="upload-instruction">Checking upload availability…</p>
+              <form id="upload-form" hidden data-form="upload-form">
+                  <label class="field" for="upload-file">Upload a still image<input class="inp" type="file" id="upload-file" accept="image/png,image/jpeg" data-field="upload-file" required></label>
+                    <button class="btn" id="upload-submit" data-action="upload-submit">Upload image</button>
+                    <progress id="upload-progress" max="100" value="0" aria-label="Image upload progress" hidden></progress>
+                </form>
+                <p id="upload-message" class="form-msg" role="status" aria-live="polite"></p>
+            </details>
+        </div>
       </div>
-      <ul id="image-gallery" class="image-gallery" aria-label="Image library"></ul>
-    <p id="image-search-empty" class="empty-note" role="status" hidden>No images match your search.</p>
-    <div class="image-utilities">
-        <details id="image-addition">
-            <summary>Upload a still image</summary>
-            <button class="btn" type="button" id="images-check-connection" data-action="images-check-connection">Check image-addition connection</button>
-            <p id="upload-instruction">Checking upload availability…</p>
-            <form id="upload-form" hidden data-form="upload-form">
-                <label class="field" for="upload-file">Upload a still image<input class="inp" type="file" id="upload-file" accept="image/png,image/jpeg" data-field="upload-file" required></label>
-                  <button class="btn" id="upload-submit" data-action="upload-submit">Upload image</button>
-                  <progress id="upload-progress" max="100" value="0" aria-label="Image upload progress" hidden></progress>
-              </form>
-              <p id="upload-message" class="form-msg" role="status" aria-live="polite"></p>
-          </details>
-      </div>
-    </section>
+    </div>
 
     <section class="exceptions" aria-labelledby="exceptions-title">
       <header class="section-head">
@@ -453,9 +467,23 @@
       <p class="empty-note" id="exception-empty" hidden>No positions yet. Arrange the connected tablets to begin.</p>
     </section>
 
+    <section class="presentation-checks task-section" id="presentation-checks" aria-labelledby="presentation-checks-title">
+      <header class="section-head">
+        <h2 id="presentation-checks-title">Presentation checks</h2>
+      </header>
+      <p class="hint" id="presentation-checks-note">Wall content only. Logical calibration needs relative bounds. Restore returns the prior content.</p>
+      <div class="operator-actions">
+        <button class="btn" type="button" id="show-colours" data-action="show-colours">Tablet colours</button>
+        <button class="btn" type="button" id="show-calibration" data-action="show-calibration">Logical calibration pattern</button>
+        <button class="btn" type="button" id="pattern-grid" data-action="pattern-grid">Wall-sized grid</button>
+        <button class="btn" type="button" id="pattern-black" data-action="pattern-black">Black wall</button>
+        <button class="btn btn-ghost" id="restore-image" type="button" hidden data-action="restore-image">Restore previous content</button>
+      </div>
+      <p id="pattern-message" class="form-msg" role="status" aria-live="polite"></p>
+    </section>
+
     <details class="technical-details image-details-rail" id="image-details-disclosure">
         <summary>Image details</summary>
-        <button class="btn btn-ghost" id="restore-image" type="button" hidden data-action="restore-image">Restore previous content</button>
         <p class="hint" id="image-source-details"></p>
         <img id="image-thumbnail" loading="lazy" decoding="async" alt="Uncropped source image" hidden>
     </details>
@@ -865,15 +893,7 @@
             </details>
         </section>
 </div>
-        </section><details><summary>Check patterns</summary><p class="hint">Patterns use the current wall size. A generated grid or black wall is an ordinary image. Keep your prior content with Restore previous content.</p>
-                <div class="operator-actions">
-                    <button class="btn" type="button" id="show-colours" data-action="show-colours">Tablet colours</button>
-                    <button class="btn" type="button" id="show-calibration" data-action="show-calibration">Logical calibration pattern</button>
-                    <button class="btn" type="button" id="pattern-grid" data-action="pattern-grid">Wall-sized grid</button>
-                    <button class="btn" type="button" id="pattern-black" data-action="pattern-black">Black wall</button>
-                </div>
-                <p id="pattern-message" class="form-msg" role="status" aria-live="polite"></p>
-            </details>
+        </section>
             <section class="diagnostic-colours task-section" aria-labelledby="diagnostic-colours-title">
                 <h3 id="diagnostic-colours-title">Tablet test colours</h3>
                 <p id="diagnostic-colour-subject">Select a tablet in Tablets.</p>
@@ -941,6 +961,10 @@
             <div class="operator-actions stage-tools">
                 <span class="stage-chip" id="stage-applied-chip" hidden></span>
                 <span class="stage-chip stage-chip-draft" id="stage-draft-chip" hidden></span>
+                <div class="stage-view-zoom" id="stage-view-zoom" role="group" aria-label="Wall view zoom">
+                    <button type="button" class="btn" id="view-zoom-fit" aria-pressed="true" disabled title="Fit the wall to the stage view">Fit</button>
+                    <button type="button" class="btn" id="view-zoom-2x" aria-pressed="false" disabled title="View the wall at 2x with scrolling">2x</button>
+                </div>
                 <div class="stage-view-actions" role="group" aria-label="Wall comparison">
                     <button type="button" class="btn btn-ghost" id="view-toggle" hidden data-action="view-toggle">View applied</button>
                 </div>
@@ -1007,20 +1031,20 @@
 <script src="operator-dom.js?v=1"></script>
 <script src="operator-state.js?v=3"></script>
 <script src="operator-forms.js?v=2"></script>
-<script src="operator-stage.js?v=14"></script>
+<script src="operator-stage.js?v=15"></script>
 <script src="operator-content.js?v=9"></script>
-<script src="operator-grid.js?v=8"></script>
+<script src="operator-grid.js?v=9"></script>
 <script src="operator-devices.js?v=6"></script>
 <script src="operator-readiness.js?v=4"></script>
 <script src="operator-sync.js?v=2"></script>
 <script src="operator-session.js?v=2"></script>
-<script src="operator-workspace.js?v=12"></script>
+<script src="operator-workspace.js?v=13"></script>
 <script src="physical-playback.js?v=2"></script>
-<script src="physical-sizing.js?v=1"></script>
-<script src="physical-stage.js?v=12"></script>
+<script src="physical-sizing.js?v=2"></script>
+<script src="physical-stage.js?v=13"></script>
 <script src="physical-calibration.js?v=1"></script>
 <script src="operator-measurements.js?v=1"></script>
-<script src="physical.js?v=35"></script>
+<script src="physical.js?v=36"></script>
 <dialog class="draft-resolution" id="draft-resolution" aria-labelledby="draft-resolution-title">
     <h2 id="draft-resolution-title">Resolve your preview</h2>
     <p id="draft-resolution-text"></p>
