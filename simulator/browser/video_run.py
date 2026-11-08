@@ -6,7 +6,9 @@ This is software evidence on one host clock. It does not claim optical
 synchronization, physical decode, suspend, or ingress delivery. The report
 records every check and the exact argv used to build the fixture. A page
 error, an unexpected console warning/error, a failed request or an HTTP
-status at or above 400 fails the run. This runner deliberately injects no
+status at or above 400 fails the run. An aborted static-image fetch is classified
+only when the playback-stop supersession has a successful replacement and an
+exact-token displayed acknowledgement. This runner deliberately injects no
 hung play or lost callback, so it classifies no injected warning.
 """
 
@@ -251,6 +253,49 @@ async def check_advancing(
     return last or {"ok": False}
 
 
+def superseded_static_fetch(observation: Observation, event: dict[str, Any]) -> bool:
+    if event.get("kind") != "request_failed" or event.get("error") != "net::ERR_ABORTED":
+        return False
+    events = observation.events
+    index = events.index(event)
+    before = events[:index]
+    stops = [i for i, item in enumerate(before)
+             if item.get("kind") == "ws_received"
+             and item.get("frame", {}).get("type") == "playback"
+             and item["frame"].get("state") == "stopped"]
+    if not stops:
+        return False
+    segment = before[stops[-1] + 1:]
+    renders = [item for item in segment if item.get("kind") == "ws_received"
+               and item.get("frame", {}).get("type") == "render"]
+    if not renders:
+        return False
+    render = renders[-1]
+    frame = render["frame"]
+    content = frame.get("scene", {}).get("content", {})
+    url = event.get("url", "")
+    if content.get("type") != "image" or not url.endswith("/assets/" + content.get("asset", "")):
+        return False
+    starts = [item for item in segment if item.get("kind") == "request_started"
+              and item.get("url") == url and item.get("resource_type") == "fetch"]
+    if not (any(item["time"] < render["time"] for item in starts)
+            and any(item["time"] > render["time"] for item in starts)):
+        return False
+    received = False
+    for item in events[index + 1:]:
+        kind = item.get("kind")
+        message = item.get("frame", {})
+        if kind == "ws_received" and message.get("type") in ("render", "playback"):
+            return False
+        if kind == "http" and item.get("url") == url and item.get("status") == 200:
+            received = True
+        if (received and kind == "ws_sent" and message.get("type") == "render_ack"
+                and message.get("status") == "displayed"
+                and message.get("token") == frame.get("token") and frame.get("token")):
+            return True
+    return False
+
+
 def unexpected_browser_issues(
     observation: Observation, allowed: tuple[dict[str, Any], ...] = INJECTED_WARNINGS
 ) -> list[dict[str, Any]]:
@@ -263,6 +308,8 @@ def unexpected_browser_issues(
         elif kind == "console" and event["level"] in ("error", "warning"):
             record = {"kind": "console_" + event["level"], "text": event["text"]}
         elif kind == "request_failed":
+            if superseded_static_fetch(observation, event):
+                continue
             record = {"kind": "request_failed", "url": event["url"], "error": event["error"]}
         elif kind == "http" and event["status"] >= 400:
             record = {"kind": "http_error", "url": event["url"], "status": event["status"]}
@@ -292,6 +339,8 @@ def audit_browser_issues(check, observations: list[Observation]) -> None:
             observation.spec.name + ": no unexpected page errors, console errors, "
             "failed requests or HTTP errors",
             not issues, issues=issues,
+            superseded_static_fetches=[event for event in observation.events
+                                      if superseded_static_fetch(observation, event)],
         )
 
 
