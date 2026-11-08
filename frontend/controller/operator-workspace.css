@@ -407,7 +407,8 @@ dialog.tablet-selection::backdrop { background: var(--backdrop); }
     .tablet-selection { border-inline-start: 0; padding-inline-start: 0; padding-block-start: .75rem; }
     .task-panel[data-task="images"] { gap: .5rem; }
     .image-actions { flex: 1 1 100%; flex-wrap: wrap; margin-inline-start: 0; }
-    .image-actions > .field { flex: 0 1 9rem; }
+    .draft-identity { min-inline-size: 0; }
+    .image-actions > .field { flex: 0 1 6rem; min-inline-size: 0; }
     .image-primary-actions { margin-inline-start: 0; }
     .operator-fields, .form-grid, .slot-fields, .bounds-grid, .pack-row { grid-template-columns: minmax(0, 1fr); }
     .task-footer { padding: 0; }
