@@ -1803,6 +1803,7 @@ async def exercise(artifacts: Path, report: dict[str, Any], observation_seconds:
             captured_pages.append((editor_page, editor_obs))
             await editor_page.goto(base + "/controller/physical.html")
             await editor_page.wait_for_selector("#stage-svg [data-device-id]", timeout=10000)
+            await editor_page.click("#tab-show")
             await editor_page.locator("#stage-svg [data-device-id]").first.click()
             await editor_page.click("#btn-rotate")
             angle_after_rotate = await editor_page.locator("#slot-angle").input_value()

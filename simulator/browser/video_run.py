@@ -465,6 +465,7 @@ async def main(artifacts: Path) -> int:
         await wait_for_predicate(editor,
             "!document.querySelector('#btn-playback-start').disabled", timeout=10000
         )
+        editor.once("dialog", lambda dialog: dialog.accept())
         await editor.click("#btn-playback-start")
         await wait_for_predicate(editor,
             "document.querySelector('#playback-status').dataset.state === 'playing'",

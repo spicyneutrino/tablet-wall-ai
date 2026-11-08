@@ -369,7 +369,8 @@ def visual_states(rig):
     for width, height in ((1440, 900), (390, 844)):
         p.set_viewport_size({"width": width, "height": height})
         rig.check(
-            "Reading" in p.locator("#image-message").inner_text()
+            "Refreshing the image library. Showing the last known library state."
+            in p.locator("#image-message").inner_text()
             and p.locator("#show-image").is_disabled(),
             f"Canonical image loading state disables unsafe Show at {width}",
         )
