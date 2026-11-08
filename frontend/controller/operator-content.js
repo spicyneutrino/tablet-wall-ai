@@ -5,7 +5,7 @@ window.OperatorContent = {
         let images = [], selected = null, fit = "cover", background = "#0b1120", selectionDirty = false, loading = false, busy = false, inventoryReady = false;
         let previous = null, xhr = null, inventoryVersion = 0, selectionVersion = 0, baseEtag = null, savedScene = null, uploadUncertain = false;
         const gallery = new Map();
-        let retainMessage = false, noteSequence = 0;
+        let retainMessage = false, noteSequence = 0, uploadedSelectionId = null;
         const shownRevisions = new Map();
         const message = (text, retain = false, kind = "info", target = "image-message") => { shownRevisions.delete(target); if (target === "image-message") retainMessage = retain; $(target).dataset.kind = kind; $(target).textContent = text; };
         function renderShownStatus() {
@@ -241,6 +241,11 @@ window.OperatorContent = {
             return image ? image.name : savedScene ? savedScene.name || "Saved content" : selected ? "Unavailable image" : "Saved content";
         }
         function render() {
+            if (uploadedSelectionId && (!selectionDirty || selected !== uploadedSelectionId
+                    || !state.previewContent || state.previewContent.asset !== uploadedSelectionId)) {
+                uploadedSelectionId = null;
+                $("upload-message").textContent = "Image added to the library. Nothing was shown automatically.";
+            }
             const content = state.scene && state.scene.content || {};
             const active = images.find(item => item.id === content.asset);
             state.activeImageUnavailableId = inventoryReady && content.type === "image" && !active ? content.asset : null;
@@ -347,6 +352,7 @@ window.OperatorContent = {
             const file = $("upload-file").files[0];
             if (!file || xhr || uploadUncertain || (state.capabilities || {}).uploads !== true) return;
             const selectionAtUpload = selectionVersion;
+            uploadedSelectionId = null;
             const request = xhr = new XMLHttpRequest();
             $("upload-progress").hidden = false; $("upload-progress").value = 0;
             $("upload-message").dataset.kind = "info"; $("upload-message").textContent = "Uploading " + file.name + "…"; render();
@@ -368,6 +374,7 @@ window.OperatorContent = {
                 } else if (success) {
                     inventoryVersion += 1;
                     const selectedUpload = selectionVersion === selectionAtUpload && await choose(id);
+                    uploadedSelectionId = selectedUpload ? id : null;
                     $("upload-message").textContent = selectedUpload ? "Image added and selected. Review Fit / Fill, then Show image. Nothing was shown automatically."
                         : "Image added to the library. Nothing was shown automatically.";
                     await refresh();

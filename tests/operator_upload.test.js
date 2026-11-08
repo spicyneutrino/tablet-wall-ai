@@ -89,6 +89,9 @@ function fixture() {
         await finished;
         assert.equal(f.state.previewContent.asset, "sha256:new");
         assert.equal(f.state.scene.content.type, "color", "upload selection never shows the wall");
+        f.content.previewScene({ name: "After settled upload", content: { type: "image", asset: "sha256:later" } }, "e");
+        assert.match(f.node("upload-message").textContent, /Image added to the library/);
+        assert.doesNotMatch(f.node("upload-message").textContent, /added and selected/);
     }
     {
         const f = fixture();

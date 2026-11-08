@@ -8,7 +8,7 @@ window.OperatorWorkspace = {
         const stage = document.querySelector(".wall-stage"), arrangeTools = document.querySelector(".arrange-tools");
         const chooserButton = $("image-chooser-summary"), chooserBody = $("image-chooser-body");
         const chooserQuery = typeof window.matchMedia === "function" ? window.matchMedia("(min-width: 48.01rem)") : null;
-        let stageTask = null, joiningHasTablets = null;
+        let stageTask = null, joiningHasTablets = null, chooserHadFocus = false;
         function setChooser(open, moveFocus) {
             if (!chooserBody || !chooserButton) return;
             chooserBody.hidden = !open;
@@ -17,9 +17,14 @@ window.OperatorWorkspace = {
         }
         if (chooserQuery && chooserButton && chooserBody) {
             if (typeof chooserQuery.addEventListener === "function") chooserQuery.addEventListener("change", () => {
-                if (chooserQuery.matches) setChooser(true, false);
+                if (chooserQuery.matches) {
+                    setChooser(true, chooserHadFocus || document.activeElement === chooserButton);
+                    chooserHadFocus = false;
+                }
             });
             setChooser(chooserQuery.matches || !chooserBody.hidden, false);
+            chooserButton.addEventListener("focus", () => { chooserHadFocus = true; });
+            chooserButton.addEventListener("blur", () => { if (!chooserQuery.matches) chooserHadFocus = false; });
             chooserButton.addEventListener("click", () => setChooser(chooserBody.hidden, true));
         }
         const anyOnline = () => !state.rosterError && Object.values(state.roster).some(device => device.online);
