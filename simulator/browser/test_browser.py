@@ -287,3 +287,24 @@ def test_clock_adapter_step_changes_the_epoch_only_past_the_suspend_threshold(tm
     )
     assert result.returncode == 0, result.stderr
     assert json.loads(result.stdout) == [False, False, True, True, True]
+
+
+def test_csp_safe_predicate_polling_is_bounded_and_preserves_arguments():
+    class Page:
+        def __init__(self):
+            self.calls = []
+
+        async def evaluate(self, expression, arg):
+            self.calls.append((expression, arg))
+            return len(self.calls) == 2
+
+    page = Page()
+    assert asyncio.run(run.wait_for_predicate(page, "value => value.ready", arg={"ready": True}, timeout=1000))
+    assert page.calls == [("value => value.ready", {"ready": True})] * 2
+
+    class NeverReady:
+        async def evaluate(self, expression, arg):
+            return False
+
+    with pytest.raises(TimeoutError, match="did not settle"):
+        asyncio.run(run.wait_for_predicate(NeverReady(), "false", timeout=1))
