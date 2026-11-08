@@ -2650,11 +2650,23 @@ def historical_forms(rig: Rig) -> None:
     open_measurement_details(rig)
     page.wait_for_timeout(150)
     rig.check(
-        "Selection changes retain each tablet's own dirty values",
+        "Selection changes retain each tablet's own dirty profile, calibration and model values",
         page.input_value("#profile-label") == "Lobby left checked"
-        and page.input_value("#profile-active-width") == "123.4",
-        {"label": page.input_value("#profile-label"), "active_width": page.input_value("#profile-active-width")},
-        {"label": "Lobby left checked", "active_width": "123.4"},
+        and page.input_value("#profile-active-width") == "123.4"
+        and page.input_value("#cal-method") == "ruler across the active edge"
+        and page.input_value("#tablet-model") == "manual",
+        {
+            "label": page.input_value("#profile-label"),
+            "active_width": page.input_value("#profile-active-width"),
+            "cal_method": page.input_value("#cal-method"),
+            "model": page.input_value("#tablet-model"),
+        },
+        {
+            "label": "Lobby left checked",
+            "active_width": "123.4",
+            "cal_method": "ruler across the active edge",
+            "model": "manual",
+        },
     )
 
     writes_before = len([row for row in rig.requests if row["method"] == "PUT"])
@@ -2742,6 +2754,29 @@ def historical_membership(rig: Rig) -> None:
         },
         {"included": True, "size_source": "viewport", "membership": "automatic", "width": "160"},
     )
+    rig.open_disclosures(row.locator('input[data-field="w"]'))
+    row.locator('input[data-field="w"]').fill("123")
+    row.locator('input[data-field="h"]').fill("77")
+    page.click("#refresh-status")
+    wait_until(
+        page,
+        "(id) => { const row = document.querySelector('#grid-order [data-device-id=\"' + id + '\"]'); "
+        "return row && row.dataset.sizeSource === 'operator'; }",
+        arg=first_id,
+        timeout=15,
+    )
+    rig.check(
+        "An explicit size choice is recorded as an operator choice",
+        row.get_attribute("data-size-source") == "operator"
+        and row.locator('input[data-field="w"]').input_value() == "123"
+        and row.locator('input[data-field="h"]').input_value() == "77",
+        {
+            "size_source": row.get_attribute("data-size-source"),
+            "width": row.locator('input[data-field="w"]').input_value(),
+            "height": row.locator('input[data-field="h"]').input_value(),
+        },
+        {"size_source": "operator", "width": "123", "height": "77"},
+    )
     row.locator('input[type="checkbox"]').uncheck()
     page.wait_for_timeout(80)
     rig.check(
@@ -2765,6 +2800,18 @@ def historical_membership(rig: Rig) -> None:
             "membership": row.get_attribute("data-membership-source"),
         },
         {"included": False, "membership": "operator"},
+    )
+    rig.check(
+        "A reconnect retains the explicit size choice",
+        row.get_attribute("data-size-source") == "operator"
+        and row.locator('input[data-field="w"]').input_value() == "123"
+        and row.locator('input[data-field="h"]').input_value() == "77",
+        {
+            "size_source": row.get_attribute("data-size-source"),
+            "width": row.locator('input[data-field="w"]').input_value(),
+            "height": row.locator('input[data-field="h"]').input_value(),
+        },
+        {"size_source": "operator", "width": "123", "height": "77"},
     )
 
     second_page, second_id = rig.new_client(CLIENT_SPECS[1], 1)
@@ -2873,21 +2920,24 @@ def historical_uncertainty(rig: Rig) -> None:
     rig.open_disclosures(page.locator("#grid-rows"))
     page.fill("#grid-rows", "1")
     page.fill("#grid-columns", "1")
+    page.fill("#grid-gap", "5")
     page.dispatch_event("#grid-columns", "change")
     page.click("#grid-preview")
     wait_until(page, "() => document.getElementById('grid-message').textContent.length > 0")
     rig.check(
-        "A refused grid retains the typed rows and columns and explains the refusal",
+        "A refused grid retains the typed rows, columns and gap and explains the refusal",
         "exactly 1" in page.locator("#grid-message").inner_text().lower()
         and "empty trailing cells" in page.locator("#grid-message").inner_text().lower()
         and page.input_value("#grid-rows") == "1"
-        and page.input_value("#grid-columns") == "1",
+        and page.input_value("#grid-columns") == "1"
+        and page.input_value("#grid-gap") == "5",
         {
             "message": page.locator("#grid-message").inner_text(),
             "rows": page.input_value("#grid-rows"),
             "columns": page.input_value("#grid-columns"),
+            "gap": page.input_value("#grid-gap"),
         },
-        {"message": "capacity or empty cells", "rows": "1", "columns": "1"},
+        {"message": "capacity or empty cells", "rows": "1", "columns": "1", "gap": "5"},
     )
     page.fill("#grid-columns", "2")
     page.dispatch_event("#grid-columns", "change")
@@ -2898,6 +2948,23 @@ def historical_uncertainty(rig: Rig) -> None:
         page.input_value("#grid-rows") == "1" and page.input_value("#grid-columns") == "2",
         {"rows": page.input_value("#grid-rows"), "columns": page.input_value("#grid-columns")},
         {"rows": "1", "columns": "2"},
+    )
+    page.click("#refresh-status")
+    wait_until(
+        page,
+        "() => document.getElementById('refresh-status').disabled === false",
+    )
+    rig.check(
+        "A runtime render does not silently rewrite typed custom grid fields or a preset",
+        page.input_value("#grid-rows") == "1"
+        and page.input_value("#grid-columns") == "2"
+        and page.get_attribute("#grid-2x2", "aria-pressed") == "false",
+        {
+            "rows": page.input_value("#grid-rows"),
+            "columns": page.input_value("#grid-columns"),
+            "preset": page.get_attribute("#grid-2x2", "aria-pressed"),
+        },
+        {"rows": "1", "columns": "2", "preset": "false"},
     )
     page.click("#btn-cancel")
     wait_until(page, "() => document.body.dataset.outputDirty === 'false'")
@@ -2933,6 +3000,31 @@ def historical_uncertainty(rig: Rig) -> None:
             "revision": [before_scene["revision"], committed["revision"]],
         },
         {"banner": "may have completed", "asset": asset_id, "revision": "increased"},
+    )
+    def scene_put_count() -> int:
+        return len(
+            [
+                row
+                for row in rig.requests
+                if row["method"] == "PUT" and row["url"].endswith("/api/v3/scene")
+            ]
+        )
+
+    scene_writes = scene_put_count()
+    page.click("#show-image")
+    wait_until(
+        page,
+        "() => /may have completed/i.test(document.getElementById('image-message').textContent)",
+    )
+    rig.check(
+        "A blind retry is refused before transport while the durable result is uncertain",
+        scene_put_count() == scene_writes
+        and "may have completed" in page.locator("#image-message").inner_text().lower(),
+        {
+            "message": page.locator("#image-message").inner_text(),
+            "scene_writes": scene_writes,
+        },
+        {"message": "may have completed", "scene_writes": scene_writes},
     )
     page.click("#refresh-command-status")
     wait_until(page, "() => document.getElementById('command-uncertainty').hidden")

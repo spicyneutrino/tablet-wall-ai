@@ -160,10 +160,10 @@ def native_keyboard(rig):
     p.keyboard.press("Enter")
     expect(p.locator("body")).to_have_attribute("data-stage-mode", "arrangement-preview")
     native_tab_task(p, "Tablets")
-    trigger_id = p.locator("[role=tab][aria-selected=true]").get_attribute("id")
     native_tab_task(p, "Images")
     dialog = p.locator("#draft-resolution")
     expect(dialog).to_be_visible()
+    trigger_id = p.locator("[role=tab][aria-selected=true]").get_attribute("id")
     contains = []
     for key in ["Tab"] * 7 + ["Shift+Tab"] * 7:
         p.keyboard.press(key)
@@ -639,13 +639,13 @@ def responsive(rig):
     tab.focus()
     tab.press("ArrowRight")
     rig.check(
-        task_tab(p, "Saved").get_attribute("aria-selected")
+        task_tab(p, "Tablets").get_attribute("aria-selected")
         == "true",
         "Task tabs support ArrowRight roving navigation",
         focus(p),
         fatal=False,
     )
-    task_tab(p, "Saved").press("Home")
+    task_tab(p, "Tablets").press("Home")
     rig.check(
         task_tab(p, "Images").get_attribute("aria-selected")
         == "true",

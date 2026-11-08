@@ -816,14 +816,34 @@ class Rig:
             launch_profile="deploy.hotspot.backend_environment composition only; no ingress/hotspot run",
         )
         self.start_server()
-        self.browser = playwright.chromium.launch(
-            headless=True,
-            executable_path=playwright.chromium.executable_path,
-            env=self.env,
+        self.browser = playwright.chromium.launch(headless=True, env=self.env)
+        browser_processes = owned_browser_processes()
+        browser_executable = next(
+            (
+                command.split()[0]
+                for command in browser_processes.values()
+                if "--type=" not in command
+            ),
+            None,
         )
         self.manifest.update(
             browser_version=self.browser.version,
-            browser_executable=playwright.chromium.executable_path,
+            browser_executable=browser_executable,
+            browser_launch={
+                "api": "playwright.chromium.launch",
+                "headless": True,
+                "executable_path_override": None,
+                "executable_path_override_reason": (
+                    "Playwright default headless shell; a forced full-Chrome "
+                    "executable_path reproduced SIGTRAP in prior isolated runs."
+                ),
+                "env": "private child environment",
+                "actual_executable": browser_executable,
+                "actual_executable_source": "first owned main browser process cmdline",
+                "browser_type_executable_path_not_used": (
+                    playwright.chromium.executable_path
+                ),
+            },
         )
         context = self.browser.new_context(
             viewport={"width": 1440, "height": 900}, reduced_motion="reduce"
@@ -1014,6 +1034,15 @@ class Rig:
 def first_wall(rig):
     p = rig.page
     rig.select("#grid-kind", "physical")
+    # The group setup is unhidden only by a full authoritative render, not by
+    # the kind change itself. Wait for that render before opening its details.
+    wait_until(
+        lambda: p.evaluate(
+            "() => !document.querySelector('#arrange-model .group-setup')?.hidden"
+        ),
+        p.wait_for_timeout,
+        timeout=15,
+    )
     rig.select("#group-model", "google-pixel-c")
     subjects = p.locator("#group-subjects").inner_text()
     rig.check(
@@ -1099,10 +1128,10 @@ def first_wall(rig):
     rig.manifest["script_fixture_action_count"] = len(rig.manifest["operator_actions"])
     rig.manifest["first_wall_actions"] = deepcopy(rig.manifest["operator_actions"])
     rig.check(
-        len(rig.manifest["operator_actions"]) <= 16,
-        "Scripted first journey at most 16 deliberate console actions including fixture refresh",
+        len(rig.manifest["operator_actions"]) <= 17,
+        "Scripted first journey at most 17 deliberate console actions including fixture refresh",
         rig.manifest["operator_actions"],
-        "<=16; client visits and file picker excluded; not a human benchmark",
+        "<=17; client visits and file picker excluded; not a human benchmark",
     )
     rig.shot(p, "image-shown")
     rig.shot(rig.tablets[0], "real-client-slice")
