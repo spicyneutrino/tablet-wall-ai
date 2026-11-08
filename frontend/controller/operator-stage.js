@@ -1,6 +1,44 @@
 "use strict";
 (function (root) {
     const model = typeof module !== "undefined" && module.exports ? require("./operator-state.js") : root.OperatorState;
+    const WAKE_STATES = {
+        held: { label: "held", warning: false, guidance: "The browser reports the screen wake lock held. This is not proof the operating system will keep the screen on; check Auto-Lock, charging and kiosk settings." },
+        released: { label: "released", warning: true, guidance: "The browser reports the screen wake lock released. Bring the tablet page to the foreground and check Auto-Lock, charging and kiosk settings. The operator cannot wake the tablet remotely." },
+        denied: { label: "denied", warning: true, guidance: "The browser denied the screen wake lock. Allow it in the browser and check the trusted origin, Auto-Lock, charging and kiosk settings. The operator cannot wake the tablet remotely." },
+        insecure: { label: "insecure origin", warning: true, guidance: "This page is not a trusted secure origin, so the screen wake lock is unavailable. Open the wall over its configured trusted HTTPS origin, then check Auto-Lock, charging and kiosk settings. The operator cannot wake the tablet remotely." },
+        unsupported: { label: "unsupported", warning: false, guidance: "This browser does not report a screen wake lock. Keep the tablet charging and check Auto-Lock and kiosk settings. The operator cannot wake the tablet remotely." },
+        unknown: { label: "unknown", warning: false, guidance: "The tablet has not reported a screen wake-lock state. Check the current tablet page, Auto-Lock, charging and kiosk settings. The operator cannot wake the tablet remotely." }
+    };
+    const EXCEPTION_LABELS = { loading: "Loading", blocked: "Blocked", unknown: "Unconfirmed", stale: "Stale paint",
+        hidden: "Hidden", offline: "Offline", excluded: "Excluded", identifying: "Identify", playback: "Playback",
+        unplaced: "Unplaced", unsupported: "Unsupported" };
+    const MAPPING_STATUSES = new Set(["invalid", "stale_calibration", "needs_calibration", "needs_profile",
+        "viewport_mismatch", "zoom_changed", "missing_profile", "missing_calibration", "invalid_mapping",
+        "unsupported_client", "unsupported_content"]);
+    function exceptionLabel(status, text) {
+        if (!status || status === "displayed" || status === "preview") return "";
+        if (status === "failed") return String(text || "").split(" · ")[0] || "Failed";
+        if (EXCEPTION_LABELS[status]) return EXCEPTION_LABELS[status];
+        return MAPPING_STATUSES.has(status) ? "Blocked" : "Needs review";
+    }
+    function powerReadiness(device, options = {}) {
+        const state = device && typeof device.wake_lock === "string" && Object.prototype.hasOwnProperty.call(WAKE_STATES, device.wake_lock)
+            ? device.wake_lock : "unknown";
+        const entry = WAKE_STATES[state];
+        const stale = options.stale === true;
+        const checked = options.checkedAt ? Date.parse(options.checkedAt) : NaN;
+        const stamp = stale && Number.isFinite(checked)
+            ? " Last checked " + new Date(checked).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }) + "." : "";
+        const label = stale ? "Last known power " + entry.label + " · status stale" : "Power: " + entry.label;
+        return { state, stale, warning: entry.warning, label,
+            short: stale ? "Last known power " + entry.label : "Power " + entry.label,
+            fact: entry.guidance,
+            guidance: (stale ? "Status is stale; this is the last known report." + stamp + " " : "") + entry.guidance,
+            checkedAt: options.checkedAt || null };
+    }
+    const powerHelp = "Screen wake locks are browser reports, not proof the operating system will keep the screen on. "
+        + "Check Auto-Lock, charging and kiosk settings; an insecure origin cannot take a wake lock, so open the wall over its trusted HTTPS origin. "
+        + "The operator cannot wake a sleeping tablet remotely.";
     function panels(layout, profileFor) {
         return Object.entries(model.entries(layout)).map(([id, slot]) => {
             if (layout.kind !== "physical") {
@@ -55,15 +93,15 @@
     }
     function helpText(editable, kind) {
         if (!editable) {
-            return "Wall preview. Select a tablet to inspect its identity and status. Numeric position and size fields are available in Arrange when a draft is editable.";
+            return "Wall preview. Select a tablet to inspect its identity and status. Numeric position and size fields are available in Arrange when a draft is editable. " + powerHelp;
         }
         if (kind === "physical") {
             return "Wall. Select a tablet and drag it, or use the arrow keys to nudge it by 1 millimetre, or Shift with an arrow for 10 millimetres. "
-                + "Escape cancels a drag. Measured positions use decimal millimetres and pinned measurements; numeric centre, nudge, angle and measurement fields are in Arrange.";
+                + "Escape cancels a drag. Measured positions use decimal millimetres and pinned measurements; numeric centre, nudge, angle and measurement fields are in Arrange. " + powerHelp;
         }
         return "Wall. Select a tablet and drag it, or use the arrow keys to move it by 1 wall unit, or Shift with an arrow for 10 units. "
             + "Escape cancels a drag. Alt pauses snapping while dragging with a mouse or pen; on touch use the snap checkbox. "
-            + "Numeric position, size and bezel fields are available in Arrange. Fit and 2x change the view only.";
+            + "Numeric position, size and bezel fields are available in Arrange. Fit and 2x change the view only. " + powerHelp;
     }
     function fitLabels(svg) {
         svg.querySelectorAll(".operator-slot-label").forEach(label => {
@@ -93,6 +131,24 @@
                 bg.setAttribute("height", (size + 5) / scale);
                 bg.setAttribute("rx", 2 / scale);
             }
+        });
+        svg.querySelectorAll(".operator-slot-status").forEach(label => {
+            if (!label.classList || !label.classList.contains("operator-slot-status")) return;
+            const matrix = label.getScreenCTM();
+            if (!matrix) return;
+            const scale = Math.hypot(matrix.a, matrix.b);
+            if (!scale) return;
+            const width = Number(label.dataset.width) * scale, height = Number(label.dataset.height) * scale;
+            const text = label.dataset.label || "";
+            const size = Math.min(10, height - 10, (width - 12) / (Math.max(1, text.length) * 0.6));
+            const room = Math.max(1, Math.floor((width - 12) / (Math.max(1, size) * 0.6)));
+            const fits = size >= 9 && text.length <= room;
+            label.style.display = fits ? "" : "none";
+            if (!fits) return;
+            label.setAttribute("font-size", size / scale);
+            label.setAttribute("stroke-width", 2 / scale);
+            label.setAttribute("x", Number(label.dataset.x) + 6 / scale);
+            label.setAttribute("y", Number(label.dataset.y) + height / scale - 6 / scale);
         });
     }
     const fits = new WeakMap();
@@ -164,7 +220,7 @@
         fitLabels(svg);
         return { width: fitWidth, height, availableWidth, availableHeight, zoom: size.zoom };
     }
-    function draw({ svg, layout, content, profileFor, labelFor, statusFor, selectedId, runtime, resolutionNode, preview = false, editable = true, presentation = "context", viewport = null, compareIds = null }) {
+    function draw({ svg, layout, content, profileFor, labelFor, statusFor, powerFor = null, selectedId, runtime, resolutionNode, preview = false, editable = true, presentation = "context", viewport = null, compareIds = null }) {
         const ns = "http://www.w3.org/2000/svg";
         const node = (tag, attrs, text) => {
             const item = document.createElementNS(ns, tag);
@@ -214,9 +270,12 @@
         const estimates = [], upscaleFactors = [];
         list.sort((a, z) => compareIds ? compareIds(a.id, z.id) : Number(a.id === selectedId) - Number(z.id === selectedId)).forEach(panel => {
             const status = preview ? { status: "preview", text: "Local preview · not tablet output" } : statusFor(panel.id);
+            const power = powerFor ? powerFor(panel.id) : null;
             const group = node("g", { class: "slot operator-slot", role: "button", tabindex: 0,
                 "data-device-id": panel.id, "data-status": status.status, "data-preview": String(preview), "aria-pressed": String(panel.id === selectedId),
-                "aria-label": labelFor(panel.id) + ", " + status.text + (panel.missing ? ", pinned profile missing" : "") });
+                "data-power-state": power ? power.state : "unknown", "data-power-warning": String(!!power && power.warning),
+                "data-power-stale": String(!!power && power.stale),
+                "aria-label": labelFor(panel.id) + ", " + status.text + (power ? ", " + power.label : "") + (panel.missing ? ", pinned profile missing" : "") });
             const outline = node("g", { transform: rotation(panel) });
             if (!panel.missing) {
                 outline.append(rect(panel.body, { class: "operator-body-outline", fill: "transparent", "stroke-width": (panel.id === selectedId ? 3 : 1.5) / scale }));
@@ -241,7 +300,34 @@
                         "aria-hidden": "true" }, label));
                 }
             }
+            const exception = exceptionLabel(status.status, status.text);
+            if (!panel.missing && exception) {
+                const size = 7 / scale, right = panel.body.x + panel.body.width, top = panel.body.y;
+                outline.append(node("path", { class: "operator-slot-exception", "data-status": status.status,
+                    d: "M " + (right - size) + " " + top + " L " + right + " " + top + " L " + right + " " + (top + size) + " Z",
+                    fill: status.status === "failed" ? "var(--error-bg)" : "var(--attention-bg)",
+                    stroke: status.status === "failed" ? "var(--error)" : "var(--attention)",
+                    "stroke-width": 1 / scale, "aria-hidden": "true" }));
+            }
+            if (!panel.missing && power && (power.warning || power.stale || power.state === "unknown")) {
+                const radius = 4 / scale;
+                outline.append(node("circle", { class: "operator-slot-power", "data-power-state": power.state,
+                    "data-power-stale": String(power.stale), cx: panel.body.x + panel.body.width - 6 / scale,
+                    cy: panel.body.y + panel.body.height - 6 / scale, r: radius,
+                    fill: "var(--attention-bg)", stroke: "var(--attention)", "stroke-width": 1 / scale,
+                    "stroke-dasharray": power.stale || power.state === "unknown" ? 2 / scale + " " + 1 / scale : "none",
+                    "aria-hidden": "true" }));
+            }
             group.append(outline);
+            const statusText = [exception, power && (power.warning || power.stale) ? power.short : ""].filter(Boolean).join(" · ");
+            if (!panel.missing && statusText && panel.body.width * scale >= 40 && panel.body.height * scale >= 24) {
+                group.append(node("text", { x: panel.body.x + 6 / scale, y: panel.body.y + panel.body.height - 6 / scale,
+                    class: "operator-slot-status", "font-size": 10 / scale, "stroke-width": 2 / scale,
+                    "paint-order": "stroke", fill: "var(--stage-text)", stroke: "var(--stage)",
+                    "data-status": status.status, "data-power-state": power ? power.state : "",
+                    "data-label": statusText, "data-x": panel.body.x, "data-y": panel.body.y,
+                    "data-width": panel.body.width, "data-height": panel.body.height, "aria-hidden": "true" }, statusText));
+            }
             if (layout.kind === "logical" && panel.id === selectedId && !panel.missing && editable) {
                 group.append(rect({ x: panel.body.x + panel.body.width - 10 / scale, y: panel.body.y + panel.body.height - 10 / scale, width: 10 / scale, height: 10 / scale },
                     { class: "logical-resize", fill: "var(--stage-text)", "aria-hidden": "true" }));
@@ -257,7 +343,7 @@
         }
         return stage;
     }
-    const api = { panels, resolution, draw, fit, viewZoom, viewSize, helpText };
+    const api = { panels, resolution, draw, fit, exceptionLabel, powerReadiness, viewZoom, viewSize, helpText };
     if (typeof module !== "undefined" && module.exports) module.exports = api;
     else root.OperatorStage = api;
 }(typeof window !== "undefined" ? window : globalThis));

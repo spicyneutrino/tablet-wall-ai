@@ -27,6 +27,12 @@ window.PhysicalStage = {
             DRAG_THRESHOLD_PX, afterDraftChange, announce, bodyMetrics, calibrationFor, beginManual, canManualEdit, clearMsg, clone, deviceEntries, deviceLabel, deviceNumber, deviceRows, el, finiteOr, formatNumber, isOnline, latestProfile, mutateDraft, numberTag, numberedLabel, populateDeviceCard, profileFor, pushUndo, roundTo, selectedSlot, selectionChanged, setInputValue, showError, showTab, state, syncTabDots, validPair
         } = dependencies;
 
+        function powerFor(id) {
+            return window.OperatorStage && window.OperatorStage.powerReadiness
+                ? window.OperatorStage.powerReadiness(state.roster[id], { stale: !!state.rosterError, checkedAt: state.rosterCheckedAt })
+                : null;
+        }
+
         function focusStageSlot(id) {
             const groups = el.stageSvg.querySelectorAll(".slot");
             for (let index = 0; index < groups.length; index += 1) {
@@ -49,6 +55,7 @@ window.PhysicalStage = {
                 compareIds: (a, b) => window.OperatorState.compareIds(state.roster, state.deviceLabels || {}, a, b),
                 labelFor: id => numberedLabel(id, latestProfile(id)),
                 statusFor: id => state.rosterError ? { status: "stale", text: "Status stale · refresh the operator connection" } : window.OperatorState.tabletState(config, id, performance.now()),
+                powerFor,
                 selectedId: state.selectedId, runtime: config.runtime, preview, editable,
                 resolutionNode: document.getElementById("stage-resolution") });
             const stageKey = document.getElementById("stage-key");
@@ -65,7 +72,9 @@ window.PhysicalStage = {
             const rows = window.OperatorStage.panels(layout, profileFor).map(panel => {
                 const status = preview ? "Local preview · not tablet output" : state.rosterError
                     ? "Status stale · refresh the operator connection" : window.OperatorState.tabletState(config, panel.id, performance.now()).text;
-                return numberedLabel(panel.id, latestProfile(panel.id)) + (panel.id === state.selectedId ? " · selected" : "") + " · " + status + (panel.missing ? " · pinned profile missing" : "");
+                const power = powerFor(panel.id);
+                return numberedLabel(panel.id, latestProfile(panel.id)) + (panel.id === state.selectedId ? " · selected" : "") + " · " + status
+                    + (power ? " · " + power.short : "") + (panel.missing ? " · pinned profile missing" : "");
             });
             if (identities.textContent !== rows.join("")) {
                 identities.replaceChildren(...rows.map(text => { const item = document.createElement("li"); item.textContent = text; return item; }));
@@ -511,13 +520,19 @@ window.PhysicalStage = {
                     });
                     item.append(add); row = { item, pick, number, name, meta, add }; deviceRows.set(entry.id, row);
                 }
-                const online = isOnline(entry.id), current = state.operatorConfig && window.OperatorState.tabletState(state.operatorConfig, entry.id, performance.now());
-                const status = current ? current.text : online ? "Connected · not on the wall" : "Offline";
+                const online = isOnline(entry.id), current = state.operatorConfig && !state.rosterError
+                    && window.OperatorState.tabletState(state.operatorConfig, entry.id, performance.now());
+                const status = state.rosterError ? "Status stale · refresh the operator connection"
+                    : current ? current.text : online ? "Connected · not on the wall" : "Offline";
+                const power = powerFor(entry.id);
                 row.number.textContent = numberTag(entry.id);
                 row.name.textContent = entry.label;
-                row.meta.textContent = current && current.showing ? "" : status;
-                row.item.dataset.status = current ? current.status : online ? "online" : "offline";
-                row.pick.setAttribute("aria-label", numberedLabel(entry.id) + ", " + status);
+                row.meta.textContent = [current && current.showing ? "" : status, power ? power.short : ""].filter(Boolean).join(" · ");
+                row.item.dataset.status = state.rosterError ? "stale" : current ? current.status : online ? "online" : "offline";
+                row.item.dataset.powerState = power ? power.state : "unknown";
+                row.item.dataset.powerWarning = String(!!power && power.warning);
+                row.item.dataset.powerStale = String(!!power && power.stale);
+                row.pick.setAttribute("aria-label", numberedLabel(entry.id) + ", " + status + (power ? ". " + power.label : ""));
                 row.add.hidden = !!(entry.slot || entry.placement); row.add.disabled = state.busy;
                 if (el.deviceList.children[index] !== row.item) el.deviceList.insertBefore(row.item, el.deviceList.children[index] || null);
             }
@@ -602,6 +617,8 @@ window.PhysicalStage = {
                 notes.push("Slot calibration belongs to profile r"
                     + calibration.profile_revision + ".");
             }
+            const power = powerFor(id);
+            if (power) notes.push(power.label + ". Browser report; manual OS settings still apply.");
             el.selectedNote.textContent = notes.join(" ");
 
             el.btnRotate.disabled = state.busy;

@@ -21,6 +21,44 @@ const allRegistered = {
 assert.equal(rosterSummary(allRegistered, false), "1 online");
 assert.equal(rosterSummary({ layout: { kind: "logical", placements: {} } }, false), "Tablet status unknown");
 
+const stageModel = require("../frontend/controller/operator-stage.js");
+const wake = (value, options) => stageModel.powerReadiness({ wake_lock: value }, options);
+assert.equal(wake("held").label, "Power: held");
+assert.equal(wake("held").warning, false);
+assert.match(wake("held").guidance, /not proof/);
+assert.match(wake("held").guidance, /Auto-Lock/);
+assert.equal(wake("denied").warning, true);
+assert.match(wake("denied").guidance, /cannot wake/);
+assert.equal(wake("released").warning, true);
+assert.match(wake("released").guidance, /foreground/);
+assert.equal(wake("insecure").warning, true);
+assert.match(wake("insecure").guidance, /trusted HTTPS origin/);
+assert.equal(wake("unsupported").warning, false);
+assert.match(wake("unsupported").guidance, /Auto-Lock/);
+assert.equal(wake(undefined).state, "unknown");
+assert.equal(wake("bogus").state, "unknown", "an unreported or invalid wake value is unknown, never a guessed state");
+const staleWake = wake("held", { stale: true });
+assert.equal(staleWake.label, "Last known power held · status stale");
+assert.equal(staleWake.stale, true);
+assert.match(staleWake.guidance, /last known report/);
+assert.match(wake("denied", { stale: true, checkedAt: "2026-11-01T12:00:00Z" }).guidance, /Last checked/);
+assert.equal(stageModel.exceptionLabel("displayed", "Reports current image"), "", "healthy paint has no stage exception label");
+assert.equal(stageModel.exceptionLabel("failed", "Image failed · source missing"), "Image failed");
+assert.equal(stageModel.exceptionLabel("loading", "Loading image"), "Loading");
+assert.equal(stageModel.exceptionLabel("blocked", "Blocked"), "Blocked");
+assert.equal(stageModel.exceptionLabel("unknown", "Current image unconfirmed"), "Unconfirmed");
+assert.equal(stageModel.exceptionLabel("stale", "Previous paint · current image unconfirmed"), "Stale paint");
+assert.equal(stageModel.exceptionLabel("hidden", "Page hidden"), "Hidden");
+assert.equal(stageModel.exceptionLabel("offline", "Offline · spot reserved"), "Offline");
+assert.equal(stageModel.exceptionLabel("excluded", "Excluded from show"), "Excluded");
+assert.equal(stageModel.exceptionLabel("identifying", "Identify overlay · image obscured"), "Identify");
+assert.equal(stageModel.exceptionLabel("playback", "Experimental playback owns the display"), "Playback");
+assert.equal(stageModel.exceptionLabel("viewport_mismatch", "Return to the calibrated rotation"), "Blocked");
+assert.match(stageModel.helpText(true, "logical"), /Auto-Lock/);
+assert.match(stageModel.helpText(true, "logical"), /trusted HTTPS origin/);
+assert.match(stageModel.helpText(true, "logical"), /cannot wake a sleeping tablet remotely/);
+console.log("Mixed wake states, freshness and concise exception labels passed");
+
 const sheet = {
     open: true,
     dataset: { modal: "true" },
@@ -417,3 +455,214 @@ relayout.stage.onPointerMove(movedTo(20, 20));
 relayout.stage.endDrag(true);
 assert.equal(relayout.state.draft.placements.a.x, 120, "a draft-induced relayout does not cancel the first drag");
 assert.equal(relayoutUndo.length, 1, "the clean-draft drag commits one undo entry");
+
+/* Mixed paint and wake states in the real roster and stage annotation. */
+class FakeElement {
+    constructor(tagName = "div") {
+        this.tagName = tagName; this.attrs = new Map(); this.children = []; this.dataset = {};
+        this.textContent = ""; this.style = { setProperty() {} }; this.listeners = {};
+        this.hidden = false; this.disabled = false; this.open = false; this.parentElement = null;
+        this.classList = { add() {}, remove() {}, contains: name => (this.getAttribute("class") || "").split(/\s+/).includes(name) };
+    }
+    get attributes() { return [...this.attrs].map(([name, value]) => ({ name, value })); }
+    setAttribute(name, value) {
+        this.attrs.set(name, String(value));
+        if (name.startsWith("data-")) this.dataset[name.slice(5).replace(/-([a-z])/g, (_, letter) => letter.toUpperCase())] = String(value);
+    }
+    getAttribute(name) { const value = this.attrs.get(name); return value === undefined ? null : value; }
+    hasAttribute(name) { return this.attrs.has(name); }
+    removeAttribute(name) {
+        this.attrs.delete(name);
+        if (name.startsWith("data-")) delete this.dataset[name.slice(5).replace(/-([a-z])/g, (_, letter) => letter.toUpperCase())];
+    }
+    append(...nodes) { nodes.forEach(node => this.insertBefore(node, null)); }
+    insertBefore(node, before) {
+        if (node.parentElement) node.remove();
+        const index = before ? this.children.indexOf(before) : this.children.length;
+        this.children.splice(index, 0, node); node.parentElement = this; return node;
+    }
+    remove() {
+        if (!this.parentElement) return;
+        const index = this.parentElement.children.indexOf(this);
+        if (index >= 0) this.parentElement.children.splice(index, 1);
+        this.parentElement = null;
+    }
+    addEventListener(type, handler) { (this.listeners[type] = this.listeners[type] || []).push(handler); }
+    getClientRects() { return this.hidden ? [] : [{}]; }
+    focus() { if (this.ownerDocument) this.ownerDocument.activeElement = this; }
+    contains(child) { return child === this; }
+    scrollIntoView() {}
+    querySelectorAll() { return []; }
+    closest() { return null; }
+    getScreenCTM() {
+        const svg = this.ownerDocument && this.ownerDocument.__svg;
+        const scale = svg ? ((parseFloat(svg.style.inlineSize) || 720) / 720) * (svg.__stageScale || 1) : 1;
+        return { a: scale, b: 0, c: 0, d: scale, e: 0, f: 0 };
+    }
+}
+
+function drawSetup() {
+    const doc = { activeElement: null, body: { dataset: {} }, getElementById: () => null, querySelector: () => null,
+        createElementNS: (_, tag) => { const item = new FakeElement(tag); item.ownerDocument = doc; return item; } };
+    const win = { innerHeight: 900, scrollY: 0, matchMedia: () => ({ matches: false }),
+        getComputedStyle: node => node.computed || {}, addEventListener() {}, requestAnimationFrame: () => 1,
+        ResizeObserver: class { observe() {} disconnect() {} } };
+    doc.defaultView = win;
+    const field = new FakeElement("div");
+    field.style = {};
+    field.computed = { borderLeftWidth: "0", borderRightWidth: "0", borderTopWidth: "0", borderBottomWidth: "0" };
+    field.getBoundingClientRect = () => ({ top: 0, bottom: 500, width: 900 });
+    field.getClientRects = () => [1];
+    field.parentElement = new FakeElement("div");
+    field.parentElement.clientWidth = 900;
+    field.parentElement.computed = { paddingLeft: "0", paddingRight: "0" };
+    field.parentElement.getBoundingClientRect = () => ({ bottom: 500 });
+    const svg = new FakeElement("svg");
+    svg.ownerDocument = doc; svg.style = { setProperty() {} };
+    svg.viewBox = { baseVal: { width: 720, height: 480 } };
+    svg.closest = selector => selector === ".stage-scroll" ? field : null;
+    svg.querySelectorAll = selector => {
+        const name = selector.replace(/^\./, ""), found = [];
+        const walk = node => node.children.forEach(child => {
+            if ((child.getAttribute("class") || "").split(/\s+/).includes(name)) found.push(child);
+            walk(child);
+        });
+        walk(svg); return found;
+    };
+    doc.__svg = svg;
+    return { doc, svg, draw: stageModel.draw };
+}
+
+function descendants(node, predicate) {
+    return node.children.flatMap(child => (predicate(child) ? [child] : []).concat(descendants(child, predicate)));
+}
+
+{
+    const { doc, svg, draw } = drawSetup();
+    const layout = { kind: "logical", width: 1000, height: 700, placements: {
+        healthy: { x: 0, y: 0, w: 200, h: 150, bezel: {} },
+        failed: { x: 250, y: 0, w: 200, h: 150, bezel: {} },
+        denied: { x: 500, y: 0, w: 200, h: 150, bezel: {} },
+        tiny: { x: 0, y: 200, w: 10, h: 10, bezel: {} }
+    } };
+    const statuses = {
+        healthy: { status: "displayed", text: "Reports current image" },
+        failed: { status: "failed", text: "Image failed · source missing" },
+        denied: { status: "displayed", text: "Reports current image" },
+        tiny: { status: "hidden", text: "Page hidden" }
+    };
+    const powers = { healthy: wake("held"), failed: wake("denied"), denied: wake("denied"), tiny: wake(undefined) };
+    global.document = doc;
+    const stage = draw({ svg, layout, content: null, profileFor: () => null, labelFor: id => "Tablet " + id,
+        statusFor: id => statuses[id], powerFor: id => powers[id], selectedId: null, runtime: { devices: {} } });
+    svg.__stageScale = stage.scale;
+    const slot = id => descendants(svg, node => node.getAttribute("data-device-id") === id)[0];
+    const statusText = id => descendants(slot(id), node => (node.getAttribute("class") || "") === "operator-slot-status");
+    const markers = (id, name) => descendants(slot(id), node => (node.getAttribute("class") || "") === name);
+    assert.equal(slot("healthy").dataset.powerState, "held");
+    assert.equal(slot("healthy").dataset.status, "displayed");
+    assert.equal(statusText("healthy").length, 0, "healthy art has no extra stage text");
+    assert.equal(markers("healthy", "operator-slot-exception").length, 0);
+    assert.equal(markers("healthy", "operator-slot-power").length, 0);
+    assert.equal(slot("failed").dataset.powerState, "denied");
+    assert.equal(statusText("failed")[0].textContent, "Image failed · Power denied");
+    assert.match(slot("failed").getAttribute("aria-label"), /Image failed/);
+    assert.match(slot("failed").getAttribute("aria-label"), /Power: denied/);
+    assert.equal(markers("failed", "operator-slot-exception").length, 1);
+    assert.equal(markers("failed", "operator-slot-power").length, 1);
+    assert.equal(slot("denied").dataset.status, "displayed");
+    assert.equal(statusText("denied")[0].textContent, "Power denied", "a painted tablet still carries an independent power warning");
+    assert.equal(markers("denied", "operator-slot-exception").length, 0);
+    assert.equal(markers("denied", "operator-slot-power").length, 1);
+    assert.equal(statusText("tiny").length, 0, "a tiny slot leaves its label to the external roster");
+    assert.match(slot("tiny").getAttribute("aria-label"), /Page hidden/);
+    assert.equal(slot("tiny").dataset.status, "hidden");
+    assert.equal(markers("tiny", "operator-slot-power").length, 1, "an unknown power report keeps a shape-only stage marker");
+    assert.equal(slot("tiny").dataset.powerState, "unknown");
+    delete global.document;
+}
+
+function rosterSetup() {
+    const nodes = new Map();
+    const doc = { activeElement: null, body: { dataset: {} },
+        createElement: tag => { const item = new FakeElement(tag); item.ownerDocument = doc; return item; },
+        getElementById: id => { if (!nodes.has(id)) nodes.set(id, new FakeElement(id)); return nodes.get(id); } };
+    const now = performance.now();
+    const token = { connection_id: "socket-1", generation: "g", revision: 8, render_seq: 4, mapping_revision: "mapping", asset: "image" };
+    const config = { generation: "g", revision: 8,
+        layout: { kind: "physical", bounds: { x: 0, y: 0, width: 1000, height: 500 }, slots: {
+            a: { participating: true, profile_revision: 1, calibration_revision: 1 },
+            b: { participating: true, profile_revision: 1, calibration_revision: 1 },
+            c: { participating: true, profile_revision: 1, calibration_revision: 1 },
+            d: { participating: false, profile_revision: 1, calibration_revision: 1 }
+        } },
+        scene: { content: { type: "image", asset: "image" } },
+        runtime: { presentation: { owner: "static" }, devices: {
+            a: { online: true, protocol: 3, caps: ["image", "render_ack"], mapping: { state: "ready" }, wake_lock: "denied",
+                render: { state: "displayed", current: true, expected_token: { ...token }, accepted_token: { ...token }, age_ms: 0, observed_mono: now } },
+            b: { online: true, protocol: 3, caps: ["image", "render_ack"], mapping: { state: "ready" }, wake_lock: "held",
+                render: { state: "displayed", current: false, expected_token: { ...token }, accepted_token: { ...token }, age_ms: 0, observed_mono: now } },
+            c: { online: false },
+            d: { online: true, protocol: 3, caps: ["image", "render_ack"], mapping: { state: "ready" }, wake_lock: "released",
+                render: { state: "displayed", current: true, expected_token: { ...token }, accepted_token: { ...token }, age_ms: 0, observed_mono: now } }
+        } }
+    };
+    const state = { operatorConfig: config, roster: config.runtime.devices, rosterError: null,
+        rosterCheckedAt: new Date(now).toISOString(), base: config.layout, basePlacements: {},
+        deviceLabels: {}, selectedId: null, tabName: "tablet", busy: false, etagState: "current" };
+    const el = { deviceList: doc.getElementById("device-list"), wallHealth: doc.getElementById("wall-health"),
+        btnWallHealth: doc.getElementById("btn-wall-health"), deviceCount: doc.getElementById("device-count"),
+        rosterStatus: doc.getElementById("roster-status") };
+    const window = { OperatorState: require("../frontend/controller/operator-state.js"), OperatorStage: stageModel,
+        matchMedia: () => ({ matches: false }), addEventListener() {} };
+    const context = vm.createContext({ window, document: doc, performance });
+    vm.runInContext(fs.readFileSync(require.resolve("../frontend/controller/physical-stage.js"), "utf8"), context);
+    const stage = context.window.PhysicalStage.create({
+        DRAG_THRESHOLD_PX: 3, afterDraftChange() {}, announce() {}, bodyMetrics: () => null,
+        calibrationFor: () => null, beginManual() {}, canManualEdit: () => true, clearMsg() {}, clone: value => value,
+        deviceEntries: () => Object.keys(config.layout.slots).map(id => ({ id, label: "Tablet " + id, slot: config.layout.slots[id] })),
+        deviceLabel: id => "Tablet " + id, deviceNumber: () => 1, deviceRows: new Map(), el,
+        finiteOr: (value, fallback) => Number.isFinite(value) ? value : fallback, formatNumber: String,
+        isOnline: id => !!(config.runtime.devices[id] && config.runtime.devices[id].online), latestProfile: () => null,
+        mutateDraft: () => true, numberTag: id => id, numberedLabel: id => "Tablet " + id,
+        populateDeviceCard() {}, profileFor: () => null, pushUndo() {}, roundTo: value => value,
+        selectedSlot: () => null, selectionChanged() {}, setInputValue() {}, showError() {}, showTab() {},
+        state, syncTabDots() {}, validPair: () => ({})
+    });
+    const rowFor = id => el.deviceList.children.find(item => item.dataset.deviceId === id);
+    const pickFor = id => rowFor(id).children[0];
+    const metaFor = id => pickFor(id).children[1];
+    return { stage, state, config, el, rowFor, pickFor, metaFor };
+}
+
+{
+    const roster = rosterSetup();
+    roster.stage.renderDeviceList();
+    assert.equal(roster.el.deviceList.children.length, 4, "every wall position has one roster row");
+    assert.equal(roster.rowFor("a").dataset.status, "displayed");
+    assert.equal(roster.rowFor("a").dataset.powerState, "denied");
+    assert.equal(roster.rowFor("a").dataset.powerWarning, "true");
+    assert.equal(roster.metaFor("a").textContent, "Power denied");
+    assert.match(roster.pickFor("a").getAttribute("aria-label"), /Power: denied/);
+    assert.equal(roster.rowFor("b").dataset.status, "stale");
+    assert.equal(roster.rowFor("b").dataset.powerState, "held");
+    assert.equal(roster.rowFor("b").dataset.powerWarning, "false");
+    assert.match(roster.metaFor("b").textContent, /Previous paint/);
+    assert.match(roster.metaFor("b").textContent, /Power held/);
+    assert.equal(roster.metaFor("b").textContent.includes("showing"), false, "held power never turns stale paint into displayed");
+    assert.equal(roster.rowFor("c").dataset.powerState, "unknown");
+    assert.equal(roster.metaFor("c").textContent, "Offline · spot reserved · Power unknown");
+    assert.equal(roster.rowFor("d").dataset.status, "excluded");
+    assert.equal(roster.rowFor("d").dataset.powerState, "released");
+    assert.equal(roster.el.wallHealth.textContent, "1 of 3 showing the current image");
+    assert.doesNotMatch(roster.el.wallHealth.textContent, /Power|wake-lock/i, "paint count stays separate from power readiness");
+    roster.state.rosterError = "503 unavailable";
+    roster.stage.renderDeviceList();
+    assert.equal(roster.rowFor("a").dataset.status, "stale", "a stale roster cannot claim current paint");
+    assert.equal(roster.rowFor("a").dataset.powerStale, "true");
+    assert.match(roster.metaFor("a").textContent, /Status stale/);
+    assert.match(roster.metaFor("a").textContent, /Last known power denied/);
+    assert.match(roster.el.wallHealth.textContent, /Status stale/);
+    assert.doesNotMatch(roster.el.wallHealth.textContent, /Power|wake-lock/i);
+    console.log("Mixed roster paint, held/denied power, unknown and stale freshness passed");
+}
