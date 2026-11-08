@@ -4,6 +4,13 @@ window.OperatorContent = {
         const { $, setTextIfChanged } = window.OperatorDom;
         let images = [], selected = null, fit = "cover", background = "#0b1120", selectionDirty = false, loading = false, busy = false, inventoryReady = false;
         let previous = null, xhr = null, inventoryVersion = 0, selectionVersion = 0, baseEtag = null, savedScene = null, uploadUncertain = false;
+        const UPLOAD_TIMEOUT_MS = 120000;
+        /* A video may take 600 s to arrive and 120 s to remux on the server.
+         * The browser deadline must outlast both; admission stays the
+         * server's decision, and the extension/type only picks this wait. */
+        const VIDEO_UPLOAD_TIMEOUT_MS = 600000 + 120000 + 30000;
+        const isVideoUpload = file => /^video\/(mp4|quicktime)$/i.test(file.type || "")
+            || /\.(mp4|mov|qt)$/i.test(file.name || "");
         const gallery = new Map();
         let retainMessage = false, noteSequence = 0, uploadedSelectionId = null;
         const shownRevisions = new Map();
@@ -439,7 +446,8 @@ window.OperatorContent = {
             const request = xhr = new XMLHttpRequest();
             $("upload-progress").hidden = false; $("upload-progress").value = 0;
             $("upload-message").dataset.kind = "info"; $("upload-message").textContent = "Uploading " + file.name + "…"; render();
-            request.open("POST", "/uploads?name=" + encodeURIComponent(file.name)); request.timeout = 120000;
+            request.open("POST", "/uploads?name=" + encodeURIComponent(file.name));
+            request.timeout = isVideoUpload(file) ? VIDEO_UPLOAD_TIMEOUT_MS : UPLOAD_TIMEOUT_MS;
             request.setRequestHeader("Content-Type", file.type || "application/octet-stream");
             request.upload.onprogress = event => { if (event.lengthComputable) $("upload-progress").value = event.loaded / event.total * 100; };
             request.upload.onload = () => { $("upload-message").textContent = "Transfer complete. Checking and preparing the image…"; $("upload-progress").removeAttribute("value"); };
