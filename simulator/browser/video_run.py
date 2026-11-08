@@ -40,6 +40,7 @@ from simulator.browser.run import (
     descendants,
     open_cohort,
     watch_page,
+    wait_for_predicate,
 )
 
 REPO = Path(__file__).resolve().parents[2]
@@ -436,7 +437,9 @@ async def main(artifacts: Path) -> int:
         )
         rig.captured_pages.append((editor, editor_observation))
         await editor.goto(base + "/controller/physical.html", wait_until="networkidle")
-        await editor.wait_for_function(
+        await editor.get_by_role("tab", name="Settings", exact=True).click()
+        await editor.check("#experimental-opt-in")
+        await wait_for_predicate(editor,
             "document.querySelectorAll('#playlist-library option').length > 1",
             timeout=15000,
         )
@@ -448,7 +451,7 @@ async def main(artifacts: Path) -> int:
         check("the editor adds a video and a still from the library",
               "video" in list_text.lower() and "still" in list_text.lower(), text=list_text)
         await editor.click("#btn-playlist-save")
-        await editor.wait_for_function(
+        await wait_for_predicate(editor,
             "document.querySelector('#playlist-msg')?.textContent.toLowerCase().includes('save')",
             timeout=10000,
         )
@@ -459,11 +462,11 @@ async def main(artifacts: Path) -> int:
               and playlist["items"][1]["asset"] == assets["red"],
               dwell=playlist["items"][0]["dwell_ms"], duration=descriptor["durationMs"])
 
-        await editor.wait_for_function(
+        await wait_for_predicate(editor,
             "!document.querySelector('#btn-playback-start').disabled", timeout=10000
         )
         await editor.click("#btn-playback-start")
-        await editor.wait_for_function(
+        await wait_for_predicate(editor,
             "document.querySelector('#playback-status').dataset.state === 'playing'",
             timeout=10000,
         )
@@ -528,7 +531,7 @@ async def main(artifacts: Path) -> int:
                   for entry in status["video"].values()), video=status["video"])
 
         await editor.click("#btn-playback-pause")
-        await editor.wait_for_function(
+        await wait_for_predicate(editor,
             "document.querySelector('#playback-status').dataset.state === 'paused'",
             timeout=10000,
         )
@@ -540,7 +543,7 @@ async def main(artifacts: Path) -> int:
               all(v["paused"] for s in paused_state.values() for v in s["videos"] if v["visible"]), states=paused_state)
 
         await editor.click("#btn-playback-pause")  # the button now says Resume
-        await editor.wait_for_function(
+        await wait_for_predicate(editor,
             "document.querySelector('#playback-status').dataset.state !== 'paused'",
             timeout=10000,
         )
@@ -596,7 +599,7 @@ async def main(artifacts: Path) -> int:
               })
 
         await editor.click("#btn-playback-stop")
-        await editor.wait_for_function(
+        await wait_for_predicate(editor,
             "document.querySelector('#playback-status').dataset.state === 'stopped'",
             timeout=10000,
         )

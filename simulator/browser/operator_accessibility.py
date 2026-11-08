@@ -300,7 +300,7 @@ def visual_states(rig):
     task(p, "Images")
     p.locator("#refresh-images").click()
     expect(
-        p.get_by_role("button", name="Preview " + long_name + ", thumbnail unavailable", exact=True)
+        p.get_by_role("button", name="Preview " + long_name, exact=True)
     ).to_have_count(1)
     for width, height in ((1440, 900), (390, 844), (320, 640)):
         p.set_viewport_size({"width": width, "height": height})
@@ -345,7 +345,7 @@ def visual_states(rig):
         )
         for width, height in ((1440, 900), (390, 844)):
             p.set_viewport_size({"width": width, "height": height})
-            button = p.get_by_role("button", name="Preview " + long_name, exact=True)
+            button = p.get_by_role("button", name="Preview " + long_name + ", thumbnail unavailable", exact=True)
             rig.check(
                 button.is_visible()
                 and button.is_enabled()

@@ -569,7 +569,8 @@ async def calibrate_cohort(rig: Rig, pages: list[tuple[Any, Observation]],
     layout = http.put("/api/v3/layout", json={
         "bounds": {"x": 0, "y": 0, "width": 130 * len(pages) + 10, "height": 120}, "slots": slots,
     }, headers={"If-Match": etag})
-    scene = http.put("/scene", json={"content": {"type": "image", "asset": assets["idle"], "fit": "cover"}})
+    scene = http.put("/api/v3/scene", json={"content": {"type": "image", "asset": assets["idle"], "fit": "cover"}},
+                     headers={"If-Match": layout.json()["etag"]})
     check(f"{tag}: {len(pages)} independent clients calibrated, placed and shown the idle still",
           layout.status_code == 200 and scene.status_code == 200,
           layout=layout.status_code, scene=scene.status_code)
@@ -1023,13 +1024,13 @@ async def exercise(artifacts: Path, report: dict[str, Any], observation_seconds:
             pages.append((page, observation))
             check(spec.name + " handshake", all(any(
                 event["kind"] == "ws_received" and isinstance(event["frame"], dict) and event["frame"].get("type") == kind
-                for event in observation.events) for kind in ("welcome", "wall")))
+                for event in observation.events) for kind in ("welcome", "render")))
         check("three independent same-origin identities", len({obs.device_id for _, obs in pages}) == 3)
         controller_context = await browser.new_context(viewport={"width": 1280, "height": 900})
         resources.append(controller_context)
         controller, controller_obs = await watch_page(controller_context, ClientSpec("controller", 1280, 900, 1), observations)
         captured_pages.append((controller, controller_obs))
-        await controller.goto(base + "/controller/")
+        await controller.goto(base + "/controller/experimental.html")
 
         async def api(method: str, path: str, data: dict[str, Any] | None = None) -> Any:
             response = await request.fetch(
