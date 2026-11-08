@@ -196,4 +196,42 @@ console.log("Task commit draws the new task immediately after moving the origina
     console.log("The shared shell owns one stage, one commit surface and the exact workbench slots");
 }
 
+
+{
+    const source = fs.readFileSync(require.resolve("../frontend/controller/physical.js"), "utf8");
+    const extract = (start, end) => source.slice(source.indexOf(start), source.indexOf(end, source.indexOf(start)));
+    const calls = [];
+    const startupState = { configLoaded: false, roster: {}, displays: [], calibrations: [], savedLayouts: [] };
+    const statusNodes = new Map();
+    const noop = () => {};
+    const ctx = { state: startupState, API_LAYOUTS: "/api/v3/layouts", document: { activeElement: null, getElementById(id) {
+        if (!statusNodes.has(id)) statusNodes.set(id, { hidden: true, textContent: "" });
+        return statusNodes.get(id);
+    } }, window: { OperatorState: require("../frontend/controller/operator-state.js") },
+        el: {}, clone: structuredClone, isDirty: () => false, operatorContent: { dirty: () => false },
+        api: async (method, path, body, options) => { calls.push({ method, path, options }); return { layouts: [], scenes: [] }; },
+        setMsg: noop, clearMsg: noop, renderSavedLayouts: noop, renderSavedScenes: noop,
+        rememberProfile: noop, rememberCalibration: noop, restorePlaybackExclusions: noop,
+        ensureSelection: noop, showConflict: noop, hideConflict: noop, renderAll: noop,
+        maybeChooseInitialTab: noop, announce: noop
+    };
+    vm.createContext(ctx);
+    vm.runInContext("let layoutsVersion = 0, scenesVersion = 0, savedScenes = [], layoutsLoaded = false, scenesLoaded = false; let operatorDevices = null;"
+        + extract("    async function loadLayouts()", "    const restorePointName")
+        + extract("    async function loadScenes()", "    function bindDiagnosticColours()")
+        + extract("    function observeSession(", "    function ensureSelection()"), ctx);
+    await ctx.loadLayouts(); await ctx.loadScenes();
+    assert.equal(calls.length, 0, "Saved reads wait for initial config adoption instead of racing the durable read fence");
+    startupState.configLoaded = true;
+    const config = { etag: "current", layout: { kind: "logical", width: 100, height: 100, placements: {} } };
+    ctx.observeSession({ config, uncertain: false });
+    await new Promise(setImmediate);
+    assert.equal(calls.length, 3, "first config starts both saved lists exactly once");
+    assert.ok(calls.every(call => call.options.fenced === "durable"), "startup keeps the durable read fence");
+    assert.equal(vm.runInContext("layoutsLoaded && scenesLoaded", ctx), true);
+    ctx.observeSession({ config, uncertain: false }, { runtime: true });
+    await new Promise(setImmediate);
+    assert.equal(calls.length, 3, "heartbeat updates do not restart saved-list reads");
+}
+
 })().catch(error => { console.error(error); process.exitCode = 1; });

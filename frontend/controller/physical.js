@@ -937,8 +937,11 @@
         if (conflict) showConflict("The wall changed. Your arrangement preview and its original guard are retained. Review the live wall, then rebuild or discard the preview.");
         else if (!state.draftConflict) hideConflict();
         renderAll(); maybeChooseInitialTab();
-        if (firstConfig) announce(Object.keys(window.OperatorState.entries(state.base)).length ? "Controller connected to the server. Review current tablet reports."
+        if (firstConfig) {
+            loadLayouts(); loadScenes();
+            announce(Object.keys(window.OperatorState.entries(state.base)).length ? "Controller connected to the server. Review current tablet reports."
             : Object.values(state.roster).some(device => device.online) ? "Controller connected to the server. Arrange connected tablets." : "Controller connected to the server. Add tablets to begin.");
+        }
     }
 
     function ensureSelection() {
@@ -2158,6 +2161,7 @@
     }
 
     async function loadLayouts() {
+        if (!state.configLoaded) return;
         const version = ++layoutsVersion;
         const status = document.getElementById("layouts-status");
         setMsg(status, layoutsLoaded ? "Refreshing saved arrangements…" : "Reading saved arrangements…", "info");
@@ -2385,6 +2389,7 @@
     }
 
     async function loadScenes() {
+        if (!state.configLoaded) return;
         const version = ++scenesVersion;
         const status = document.getElementById("scenes-status");
         setMsg(status, scenesLoaded ? "Refreshing saved content…" : "Reading saved content…", "info");
@@ -3069,8 +3074,6 @@
         renderDiagnostics();
         session.start();
         operatorContent.refresh();
-        loadLayouts();
-        loadScenes();
         loadDiagnostics(false);
         startPlaybackPolling();
     }
