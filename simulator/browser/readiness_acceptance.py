@@ -270,8 +270,17 @@ def shot(page, name: str, full: bool = False) -> None:
     print("SHOT", name, flush=True)
 
 
+TAB_IDS = {
+    "Images": "tab-content",
+    "Arrange": "tab-show",
+    "Tablets": "tab-tablet",
+    "Saved": "tab-saved",
+    "Settings": "tab-system",
+}
+
+
 def tab(page, name: str) -> None:
-    page.get_by_role("tab", name=name, exact=True).click()
+    page.locator("#" + TAB_IDS[name]).click()
 
 
 def select_tablet(page, device_id: str) -> None:
@@ -339,7 +348,7 @@ def new_tablet(browser, base: str):
 
 def confirm_model(page, device_id: str) -> None:
     select_tablet(page, device_id)
-    tab(page, "System")
+    tab(page, "Settings")
     page.locator("#measurement-details").evaluate("node => node.open = true")
     page.locator("#tablet-model").select_option("google-pixel-c")
     dialogs_before = len(dialogs)
@@ -348,7 +357,8 @@ def confirm_model(page, device_id: str) -> None:
                "model confirmation was not committed")
     check(config()["tablet_assignments"].get(device_id, {}).get("mode") == "explicit",
           "TWR-11 A1 " + device_id[:8] + " committed an explicit model assignment before calibration")
-    check(any("Confirm this tablet" in message for message in dialogs[dialogs_before:]),
+    check(any("I checked the hardware of" in message and "Dimensions remain approximate" in message
+              for message in dialogs[dialogs_before:]),
           "TWR-11 A1 confirming the model requires an explicit confirmation dialog")
     page.locator("#cal-use-viewport").click()
     page.locator("#btn-calibration-save").click()
@@ -390,7 +400,7 @@ def image_id(name: str) -> str:
 
 
 def select_image(page, asset_id: str, fit: str) -> None:
-    tab(page, "Wall")
+    tab(page, "Images")
     page.locator(f'#image-gallery [data-asset-id="{asset_id}"] button').click()
     page.locator("#image-fit").select_option(fit)
 
@@ -525,40 +535,43 @@ def phase_start(page):
     check(str(ASSETS) not in serialized and str(DATA) not in serialized,
           "/healthz does not leak filesystem paths")
 
-    wait_until(lambda: "No tablets on the wall." in page.evaluate(
-        "document.getElementById('stage-svg').textContent"),
-        "the fresh empty-wall stage text did not appear")
-    stage_text = page.evaluate("document.getElementById('stage-svg').textContent")
-    check("No tablets on the wall." in stage_text,
-          "TWR-06 A8 a fresh empty wall reads 'No tablets on the wall.' on the stage")
     wait_until(lambda: "No tablets on the wall" in page.locator("#wall-health").inner_text(),
                "the fresh empty-wall header did not appear")
     health_text = page.locator("#wall-health").inner_text()
     check("No tablets on the wall" in health_text,
           "TWR-06 A8 the fresh empty wall header reads 'No tablets on the wall'")
+    check(page.evaluate(
+        "document.querySelectorAll('#stage-svg [data-device-id]').length") == 0,
+        "TWR-06 A8 a fresh empty wall stage renders no tablet geometry")
+    note("Readiness labels follow the shipped workbench tasks (Images, Arrange, Tablets, "
+         "Saved, Settings). The empty-wall message is owned by #wall-health; #stage-svg "
+         "carries no copy of its own.")
 
-    tab(page, "Content")
+    tab(page, "Images")
+    page.locator("#image-addition").evaluate("node => node.open = true")
     instruction = page.locator("#upload-instruction").inner_text()
-    check("Uploads are off" in instruction and "Refresh images" in instruction,
+    check("Adding images is turned off" in instruction and "Refresh images" in instruction,
           "TWR-04 A3 uploads disabled shows the copy-to-directory instruction")
     check(page.locator("#upload-form").is_hidden(),
           "TWR-04 A3 uploads disabled hides the upload form")
+    shot(page, "01-empty-wall.png", full=True)
+
+    tab(page, "Settings")
     check(page.locator("#experimental-controls").is_hidden(),
           "TWR-04 A4 experimental playback controls are hidden until opt-in")
     check(page.locator("#topbar-transport").is_hidden(),
           "TWR-04 A4 the top bar carries no visible playback transport")
-    content_text = page.locator("#panel-content").inner_text()
-    check("Software evidence only" in content_text
-          and "not been validated on tablets" in content_text,
+    experimental_text = page.locator("#settings-experimental").inner_text()
+    check("Software evidence only" in experimental_text
+          and "not been validated on tablets" in experimental_text,
           "TWR-04 A4 the experimental section states software evidence only and no tablet validation")
-    shot(page, "01-empty-wall.png", full=True)
 
 
 def phase_tablets():
     page = operator_pages[0]
     first = tablets[0]
     select_tablet(page, first["id"])
-    tab(page, "System")
+    tab(page, "Settings")
     page.locator("#measurement-details").evaluate("node => node.open = true")
     wait_until(lambda: "Looks like Google Pixel C" in page.locator("#tablet-model-status").inner_text(),
                "the authoritative model suggestion did not render", timeout=5)
@@ -653,6 +666,7 @@ def phase_pinned_health():
               "TWR-11 A2 " + tablet["id"][:8] + " health is approximate, model-derived and confirmed")
 
     select_tablet(page, tablets[0]["id"])
+    page.locator("#tablet-placement").evaluate("node => node.open = true")
     provenance = page.locator("#tablet-provenance").inner_text()
     check("approximate" in provenance.lower() and "±3" in provenance,
           "TWR-11 A2 the tablet card shows approximate provenance with ±3 mm")
@@ -666,7 +680,7 @@ def phase_logical_grid():
     page.reload(wait_until="load")
     wait_until(lambda: "4 online" in page.locator("#device-count").inner_text(),
                "reloaded console did not see four tablets")
-    tab(page, "Wall")
+    tab(page, "Arrange")
     before = config()
     page.locator("#grid-kind").select_option("logical")
     page.locator("#grid-2x2").click()
@@ -703,7 +717,7 @@ def phase_logical_grid():
 
 def phase_physical_grid():
     page = operator_pages[0]
-    tab(page, "Wall")
+    tab(page, "Arrange")
     before = config()
     page.locator("#grid-kind").select_option("physical")
     page.locator("#grid-orientation").select_option("preserve")
@@ -760,18 +774,25 @@ def phase_physical_grid():
 
 def phase_content(return_name: str):
     page = operator_pages[0]
-    tab(page, "Wall")
+    tab(page, "Images")
     first = image_id("first.png")
     marked = image_id("marked.png")
     show_image(page, first, "cover")
+    page.locator("#image-details-disclosure").evaluate("node => node.open = true")
+    first_source = page.locator("#image-source-details").inner_text()
+    tab(page, "Arrange")
     active = page.locator("#stage-mode-label").inner_text()
-    check("first.png" in active and config()["scene"]["content"].get("fit") == "cover" and "2000 × 1400" in page.locator("#stage-dimensions").inner_text(),
+    check("first.png" in active and config()["scene"]["content"].get("fit") == "cover"
+          and "2000 × 1400" in first_source,
           "TWR-04 A1 image A is named in the console with its fill and wall size")
     wait_painted(first)
 
     show_image(page, marked, "contain")
+    page.locator("#image-details-disclosure").evaluate("node => node.open = true")
+    marked_source = page.locator("#image-source-details").inner_text()
+    tab(page, "Arrange")
     active = page.locator("#stage-mode-label").inner_text()
-    check("marked.png" in active and "2000 × 1000" in page.locator("#stage-dimensions").inner_text(),
+    check("marked.png" in active and "2000 × 1000" in marked_source,
           "TWR-04 A1 image B is named in the console with its fit and wall size")
     check(config()["scene"]["content"].get("fit") == "contain",
           "TWR-04 A1 image B is committed with the selected fit")
@@ -782,7 +803,7 @@ def phase_content(return_name: str):
     page.reload(wait_until="load")
     wait_until(lambda: "online" in page.locator("#device-count").inner_text(),
                "console did not recover after reload")
-    tab(page, "Wall")
+    tab(page, "Arrange")
     wait_until(lambda: "marked.png" in page.locator("#stage-mode-label").inner_text(),
                "reload did not show image B")
     check(config()["scene"]["content"].get("asset") == marked,
@@ -792,7 +813,7 @@ def phase_content(return_name: str):
 
     legacy_context = browser_ref[0].new_context(viewport={"width": 1280, "height": 900})
     legacy = legacy_context.new_page()
-    legacy.goto(CURRENT_BASE[0] + "/controller/", wait_until="load")
+    legacy.goto(CURRENT_BASE[0] + "/controller/experimental.html", wait_until="load")
     wait_until(lambda: "read-only" in legacy.locator("#compatibility-guard-text").inner_text()
                or "could not be checked" in legacy.locator("#compatibility-guard-text").inner_text(),
                "legacy compatibility guard did not finish its layout check")
@@ -808,8 +829,7 @@ def phase_content(return_name: str):
     legacy_context.close()
 
     layout_before = config()["layout"]
-    tab(page, "Wall")
-    page.locator("summary").filter(has_text="Colours and continuity checks").evaluate("node => node.parentElement.open = true")
+    tab(page, "Images")
     page.locator("#show-colours").click()
     wait_until(lambda: config()["scene"]["content"].get("type") == "color",
                "colour scene was not applied")
@@ -825,7 +845,6 @@ def phase_content(return_name: str):
     check(config()["layout"] == layout_before,
           "TWR-04 A2 Restore previous content returns to image B without losing the layout")
 
-    page.locator("summary").filter(has_text="Colours and continuity checks").evaluate("node => node.parentElement.open = true")
     page.locator("#pattern-black").click()
     wait_until(lambda: config()["scene"]["content"].get("type") == "image"
                and config()["scene"]["content"].get("asset") != marked,
@@ -867,7 +886,7 @@ MODEL_JS = """async () => {
 
 def phase_fit(marked: str):
     page = operator_pages[0]
-    tab(page, "Wall")
+    tab(page, "Images")
     show_image(page, marked, "contain")
     wait_until(lambda: config()["scene"]["content"].get("fit") == "contain",
                "scene did not carry contain")
@@ -880,10 +899,10 @@ def phase_fit(marked: str):
       return {pattern: !!pattern, stroke: pattern && pattern.querySelector('path') && pattern.querySelector('path').getAttribute('stroke'),
               clip: !!clip};
     }""")
-    check(hatch["pattern"] and hatch["clip"] and hatch["stroke"] == "#75828d",
+    check(hatch["pattern"] and hatch["clip"] and hatch["stroke"] == "var(--stage-line)",
           "TWR-05 A4 the stage draws a hatch pattern for occlusion and a panel clip, not colour alone")
 
-    page.locator("summary").filter(has_text="Preview coverage and resolution estimates").click()
+    page.locator("#stage-technical summary").click()
     wait_until(lambda: page.locator("#stage-resolution").is_visible(),
                "resolution estimate is not visible when expanded")
     model = page.evaluate(MODEL_JS)
@@ -893,8 +912,7 @@ def phase_fit(marked: str):
         check(expected in resolution,
               "TWR-05 A5 the visible resolution estimate uses the OperatorState arithmetic: " + expected)
     max_upscale = max((item["upscale"] for item in model["items"] if item["upscale"]), default=0)
-    quality = page.locator("#stage-quality-summary").inner_text()
-    check(f"Estimated upscaling up to {max_upscale:.1f}×" in quality,
+    check(f"{max_upscale:.1f}× upscale" in resolution,
           f"TWR-05 A5 the visible upscaling warning agrees with the model ({max_upscale:.1f}×)")
     shot(page, "08-fit-resolution.png", full=False)
 
@@ -961,7 +979,7 @@ def phase_fit(marked: str):
     check(_distance(fill_first, GREEN) < 900 and _distance(fill_fourth, GREEN) < 900,
           "TWR-05 A1 Fill spans the wall with the source interior on both outer slices")
 
-    tab(page, "Wall")
+    tab(page, "Images")
     page.set_viewport_size({"width": 390, "height": 844})
     page.wait_for_timeout(300)
     shot(page, "11-fit-phone.png", full=True)
@@ -987,7 +1005,7 @@ def phase_failure():
     name = page.locator("#tablet-action-name").inner_text()
     evidence = page.locator("#tablet-evidence").inner_text()
     number = device(config(), target["id"]).get("number")
-    check(f"#{number}" in name,
+    check(f"Tablet {number}" in name,
           "TWR-06 A1 the selected failure card names the failed tablet number: " + name)
     check("Image failed" in evidence and "fetch" in evidence,
           "TWR-06 A1 the failure card names the failure reason: " + evidence)
@@ -1004,8 +1022,11 @@ def phase_failure():
                "closed tablet did not report offline")
     wait_until(lambda: "3 of 4 showing the current image" in page.locator("#wall-health").inner_text(),
                "offline tablet is still counted as showing")
-    check("1 offline" in page.locator("#wall-health").inner_text(),
-          "TWR-06 A8 the header explains the offline member instead of silently dropping it")
+    page.locator("#wall-issues-panel").evaluate("node => node.open = true")
+    issues_text = page.locator("#wall-issues").inner_text()
+    check("Offline" in issues_text,
+          "TWR-06 A8 the wall issues list explains the offline member instead of silently "
+          "dropping it: " + issues_text)
     offline["page"] = offline["context"].new_page()
     offline["page"].goto(CURRENT_BASE[0] + "/client/", wait_until="load")
     wait_until(lambda: offline["page"].locator("#status").get_attribute("data-state") == "connected",
@@ -1026,7 +1047,7 @@ def phase_label():
                "label was not saved")
     check(label in page.locator("#device-list").inner_text(),
           "TWR-08 A1 the saved label appears in the tablet list")
-    tab(page, "Wall")
+    tab(page, "Saved")
     page.locator("#layout-name").fill("Portrait row")
     page.locator("#btn-layout-save").click()
     wait_until(lambda: any(item["name"] == "Portrait row"
@@ -1055,7 +1076,7 @@ def phase_restart_identify():
           "TWR-08 A1 the label is visible in the list after restart and reconnect")
     check(label in page.locator("#tablet-action-name").inner_text(),
           "TWR-08 A1 the label is visible on the selected tablet card after restart")
-    tab(page, "Wall")
+    tab(page, "Saved")
     wait_until(lambda: "Portrait row" in page.locator("#saved-layouts").inner_text(),
                "saved layout did not reappear after restart")
     check(tablet["id"] in get_json_layout_slots(),
@@ -1110,7 +1131,8 @@ def phase_rebind_preview():
     check(new_id != old["id"], "a replacement browser registered a distinct identity")
 
     select_tablet(page, old["id"])
-    page.locator("#operator-device-actions details").first.evaluate("node => node.open = true")
+    page.locator("#tablet-lifecycle").evaluate("node => node.open = true")
+    page.locator("#replace-target").evaluate("node => node.closest('details').open = true")
     page.locator("#replace-target").select_option(new_id)
     page.locator("#replace-hardware").select_option("same_hardware")
     before = config()
@@ -1119,13 +1141,17 @@ def phase_rebind_preview():
                "replacement preview did not become ready: "
                + page.locator("#tablet-action-message").inner_text(), timeout=20)
     summary = page.locator("#replace-summary").inner_text()
+    old_name = page.locator("#tablet-action-name").inner_text()
+    new_name = page.locator(f"#replace-target option[value='{new_id}']").inner_text()
     check("Preview only." in summary,
           "TWR-09 A1 the replacement preview is labelled preview-only")
-    check(old["id"][:8] in summary and new_id[:8] in summary,
+    check(f"Replace {old_name} with {new_name}" in summary,
           "TWR-09 A1 the replacement preview names the old and new identities")
-    check("Profile revision map" in summary and "calibration map" in summary,
+    page.locator("#replace-technical").evaluate("node => node.closest('details').open = true")
+    technical = page.locator("#replace-technical").inner_text()
+    check("profile_revision_map" in technical and "calibration_revision_map" in technical,
           "TWR-09 A1 the replacement preview reports profile and calibration revision maps")
-    check("Label after:" in summary and "number after:" in summary,
+    check("Name after replacement · " in summary and "; number · " in summary,
           "TWR-09 A1 the replacement preview reports the resulting label and number")
     after = config()
     check(after["revision"] == before["revision"] and after["layout"] == before["layout"],
@@ -1146,7 +1172,7 @@ def phase_rebind_preview():
 
 def phase_return_point():
     page = operator_pages[0]
-    tab(page, "Wall")
+    tab(page, "Arrange")
     before = config()
     page.locator("#grid-kind").select_option("logical")
     page.locator("#grid-2x2").click()
@@ -1167,14 +1193,15 @@ def phase_return_point():
           "TWR-09 A6 the physical-to-logical return point is stored as an automatic layout")
 
     row = page.locator("#saved-layouts li", has_text="Portrait row")
+    tab(page, "Saved")
     dialogs_before = len(dialogs)
     row.locator("button", has_text="Recall").click()
     wait_until(lambda: config()["layout"].get("kind") == "physical",
                "cross-kind recall did not return to the physical arrangement")
-    check(any("named safety copy" in message for message in dialogs[dialogs_before:]),
+    check(any("real named return point" in message for message in dialogs[dialogs_before:]),
           "TWR-09 A5 the logical-to-physical recall confirmation names the safety copy")
-    announcement = page.locator("#page-status").inner_text()
-    check("Previous arrangement saved as “Before physical " in announcement,
+    announcement = page.locator("#return-point-name").inner_text()
+    check(announcement.startswith("Before physical "),
           "TWR-09 A6 the cross-kind recall announcement names the generated return point: " + announcement)
     check(any(name.startswith("Before physical ") for name in
               [item["name"] for item in http("GET", "/layouts")[1]["layouts"]]),
@@ -1200,6 +1227,7 @@ def phase_fence():
           "TWR-11 A4 the fence carries a practical recovery action: " + warning.get("action", ""))
     select_tablet(page, tablets[1]["id"])
     select_tablet(page, tablet["id"])
+    page.locator("#tablet-placement").evaluate("node => node.open = true")
     evidence = page.locator("#tablet-evidence").inner_text()
     provenance = page.locator("#tablet-provenance").inner_text()
     check("live viewport does not match" in evidence or "viewport does not match pinned calibration" in evidence,
@@ -1217,7 +1245,8 @@ def phase_fence():
 
 def phase_uploads():
     page = operator_pages[0]
-    tab(page, "Content")
+    tab(page, "Images")
+    page.locator("#image-addition").evaluate("node => node.open = true")
     wait_until(lambda: page.locator("#upload-form").is_visible(),
                "loopback uploads did not reveal the form")
     capabilities = config().get("capabilities") or {}
@@ -1251,7 +1280,7 @@ def phase_uploads():
     }""")
     file_input.set_input_files(str(ASSETS / "upload-ok.png"))
     page.locator("#upload-submit").click()
-    wait_until(lambda: "Image uploaded" in page.locator("#upload-message").inner_text(),
+    wait_until(lambda: "Image added" in page.locator("#upload-message").inner_text(),
                "valid PNG upload did not report success", timeout=60)
     trace = page.evaluate("window.__uploadTrace")
     check(any(entry["hidden"] is False for entry in trace),
@@ -1269,7 +1298,7 @@ def phase_uploads():
 
     page.locator("#upload-file").set_input_files(str(ARTIFACTS / "upload-bad.txt"))
     page.locator("#upload-submit").click()
-    wait_until(lambda: "Upload rejected." in page.locator("#upload-message").inner_text(),
+    wait_until(lambda: "Image addition refused." in page.locator("#upload-message").inner_text(),
                "a disallowed upload did not report a rejection", timeout=30)
     rejection = page.locator("#upload-message").inner_text()
     check("only image/jpeg, image/png" in rejection,
@@ -1280,7 +1309,7 @@ def phase_uploads():
 
     page.locator("#upload-file").set_input_files(str(ARTIFACTS / "upload-unsupported.webp"))
     page.locator("#upload-submit").click()
-    wait_until(lambda: "Upload rejected." in page.locator("#upload-message").inner_text(),
+    wait_until(lambda: "Image addition refused." in page.locator("#upload-message").inner_text(),
                "webp upload did not report a rejection", timeout=30)
     webp_message = page.locator("#upload-message").inner_text()
     advertised = page.locator("#upload-file").get_attribute("accept") or ""
@@ -1297,11 +1326,15 @@ def phase_uploads():
     check(config()["layout"] == layout_before,
           "TWR-04 A3 a forced unsupported upload still leaves the layout unchanged")
     shot(page, "18-upload-webp-rejected.png", full=True)
+    if page.locator("#image-discard").is_visible():
+        page.locator("#image-discard").click()
+        wait_until(lambda: page.locator("#image-preview-controls").is_hidden(),
+                   "discarding the uploaded preview did not clear the image draft")
 
 
 def phase_playback():
     page = operator_pages[0]
-    tab(page, "Content")
+    tab(page, "Settings")
     check(page.locator("#experimental-controls").is_hidden(),
           "TWR-04 A4 playback controls are hidden before the explicit switch")
     check(page.locator("#topbar-transport").is_hidden(),
@@ -1351,8 +1384,7 @@ def phase_playback():
 
 def phase_drill():
     page = operator_pages[0]
-    tab(page, "Wall")
-    page.locator("summary").filter(has_text="Colours and continuity checks").evaluate("node => node.parentElement.open = true")
+    tab(page, "Images")
     marked = image_id("marked.png")
     page.locator("#pattern-black").click()
     wait_until(lambda: config()["scene"]["content"].get("type") == "image"
