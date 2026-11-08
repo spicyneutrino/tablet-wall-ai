@@ -43,6 +43,28 @@
         }
         remaining.forEach(item => item.remove());
     }
+    function viewZoom(svg) {
+        const body = svg && svg.ownerDocument && svg.ownerDocument.body;
+        return body && body.dataset && body.dataset.viewZoom === "2x" ? "2x" : "fit";
+    }
+    function viewSize(width, height, zoom) {
+        const zoomed = zoom === "2x";
+        return { zoom: zoomed ? "2x" : "fit", inlineSize: zoomed ? width * 2 : width,
+            blockSize: zoomed ? height * 2 : height, fieldBlockSize: zoomed ? height : null,
+            overflow: zoomed ? "auto" : "" };
+    }
+    function helpText(editable, kind) {
+        if (!editable) {
+            return "Wall preview. Select a tablet to inspect its identity and status. Numeric position and size fields are available in Arrange when a draft is editable.";
+        }
+        if (kind === "physical") {
+            return "Wall. Select a tablet and drag it, or use the arrow keys to nudge it by 1 millimetre, or Shift with an arrow for 10 millimetres. "
+                + "Escape cancels a drag. Measured positions use decimal millimetres and pinned measurements; numeric centre, nudge, angle and measurement fields are in Arrange.";
+        }
+        return "Wall. Select a tablet and drag it, or use the arrow keys to move it by 1 wall unit, or Shift with an arrow for 10 units. "
+            + "Escape cancels a drag. Alt pauses snapping while dragging with a mouse or pen; on touch use the snap checkbox. "
+            + "Numeric position, size and bezel fields are available in Arrange. Fit and 2x change the view only.";
+    }
     function fitLabels(svg) {
         svg.querySelectorAll(".operator-slot-label").forEach(label => {
             const matrix = label.getScreenCTM();
@@ -131,11 +153,16 @@
         const imagePortrait = compact && doc.body.dataset.task === "images" && win.matchMedia("(orientation: portrait)").matches;
         const height = imagePortrait ? width / aspect : reflow ? Math.min(width / aspect, Math.max(120 / zoom, bottom - topInset - 16))
             : Math.min(width / aspect, Math.max(120 / zoom, availableHeight));
-        field.style.inlineSize = Math.min(width, height * aspect) + borderWidth + "px";
-        svg.style.inlineSize = Math.min(width, height * aspect) + "px";
-        svg.style.blockSize = height + "px";
+        const fitWidth = Math.min(width, height * aspect);
+        const size = viewSize(fitWidth, height, viewZoom(svg));
+        field.style.inlineSize = fitWidth + borderWidth + "px";
+        field.style.blockSize = size.fieldBlockSize === null ? ""
+            : Math.min(size.fieldBlockSize, Math.max(120 / zoom, availableHeight)) + borderHeight + "px";
+        field.style.overflow = size.overflow;
+        svg.style.inlineSize = size.inlineSize + "px";
+        svg.style.blockSize = size.blockSize + "px";
         fitLabels(svg);
-        return { width: Math.min(width, height * aspect), height, availableWidth, availableHeight };
+        return { width: fitWidth, height, availableWidth, availableHeight, zoom: size.zoom };
     }
     function draw({ svg, layout, content, profileFor, labelFor, statusFor, selectedId, runtime, resolutionNode, preview = false, editable = true, presentation = "context", viewport = null, compareIds = null }) {
         const ns = "http://www.w3.org/2000/svg";
@@ -155,9 +182,7 @@
         svg.setAttribute("viewBox", "0 0 " + width + " " + height);
         svg.style.setProperty("--stage-aspect", width / height);
         svg.dataset.presentation = presentation;
-        svg.setAttribute("aria-label", editable
-            ? "Wall. Select a tablet and drag it, or use the arrow keys to nudge the selected tablet."
-            : "Wall preview. Select a tablet to inspect its identity and status.");
+        svg.setAttribute("aria-label", helpText(editable, layout.kind));
         const focused = document.activeElement;
         const focusedId = focused && focused.closest && focused.closest(".slot") && focused.closest(".slot").dataset.deviceId;
         const view = node("svg");
@@ -232,7 +257,7 @@
         }
         return stage;
     }
-    const api = { panels, resolution, draw, fit };
+    const api = { panels, resolution, draw, fit, viewZoom, viewSize, helpText };
     if (typeof module !== "undefined" && module.exports) module.exports = api;
     else root.OperatorStage = api;
 }(typeof window !== "undefined" ? window : globalThis));

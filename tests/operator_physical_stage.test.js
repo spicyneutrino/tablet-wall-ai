@@ -40,10 +40,10 @@ assert.equal(sheet.attrs.open, "");
 
 console.log("Physical stage roster counts and device-sheet mode transitions passed");
 
-function stageSetup() {
+function stageSetup(overrides = {}) {
     const nodes = new Map();
     let compact = true;
-    const document = { activeElement: null };
+    const document = { activeElement: null, body: { dataset: {} } };
     function node(id) {
         if (!nodes.has(id)) {
             const item = {
@@ -90,19 +90,22 @@ function stageSetup() {
     vm.runInContext(fs.readFileSync(require.resolve("../frontend/controller/physical-stage.js"), "utf8"), context);
     const heading = node("tablet-action-name");
     const stage = context.window.PhysicalStage.create({
-        DRAG_THRESHOLD_PX: 3, afterDraftChange() {}, announce() {}, bodyMetrics: () => null,
-        calibrationFor: () => null, beginManual() {}, canManualEdit: () => true, clearMsg() {},
-        clone: value => value, deviceEntries: () => [], deviceLabel: id => id, deviceNumber: () => 1,
-        deviceRows: new Map(), el, finiteOr: (value, fallback) => Number.isFinite(value) ? value : fallback,
+        DRAG_THRESHOLD_PX: 3, afterDraftChange: overrides.afterDraftChange || function () {},
+        announce: overrides.announce || function () {}, bodyMetrics: () => null,
+        calibrationFor: () => null, beginManual: overrides.beginManual || function () {}, canManualEdit: () => true,
+        clearMsg() {}, clone: overrides.clone || (value => value), deviceEntries: () => [], deviceLabel: id => id,
+        deviceNumber: () => 1, deviceRows: new Map(), el,
+        finiteOr: (value, fallback) => Number.isFinite(value) ? value : fallback,
         formatNumber: value => String(value), isOnline: () => true, latestProfile: () => null,
-        mutateDraft: () => true, numberTag: () => "1", numberedLabel: id => id, populateDeviceCard() {},
-        profileFor: () => null, pushUndo() {}, roundTo: value => value, selectedSlot: () => null,
+        mutateDraft: overrides.mutateDraft || (() => true), numberTag: () => "1", numberedLabel: id => id,
+        populateDeviceCard() {}, profileFor: () => null, pushUndo: overrides.pushUndo || function () {},
+        roundTo: value => value, selectedSlot: () => null,
         selectionChanged() { heading.textContent = state.selectedId || ""; },
         setInputValue() {}, showError() {},
         showTab(name) { showTabCalls.push(name); state.tabName = name; return true; },
         state, syncTabDots() {}, validPair: () => ({})
     });
-    return { stage, state, document, node, heading, sheet: node("device-sheet"), showTabCalls,
+    return { stage, state, document, window, context, node, heading, sheet: node("device-sheet"), showTabCalls, el,
         resize() { resizeListeners.forEach(listener => listener()); },
         setCompact(value) { compact = value; } };
 }
@@ -173,3 +176,233 @@ function stageSetup() {
     assert.equal(resize.sheet.attrs.open, undefined);
     console.log("Recovery reveals once after task completion, guards stale selections and restores focus across close and resize");
 })().catch(error => { console.error(error); process.exitCode = 1; });
+
+/* Pointer deltas, view transform changes, logical snap and Match shape. */
+function viewMatrix(view) {
+    return { a: view.scale, b: 0, c: 0, d: view.scale, e: view.offX, f: view.offY,
+        inverse() { return this; } };
+}
+
+function logicalDraft() {
+    return {
+        kind: "logical", width: 1000, height: 700, sizing: { mode: "fixed", padding: 0 },
+        placements: {
+            a: { x: 100, y: 100, w: 100, h: 70, bezel: { top: 3, right: 5, bottom: 7, left: 11 } },
+            b: { x: 300, y: 250, w: 80, h: 120, bezel: { top: 0, right: 0, bottom: 0, left: 0 } }
+        }
+    };
+}
+
+function dragSetup(options = {}) {
+    const setup = stageSetup(Object.assign({ clone: structuredClone }, options));
+    const { el, state, window, document } = setup;
+    window.PhysicalSizing = require("../frontend/controller/physical-sizing.js");
+    window.OperatorStage = { draw: () => null, helpText: editable => require("../frontend/controller/operator-stage.js").helpText(editable) };
+    const view = options.view || { scale: 1, offX: 0, offY: 0 };
+    const svg = el.stageSvg;
+    svg.style = {};
+    svg.setPointerCapture = function () {};
+    svg.hasPointerCapture = function () { return false; };
+    svg.releasePointerCapture = function () {};
+    svg.getScreenCTM = function () { return viewMatrix(view); };
+    svg.createSVGPoint = function () {
+        return { x: 0, y: 0, matrixTransform(matrix) {
+            return { x: (this.x - matrix.e) / matrix.a, y: (this.y - matrix.f) / matrix.d };
+        } };
+    };
+    state.selectedId = "a";
+    state.tabName = "show";
+    state.busy = false;
+    state.gridPreview = false;
+    state.viewLive = false;
+    state.previewContent = false;
+    state.draft = options.draft || logicalDraft();
+    state.stage = { scale: 1, offX: 0, offY: 0, width: 720, height: 480 };
+    state.roster = options.roster || {
+        a: { online: true, viewport: { width: 1600, height: 1000 } },
+        b: { online: true, viewport: { width: 1600, height: 1000 } }
+    };
+    state.rosterError = options.rosterError || null;
+    state.undo = [];
+    state.redo = [];
+    setup.node("logical-snap").value = String(options.step || 1);
+    setup.node("logical-snap-enabled").checked = options.enabled !== false;
+    return Object.assign(setup, { view: view });
+}
+
+function pointerEvent(clientX, clientY, extra = {}) {
+    const group = { dataset: { deviceId: "a" }, closest(selector) {
+        if (selector === ".slot") return group;
+        if (selector === ".logical-resize") return extra.resize ? group : null;
+        return null;
+    } };
+    return { pointerId: 1, clientX: clientX, clientY: clientY, button: 0,
+        pointerType: extra.pointerType || "mouse", altKey: !!extra.altKey,
+        target: group, preventDefault() {} };
+}
+
+function movedTo(deltaX, deltaY, extra = {}) {
+    return pointerEvent(100 + deltaX, 100 + deltaY, extra);
+}
+
+/* Fit, 2x and scrolled stage keep the same logical displacement. */
+for (const condition of [
+    { name: "Fit", view: { scale: 1, offX: 0, offY: 0 }, dx: 5, dy: 5, expectX: 105, expectY: 105 },
+    { name: "2x", view: { scale: 2, offX: 0, offY: 0 }, dx: 10, dy: 10, expectX: 105, expectY: 105 },
+    { name: "scrolled", view: { scale: 1, offX: 37, offY: 21 }, dx: 5, dy: 5, expectX: 105, expectY: 105 }
+]) {
+    const undo = [];
+    const drag = dragSetup({ view: { ...condition.view }, pushUndo: before => undo.push(before) });
+    const start = pointerEvent(100, 100);
+    drag.stage.onPointerDown(start);
+    drag.stage.onPointerMove(movedTo(condition.dx, condition.dy));
+    assert.equal(drag.state.draft.placements.a.x, condition.expectX, condition.name + " pointer delta in wall units");
+    assert.equal(drag.state.draft.placements.a.y, condition.expectY, condition.name + " pointer delta in wall units");
+    drag.stage.onPointerUp(movedTo(condition.dx, condition.dy));
+    assert.equal(undo.length, 1, condition.name + " drag pushes the original draft once");
+    assert.equal(undo[0].placements.a.x, 100);
+    console.log("Stage pointer delta holds at " + condition.name);
+}
+
+/* Snap spacing, Alt bypass and the touch checkbox. */
+const altSetup = dragSetup({ step: 4 });
+altSetup.stage.onPointerDown(pointerEvent(100, 100));
+altSetup.stage.onPointerMove(movedTo(5, 5, { altKey: true }));
+assert.equal(altSetup.state.draft.placements.a.x, 105, "Alt bypasses grid and edge snap for the current move");
+assert.equal(altSetup.state.draft.placements.a.y, 105);
+const gridSetup = dragSetup({ step: 4 });
+gridSetup.stage.onPointerDown(pointerEvent(100, 100));
+gridSetup.stage.onPointerMove(movedTo(5, 5));
+assert.equal(gridSetup.state.draft.placements.a.x, 104, "grid spacing still rounds wall coordinates");
+assert.equal(gridSetup.state.draft.placements.a.y, 104);
+const touchSetup = dragSetup({ step: 4, enabled: false });
+touchSetup.stage.onPointerDown(pointerEvent(100, 100, { pointerType: "touch" }));
+touchSetup.stage.onPointerMove(movedTo(5, 5, { pointerType: "touch" }));
+assert.equal(touchSetup.state.draft.placements.a.x, 105, "touch uses the snap checkbox instead of Alt");
+assert.equal(touchSetup.state.draft.placements.a.y, 105);
+const outsideSetup = dragSetup();
+outsideSetup.stage.onPointerDown(pointerEvent(100, 100));
+const outsideMove = movedTo(5, 5);
+outsideMove.target = null;
+outsideSetup.stage.onPointerMove(outsideMove);
+assert.equal(outsideSetup.state.draft.placements.a.x, 105, "pointer capture keeps a drag alive outside the SVG target");
+
+/* Edge snap through body and active edges, and a deterministic tie. */
+const edgeSetup = dragSetup();
+edgeSetup.stage.onPointerDown(pointerEvent(100, 100));
+edgeSetup.stage.onPointerMove(movedTo(97, 77));
+assert.equal(edgeSetup.state.draft.placements.a.x, 200, "a tablet body edge aligns inside the 8 px threshold");
+assert.equal(edgeSetup.state.draft.placements.a.y, 180);
+const activeSetup = dragSetup();
+activeSetup.stage.onPointerDown(pointerEvent(100, 100));
+activeSetup.stage.onPointerMove(movedTo(188, 0));
+assert.equal(activeSetup.state.draft.placements.a.x, 289, "an active edge aligns through the asymmetric left bezel");
+const tieDraft = logicalDraft();
+tieDraft.placements.c = { x: 10, y: 400, w: 1, h: 10, bezel: {} };
+const tieSetup = dragSetup({ draft: tieDraft });
+tieSetup.stage.onPointerDown(pointerEvent(100, 100));
+tieSetup.stage.onPointerMove(movedTo(-95, 0));
+assert.equal(tieSetup.state.draft.placements.a.x, 0, "equal edge distances resolve deterministically");
+
+/* Resize stays on grid spacing and never moves the body. */
+const resizeSetup = dragSetup({ step: 4 });
+resizeSetup.stage.onPointerDown(pointerEvent(100, 100, { resize: true }));
+resizeSetup.stage.onPointerMove(movedTo(10, 10, { resize: true }));
+assert.equal(resizeSetup.state.draft.placements.a.w, 112);
+assert.equal(resizeSetup.state.draft.placements.a.h, 80);
+assert.equal(resizeSetup.state.draft.placements.a.x, 100, "resize anchors the body position");
+assert.equal(resizeSetup.state.draft.placements.a.y, 100);
+
+/* Cancel paths restore the pre-drag draft. */
+const cancelSetup = dragSetup();
+const cancelOriginal = structuredClone(cancelSetup.state.draft);
+cancelSetup.stage.onPointerDown(pointerEvent(100, 100));
+cancelSetup.stage.onPointerMove(movedTo(40, 40));
+cancelSetup.stage.onPointerCancel({ pointerId: 1 });
+assert.deepEqual(cancelSetup.state.draft, cancelOriginal, "pointercancel restores the pre-drag geometry");
+assert.equal(cancelSetup.state.drag, null);
+const escapeSetup = dragSetup();
+const escapeOriginal = structuredClone(escapeSetup.state.draft);
+escapeSetup.stage.onPointerDown(pointerEvent(100, 100));
+escapeSetup.stage.onPointerMove(movedTo(40, 40));
+escapeSetup.stage.endDrag(false);
+assert.deepEqual(escapeSetup.state.draft, escapeOriginal, "the Escape path restores the pre-drag geometry");
+let lastAnnouncement = "";
+const viewCancel = dragSetup({ announce: message => { lastAnnouncement = message; } });
+const viewCancelOriginal = structuredClone(viewCancel.state.draft);
+viewCancel.stage.onPointerDown(pointerEvent(100, 100));
+viewCancel.stage.onPointerMove(movedTo(40, 40));
+viewCancel.view.scale = 2;
+viewCancel.stage.onPointerMove(movedTo(50, 50));
+assert.deepEqual(viewCancel.state.draft, viewCancelOriginal, "a mid-drag zoom or resize cancels before recomputing geometry");
+assert.equal(viewCancel.state.drag, null);
+assert.match(lastAnnouncement, /view changed/, "the operator is told why the drag was cancelled");
+const commitCancel = dragSetup({ pushUndo: () => { throw new Error("stale drag committed"); } });
+const commitOriginal = structuredClone(commitCancel.state.draft);
+commitCancel.stage.onPointerDown(pointerEvent(100, 100));
+commitCancel.stage.onPointerMove(movedTo(40, 40));
+commitCancel.view.scale = 2;
+commitCancel.stage.onPointerUp(movedTo(50, 50));
+assert.deepEqual(commitCancel.state.draft, commitOriginal, "a stale capture cannot commit after a transform change");
+
+/* Fit/2x are view-only and cancel a drag on change. */
+const zoomSetup = dragSetup({ announce: message => { lastAnnouncement = message; } });
+const zoomOriginal = structuredClone(zoomSetup.state.draft);
+zoomSetup.stage.setViewZoom("2x");
+assert.equal(zoomSetup.document.body.dataset.viewZoom, "2x");
+assert.deepEqual(zoomSetup.state.draft, zoomOriginal, "view zoom never changes geometry");
+assert.deepEqual(zoomSetup.state.undo, [], "view zoom never changes undo history");
+assert.match(lastAnnouncement, /arrangement is unchanged/);
+zoomSetup.stage.setViewZoom("fit");
+assert.equal(zoomSetup.document.body.dataset.viewZoom, "fit");
+zoomSetup.stage.onPointerDown(pointerEvent(100, 100));
+zoomSetup.stage.onPointerMove(movedTo(20, 20));
+zoomSetup.stage.setViewZoom("2x");
+assert.deepEqual(zoomSetup.state.draft, zoomOriginal, "changing zoom during a drag restores the pre-drag draft");
+assert.equal(zoomSetup.state.drag, null);
+
+/* Match screen shape uses a fresh online viewport and the draft path. */
+const holder = { calls: 0, state: null };
+const matchSetup = dragSetup({ mutateDraft(mutator) { mutator(holder.state.draft); holder.calls += 1; return true; } });
+holder.state = matchSetup.state;
+assert.equal(holder.calls, 0, "drag-only setup has not called the draft mutator");
+matchSetup.stage.onPointerDown(pointerEvent(100, 100));
+matchSetup.stage.onPointerMove(movedTo(20, 20));
+matchSetup.stage.onPointerUp(movedTo(20, 20));
+assert.equal(holder.calls, 0, "pointer editing never writes a durable command");
+matchSetup.state.draft = logicalDraft();
+const match = matchSetup.stage.matchScreenShape();
+assert.equal(match.changed, true);
+assert.equal(holder.calls, 1, "Match is a draft mutation, not a wire write");
+const placement = matchSetup.state.draft.placements.a;
+assert.equal(placement.h, 63, "logical height stays an integer");
+assert.equal(placement.y, 104, "the active centre is preserved");
+assert.equal(placement.w, 100);
+assert.equal(placement.x, 100);
+assert.deepEqual(placement.bezel, { top: 3, right: 5, bottom: 7, left: 11 });
+const matchedAgain = matchSetup.stage.matchScreenShape();
+assert.equal(matchedAgain.changed, false, "an already matching shape is not mutated again");
+assert.equal(holder.calls, 1);
+assert.equal(matchSetup.stage.matchStatus().available, true);
+matchSetup.state.draft = { kind: "physical", slots: { a: { center_x_mm: 10 } } };
+const measured = matchSetup.stage.matchScreenShape();
+assert.equal(measured.changed, false);
+assert.equal(measured.measured, true, "measured mode explains pinned measurements without mutation");
+matchSetup.state.draft = logicalDraft();
+matchSetup.state.roster.a.viewport = null;
+const missing = matchSetup.stage.matchScreenShape();
+assert.equal(missing.changed, false);
+assert.match(missing.reason, /viewport/);
+matchSetup.state.roster.a.viewport = { width: 1600, height: 1000 };
+matchSetup.state.rosterError = "offline roster";
+const stale = matchSetup.stage.matchScreenShape();
+assert.equal(stale.changed, false);
+assert.match(stale.reason, /stale/);
+matchSetup.state.rosterError = null;
+matchSetup.state.roster.a.online = false;
+const offline = matchSetup.stage.matchScreenShape();
+assert.equal(offline.changed, false);
+assert.match(offline.reason, /offline/);
+assert.match(matchSetup.stage.geometryHelp(), /Shift/);
+assert.match(matchSetup.stage.geometryHelp(), /touch/);
+console.log("Pointer cancellation, view zoom, logical snap and Match shape passed");

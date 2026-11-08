@@ -135,7 +135,157 @@
         return { error: "No non-overlapping Add position could be suggested. Use a grid preview." };
     }
 
-    const api = { fitBounds: fitBounds, packSlots: packSlots, nextPosition: nextPosition };
+    const LOGICAL_EDGE_THRESHOLD_PX = 8;
+
+    function linear(value, fallback) {
+        const number = Number(value);
+        return Number.isFinite(number) ? number : fallback;
+    }
+
+    function bezel(slot) {
+        return slot && slot.bezel || {};
+    }
+
+    function edgeThreshold(thresholdPx, pixelsPerUnit) {
+        const threshold = linear(thresholdPx, LOGICAL_EDGE_THRESHOLD_PX);
+        const density = linear(pixelsPerUnit, 0);
+        return density > 0 ? threshold / density : 0;
+    }
+
+    function edgeCandidates(layout, id) {
+        const placements = layout && layout.placements || {};
+        const selected = placements[id];
+        if (!selected) return { x: [], y: [] };
+        const box = bezel(selected);
+        const offsets = {
+            x: [
+                { value: 0, priority: 0 },
+                { value: linear(selected.w, 0), priority: 0 },
+                { value: linear(box.left, 0), priority: 1 },
+                { value: linear(selected.w, 0) - linear(box.right, 0), priority: 1 }
+            ],
+            y: [
+                { value: 0, priority: 0 },
+                { value: linear(selected.h, 0), priority: 0 },
+                { value: linear(box.top, 0), priority: 1 },
+                { value: linear(selected.h, 0) - linear(box.bottom, 0), priority: 1 }
+            ]
+        };
+        const targetsX = [];
+        const targetsY = [];
+        for (const [otherId, other] of Object.entries(placements)) {
+            if (otherId === id || !other) continue;
+            const otherBox = bezel(other);
+            targetsX.push(
+                linear(other.x, 0), linear(other.x, 0) + linear(other.w, 0),
+                linear(other.x, 0) + linear(otherBox.left, 0),
+                linear(other.x, 0) + linear(other.w, 0) - linear(otherBox.right, 0)
+            );
+            targetsY.push(
+                linear(other.y, 0), linear(other.y, 0) + linear(other.h, 0),
+                linear(other.y, 0) + linear(otherBox.top, 0),
+                linear(other.y, 0) + linear(other.h, 0) - linear(otherBox.bottom, 0)
+            );
+        }
+        const expand = (targets, list) => {
+            const values = [];
+            for (const target of targets) {
+                for (const offset of list) values.push({ value: target - offset.value, priority: offset.priority });
+            }
+            return values;
+        };
+        return {
+            x: [{ value: 0, priority: 0 }, { value: linear(layout.width, 0) - linear(selected.w, 0), priority: 0 }]
+                .concat(expand(targetsX, offsets.x)),
+            y: [{ value: 0, priority: 0 }, { value: linear(layout.height, 0) - linear(selected.h, 0), priority: 0 }]
+                .concat(expand(targetsY, offsets.y))
+        };
+    }
+
+    function closestEdge(candidates, raw, threshold) {
+        if (!(threshold > 0)) return null;
+        let best = null;
+        for (const candidate of candidates) {
+            const distance = Math.abs(raw - candidate.value);
+            if (distance > threshold + 1e-9) continue;
+            const closer = !best || distance < best.distance - 1e-9;
+            const tieBetter = !!best && Math.abs(distance - best.distance) <= 1e-9
+                && (candidate.priority < best.priority
+                    || candidate.priority === best.priority && candidate.value < best.value);
+            if (closer || tieBetter) {
+                best = { value: candidate.value, priority: candidate.priority, distance: distance };
+            }
+        }
+        return best ? Math.round(best.value) : null;
+    }
+
+    function snapLogical(slot, layout, options) {
+        const settings = options || {};
+        if (!slot || !layout || layout.kind !== "logical") return slot ? Object.assign({}, slot) : slot;
+        const mode = settings.mode === "resize" ? "resize" : "move";
+        const step = Math.max(1, Math.round(linear(settings.step, 1)));
+        const enabled = settings.enabled !== false;
+        const threshold = linear(settings.threshold, 0);
+        const result = Object.assign({}, slot);
+        const box = bezel(slot);
+        const grid = value => Math.round(value / step) * step;
+        if (mode === "resize") {
+            const minimumW = linear(box.left, 0) + linear(box.right, 0) + 1;
+            const minimumH = linear(box.top, 0) + linear(box.bottom, 0) + 1;
+            result.w = Math.max(minimumW, enabled ? grid(linear(slot.w, 0)) : Math.round(linear(slot.w, 0)));
+            result.h = Math.max(minimumH, enabled ? grid(linear(slot.h, 0)) : Math.round(linear(slot.h, 0)));
+            return result;
+        }
+        const rawX = linear(slot.x, 0), rawY = linear(slot.y, 0);
+        if (!enabled) {
+            result.x = Math.round(rawX);
+            result.y = Math.round(rawY);
+            return result;
+        }
+        const edges = edgeCandidates(layout, settings.id);
+        const edgeX = closestEdge(edges.x, rawX, threshold);
+        const edgeY = closestEdge(edges.y, rawY, threshold);
+        result.x = edgeX === null ? grid(rawX) : edgeX;
+        result.y = edgeY === null ? grid(rawY) : edgeY;
+        return result;
+    }
+
+    function matchScreenShape(slot, viewport) {
+        if (!slot) return { error: "Select a placed tablet before matching its screen shape." };
+        const width = linear(viewport && viewport.width, 0);
+        const height = linear(viewport && viewport.height, 0);
+        if (!(width > 0) || !(height > 0)) return { error: "A current online tablet viewport is required to match the screen shape." };
+        const box = bezel(slot);
+        const activeWidth = linear(slot.w, 0) - linear(box.left, 0) - linear(box.right, 0);
+        if (!(activeWidth > 0)) return { error: "The active screen width is not positive. Review the wall size and bezels first." };
+        const activeHeight = activeWidth / (width / height);
+        if (!Number.isFinite(activeHeight) || activeHeight <= 0) return { error: "The tablet viewport cannot produce a positive active height." };
+        const targetHeight = Math.round(activeHeight + linear(box.top, 0) + linear(box.bottom, 0));
+        if (!(targetHeight > linear(box.top, 0) + linear(box.bottom, 0))) {
+            return { error: "The bezels leave no positive active height. Review the wall size and bezels first." };
+        }
+        const targetY = Math.round(linear(slot.y, 0) + (linear(slot.h, 0) - targetHeight) / 2);
+        return { placement: Object.assign({}, slot, { y: targetY, h: targetHeight }),
+            changed: targetHeight !== slot.h || targetY !== slot.y };
+    }
+
+    function freshViewport(device, options) {
+        const settings = options || {};
+        if (settings.stale) return { available: false, reason: "Tablet status is stale. Refresh status or reconnect before matching the screen shape." };
+        if (!device) return { available: false, reason: "Select a tablet before matching the screen shape." };
+        if (device.online !== true) return { available: false, reason: "This tablet is offline. Its last viewport cannot define the current screen shape; refresh status or reconnect." };
+        const width = linear(device.viewport && device.viewport.width, 0);
+        const height = linear(device.viewport && device.viewport.height, 0);
+        if (!(width > 0) || !(height > 0)) return { available: false, reason: "No current positive tablet viewport was reported. Refresh status or reconnect." };
+        if (settings.expected && (settings.expected.width !== width || settings.expected.height !== height)) {
+            return { available: false, reason: "The tablet viewport changed. Refresh status or reconnect before matching the screen shape." };
+        }
+        return { available: true, viewport: { width: width, height: height } };
+    }
+
+    const api = { fitBounds: fitBounds, packSlots: packSlots, nextPosition: nextPosition,
+        LOGICAL_EDGE_THRESHOLD_PX: LOGICAL_EDGE_THRESHOLD_PX, edgeThreshold: edgeThreshold,
+        snapLogical: snapLogical, matchScreenShape: matchScreenShape, freshViewport: freshViewport };
     root.PhysicalSizing = api;
     if (typeof module !== "undefined" && module.exports) module.exports = api;
 }(typeof window !== "undefined" ? window : globalThis));

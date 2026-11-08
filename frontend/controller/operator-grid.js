@@ -14,9 +14,13 @@
                     if (!frozen && member.membershipSource === "automatic" && device.online) member.included = true;
                     if (refreshSaved && saved && member.sizeSource === "saved") member.size = { w: saved.w, h: saved.h };
                     const viewport = device.viewport;
+                    const viewportWidth = Number(viewport && viewport.width);
+                    const viewportHeight = Number(viewport && viewport.height);
+                    const logicalWidth = Math.round(100 * (viewportWidth / viewportHeight));
                     if (!frozen && ["fallback", "viewport"].includes(member.sizeSource) && device.online
-                            && viewport && viewport.width > 0 && viewport.height > 0) {
-                        member.size = { w: Math.max(1, Math.round(100 * viewport.width / viewport.height)), h: 100 };
+                            && Number.isFinite(viewportWidth) && Number.isFinite(viewportHeight)
+                            && viewportWidth > 0 && viewportHeight > 0 && Number.isFinite(logicalWidth)) {
+                        member.size = { w: Math.max(1, logicalWidth), h: 100 };
                         member.sizeSource = "viewport";
                     }
                 }
