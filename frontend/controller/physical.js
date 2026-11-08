@@ -1315,6 +1315,7 @@
             if (document.activeElement !== input) {
                 input.value = value === undefined ? "" : value;
                 input.dataset.deviceId = state.selectedId || "";
+                markInvalid(input, false);
             }
         }
         for (const [id, value] of [["logical-width", draft.width], ["logical-height", draft.height],
