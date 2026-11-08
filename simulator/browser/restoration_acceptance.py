@@ -2099,6 +2099,7 @@ def geometry_tools(rig: Rig) -> None:
     )
 
     before = rig.config()
+    view_requests_before = len(rig.requests)
     page.click("#view-zoom-2x")
     wait_until(page, "() => document.body.dataset.viewZoom === '2x'")
     rig.check(
@@ -2113,8 +2114,8 @@ def geometry_tools(rig: Rig) -> None:
     )
     rig.check(
         "2x is view-only and writes no network command",
-        not [row for row in rig.requests if row["method"] != "GET"],
-        [row for row in rig.requests if row["method"] != "GET"],
+        not [row for row in rig.requests[view_requests_before:] if row["page"] == "controller"],
+        [row for row in rig.requests[view_requests_before:] if row["page"] == "controller"],
         [],
     )
     page.click("#view-zoom-fit")
@@ -2746,7 +2747,17 @@ def historical_membership(rig: Rig) -> None:
     page.wait_for_timeout(80)
     page.click("#grid-2x2")
     page.wait_for_timeout(80)
+    page.check("#grid-holes")
     page.click("#grid-preview")
+    wait_until(page, "() => /Rebuild preview explicitly/.test(document.getElementById('grid-message').textContent)")
+    rig.check(
+        "A later join requires an explicit rebase before preview",
+        page.locator("#grid-rebuild").is_visible(),
+        page.locator("#grid-message").inner_text(),
+        "Rebuild preview explicitly",
+    )
+    page.once("dialog", lambda dialog: dialog.accept())
+    page.click("#grid-rebuild")
     wait_until(page, "() => /tablets ·/.test(document.getElementById('grid-message').textContent)")
     page.click("#btn-apply")
     rig.wait_config(
@@ -2954,6 +2965,9 @@ def historical_uncertainty(rig: Rig) -> None:
     # Redo is an output command: a competing image proposal must be resolved
     # before redo can restore the arrangement.
     rig.task("Arrange")
+    wait_until(page, "() => document.getElementById('draft-resolution')?.open === true")
+    page.click("#resolve-discard")
+    wait_until(page, "() => document.body.dataset.task === 'arrange'")
     select_stage_slot(rig, ids[0])
     set_logical_snap(rig, False, 1)
     original = rig.config()["layout"]["placements"][ids[0]]
