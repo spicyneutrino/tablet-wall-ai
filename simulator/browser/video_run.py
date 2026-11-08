@@ -368,7 +368,6 @@ async def main(artifacts: Path) -> int:
         if finalized:
             return
         finalized = True
-        audit_browser_issues(check, observations)
         report["checks_passed"] = sum(1 for entry in checks if entry["passed"])
         report["checks_total"] = len(checks)
         report["checks_failed"] = report["checks_total"] - report["checks_passed"]
@@ -480,6 +479,7 @@ async def main(artifacts: Path) -> int:
         check("the editor shows the live video session and members",
               "playing" in report["editor_text_playing"].lower()
               and "video" in report["editor_text_playing"].lower())
+        await editor.locator("#playback-more > summary").click()
         await editor.evaluate("document.querySelector('#playback-details').open = true")
         facts = await editor.locator("#playback-facts").inner_text()
         report["editor_facts_playing"] = facts
@@ -628,6 +628,8 @@ async def main(artifacts: Path) -> int:
         error = f"{type(exc).__name__}: {exc}"
         traceback.print_exc()
     finally:
+        audit_browser_issues(check, observations)
+        report["browser_audit_phase"] = "before runner teardown"
         with contextlib.suppress(Exception):
             if http is not None:
                 http.close()

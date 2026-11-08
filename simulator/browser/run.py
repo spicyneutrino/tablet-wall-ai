@@ -1882,6 +1882,8 @@ async def exercise(artifacts: Path, report: dict[str, Any], observation_seconds:
             check("hard-cut playlist saves", saved_playlist.status_code == 200,
                   text=saved_playlist.text[-500:])
             await asyncio.sleep(1.5)  # let the clock sampler finish its burst
+            await editor_page.click("#tab-system")
+            await editor_page.check("#experimental-opt-in")
             started = physical_http.post("/api/v3/playback/start")
             check("playback starts", started.status_code == 200, text=started.text[-500:])
 
