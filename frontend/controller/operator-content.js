@@ -1,7 +1,7 @@
 "use strict";
 window.OperatorContent = {
     create({ state, api, ingestConfig, renderStage, announce, showConflict, resolveOutput = async () => true, refreshConnection }) {
-        const { $ } = window.OperatorDom;
+        const { $, setTextIfChanged } = window.OperatorDom;
         let images = [], selected = null, fit = "cover", background = "#0b1120", selectionDirty = false, loading = false, busy = false, inventoryReady = false;
         let previous = null, xhr = null, inventoryVersion = 0, selectionVersion = 0, baseEtag = null, savedScene = null, uploadUncertain = false;
         const gallery = new Map();
@@ -34,6 +34,88 @@ window.OperatorContent = {
         }
         const normalizedBackground = value => typeof value === "string" && /^#[0-9a-f]{6}$/i.test(value)
             ? value.toLowerCase() : "#0b1120";
+        const validDimension = value => typeof value === "number" && Number.isFinite(value) && value > 0;
+        const fitLabel = value => value === "contain" ? "Fit" : "Fill";
+        const percent = value => {
+            const rounded = Math.round(value * 1000) / 10;
+            return (Number.isInteger(rounded) ? String(rounded) : rounded.toFixed(1)) + "%";
+        };
+        function withIntrinsic(content) {
+            if (!content || content.type !== "image") return content;
+            if (validDimension(content.intrinsicWidth) && validDimension(content.intrinsicHeight)) return content;
+            const image = images.find(item => item.id === content.asset);
+            return image ? { ...content, intrinsicWidth: image.width, intrinsicHeight: image.height } : content;
+        }
+        function hideCropBars() {
+            const bars = $("crop-bars");
+            if (bars) bars.hidden = true;
+            setTextIfChanged($("crop-width"), "Unavailable");
+            setTextIfChanged($("crop-height"), "Unavailable");
+        }
+        function renderFitFeedback() {
+            const summary = $("fit-summary"), applied = $("fit-applied");
+            if (!summary || !applied) return;
+            const committed = state.scene && state.scene.content || {};
+            setTextIfChanged(applied, committed.type === "image"
+                ? "Applied: " + fitLabel(committed.fit || "cover") + " · background " + normalizedBackground(committed.background)
+                : committed.type === "color" ? "Applied: tablet colours · no image fit"
+                    : committed.type === "calibration" ? "Applied: calibration pattern · no image fit"
+                        : "Applied: nothing on the wall.");
+            const prefix = selectionDirty ? "Preview" : "Applied";
+            const content = withIntrinsic(selectionDirty ? selectedContent() : committed);
+            if (!content) {
+                setTextIfChanged(summary, "Crop estimate unavailable: the selected image is not in the library. Refresh images or choose another image.");
+                hideCropBars();
+                return;
+            }
+            if (content.type !== "image") {
+                setTextIfChanged(summary, selectionDirty ? "Preview content is not an image; Fill and Fit do not apply."
+                    : "Select an image to estimate Fill crop or Fit bands.");
+                hideCropBars();
+                return;
+            }
+            if (!validDimension(content.intrinsicWidth) || !validDimension(content.intrinsicHeight)) {
+                setTextIfChanged(summary, prefix + " crop estimate unavailable: source dimensions are missing.");
+                hideCropBars();
+                return;
+            }
+            const layout = state.base || state.draft, model = window.OperatorState;
+            if (!layout || !model) {
+                setTextIfChanged(summary, prefix + " crop estimate unavailable: wall bounds are missing.");
+                hideCropBars();
+                return;
+            }
+            const bounds = model.bounds(layout);
+            if (!bounds || !validDimension(bounds.width) || !validDimension(bounds.height)) {
+                setTextIfChanged(summary, prefix + " crop estimate unavailable: wall bounds are missing.");
+                hideCropBars();
+                return;
+            }
+            const transform = model.fitTransform(layout, content);
+            if (!transform) {
+                setTextIfChanged(summary, prefix + " crop estimate unavailable: image or wall dimensions are invalid.");
+                hideCropBars();
+                return;
+            }
+            const contain = content.fit === "contain";
+            const widthFraction = contain ? Math.max(0, 1 - transform.width / bounds.width) : Math.max(0, transform.cropX);
+            const heightFraction = contain ? Math.max(0, 1 - transform.height / bounds.height) : Math.max(0, transform.cropY);
+            const widthPercent = percent(widthFraction), heightPercent = percent(heightFraction);
+            setTextIfChanged(summary, prefix + " " + fitLabel(content.fit)
+                + " of " + content.intrinsicWidth + " × " + content.intrinsicHeight + ": "
+                + widthPercent + (contain ? " of the wall width" : " of the source width") + " and "
+                + heightPercent + (contain ? " of the wall height" : " of the source height")
+                + (contain ? " are uncovered." : " are cropped."));
+            const bars = $("crop-bars");
+            if (bars) bars.hidden = false;
+            const rows = Array.from((bars && bars.children) || []);
+            for (const [axis, value, text] of [["width", widthPercent, widthPercent + (contain ? " of wall width uncovered" : " of source width cropped")],
+                ["height", heightPercent, heightPercent + (contain ? " of wall height uncovered" : " of source height cropped")]]) {
+                const row = rows.find(item => item.dataset && item.dataset.axis === axis);
+                if (row) row.setAttribute("style", "--crop:" + value);
+                setTextIfChanged($("crop-" + axis), text);
+            }
+        }
         const sceneInput = content => content.type === "image"
             ? { type: "image", asset: content.asset, fit: content.fit || "cover", background: normalizedBackground(content.background) }
             : { type: content.type };
@@ -286,6 +368,7 @@ window.OperatorContent = {
                 : "Image-addition capability is unknown. Check the connection and Refresh status. No upload is enabled by the browser.";
             $("upload-submit").disabled = !!xhr || uploadUncertain;
             state.previewContent = selectionDirty ? chosen || { type: "image", asset: selected, available: false } : null;
+            renderFitFeedback();
             renderGallery();
             renderShownStatus();
         }

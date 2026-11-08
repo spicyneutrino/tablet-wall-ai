@@ -1,6 +1,7 @@
 "use strict";
 const assert = require("node:assert/strict");
 const { fit, draw } = require("../frontend/controller/operator-stage.js");
+const stageModel = require("../frontend/controller/operator-state.js");
 
 class Element {
     constructor(tagName = "g", attributes = {}) {
@@ -162,6 +163,59 @@ for (const [width, height] of [[2000, 1000], [1000, 2000], [8000, 200]]) {
     assert.equal(stage.scale * width, 700);
     assert.equal(stage.height, 20 + 700 * height / width);
     assert.deepEqual(layout, before, "rendering preserves bezels, placements and empty logical bounds");
+}
+{
+    const cover = stageModel.fitTransform({ kind: "logical", width: 200, height: 200 },
+        { intrinsicWidth: 1600, intrinsicHeight: 1000, fit: "cover" });
+    assert.equal(cover.cropX, 0.375, "1600x1000 on a 200x200 wall crops 37.5% of source width");
+    assert.equal(cover.cropY, 0, "the fitted source height is fully visible");
+    const contain = stageModel.fitTransform({ kind: "logical", width: 200, height: 200 },
+        { intrinsicWidth: 1600, intrinsicHeight: 1000, fit: "contain" });
+    assert.equal(1 - contain.width / 200, 0, "Fit leaves no wall width uncovered");
+    assert.equal(1 - contain.height / 200, 0.375, "Fit leaves 37.5% of wall height uncovered");
+    const aspects = { wide: [1600, 1000], tall: [1000, 1600], square: [1000, 1000] };
+    const walls = { wide: [200, 100], tall: [100, 200], square: [200, 200] };
+    for (const [sourceName, [sourceWidth, sourceHeight]] of Object.entries(aspects)) {
+        for (const [wallName, [wallWidth, wallHeight]] of Object.entries(walls)) {
+            for (const fitMode of ["cover", "contain"]) {
+                const transform = stageModel.fitTransform({ kind: "logical", width: wallWidth, height: wallHeight },
+                    { intrinsicWidth: sourceWidth, intrinsicHeight: sourceHeight, fit: fitMode });
+                assert.ok(transform, sourceName + " source in a " + wallName + " wall with " + fitMode);
+                const cropX = transform.cropX, cropY = transform.cropY;
+                const uncoveredX = 1 - transform.width / wallWidth, uncoveredY = 1 - transform.height / wallHeight;
+                if (fitMode === "cover") {
+                    assert.ok(cropX >= 0 && cropY >= 0 && (cropX === 0 || cropY === 0),
+                        "Fill crops at most one source axis: " + sourceName + "/" + wallName);
+                } else {
+                    assert.ok(uncoveredX >= 0 && uncoveredY >= 0 && (uncoveredX === 0 || uncoveredY === 0),
+                        "Fit leaves bands on at most one wall axis: " + sourceName + "/" + wallName);
+                }
+            }
+        }
+    }
+    for (const invalid of [undefined, null, 0, -1, NaN, Infinity, "1600", true]) {
+        assert.equal(stageModel.fitTransform({ kind: "logical", width: 200, height: 200 },
+            { intrinsicWidth: invalid, intrinsicHeight: 1000, fit: "cover" }), null,
+        "missing or invalid source dimensions never produce a zero estimate");
+        assert.equal(stageModel.fitTransform({ kind: "physical", bounds: { x: 0, y: 0, width: invalid, height: 200 } },
+            { intrinsicWidth: 1600, intrinsicHeight: 1000, fit: "cover" }), null,
+        "missing or invalid wall bounds never produce a zero estimate");
+    }
+    const imageTarget = new Element("svg");
+    draw({ svg: imageTarget, layout: { kind: "logical", width: 200, height: 200, placements: {} },
+        content: { type: "image", asset: "a", url: "/assets/a", fit: "cover", intrinsicWidth: 1600,
+            intrinsicHeight: 1000, background: "#0b1120" }, labelFor: () => "",
+        statusFor: () => ({ status: "offline", text: "Offline" }) });
+    const images = [];
+    const collect = parent => parent.children.forEach(child => { if (child.tagName === "image") images.push(child); collect(child); });
+    collect(imageTarget);
+    assert.equal(images.length, 2, "the context preview and visible wall share the image element");
+    for (const image of images) {
+        assert.equal(Number(image.getAttribute("x")), -60, "the centered cover image starts left of the wall");
+        assert.equal(Number(image.getAttribute("y")), 0, "the centered cover image starts at the wall top");
+        assert.equal(Number(image.getAttribute("width")), 320, "the cover image is 320 logical units wide");
+        assert.equal(Number(image.getAttribute("height")), 200, "the cover image fills the wall height");
+    }
 }
 const roster = { z: { number: 1 }, a: { number: 2 }, m: { number: 3 } };
 const target = new Element("svg");
