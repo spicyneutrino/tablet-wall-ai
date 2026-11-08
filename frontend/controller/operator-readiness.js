@@ -185,7 +185,7 @@
     }
 
     function create({ state, api, copyText }) {
-        const { $ } = typeof module !== "undefined" && module.exports ? require("./operator-dom.js") : root.OperatorDom;
+        const { $, setTextIfChanged } = typeof module !== "undefined" && module.exports ? require("./operator-dom.js") : root.OperatorDom;
 
         let data = null, fetchedAt = null, failure = null, qrFailed = false, loading = false, qrRetry = 0;
 
@@ -204,7 +204,7 @@
         function render() {
             const model = view(data, { error: failure, fetchedAt: fetchedAt });
             const status = $("readiness-status");
-            status.textContent = model.status.text;
+            setTextIfChanged(status, model.status.text);
             status.dataset.kind = model.status.kind;
 
             $("tablet-url").textContent = model.url.href || "";
@@ -226,10 +226,13 @@
                 : "The QR encodes only the join address, not a credential.";
 
             const overview = new Set(["Wi-Fi", "Uploads", "Security trust"]);
+            const backup = new Set(["Backup manifest", "Backup proof", "Restore rehearsal", "Backup scope"]);
             const facts = model.facts.filter(([name]) => overview.has(name));
-            const details = model.facts.filter(([name]) => !overview.has(name)).map(([name, value]) =>
-                [name === "Image content" ? "Content at last check" : name, value]);
+            const backupFacts = model.facts.filter(([name]) => backup.has(name));
+            const details = model.facts.filter(([name]) => !overview.has(name) && !backup.has(name))
+                .map(([name, value]) => [name === "Image content" ? "Content at last check" : name, value]);
             factList($("operator-readiness-facts"), facts, JSON.stringify(facts));
+            factList($("operator-readiness-backup"), backupFacts, JSON.stringify(backupFacts));
             factList($("operator-readiness-details"), details, JSON.stringify(details));
             factList($("operator-readiness-paths"), model.paths, JSON.stringify(model.paths));
 
