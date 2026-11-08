@@ -2549,8 +2549,13 @@ def fleet_power(rig: Rig) -> None:
     rig.contexts.remove(held_context)
     held_context.close()
     rig.wait_config(lambda config: config["runtime"]["devices"][ids[0]]["online"] is False, timeout=20)
-    page.wait_for_timeout(300)
     rig.task("Tablets")
+    wait_until(
+        page,
+        "(ids) => ids.every((id, index) => { const row = [...document.querySelectorAll('#device-list .dev-row')].find(row => row.dataset.deviceId === id); return row && (index === 0 ? row.dataset.status === 'offline' : row.dataset.status === 'displayed'); })",
+        arg=ids,
+        timeout=20,
+    )
     held_row = page.locator(f'#device-list .dev-row[data-device-id="{ids[0]}"]')
     rig.check(
         "An offline held report remains last known power and never a current paint claim",
