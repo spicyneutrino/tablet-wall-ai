@@ -457,3 +457,68 @@ test("resume repaints even while an earlier registration probe is still pending"
     h.runAnimationFrames(); assert.equal(last(h).status, "displayed");
     pending.resolve({ ok: true, status: 200 }); await drain();
 });
+
+test("cached A survives a pending B, a fit/background change and a reconnect; superseded work releases and never displays", async t => {
+    const h = await connected(t);
+    h.setCreateImageBitmap(false);
+    const other = "sha256:" + "b".repeat(64);
+    h.setFetch(route({
+        ["a".repeat(64)]: okResponse(assetBlob("A", 400, 400)),
+        ["b".repeat(64)]: okResponse(assetBlob("B", 400, 400)),
+    }));
+    h.emit(instruction(1)); await drain(); h.runAnimationFrames();
+    assert.equal(last(h).status, "displayed");
+    assert.equal(h.objectUrls.filter(entry => !entry.revoked).length, 1, "A is decoded and cached");
+    assert.equal(h.named("drawImage").at(-1).args[0], h.images[0]);
+
+    const abandoned = deferred();
+    h.setImageBehaviour({ decode: () => abandoned.promise, load: () => {} });
+    h.emit(instruction(2, { scene: { content: imageContent({ asset: other, url: "/assets/" + other }) } }));
+    await drain();
+    assert.equal(h.objectUrls.length, 2, "B reached its object URL");
+    assert.equal(h.objectUrls[1].revoked, false);
+
+    h.setImageBehaviour({ decode: () => Promise.resolve(),
+        load: img => setImmediate(() => { if (img.onload) img.onload(); }) });
+    h.emit(instruction(3, { scene: { content: imageContent({ fit: "contain", background: "#112233" }) } }));
+    await drain(); h.runAnimationFrames();
+    assert.equal(h.objectUrls[1].revoked, true, "the superseded B decode gives back its object URL");
+    assert.equal(h.images[1].src, "", "the superseded B img stops pulling bytes");
+    assert.equal(h.objectUrls[0].revoked, true, "the replaced A cache gives back its object URL too");
+    assert.deepEqual(displayed(h).map(f => f.token.render_seq), [1, 3], "B never reports displayed");
+    const rect = h.named("drawImage").at(-1).args.slice(1);
+    [500, 0, 1000, 1000].forEach((value, i) => assert.ok(Math.abs(rect[i] - value) < 1e-8, String(rect)));
+    const draw = h.calls.map(c => c.name).lastIndexOf("drawImage");
+    assert.equal(h.calls.slice(0, draw).filter(c => c.name === "setFillStyle").at(-1).args[0], "#112233");
+
+    const fetches = h.fetchLog.filter(f => String(f.url).includes("/assets/")).length;
+    const oldSocket = h.socket();
+    h.closeSocket(1006); await drain();
+    assert.equal(h.objectUrls[2].revoked, true, "a closed socket releases the cached object URL");
+    assert.equal(h.images[2].src, "", "a closed socket stops the cached img");
+    h.fireTimers(timer => timer.delay >= 500 && timer.delay <= 625); await drain();
+    assert.equal(h.socketCount(), 2);
+    h.socket().readyState = 1;
+    h.emit({ type: "welcome", connection_id: "conn-2", number: 4, heartbeat_interval_ms: 5000 });
+    const replayed = instruction(4, { scene: { content: imageContent({ fit: "contain", background: "#112233" }) } });
+    replayed.token.connection_id = "conn-2";
+    h.reset();
+    h.emit(replayed); await drain();
+    assert.equal(h.fetchLog.filter(f => String(f.url).includes("/assets/")).length, fetches + 1,
+        "the reconnect returns to A with one fresh load");
+    assert.equal(last(h).status, "loading");
+    h.runAnimationFrames();
+    assert.equal(last(h).status, "displayed");
+    assert.deepEqual(displayed(h).map(f => f.token.render_seq), [4]);
+    assert.equal(h.named("drawImage").at(-1).args[0], h.images[3], "the returned A is on the wall");
+    assert.equal(h.objectUrls[3].revoked, false);
+
+    const paints = h.named("drawImage").length;
+    abandoned.resolve(); await drain(); h.runAnimationFrames();
+    assert.equal(h.named("drawImage").length, paints, "the abandoned B decode paints nothing after reconnect");
+    assert.deepEqual(displayed(h).map(f => f.token.render_seq), [4], "the superseded token never reports displayed");
+    assert.deepEqual(oldSocket.sent.filter(f => f.type === "render_ack" && f.status === "displayed")
+        .map(f => f.token.render_seq), [1, 3], "the old socket never reports B either");
+    assert.equal(h.objectUrls[1].revoked, true);
+    assert.equal(h.images[1].src, "");
+});

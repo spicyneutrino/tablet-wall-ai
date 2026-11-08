@@ -201,6 +201,25 @@ def test_unsupported_media_types_are_415_and_the_video_cap_is_enforced(operator,
     assert staging_entries() == []
 
 
+def test_the_filename_suffix_and_declared_type_never_decide_admission(operator):
+    """The browser may pick its wait from a suffix; the server reads type and bytes."""
+    with TestClient(main.app, base_url="http://127.0.0.1") as client:
+        still = client.post(
+            "/uploads?name=clip.mp4", content=jpeg(), headers=headers("image/jpeg")
+        )
+        assert still.status_code == 201, still.text
+        assert set(still.json()["asset"]) == STILL_KEYS
+
+        refused = client.post(
+            "/uploads?name=still.png", content=jpeg(), headers=headers("video/mp4")
+        )
+        assert refused.status_code == 422
+        assert "not an MP4" in refused.json()["detail"]
+        assert [entry["id"] for entry in client.get("/media").json()["assets"]] == [
+            still.json()["asset"]["id"]
+        ]
+
+
 def test_the_still_cap_does_not_apply_to_a_video(operator, make_video, monkeypatch):
     monkeypatch.setattr(main, "MAX_SOURCE_BYTES", 10)
     monkeypatch.setattr(media, "MAX_SOURCE_BYTES", 10)
