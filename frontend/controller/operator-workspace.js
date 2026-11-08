@@ -2,10 +2,15 @@
 window.OperatorWorkspace = {
     create({ state, labelFor, arrangementDirty, arrangementPreview, imageDirty, applyArrangement, showImage, discardArrangement, discardImage,
         commitTask, renderStage, stageNames, onViewChange = () => {}, selectTablet, canCommit }) {
-        const { $ } = window.OperatorDom;
+        const { $, setTextIfChanged } = window.OperatorDom;
         let pending = null, resolving = false, issueRequest = 0;
         const issues = new Map(), rosterRows = new Map(), stripRows = new Map();
         const stage = document.querySelector(".wall-stage"), arrangeTools = document.querySelector(".arrange-tools");
+        const powerFor = id => {
+            const project = window.OperatorStage && window.OperatorStage.powerReadiness;
+            return project && state.roster ? project(state.roster[id], { stale: !!state.rosterError, checkedAt: state.rosterCheckedAt }) : null;
+        };
+        const powerText = power => power && (power.warning || power.stale || power.state === "unknown") ? power.label : "";
         const chooserButton = $("image-chooser-summary"), chooserBody = $("image-chooser-body");
         const chooserQuery = typeof window.matchMedia === "function" ? window.matchMedia("(min-width: 48.01rem)") : null;
         let stageTask = null, joiningHasTablets = null, chooserHadFocus = false;
@@ -63,7 +68,7 @@ window.OperatorWorkspace = {
                     const tag = positionTag(id), name = labelFor ? labelFor(id) : id;
                     row.dataset.status = item.status;
                     row.button.dataset.deviceId = id;
-                    row.button.textContent = (tag ? tag + " " : "") + shortEvidence(item);
+                    setTextIfChanged(row.button, (tag ? tag + " " : "") + shortEvidence(item));
                     row.button.setAttribute("aria-label", name + ", " + item.text + ". Review recovery.");
                     if (strip.children[index] !== row) strip.insertBefore(row, strip.children[index] || null);
                 });
@@ -82,18 +87,25 @@ window.OperatorWorkspace = {
                         row.number = document.createElement("span"); row.number.className = "exception-number";
                         row.name = document.createElement("span"); row.name.className = "exception-name";
                         row.state = document.createElement("span"); row.state.className = "exception-state";
-                        row.button.append(row.number, row.name, row.state);
+                        row.power = document.createElement("span"); row.power.className = "exception-power";
+                        row.power.hidden = true;
+                        row.button.append(row.number, row.name, row.state, row.power);
                         row.button.addEventListener("click", () => revealRow(id, row.button));
                         row.append(row.button);
                         rosterRows.set(id, row);
                     }
                     const tag = positionTag(id), name = labelFor ? labelFor(id) : id;
+                    const power = powerFor(id), powerLabel = powerText(power);
                     row.dataset.deviceId = id; row.dataset.status = item.status;
+                    row.dataset.powerState = powerLabel ? power.state : "";
                     row.button.dataset.deviceId = id;
-                    row.number.textContent = tag || "–";
-                    row.name.textContent = name;
-                    row.state.textContent = item.text;
-                    row.button.setAttribute("aria-label", name + ", " + item.text + ". Review recovery.");
+                    setTextIfChanged(row.number, tag || "–");
+                    setTextIfChanged(row.name, name);
+                    setTextIfChanged(row.state, item.text);
+                    setTextIfChanged(row.power, powerLabel);
+                    row.power.hidden = !powerLabel;
+                    row.button.setAttribute("aria-label", name + ", " + item.text
+                        + (powerLabel ? ", " + powerLabel : "") + ". Review recovery.");
                     if (roster.children[index] !== row) roster.insertBefore(row, roster.children[index] || null);
                 });
             }

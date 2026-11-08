@@ -8,10 +8,10 @@
     <title>Tablet wall · tablet-wall-ai</title>
     <link rel="icon" href="favicon.svg" type="image/svg+xml">
     <link rel="stylesheet" href="operator-tokens.css?v=3">
-    <link rel="stylesheet" href="operator-workspace.css?v=33">
-    <link rel="stylesheet" href="operator-stage.css?v=6">
+    <link rel="stylesheet" href="operator-workspace.css?v=34">
+    <link rel="stylesheet" href="operator-stage.css?v=7">
 </head>
-<body class="physical">
+<body class="physical" data-view-zoom="fit">
 <a class="skip" href="#rail">Skip to active task</a>
 <a class="skip skip-nav" href="#task-navigation">Skip to controls</a>
 <a class="skip skip-controls" href="#compact-task-select">Skip to task controls</a>
@@ -75,14 +75,52 @@
             <p class="hint" id="geometry-help-text">Loading wall controls…</p>
         </details></div>
 
-        <aside class="arrange-tools"><section class="card task-section" aria-labelledby="grid-title"><h3 id="grid-title">Shape</h3>
+        <aside class="arrange-tools"><section class="card task-section" id="arrange-shape" aria-labelledby="grid-title">
+            <h3 id="grid-title">Wall shape</h3>
             <div class="grid-sizing-choice"><label for="grid-kind">Screen sizing</label><select class="inp" id="grid-kind" data-field="grid-kind"><option value="logical">Relative</option><option value="physical">Measured</option></select></div>
-
-
+            <div class="geometry-group" role="group" aria-labelledby="arrange-grid-heading">
+                <h4 class="geometry-heading" id="arrange-grid-heading">Grid and presets</h4>
+                <div class="grid-preset-row">
+                    <div class="operator-fields grid-size-fields">
+                        <label class="field" for="grid-rows">Rows<input class="inp" id="grid-rows" type="number" min="1" max="64" value="2" step="1" data-field="grid-rows"></label>
+                        <label class="field" for="grid-columns">Columns<input class="inp" id="grid-columns" type="number" min="1" max="64" value="2" step="1" data-field="grid-columns"></label>
+                    </div>
+                    <div class="arrange-controls">
+                        <div class="operator-actions">
+                            <button class="btn" type="button" id="grid-2x2" aria-pressed="false" data-action="grid-2x2">2 × 2</button>
+                            <button class="btn" type="button" id="grid-1x4" aria-pressed="false" data-action="grid-1x4">1 × 4</button>
+                            <button class="btn" type="button" id="grid-preview" aria-label="Preview arrangement" data-action="grid-preview"><span class="full-label">Preview arrangement</span><span class="compact-label" aria-hidden="true">Preview</span></button>
+                            <button class="btn" type="button" id="grid-rebuild" data-action="grid-rebuild">Rebuild preview</button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            <div class="geometry-group" role="group" aria-labelledby="arrange-bounds-heading">
+                <h4 class="geometry-heading" id="arrange-bounds-heading">Grid bounds</h4>
+                <label class="field" for="grid-orientation">Screen orientation<select class="inp" id="grid-orientation" data-field="grid-orientation"><option value="preserve">Preserve mounting / stored sizes</option><option value="landscape">Landscape</option><option value="portrait">Portrait</option><option value="auto">Auto from fresh viewport and confirmed model</option></select></label>
+                <label class="field" for="grid-sizing">Wall bounds<select class="inp" id="grid-sizing" data-field="grid-sizing"><option value="tablets">Fit wall to tablet bodies</option><option value="fixed">Keep current same-kind bounds</option></select></label>
+                <div class="operator-fields">
+                    <label class="field" for="grid-gap">Extra gap between bodies<input class="inp" id="grid-gap" type="number" min="0" value="0" step="any" data-field="grid-gap"></label>
+                    <label class="field" for="grid-padding">Outer padding<input class="inp" id="grid-padding" type="number" min="0" value="0" step="any" data-field="grid-padding"></label>
+                </div>
+                <label class="check-label"><input type="checkbox" id="grid-holes" data-field="grid-holes"> Allow empty trailing cells</label>
+            </div>
+            <div class="arrange-controls">
+                <p id="grid-message" role="status" aria-live="polite"></p>
+                <div id="arrange-footer-actions" class="operator-actions">
+                    <button type="button" class="btn btn-primary" id="btn-apply" aria-label="Apply arrangement" disabled data-action="btn-apply"><span class="full-label">Apply arrangement</span><span class="compact-label" aria-hidden="true">Apply</span></button>
+                    <button type="button" class="btn" id="btn-cancel" aria-label="Discard arrangement" disabled data-action="btn-cancel"><span class="full-label">Discard arrangement</span><span class="compact-label" aria-hidden="true">Discard</span></button>
+                </div>
+            </div>
+        </section>
         <details id="arrange-membership">
-            <summary id="arrange-membership-summary">Tablets and mounting · review order</summary>
+            <summary id="arrange-membership-summary">Order and mounting · review order</summary>
             <ol id="grid-order" class="operator-order" aria-label="Tablet order, left to right then top to bottom"></ol>
             <div id="grid-releases"></div>
+            <label class="field" for="grid-common-mount">Common mounted top edge<select class="inp" id="grid-common-mount" data-field="grid-common-mount"><option value="">Choose explicitly for new measured tablets</option><option value="0">0° · top at top</option><option value="90">90° · top at right</option><option value="180">180° · top at bottom</option><option value="270">270° · top at left</option></select></label>
+        </details>
+        <details id="arrange-model">
+            <summary id="arrange-model-summary">Model and measurements</summary>
             <section class="group-setup task-section" aria-labelledby="group-model-title">
                 <h3 id="group-model-title">Set up selected tablets together</h3>
                 <p id="group-subjects"></p>
@@ -92,33 +130,9 @@
                 <button type="button" class="btn" id="group-new-review" data-action="group-new-review" hidden>Start a new model review with the current arrangement selection</button>
                 <p id="group-result" role="status"></p>
             </section>
-            <label class="field" for="grid-common-mount">Common mounted top edge<select class="inp" id="grid-common-mount" data-field="grid-common-mount"><option value="">Choose explicitly for new measured tablets</option><option value="0">0° · top at top</option><option value="90">90° · top at right</option><option value="180">180° · top at bottom</option><option value="270">270° · top at left</option></select></label>
-            <div class="operator-fields">
-                <label class="field" for="grid-rows">Rows<input class="inp" id="grid-rows" type="number" min="1" max="64" value="2" step="1" data-field="grid-rows"></label>
-                <label class="field" for="grid-columns">Columns<input class="inp" id="grid-columns" type="number" min="1" max="64" value="2" step="1" data-field="grid-columns"></label>
-            <label class="field" for="grid-gap">Extra gap between bodies<input class="inp" id="grid-gap" type="number" min="0" value="0" step="any" data-field="grid-gap"></label>
-            <label class="field" for="grid-padding">Outer padding<input class="inp" id="grid-padding" type="number" min="0" value="0" step="any" data-field="grid-padding"></label>
-        </div>
-        <label class="field" for="grid-orientation">Screen orientation<select class="inp" id="grid-orientation" data-field="grid-orientation"><option value="preserve">Preserve mounting / stored sizes</option><option value="landscape">Landscape</option><option value="portrait">Portrait</option><option value="auto">Auto from fresh viewport and confirmed model</option></select></label>
-        <label class="field" for="grid-sizing">Wall bounds<select class="inp" id="grid-sizing" data-field="grid-sizing"><option value="tablets">Fit wall to tablet bodies</option><option value="fixed">Keep current same-kind bounds</option></select></label>
-        <label class="check-label"><input type="checkbox" id="grid-holes" data-field="grid-holes"> Allow empty trailing cells</label>
-    </details>
-    <div class="arrange-controls">
-        <div class="operator-actions">
-            <button class="btn" type="button" id="grid-2x2" aria-pressed="false" data-action="grid-2x2">2 × 2</button>
-            <button class="btn" type="button" id="grid-1x4" aria-pressed="false" data-action="grid-1x4">1 × 4</button>
-            <button class="btn" type="button" id="grid-preview" aria-label="Preview arrangement" data-action="grid-preview"><span class="full-label">Preview arrangement</span><span class="compact-label" aria-hidden="true">Preview</span></button>
-            <button class="btn" type="button" id="grid-rebuild" data-action="grid-rebuild">Rebuild preview</button>
-        </div>
-        <p id="grid-message" role="status" aria-live="polite"></p>
-        <div id="arrange-footer-actions" class="operator-actions">
-            <button type="button" class="btn btn-primary" id="btn-apply" aria-label="Apply arrangement" disabled data-action="btn-apply"><span class="full-label">Apply arrangement</span><span class="compact-label" aria-hidden="true">Apply</span></button>
-            <button type="button" class="btn" id="btn-cancel" aria-label="Discard arrangement" disabled data-action="btn-cancel"><span class="full-label">Discard arrangement</span><span class="compact-label" aria-hidden="true">Discard</span></button>
-        </div>
-    </div>
-</section>
-<details id="arrange-custom">
-    <summary>Custom bounds</summary>
+        </details>
+<details id="arrange-custom" open>
+    <summary id="arrange-custom-summary">Selected tablet and wall bounds</summary>
     <section class="card inspector task-section" aria-labelledby="inspector-title">
             <h2 id="inspector-title">Selected tablet</h2>
             <p class="empty-note" id="inspector-empty">Select a tablet on the stage or in the list.</p>
@@ -227,19 +241,30 @@
             <p class="hint" id="match-shape-measured-note">Match screen shape is relative-only. Measured slots keep pinned profile and calibration revisions; review measurements instead.</p>
         </section><section class="logical-editor task-section" id="logical-editor" hidden aria-labelledby="logical-title">
             <h3 id="logical-title">Relative arrangement</h3>
-            <div id="logical-fields" class="operator-fields"></div>
-            <label class="field" for="logical-snap">Snap spacing (relative units)<input class="inp" id="logical-snap" type="number" min="1" value="1" step="1" data-field="logical-snap"></label>
-            <label class="check-label"><input type="checkbox" id="logical-snap-enabled" checked disabled data-field="logical-snap-enabled"> Snap drags to grid and tablet edges</label>
-            <p class="hint" id="logical-snap-note">Mouse and pen: hold Alt to pause snapping. Touch uses this checkbox.</p>
-            <label class="field" for="logical-width">Wall width (relative units)<input class="inp" id="logical-width" type="number" min="1" step="1" data-field="logical-width"></label>
-            <label class="field" for="logical-height">Wall height (relative units)<input class="inp" id="logical-height" type="number" min="1" step="1" data-field="logical-height"></label>
-            <label class="field" for="logical-mode">Bounds<select class="inp" id="logical-mode" data-field="logical-mode"><option value="tablets">Fit to tablets</option><option value="fixed">Fixed bounds</option></select></label>
-            <label class="field" for="logical-padding">Outer padding (relative units)<input class="inp" id="logical-padding" type="number" min="0" step="1" value="0" data-field="logical-padding"></label>
-            <div class="operator-actions">
-                <button type="button" class="btn" id="logical-rotate" data-action="logical-rotate">Rotate selected 90°</button>
-                <button type="button" class="btn" id="btn-match-shape" data-action="btn-match-shape" disabled>Match screen shape</button>
+            <div class="geometry-group" role="group" aria-labelledby="logical-geometry-heading">
+                <h4 class="geometry-heading" id="logical-geometry-heading">Selected tablet geometry</h4>
+                <div id="logical-fields" class="operator-fields"></div>
+                <div class="operator-actions">
+                    <button type="button" class="btn" id="logical-rotate" data-action="logical-rotate">Rotate selected 90°</button>
+                    <button type="button" class="btn" id="btn-match-shape" data-action="btn-match-shape" disabled>Match screen shape</button>
+                </div>
+                <p class="hint" id="match-shape-note">Uses the selected tablet's current online viewport shape. Relative units only: it changes height and vertical centre, never measured millimetres or calibration.</p>
             </div>
-            <p class="hint" id="match-shape-note">Uses the selected tablet's current online viewport shape. Relative units only: it changes height and vertical centre, never measured millimetres or calibration.</p>
+            <div class="geometry-group" role="group" aria-labelledby="logical-snap-heading">
+                <h4 class="geometry-heading" id="logical-snap-heading">Snapping and keyboard</h4>
+                <label class="field" for="logical-snap">Snap spacing (relative units)<input class="inp" id="logical-snap" type="number" min="1" value="1" step="1" data-field="logical-snap"></label>
+                <label class="check-label"><input type="checkbox" id="logical-snap-enabled" checked disabled data-field="logical-snap-enabled"> Snap drags to grid and tablet edges</label>
+                <p class="hint" id="logical-snap-note">Mouse and pen: hold Alt to pause snapping. Touch uses this checkbox.</p>
+            </div>
+            <div class="geometry-group" role="group" aria-labelledby="logical-bounds-heading">
+                <h4 class="geometry-heading" id="logical-bounds-heading">Relative wall bounds</h4>
+                <label class="field" for="logical-width">Wall width (relative units)<input class="inp" id="logical-width" type="number" min="1" step="1" data-field="logical-width"></label>
+                <label class="field" for="logical-height">Wall height (relative units)<input class="inp" id="logical-height" type="number" min="1" step="1" data-field="logical-height"></label>
+                <div class="operator-fields">
+                    <label class="field" for="logical-mode">Bounds<select class="inp" id="logical-mode" data-field="logical-mode"><option value="tablets">Fit to tablets</option><option value="fixed">Fixed bounds</option></select></label>
+                    <label class="field" for="logical-padding">Outer padding (relative units)<input class="inp" id="logical-padding" type="number" min="0" step="1" value="0" data-field="logical-padding"></label>
+                </div>
+            </div>
             <details class="logical-tiling task-section">
                 <summary>Tile or pack tablets</summary>
                 <div class="operator-fields">
@@ -1056,7 +1081,7 @@
 <script src="operator-readiness.js?v=4"></script>
 <script src="operator-sync.js?v=2"></script>
 <script src="operator-session.js?v=2"></script>
-<script src="operator-workspace.js?v=14"></script>
+<script src="operator-workspace.js?v=15"></script>
 <script src="physical-playback.js?v=2"></script>
 <script src="physical-sizing.js?v=2"></script>
 <script src="physical-stage.js?v=15"></script>

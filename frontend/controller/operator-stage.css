@@ -54,3 +54,27 @@ body[data-connection="stale"] .wall-health { border-style: dashed; border-color:
 .operator-slot[data-status="offline"] .operator-body-outline { stroke-dasharray: 4 3; }
 .lg > .lg-offline { border-style: dashed; background: transparent; }
 .stage-key { color: var(--muted); font-size: .6875rem; }
+
+/* Stage annotations. Fill is the shape cue against the matte (attention/error surfaces are
+   14:1 or better); the dark stroke keeps the same shape readable over light imagery. */
+.operator-slot-exception { fill: var(--attention-bg); stroke: var(--attention); }
+.operator-slot-exception[data-status="failed"] { fill: var(--error-bg); stroke: var(--error); }
+.operator-slot-power { fill: var(--attention-bg); stroke: var(--attention); }
+.operator-slot-status { fill: var(--stage-text); stroke: var(--stage); paint-order: stroke; font-weight: 600; pointer-events: none; }
+/* The selected logical slot draws a 10 CSS px resize handle in the same bottom-right corner as
+   the power marker. Percentages resolve against the marker's own box, so the offset is the same
+   in screen space at Fit, 2x and browser zoom, and the handle stays fully exposed. */
+.operator-slot:has(> .logical-resize) .operator-slot-power {
+    transform-box: fill-box;
+    transform-origin: center;
+    transform: translate(-140%, -140%);
+}
+
+@media (forced-colors: active) {
+    .operator-body-outline, .operator-active-outline { stroke: CanvasText; }
+    .operator-slot[aria-pressed="true"] .operator-body-outline,
+    .operator-slot:focus-visible .operator-body-outline { stroke: Highlight; }
+    .operator-slot-label, .operator-slot-status { fill: CanvasText; stroke: Canvas; }
+    .operator-slot-exception, .operator-slot-power, .logical-resize { fill: Highlight; stroke: CanvasText; }
+    .offline-reservation { fill: Canvas; }
+}

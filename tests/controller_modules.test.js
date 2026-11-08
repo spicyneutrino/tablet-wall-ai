@@ -102,6 +102,21 @@ for (const page of ["index.html", "physical.html", "experimental.html"]) {
     if (page === "physical.html") for (const id of geometryControls) {
         assert.ok(html.includes('id="' + id + '"'), "boot fixture geometry control exists in the real page: " + id);
     }
+    if (page === "physical.html") {
+        assert.match(html, /<body class="physical" data-view-zoom="fit">/,
+            "the initial view zoom state is the truthful Fit default");
+        const shape = html.slice(html.indexOf('id="arrange-shape"'), html.indexOf('id="arrange-custom"'));
+        assert.ok(shape.includes('id="grid-rows"') && shape.includes('id="grid-columns"'),
+            "custom grid rows and columns sit in the wall-shape group, not behind the order disclosure");
+        assert.ok(shape.indexOf('id="grid-rows"') < shape.indexOf('id="grid-2x2"'),
+            "custom rows and columns are adjacent to the presets they feed");
+        assert.ok(shape.includes('id="arrange-grid-heading"') && shape.includes('id="arrange-bounds-heading"'),
+            "the wall-shape group labels grid controls apart from bounds controls");
+        assert.match(html, /<details id="arrange-custom"[^>]*\bopen\b/,
+            "selected geometry and relative arrangement controls are expanded instead of behind a collapsed disclosure");
+        assert.ok(html.includes('id="arrange-model"') && html.includes('id="arrange-membership"'),
+            "order and mounting and model and measurements have separate groups");
+    }
     for (const match of html.matchAll(/<script src="([^"?]+)(?:\?[^\"]*)?"><\/script>/g)) {
         vm.runInContext(fs.readFileSync(path.join(__dirname, "../frontend/controller", match[1]), "utf8"), boot, { filename: match[1] });
     }
