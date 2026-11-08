@@ -4,14 +4,14 @@ const { create } = require("../frontend/controller/operator-devices.js");
 const nodes = new Map();
 function node(id) {
     if (!nodes.has(id)) nodes.set(id, {
-        dataset: {}, value: "", textContent: "", options: [], listeners: {}, hidden: false,
+        dataset: {}, value: "", textContent: "", options: [], listeners: {}, hidden: false, isConnected: true,
         addEventListener(event, handler) { this.listeners[event] = handler; },
         replaceChildren() {}, append() {}, add(value) { this.options.push(value); },
         getClientRects() { return [1]; }, focus() { document.activeElement = this; }
     });
     return nodes.get(id);
 }
-global.document = { getElementById: node, createElement: node, activeElement: null, body: {} };
+global.document = { getElementById: node, createElement: node, querySelector: () => null, activeElement: null, body: {} };
 global.Option = function (text, value) { this.textContent = text; this.value = value; };
 global.window = { OperatorState: {
     entries: layout => layout.slots,
@@ -23,10 +23,12 @@ const state = { selectedId: "a", roster: { a: { online: true, caps: ["identify"]
     base: { slots: {} }, draft: { slots: {} }, layoutKind: "logical", etagState: "current", savedLayouts: [] };
 let release;
 const requests = [], announcements = [];
-const devices = create({ state, tabletForms: require("../frontend/controller/operator-forms.js").create(),
+const forms = require("../frontend/controller/operator-forms.js").create();
+const devices = create({ state, tabletForms: forms,
     labelFor: id => "Tablet " + id, announce: text => announcements.push(text),
     api: (...args) => { requests.push(args); return new Promise(resolve => { release = resolve; }); },
     refreshRoster: async () => {}, profileFor: () => null, calibrationFor: () => null });
+const flush = () => new Promise(resolve => setImmediate(resolve));
 async function run() {
     for (const authority of ["stale", "missing"]) {
         state.etagState = authority;
@@ -68,6 +70,129 @@ async function run() {
     assert.match(node("tablet-action-message").textContent, /Identify requested for Tablet a/);
     assert.equal(announcements.some(text => text.includes("Delivery is unconfirmed")), true);
     assert.equal(requests.length, 1, "selection changes and completion do not repeat a command");
-    console.log("Identify authority, availability, refusal and captured-subject receipts passed");
+
+    /* Per-device power is a separate, independently fresh fact. */
+    state.etagState = "current";
+    state.selectedId = "a";
+    state.roster.a.online = true;
+    state.roster.a.wake_lock = "denied";
+    state.rosterError = null;
+    evidence = { status: "displayed", text: "Reports current image", showing: true };
+    const beforeAnnouncements = announcements.length;
+    devices.render();
+    assert.equal(node("tablet-evidence").textContent, "Power: denied");
+    assert.equal(node("tablet-evidence").dataset.powerWarning, "true");
+    assert.equal(node("tablet-recovery").hidden, false, "a painted tablet still warns denied power");
+    assert.match(node("tablet-recovery").textContent, /denied/);
+    assert.match(node("tablet-recovery").textContent, /cannot wake/);
+    assert.match(node("tablet-provenance").textContent, /Power readiness: Power: denied/);
+    assert.match(node("tablet-retry-image").title, /does not wake/);
+    assert.match(node("tablet-reconnect").title, /does not wake/);
+    assert.notEqual(node("tablet-retry-image").title, node("tablet-reconnect").title, "Retry image and Reconnect describe different actions");
+    devices.render();
+    assert.equal(announcements.length, beforeAnnouncements, "a heartbeat re-render does not announce");
+
+    state.roster.a.wake_lock = "held";
+    evidence = { status: "stale", text: "Previous paint · current image unconfirmed", showing: false };
+    devices.render();
+    assert.match(node("tablet-evidence").textContent, /Previous paint/);
+    assert.match(node("tablet-evidence").textContent, /Power: held/);
+    assert.equal(node("tablet-evidence").dataset.status, "stale");
+    assert.equal(node("tablet-evidence").dataset.powerWarning, "false");
+    assert.match(node("tablet-recovery").textContent, /does not confirm paint/);
+    assert.match(node("tablet-recovery").textContent, /not proof/);
+
+    evidence = require("../frontend/controller/operator-state.js").tabletState({
+        layout: { kind: "physical", slots: { a: { profile_revision: 1, calibration_revision: 1 } } },
+        runtime: { devices: { a: { online: true, mapping: { state: "ready", profile_revision: 2, calibration_revision: 1 } } } }
+    }, "a", performance.now());
+    devices.render();
+    assert.match(node("tablet-recovery").textContent, /measurements/);
+    assert.doesNotMatch(node("tablet-recovery").textContent, /retry the image/);
+    assert.equal(node("open-tablet-measurements").hidden, false, "mapping revision staleness exposes measurements recovery");
+
+    state.roster.a.online = false;
+    state.roster.a.last_seen = "2026-11-01T12:00:00Z";
+    evidence = { status: "offline", text: "Offline · spot reserved", showing: false };
+    devices.render();
+    assert.match(node("tablet-evidence").textContent, /Last known power held/);
+    assert.equal(node("tablet-evidence").dataset.powerStale, "true");
+    assert.match(node("tablet-recovery").textContent, /Tablet is offline.*last known report/);
+    assert.doesNotMatch(node("tablet-recovery").textContent, /browser reports the screen wake lock held/);
+    state.roster.a.online = true;
+
+    delete state.roster.a.wake_lock;
+    evidence = { status: "displayed", text: "Reports current image", showing: true };
+    devices.render();
+    assert.equal(node("tablet-evidence").textContent, "Power: unknown");
+    assert.equal(node("tablet-recovery").hidden, true, "unknown power alone does not fabricate a warning");
+
+    state.rosterError = "503 unavailable";
+    devices.render();
+    assert.match(node("tablet-evidence").textContent, /Last known power unknown/);
+    assert.match(node("tablet-evidence").textContent, /status stale/);
+    assert.equal(node("tablet-evidence").dataset.powerStale, "true");
+
+    state.rosterError = null;
+    state.roster.a.wake_lock = "unsupported";
+    devices.render();
+    assert.equal(node("tablet-evidence").textContent, "Power: unsupported");
+    assert.equal(node("tablet-recovery").hidden, true, "unsupported is reported without a false power warning");
+    state.roster.a.wake_lock = "insecure";
+    devices.render();
+    assert.equal(node("tablet-evidence").textContent, "Power: insecure origin");
+    assert.equal(node("tablet-recovery").hidden, false);
+    assert.match(node("tablet-recovery").textContent, /trusted HTTPS origin/);
+    state.roster.a.wake_lock = "released";
+    devices.render();
+    assert.equal(node("tablet-recovery").hidden, false);
+    assert.match(node("tablet-recovery").textContent, /foreground/);
+
+    /* Retry image and Reconnect stay separate commands with separate consequences. */
+    state.roster.a.wake_lock = "held";
+    state.roster.a.online = true;
+    state.etagState = "current";
+    evidence = { status: "displayed", text: "Reports current image", showing: true };
+    devices.render();
+    const beforeRequests = requests.length;
+    node("tablet-retry-image").listeners.click();
+    assert.equal(requests.length, beforeRequests + 1);
+    assert.equal(requests[beforeRequests][1], "/api/v3/devices/a/retry-image");
+    release({}); await flush(); await flush();
+    assert.match(node("tablet-action-message").textContent, /Image retry requested/);
+    assert.match(node("tablet-action-message").textContent, /does not wake/);
+    node("tablet-reconnect").listeners.click();
+    assert.equal(requests.length, beforeRequests + 2);
+    assert.equal(requests[beforeRequests + 1][1], "/api/v3/devices/a/reconnect");
+    release({}); await flush(); await flush();
+    assert.match(node("tablet-action-message").textContent, /Reconnect requested/);
+    assert.match(node("tablet-action-message").textContent, /does not wake/);
+
+    /* A failed command restores the invoking control, and a removed device keeps its draft. */
+    state.roster.a.online = true;
+    state.roster.a.caps = ["identify"];
+    state.roster.a.wake_lock = "held";
+    state.etagState = "current";
+    evidence = { status: "displayed", text: "Reports current image", showing: true };
+    devices.render();
+    node("tablet-identify").disabled = false;
+    node("tablet-identify").focus();
+    const focusBefore = requests.length;
+    const identifyPending = devices.identify("a");
+    assert.equal(requests.length, focusBefore + 1);
+    document.activeElement = document.body;
+    release(Promise.reject(new Error("network failed")));
+    await identifyPending;
+    assert.equal(document.activeElement, node("tablet-identify"), "a failed command restores focus to its invoking control");
+
+    devices.render();
+    forms.edit("a", "name", { name: "Draft name" }, state.etag);
+    node("tablet-label").value = "Draft name";
+    delete state.roster.a;
+    devices.render();
+    assert.equal(forms.get("a", "name").dirty, true, "a removed device keeps its unsaved draft");
+    assert.equal(forms.get("a", "name").values.name, "Draft name");
+    assert.equal(node("tablet-label").value, "Draft name");
+    console.log("Mixed sheet power, freshness, distinct recovery actions and draft focus passed");
 }
 run().catch(error => { console.error(error); process.exitCode = 1; });
