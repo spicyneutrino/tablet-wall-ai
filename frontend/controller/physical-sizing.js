@@ -311,6 +311,11 @@
                     + " relative units. Use a size that fits the wall." };
             }
         }
+        if (fixed && layout && (field === "width" || field === "height")) {
+            const dimension = field === "width" ? "w" : "h";
+            const oversized = Object.values(layout.placements || {}).some(item => item[dimension] > value);
+            if (oversized) return { valid: false, message: label + " is smaller than an existing tablet body. Resize the tablet first or use fit-to-tablets sizing." };
+        }
         if (placement) {
             const next = Object.assign({}, placement, { bezel: Object.assign({}, placement.bezel) });
             if (field.indexOf("bezel-") === 0) next.bezel[field.slice(6)] = value;

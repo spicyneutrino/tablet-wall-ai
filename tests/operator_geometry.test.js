@@ -110,6 +110,13 @@ assert.equal(sizing.validateLogicalField("w", "999999", tabletsDraft, baseSlot).
 assert.equal(sizing.validateLogicalField("width", "0", fixedDraft, null).valid, false);
 assert.equal(sizing.validateLogicalField("padding", "-1", fixedDraft, null).valid, false);
 assert.equal(sizing.validateLogicalField("height", "2400", fixedDraft, null).valid, true);
+const wallWithBodies = { ...fixedDraft, placements: { a: { ...baseSlot, w: 1200, h: 800, x: -50 } } };
+assert.equal(sizing.validateLogicalField("width", "1000", wallWithBodies, null).valid, false,
+    "shrinking a fixed wall below a body width requires an explicit correction");
+assert.equal(sizing.validateLogicalField("height", "700", wallWithBodies, null).valid, false);
+assert.equal(sizing.validateLogicalField("width", "1200", wallWithBodies, null).valid, true,
+    "partial off-wall positioning does not invalidate the body-size check");
+assert.equal(sizing.validateLogicalField("width", "1000", { ...wallWithBodies, sizing: { mode: "tablets" } }, null).valid, true);
 const help = stageModel.helpText(true);
 for (const phrase of ["Shift", "Escape", "Alt", "touch", "Numeric", "Fit and 2x"]) assert.ok(help.includes(phrase), "help names " + phrase);
 assert.ok(stageModel.helpText(false).includes("Numeric"));

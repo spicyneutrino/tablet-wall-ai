@@ -960,6 +960,7 @@
             state.gridPreview = null;
             state.draftConflict = false;
             state.draft = state.base ? clone(state.base) : null;
+            clearLogicalErrors();
             if (operatorGrid) operatorGrid.reset();
             await session.refresh();
             const config = session.view().config;
@@ -1162,6 +1163,7 @@
     function cancelDraft() {
         if (state.busy) return;
         const restoreFocus = document.activeElement === el.btnCancel;
+        clearLogicalErrors();
         observeSession(session.view());
         if (operatorGrid) operatorGrid.cancel();
         if (restoreFocus) document.getElementById("grid-preview").focus({ preventScroll: true });
@@ -1393,8 +1395,10 @@
         for (const [id, field] of [["logical-width", "width"], ["logical-height", "height"], ["logical-padding", "padding"], ["logical-mode", "mode"]]) {
             document.getElementById(id).addEventListener("change", event => {
                 if (field === "mode") {
-                    clearLogicalError(event.target);
+                    const resetInvalid = logicalInvalid.size > 0;
+                    clearLogicalErrors();
                     mutateDraft(draft => { draft.sizing.mode = event.target.value; });
+                    if (resetInvalid) announce("Sizing mode changed. Invalid entries were reset to the draft values.");
                     return;
                 }
                 const result = window.PhysicalSizing.validateLogicalField(field, event.target.value, state.draft, null);
