@@ -871,8 +871,13 @@ class Rig:
             )
             if status != 200:
                 raise RuntimeError(f"placement write failed: {status}")
-        self.wait_config(
+        settled = self.wait_config(
             lambda config: all(device_id in config["layout"]["placements"] for device_id in ids)
+        )
+        wait_until(
+            self.page,
+            "(etag) => document.getElementById('etag-value')?.title === etag && document.getElementById('etag-state')?.textContent === 'current'",
+            arg=settled["etag"],
         )
         return ids
 
@@ -2528,7 +2533,7 @@ def fleet_power(rig: Rig) -> None:
     rig.open_disclosures(page.locator("#tablet-retry-image"))
     page.click("#tablet-retry-image")
     wait_until(page, "() => /Image retry requested/.test(document.getElementById('tablet-action-message').textContent)")
-    page.click("#tablet-reconnect")
+    rig.click("#tablet-reconnect")
     wait_until(page, "() => /Reconnect requested/.test(document.getElementById('tablet-action-message').textContent)")
     posts = [row for row in rig.requests[requests_before:] if row["method"] == "POST"]
     rig.check(
