@@ -99,10 +99,11 @@ window.PhysicalStage = {
             return body && body.dataset && body.dataset.viewZoom === "2x" ? "2x" : "fit";
         }
 
-        function stageTransformKey() {
+        function stageTransformKey(includeTranslation = true) {
             const matrix = typeof el.stageSvg.getScreenCTM === "function" ? el.stageSvg.getScreenCTM() : null;
             const stage = state.stage || {};
-            const numbers = matrix ? [matrix.a, matrix.b, matrix.d, matrix.e, matrix.f] : [];
+            const numbers = matrix ? [matrix.a, matrix.b, matrix.c, matrix.d] : [];
+            if (matrix && includeTranslation) numbers.push(matrix.e, matrix.f);
             return [viewZoom(), el.stageSvg.style && el.stageSvg.style.inlineSize,
                 el.stageSvg.style && el.stageSvg.style.blockSize, stage.scale, stage.offX, stage.offY,
                 numbers.map(value => Number(value).toFixed(6)).join(",")].join("|");
@@ -200,6 +201,7 @@ window.PhysicalStage = {
                 scale: state.stage.scale,
                 viewport: state.stage,
                 transformKey: stageTransformKey(),
+                geometryKey: stageTransformKey(false),
                 moved: false,
                 preDraft: clone(state.draft)
             };
@@ -252,6 +254,10 @@ window.PhysicalStage = {
             }
             event.preventDefault();
             afterDraftChange();
+            if (state.drag === drag) {
+                if (drag.geometryKey === stageTransformKey(false)) drag.transformKey = stageTransformKey();
+                else endDrag(false, "view");
+            }
         }
 
         function endDrag(commit, reason) {

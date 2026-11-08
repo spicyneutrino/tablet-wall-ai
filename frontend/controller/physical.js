@@ -1312,8 +1312,10 @@
         for (const [field, input] of logicalFields) {
             const value = placement && (field.startsWith("bezel-") ? placement.bezel[field.slice(6)] : placement[field]);
             input.disabled = !placement || !!state.gridPreview;
-            if (document.activeElement !== input) input.value = value === undefined ? "" : value;
-            input.dataset.deviceId = state.selectedId || "";
+            if (document.activeElement !== input) {
+                input.value = value === undefined ? "" : value;
+                input.dataset.deviceId = state.selectedId || "";
+            }
         }
         for (const [id, value] of [["logical-width", draft.width], ["logical-height", draft.height],
             ["logical-padding", draft.sizing.padding], ["logical-mode", draft.sizing.mode]]) {
@@ -1333,6 +1335,7 @@
             const input = document.createElement("input"); input.className = "inp"; input.type = "number"; input.step = "1";
             input.id = "logical-" + field; input.dataset.field = field; label.htmlFor = input.id;
             label.append(input); fields.append(label); logicalFields.set(field, input);
+            input.addEventListener("blur", renderLogicalEditor);
             input.addEventListener("change", () => {
                 const id = input.dataset.deviceId, value = Number(input.value);
                 if (!input.value || !Number.isInteger(value) || ((field === "w" || field === "h") ? value < 1 : field.startsWith("bezel-") && value < 0)) { markInvalid(input, true); return; }

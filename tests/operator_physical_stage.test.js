@@ -406,3 +406,14 @@ assert.match(offline.reason, /offline/);
 assert.match(matchSetup.stage.geometryHelp(), /Shift/);
 assert.match(matchSetup.stage.geometryHelp(), /touch/);
 console.log("Pointer cancellation, view zoom, logical snap and Match shape passed");
+
+const relayoutView = { scale: 1, offX: 0, offY: 0 };
+const relayoutUndo = [];
+const relayout = dragSetup({ view: relayoutView, enabled: false, pushUndo: before => relayoutUndo.push(before),
+    afterDraftChange() { relayoutView.offY = 2.2; } });
+relayout.stage.onPointerDown(pointerEvent(100, 100));
+relayout.stage.onPointerMove(movedTo(10, 10));
+relayout.stage.onPointerMove(movedTo(20, 20));
+relayout.stage.endDrag(true);
+assert.equal(relayout.state.draft.placements.a.x, 120, "a draft-induced relayout does not cancel the first drag");
+assert.equal(relayoutUndo.length, 1, "the clean-draft drag commits one undo entry");
