@@ -86,6 +86,30 @@ assert.equal(sizing.freshViewport({ online: false, viewport: { width: 1600, heig
 assert.equal(sizing.freshViewport({ online: true, viewport: null }).available, false);
 assert.equal(sizing.freshViewport({ online: true, viewport: { width: 1600, height: 1000 } }, { stale: true }).reason.includes("stale"), true);
 assert.equal(sizing.freshViewport({ online: true, viewport: { width: 1600, height: 1000 } }, { expected: { width: 1200, height: 1000 } }).available, false);
+
+const fixedDraft = { kind: "logical", width: 3600, height: 2400, sizing: { mode: "fixed", padding: 0 }, placements: { a: baseSlot } };
+assert.equal(sizing.validateLogicalField("w", "0", fixedDraft, baseSlot).valid, false);
+assert.match(sizing.validateLogicalField("w", "0", fixedDraft, baseSlot).message, /at least 1/);
+assert.equal(sizing.validateLogicalField("w", "999999", fixedDraft, baseSlot).valid, false);
+assert.match(sizing.validateLogicalField("w", "999999", fixedDraft, baseSlot).message, /wall width 3600/);
+assert.equal(sizing.validateLogicalField("h", "999999", fixedDraft, baseSlot).valid, false);
+assert.match(sizing.validateLogicalField("h", "999999", fixedDraft, baseSlot).message, /wall height 2400/);
+assert.equal(sizing.validateLogicalField("w", "1.5", fixedDraft, baseSlot).valid, false);
+assert.match(sizing.validateLogicalField("w", "1.5", fixedDraft, baseSlot).message, /whole number/);
+assert.equal(sizing.validateLogicalField("w", "", fixedDraft, baseSlot).valid, false);
+assert.equal(sizing.validateLogicalField("w", "1300", fixedDraft, baseSlot).valid, true);
+assert.equal(sizing.validateLogicalField("w", "3600", fixedDraft, baseSlot).valid, true, "a body exactly as wide as the wall is allowed");
+assert.equal(sizing.validateLogicalField("x", "-20", fixedDraft, baseSlot).valid, true, "a partial off-wall position stays editable");
+assert.equal(sizing.validateLogicalField("bezel-left", "-1", fixedDraft, baseSlot).valid, false);
+assert.match(sizing.validateLogicalField("bezel-left", "-1", fixedDraft, baseSlot).message, /negative/);
+assert.match(sizing.validateLogicalField("bezel-left", "100", fixedDraft, baseSlot).message, /no visible width/);
+assert.equal(sizing.validateLogicalField("bezel-left", "100", fixedDraft, baseSlot).valid, false);
+const tabletsDraft = { ...fixedDraft, sizing: { mode: "tablets", padding: 0 } };
+assert.equal(sizing.validateLogicalField("w", "999999", tabletsDraft, baseSlot).valid, true,
+    "fit-to-tablets mode may grow the wall instead of rejecting the requested body");
+assert.equal(sizing.validateLogicalField("width", "0", fixedDraft, null).valid, false);
+assert.equal(sizing.validateLogicalField("padding", "-1", fixedDraft, null).valid, false);
+assert.equal(sizing.validateLogicalField("height", "2400", fixedDraft, null).valid, true);
 const help = stageModel.helpText(true);
 for (const phrase of ["Shift", "Escape", "Alt", "touch", "Numeric", "Fit and 2x"]) assert.ok(help.includes(phrase), "help names " + phrase);
 assert.ok(stageModel.helpText(false).includes("Numeric"));

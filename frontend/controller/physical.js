@@ -1072,7 +1072,7 @@
 
         const emptyPhysical = state.draft.kind === "physical" && Object.keys(state.draft.slots).length === 0;
         el.btnApply.disabled = state.busy || !state.etag || state.etagState !== "current" || !!sizingError()
-            || !dirty || (emptyPhysical && !state.gridPreview);
+            || !!logicalError() || !dirty || (emptyPhysical && !state.gridPreview);
         el.btnApply.title = emptyPhysical ? "This arrangement has no tablets. Use an explicit Remove action to clear a slot." : "Apply the entire previewed layout once";
         el.btnCancel.disabled = state.busy || !dirty && !inputDirty;
         el.btnUndo.disabled = el.btnUndo.hidden = state.busy || state.undo.length === 0;
@@ -1232,6 +1232,7 @@
     } = window.PhysicalStage.create({
         selectionChanged: () => {
             if (operatorDevices) operatorDevices.render(); renderLogicalEditor();
+            syncDraftUi();
             if (state.tabName === "show") document.getElementById("arrange-custom").open = true;
         },
         DRAG_THRESHOLD_PX, afterDraftChange, announce, bodyMetrics, calibrationFor, beginManual, canManualEdit, clearMsg, clone, deviceEntries, deviceLabel, deviceNumber, deviceRows, el, finiteOr, formatNumber, isOnline, latestProfile, mutateDraft, numberTag, numberedLabel, populateDeviceCard, profileFor, pushUndo, roundTo, selectedSlot, setInputValue, showError, showTab, state, syncTabDots, validPair
@@ -1306,16 +1307,50 @@
     });
 
     const logicalFields = new Map();
+    const logicalInvalid = new Map();
+    function logicalError() {
+        return logicalInvalid.size ? logicalInvalid.values().next().value : "";
+    }
+    function setLogicalError(input, message) {
+        logicalInvalid.set(input, message);
+        markInvalid(input, true);
+        input.setAttribute("aria-describedby", "grid-message");
+        const node = document.getElementById("grid-message");
+        if (node) node.textContent = message;
+        announce(message, "err");
+        syncDraftUi();
+    }
+    function clearLogicalError(input) {
+        if (!logicalInvalid.has(input)) return;
+        logicalInvalid.delete(input);
+        markInvalid(input, false);
+        input.removeAttribute("aria-describedby");
+        const node = document.getElementById("grid-message");
+        if (node) node.textContent = logicalError();
+        if (!logicalInvalid.size) syncDraftUi();
+    }
+    function clearLogicalErrors() {
+        if (!logicalInvalid.size) return;
+        for (const input of logicalInvalid.keys()) {
+            markInvalid(input, false);
+            input.removeAttribute("aria-describedby");
+        }
+        logicalInvalid.clear();
+        const node = document.getElementById("grid-message");
+        if (node) node.textContent = "";
+        syncDraftUi();
+    }
     function renderLogicalEditor() {
         const box = document.getElementById("logical-editor"), draft = state.draft;
         if (!box) return;
         box.hidden = !draft || draft.kind !== "logical";
-        if (box.hidden) return;
+        if (box.hidden) { clearLogicalErrors(); return; }
         const placement = draft.placements[state.selectedId];
         for (const [field, input] of logicalFields) {
+            if (input.dataset.deviceId && input.dataset.deviceId !== state.selectedId) clearLogicalError(input);
             const value = placement && (field.startsWith("bezel-") ? placement.bezel[field.slice(6)] : placement[field]);
             input.disabled = !placement || !!state.gridPreview;
-            if (document.activeElement !== input) {
+            if (document.activeElement !== input && !logicalInvalid.has(input)) {
                 input.value = value === undefined ? "" : value;
                 input.dataset.deviceId = state.selectedId || "";
                 markInvalid(input, false);
@@ -1324,7 +1359,7 @@
         for (const [id, value] of [["logical-width", draft.width], ["logical-height", draft.height],
             ["logical-padding", draft.sizing.padding], ["logical-mode", draft.sizing.mode]]) {
             const input = document.getElementById(id);
-            if (document.activeElement !== input) input.value = value;
+            if (document.activeElement !== input && !logicalInvalid.has(input)) input.value = value;
         }
         for (const id of ["logical-width", "logical-height"]) document.getElementById(id).readOnly = draft.sizing.mode === "tablets";
         document.getElementById("logical-message").textContent = placement ? "Editing " + numberedLabel(state.selectedId) + ". Apply arrangement writes all reviewed geometry once." : "Select a placed tablet to edit its position and size.";
@@ -1341,22 +1376,31 @@
             label.append(input); fields.append(label); logicalFields.set(field, input);
             input.addEventListener("blur", renderLogicalEditor);
             input.addEventListener("change", () => {
-                const id = input.dataset.deviceId, value = Number(input.value);
-                if (!input.value || !Number.isInteger(value) || ((field === "w" || field === "h") ? value < 1 : field.startsWith("bezel-") && value < 0)) { markInvalid(input, true); return; }
-                markInvalid(input, false);
+                const id = input.dataset.deviceId || state.selectedId;
+                const placement = state.draft && state.draft.placements[id];
+                if (!placement) return;
+                input.dataset.deviceId = id;
+                const result = window.PhysicalSizing.validateLogicalField(field, input.value, state.draft, placement);
+                if (!result.valid) { setLogicalError(input, result.message); return; }
+                clearLogicalError(input);
                 mutateDraft(draft => {
                     const p = draft.placements[id];
                     if (!p) return;
-                    if (field.startsWith("bezel-")) p.bezel[field.slice(6)] = value; else p[field] = value;
+                    if (field.startsWith("bezel-")) p.bezel[field.slice(6)] = result.value; else p[field] = result.value;
                 });
             });
         }
         for (const [id, field] of [["logical-width", "width"], ["logical-height", "height"], ["logical-padding", "padding"], ["logical-mode", "mode"]]) {
             document.getElementById(id).addEventListener("change", event => {
-                const value = field === "mode" ? event.target.value : Number(event.target.value);
-                if (field !== "mode" && (!Number.isInteger(value) || value < (field === "padding" ? 0 : 1))) { markInvalid(event.target, true); return; }
-                markInvalid(event.target, false);
-                mutateDraft(draft => { if (["mode", "padding"].includes(field)) draft.sizing[field] = value; else draft[field] = value; });
+                if (field === "mode") {
+                    clearLogicalError(event.target);
+                    mutateDraft(draft => { draft.sizing.mode = event.target.value; });
+                    return;
+                }
+                const result = window.PhysicalSizing.validateLogicalField(field, event.target.value, state.draft, null);
+                if (!result.valid) { setLogicalError(event.target, result.message); return; }
+                clearLogicalError(event.target);
+                mutateDraft(draft => { if (field === "padding") draft.sizing.padding = result.value; else draft[field] = result.value; });
             });
         }
         document.getElementById("logical-rotate").addEventListener("click", rotateSelected);
