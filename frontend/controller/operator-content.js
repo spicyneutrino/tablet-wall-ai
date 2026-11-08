@@ -425,7 +425,7 @@ window.OperatorContent = {
                 return true;
             } catch (error) {
                 if (error.status === 412) showConflict("The wall changed. Your image choice is retained with its original guard. Review current state before rebuilding this preview.");
-                message("Could not show this content. " + error.message.replace(/[.!?\s]+$/, "") + ". Use Refresh images to retry.", false, "err", feedback);
+                message("Could not show this content. " + error.message.replace(/[.!?\s]+$/, "") + (error.status === 412 ? ". Use Refresh status, then rebuild the preview before Show." : ". Use Refresh images to retry."), false, "err", feedback);
                 return false;
             } finally {
                 busy = false; render(); renderStage();

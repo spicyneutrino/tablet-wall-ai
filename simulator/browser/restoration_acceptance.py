@@ -817,6 +817,10 @@ class Rig:
                 value = json.loads(payload)
             except (ValueError, UnicodeDecodeError, TypeError):
                 value = None
+            if not isinstance(value, dict) or value.get("type") not in ("device_online", "device_status"):
+                return
+            value = {"type": value["type"], "device_id": value.get("device_id") or value.get("id")
+                     or (value.get("device") or {}).get("device_id") or (value.get("device") or {}).get("id")}
             self.frames.append(
                 {
                     "page": label,
@@ -825,6 +829,7 @@ class Rig:
                     "time": time.monotonic(),
                 }
             )
+            del self.frames[:-512]
 
         def observe_socket(socket: Any) -> None:
             socket.on("framesent", lambda payload: socket_frame("sent", payload))
@@ -2031,7 +2036,8 @@ def fit_feedback(rig: Rig) -> None:
             {"x": index * 100, "y": 0, "w": 100, "h": 100},
         )
         rig.check(f"Fit feedback client {index + 1} placement accepted", status == 200, status, 200)
-    rig.wait_config(lambda config: all(device_id in config["layout"]["placements"] for device_id in ids))
+    settled = rig.wait_config(lambda config: all(device_id in config["layout"]["placements"] for device_id in ids))
+    wait_until(page, "(etag) => document.getElementById('etag-value')?.title === etag && document.getElementById('etag-state')?.textContent === 'current'", arg=settled["etag"])
     rig.task("Images")
     wait_until(page, "() => document.querySelectorAll('#image-gallery > li').length === 8")
 
@@ -2807,7 +2813,7 @@ def historical_membership(rig: Rig) -> None:
         row.get_attribute("data-membership-source"),
         "operator",
     )
-    reconnect_mark = len(rig.frames)
+    reconnect_mark = time.monotonic()
     first_page.reload()
     wait_until(first_page, "() => document.querySelector('#status')?.dataset.state === 'connected'")
     rig.wait_config(lambda config: config["runtime"]["devices"][first_id]["online"] is True)
@@ -2816,7 +2822,8 @@ def historical_membership(rig: Rig) -> None:
         return next(
             (
                 event
-                for event in rig.frames[reconnect_mark:]
+                for event in rig.frames
+                if event["time"] >= reconnect_mark
                 if event.get("page") == "controller"
                 and event.get("direction") == "received"
                 and isinstance(event.get("payload"), dict)

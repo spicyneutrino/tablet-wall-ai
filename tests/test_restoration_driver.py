@@ -628,3 +628,24 @@ def test_help_lists_the_frozen_scenario_interface():
     for name in driver.SCENARIOS:
         assert name in result.stdout
     assert "Explicitly incomplete" in result.stdout
+
+
+def test_socket_evidence_is_bounded_and_excludes_config_snapshots():
+    from types import SimpleNamespace
+
+    rig = object.__new__(driver.Rig)
+    rig.frames = []
+    page_events, socket_events = {}, {}
+    page = SimpleNamespace(on=lambda name, callback: page_events.update({name: callback}))
+    socket = SimpleNamespace(on=lambda name, callback: socket_events.update({name: callback}))
+    rig.observe(page, "controller")
+    page_events["websocket"](socket)
+    receive = socket_events["framereceived"]
+    receive(json.dumps({"type": "config_updated", "config": {"large": "x" * 10000}}))
+    assert rig.frames == []
+    for index in range(700):
+        receive(json.dumps({"type": "device_online", "device": {"device_id": str(index), "large": "x" * 10000}}))
+    assert len(rig.frames) == 512
+    assert rig.frames[-1]["payload"] == {"type": "device_online", "device_id": "699"}
+    assert rig.frames[0]["payload"]["device_id"] == "188"
+    assert all(set(row["payload"]) == {"type", "device_id"} for row in rig.frames)

@@ -93,7 +93,6 @@ class HeldResponse:
         if not self.response:
             raise AssertionError("No captured response: " + self.label)
         self.route.fulfill(response=self.response, **response_fields)
-        self.page.unroute(self.pattern, self.capture)
         self.record["response_overrides"] = response_fields
         self.record.update(
             released=True,

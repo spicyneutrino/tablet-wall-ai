@@ -193,3 +193,20 @@ def test_real_transport_race_retains_old_payload_and_actual_new_authority(
         assert all(
             row["type"] == "render_ack" and row["status"] == "displayed" for row in acks
         )
+
+
+def test_held_response_release_keeps_followup_requests_routable():
+    from types import SimpleNamespace
+
+    removed, fulfilled, continued = [], [], []
+    held = object.__new__(HeldResponse)
+    held.label, held.pattern, held.record = "config", "**/api/v3/config", {}
+    held.response = object()
+    held.route = SimpleNamespace(fulfill=lambda **kwargs: fulfilled.append(kwargs))
+    held.page = SimpleNamespace(unroute=lambda *args: removed.append(args))
+    held.rig = SimpleNamespace(config=lambda: {"etag": "current"})
+    held.release()
+    assert fulfilled and held.record["released"]
+    assert removed == []
+    held.capture(SimpleNamespace(continue_=lambda: continued.append(True)))
+    assert continued == [True]
