@@ -1336,8 +1336,38 @@ def drag_slot(
     if not rect or not placement:
         raise RuntimeError(f"missing rendered slot {device_id}")
     combined = rect["w"] / max(1.0, placement["w"])
-    start_x = rect["x"] + rect["w"] / 2
-    start_y = rect["y"] + rect["h"] / 2
+    point = page.evaluate(
+        """id => {
+            const slot = document.querySelector('#stage-svg .slot[data-device-id="' + id + '"]');
+            const body = slot?.querySelector('.operator-body-outline');
+            if (!body) return null;
+            const rect = body.getBoundingClientRect();
+            let left = Math.max(0, rect.left), top = Math.max(0, rect.top);
+            let right = Math.min(innerWidth, rect.right), bottom = Math.min(innerHeight, rect.bottom);
+            for (let node = body.parentElement; node; node = node.parentElement) {
+                const style = getComputedStyle(node), box = node.getBoundingClientRect();
+                if (/auto|scroll|hidden|clip/.test(style.overflowX)) {
+                    left = Math.max(left, box.left + node.clientLeft);
+                    right = Math.min(right, box.left + node.clientLeft + node.clientWidth);
+                }
+                if (/auto|scroll|hidden|clip/.test(style.overflowY)) {
+                    top = Math.max(top, box.top + node.clientTop);
+                    bottom = Math.min(bottom, box.top + node.clientTop + node.clientHeight);
+                }
+            }
+            if (right - left < 8 || bottom - top < 8) return null;
+            for (const fy of [0.5, 0.25, 0.75]) for (const fx of [0.5, 0.25, 0.75]) {
+                const x = left + (right - left) * fx, y = top + (bottom - top) * fy;
+                const hit = document.elementFromPoint(x, y);
+                if (hit?.closest('.slot') === slot && !hit.closest('.logical-resize')) return {x, y};
+            }
+            return null;
+        }""",
+        device_id,
+    )
+    if point is None:
+        raise RuntimeError(f"no visible, hit-tested drag point for slot {device_id}")
+    start_x, start_y = point["x"], point["y"]
     page.mouse.move(start_x, start_y)
     page.mouse.down()
     if alt:
