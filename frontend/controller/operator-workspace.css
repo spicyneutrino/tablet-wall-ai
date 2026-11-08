@@ -490,6 +490,9 @@ dialog.tablet-selection::backdrop { background: var(--backdrop); }
     .arrange-tools { grid-row: 2; }
     .task-title:not(#task-tablets) { display: none; }
 }
+@media (max-width: 360px) {
+    .draft-identity .image-title { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+}
 @media (prefers-reduced-motion: reduce) {
     *, *::before, *::after { scroll-behavior: auto !important; animation: none !important; transition: none !important; }
 }
