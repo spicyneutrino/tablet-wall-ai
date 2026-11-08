@@ -2082,6 +2082,7 @@ def geometry_tools(rig: Rig) -> None:
         },
         {"2x": True, "snap": True, "match_present": 1},
     )
+    rig.open_disclosures(page.locator("#geometry-help-text"))
     help_text = page.locator("#geometry-help-text").inner_text()
     rig.check(
         "Geometry help names the real keyboard and view alternatives",
@@ -2666,7 +2667,6 @@ def historical_membership(rig: Rig) -> None:
     page = rig.page
     rig.task("Arrange")
     page.locator("#grid-order").wait_for(state="attached")
-    rig.open_disclosures(page.locator("#grid-order"))
     rig.check(
         "Arrangement starts with no forced reservation before the first live join",
         not page.locator("#grid-order [data-device-id]").count(),
@@ -2680,6 +2680,7 @@ def historical_membership(rig: Rig) -> None:
         "(id) => !!document.querySelector('#grid-order [data-device-id=\"' + id + '\"]')",
         arg=first_id,
     )
+    rig.open_disclosures(page.locator("#grid-order"))
     row = page.locator(f'#grid-order [data-device-id="{first_id}"]')
     rig.check(
         "A first live join becomes included before any user freeze with a fresh viewport aspect",
@@ -2900,7 +2901,14 @@ def historical_uncertainty(rig: Rig) -> None:
             route.continue_()
             return
         lost_upload.append(True)
-        route.fetch()
+        response = route.fetch(post_data=Path(upload_source).read_bytes())
+        rig.check(
+            "The intercepted upload publishes its selected bytes before losing the response",
+            response.status == 201,
+            {"status": response.status},
+            {"status": 201},
+            classification="transport_fault_setup",
+        )
         route.abort()
 
     upload_source = next(
