@@ -40,6 +40,13 @@ assert.equal(wake("bogus").state, "unknown", "an unreported or invalid wake valu
 const staleWake = wake("held", { stale: true });
 assert.equal(staleWake.label, "Last known power held · status stale");
 assert.equal(staleWake.stale, true);
+const offlineWake = stageModel.powerReadiness({ online: false, wake_lock: "held", last_seen: "2026-11-01T12:00:00Z" });
+assert.equal(offlineWake.stale, true);
+assert.equal(offlineWake.label, "Last known power held · status stale");
+assert.match(offlineWake.guidance, /Tablet is offline.*last known report/);
+assert.match(offlineWake.guidance, /Last checked/);
+assert.doesNotMatch(offlineWake.guidance, /browser reports the screen wake lock held/);
+assert.equal(stageModel.powerReadiness({ online: true, wake_lock: "held" }).stale, false);
 assert.match(staleWake.guidance, /last known report/);
 assert.match(wake("denied", { stale: true, checkedAt: "2026-11-01T12:00:00Z" }).guidance, /Last checked/);
 assert.equal(stageModel.exceptionLabel("displayed", "Reports current image"), "", "healthy paint has no stage exception label");
@@ -652,7 +659,7 @@ function rosterSetup() {
     assert.match(roster.metaFor("b").textContent, /Power held/);
     assert.equal(roster.metaFor("b").textContent.includes("showing"), false, "held power never turns stale paint into displayed");
     assert.equal(roster.rowFor("c").dataset.powerState, "unknown");
-    assert.equal(roster.metaFor("c").textContent, "Offline · spot reserved · Power unknown");
+    assert.equal(roster.metaFor("c").textContent, "Offline · spot reserved · Last known power unknown");
     assert.equal(roster.rowFor("d").dataset.status, "excluded");
     assert.equal(roster.rowFor("d").dataset.powerState, "released");
     assert.equal(roster.el.wallHealth.textContent, "1 of 3 showing the current image");

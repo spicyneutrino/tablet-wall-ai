@@ -26,16 +26,19 @@
         const state = device && typeof device.wake_lock === "string" && Object.prototype.hasOwnProperty.call(WAKE_STATES, device.wake_lock)
             ? device.wake_lock : "unknown";
         const entry = WAKE_STATES[state];
-        const stale = options.stale === true;
-        const checked = options.checkedAt ? Date.parse(options.checkedAt) : NaN;
+        const offline = !!device && device.online === false;
+        const stale = options.stale === true || offline;
+        const checkedAt = offline && device.last_seen || options.checkedAt || null;
+        const checked = checkedAt ? Date.parse(checkedAt) : NaN;
         const stamp = stale && Number.isFinite(checked)
             ? " Last checked " + new Date(checked).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }) + "." : "";
         const label = stale ? "Last known power " + entry.label + " · status stale" : "Power: " + entry.label;
         return { state, stale, warning: entry.warning, label,
             short: stale ? "Last known power " + entry.label : "Power " + entry.label,
-            fact: entry.guidance,
-            guidance: (stale ? "Status is stale; this is the last known report." + stamp + " " : "") + entry.guidance,
-            checkedAt: options.checkedAt || null };
+            fact: stale ? "Last known browser wake-lock state: " + entry.label + "." : entry.guidance,
+            guidance: stale ? (offline ? "Tablet is offline; this is the last known report." : "Status is stale; this is the last known report.")
+                + stamp + " Last known browser wake-lock state: " + entry.label + ". " + powerHelp : entry.guidance,
+            checkedAt };
     }
     const powerHelp = "Screen wake locks are browser reports, not proof the operating system will keep the screen on. "
         + "Check Auto-Lock, charging and kiosk settings; an insecure origin cannot take a wake lock, so open the wall over its trusted HTTPS origin. "

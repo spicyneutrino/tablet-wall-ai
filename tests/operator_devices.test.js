@@ -111,6 +111,16 @@ async function run() {
     assert.doesNotMatch(node("tablet-recovery").textContent, /retry the image/);
     assert.equal(node("open-tablet-measurements").hidden, false, "mapping revision staleness exposes measurements recovery");
 
+    state.roster.a.online = false;
+    state.roster.a.last_seen = "2026-11-01T12:00:00Z";
+    evidence = { status: "offline", text: "Offline · spot reserved", showing: false };
+    devices.render();
+    assert.match(node("tablet-evidence").textContent, /Last known power held/);
+    assert.equal(node("tablet-evidence").dataset.powerStale, "true");
+    assert.match(node("tablet-recovery").textContent, /Tablet is offline.*last known report/);
+    assert.doesNotMatch(node("tablet-recovery").textContent, /browser reports the screen wake lock held/);
+    state.roster.a.online = true;
+
     delete state.roster.a.wake_lock;
     evidence = { status: "displayed", text: "Reports current image", showing: true };
     devices.render();
