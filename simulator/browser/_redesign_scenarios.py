@@ -98,7 +98,7 @@ def parity(rig):
     def recall(name):
         task("Saved")
         page.get_by_role(
-            "button", name=f"Recall arrangement “{name}”", exact=True
+            "button", name=f"Recall geometry for arrangement “{name}”", exact=True
         ).click()
         expect(page.locator("#layout-msg")).to_contain_text("recalled", timeout=10000)
 
@@ -507,7 +507,23 @@ def parity(rig):
             "Diagnostic colour set"
         )
     page.locator("#diagnostic-colour-refresh").click()
-    expect(page.locator("#diagnostic-colour-message")).to_contain_text("#246344")
+    message = page.locator("#diagnostic-colour-message")
+    from redesign_acceptance import wait_until
+
+    # The colour command broadcasts a newer update. A fenced read can lose that
+    # race and tells the operator to refresh this task; one documented retry.
+    wait_until(
+        lambda: any(
+            token in message.inner_text()
+            for token in ("#246344", "A newer update arrived")
+        ),
+        page.wait_for_timeout,
+        timeout=10,
+    )
+    if "A newer update arrived" in message.inner_text():
+        expect(message).to_contain_text("Refresh this task")
+        page.locator("#diagnostic-colour-refresh").click()
+    expect(message).to_contain_text("#246344")
     check(
         config()["layout"] == before["layout"],
         "Diagnostic test colour is reachable and does not replace layout authority",
@@ -528,7 +544,7 @@ def parity(rig):
     ).click()
     expect(
         page.get_by_role(
-            "button", name="Recall arrangement “Disposable arrangement”", exact=True
+            "button", name="Recall geometry for arrangement “Disposable arrangement”", exact=True
         )
     ).to_have_count(0)
     check(
@@ -548,7 +564,8 @@ def parity(rig):
         "Explicit all-tablet colour command targets all four registrations",
     )
     before_pattern = config()
-    page.get_by_text("Check patterns", exact=True).click()
+    task("Images")
+    expect(page.locator("#presentation-checks")).to_be_visible()
     rig.open_disclosures(page.locator("#show-colours"))
     page.locator("#show-colours").click()
     wait_config(
@@ -571,12 +588,19 @@ def parity(rig):
     task("Settings")
     page.locator("#experimental-opt-in").check()
     expect(page.locator("#experimental-controls")).to_be_visible()
-    check(
-        "Experimental playback"
-        in page.locator("#experimental-opt-in")
+    experimental_text = (
+        page.locator("#experimental-opt-in")
         .locator("xpath=ancestor::section[1]")
-        .inner_text(),
+        .inner_text()
+    )
+    check(
+        "Experimental" in experimental_text
+        and "playlist" in experimental_text.lower()
+        and "playback" in experimental_text.lower()
+        and page.locator("#experimental-controls").is_visible(),
         "Existing playlist and playback controls remain reachable and marked Experimental",
+        experimental_text,
+        "section headed Experimental naming playlist and playback",
     )
     page.locator("#experimental-opt-in").uncheck()
     page.set_viewport_size({"width": 390, "height": 844})
@@ -951,7 +975,7 @@ def edges(rig):
     )
     task("Saved")
     page.get_by_role(
-        "button", name="Recall arrangement “Before swap”", exact=True
+        "button", name="Recall geometry for arrangement “Before swap”", exact=True
     ).click()
     expect(page.locator("#layout-msg")).to_contain_text("recalled")
     check(

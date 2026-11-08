@@ -688,7 +688,7 @@ def responsive(rig):
     rig.task("Saved")
     rig.click(
         p.get_by_role(
-            "button", name="Recall arrangement “Keyboard arrangement”", exact=True
+            "button", name="Recall geometry for arrangement “Keyboard arrangement”", exact=True
         )
     )
     expect(p.locator("#layout-msg")).to_contain_text("recalled")

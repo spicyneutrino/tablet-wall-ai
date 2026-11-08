@@ -1766,9 +1766,17 @@ def corrections(rig):
 
     rig.task("Saved")
     restore_points = p.locator('#saved-layouts [data-snapshot-name^="Before physical "]')
-    expect(restore_points.first.locator(".saved-name")).to_contain_text("Restore point · Before physical ")
-    expect(restore_points.first.get_by_role("button", name="Recall", exact=False)).to_be_enabled()
-    rig.check(True, "Automatic safety copy is labelled as a restore point and retains Recall")
+    restore_point = restore_points.first
+    restore_name = restore_point.get_attribute("data-snapshot-name")
+    expect(restore_point.locator(".saved-name")).to_have_text(restore_name)
+    expect(restore_point.locator('.saved-tag[data-kind="auto"]')).to_have_text("Automatic restore point")
+    expect(restore_point).to_have_attribute("data-automatic", "true")
+    expect(
+        restore_point.get_by_role(
+            "button", name=f"Recall geometry for arrangement “{restore_name}”", exact=True
+        )
+    ).to_be_enabled()
+    rig.check(True, "Automatic restore point keeps its server name, a separate tag and geometry-only Recall")
     p.locator("#layout-name").fill("")
     p.locator("#btn-layout-save").click()
     expect(p.locator("#layout-msg")).to_contain_text("name")
@@ -1782,7 +1790,8 @@ def corrections(rig):
     expect(p.locator("#layout-name")).to_be_focused()
     rig.shot(p, "saved-local-feedback")
     rig.check(
-        p.locator("#btn-layouts-refresh").inner_text() == "Refresh"
+        p.locator("#btn-layouts-refresh").inner_text() == "Refresh saved"
+        and p.locator("#btn-layouts-refresh").get_attribute("aria-label") == "Refresh saved arrangements and content"
         and p.locator("#scenes-refresh").count() == 0,
         "One task-level Refresh saved names both object inventories",
     )

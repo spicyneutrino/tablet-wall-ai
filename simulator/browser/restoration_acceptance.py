@@ -719,6 +719,7 @@ class Rig:
         self.console: list[dict[str, Any]] = []
         self.network: list[dict[str, Any]] = []
         self.page_errors: list[dict[str, Any]] = []
+        self.frames: list[dict[str, Any]] = []
         self.clients: list[dict[str, Any]] = []
         self.contexts: list[Any] = []
         self.pages: dict[str, Any] = {}
@@ -810,6 +811,26 @@ class Rig:
             if response.status >= 400
             else None,
         )
+
+        def socket_frame(direction: str, payload: Any) -> None:
+            try:
+                value = json.loads(payload)
+            except (ValueError, UnicodeDecodeError, TypeError):
+                value = None
+            self.frames.append(
+                {
+                    "page": label,
+                    "direction": direction,
+                    "payload": value,
+                    "time": time.monotonic(),
+                }
+            )
+
+        def observe_socket(socket: Any) -> None:
+            socket.on("framesent", lambda payload: socket_frame("sent", payload))
+            socket.on("framereceived", lambda payload: socket_frame("received", payload))
+
+        page.on("websocket", observe_socket)
 
     def new_client(
         self,
@@ -2786,10 +2807,45 @@ def historical_membership(rig: Rig) -> None:
         row.get_attribute("data-membership-source"),
         "operator",
     )
+    reconnect_mark = len(rig.frames)
     first_page.reload()
     wait_until(first_page, "() => document.querySelector('#status')?.dataset.state === 'connected'")
     rig.wait_config(lambda config: config["runtime"]["devices"][first_id]["online"] is True)
-    page.wait_for_timeout(200)
+
+    def reconnect_frame() -> dict[str, Any] | None:
+        return next(
+            (
+                event
+                for event in rig.frames[reconnect_mark:]
+                if event.get("page") == "controller"
+                and event.get("direction") == "received"
+                and isinstance(event.get("payload"), dict)
+                and event["payload"].get("type") in ("device_online", "device_status")
+                and (
+                    event["payload"].get("device_id")
+                    or event["payload"].get("id")
+                    or (event["payload"].get("device") or {}).get("device_id")
+                    or (event["payload"].get("device") or {}).get("id")
+                )
+                == first_id
+            ),
+            None,
+        )
+
+    deadline = time.monotonic() + 15
+    observed = reconnect_frame()
+    while observed is None:
+        if time.monotonic() >= deadline:
+            raise TimeoutError("reconnected device frame was not observed")
+        page.wait_for_timeout(50)
+        observed = reconnect_frame()
+    wait_until(
+        page,
+        "(id) => { const row = document.querySelector('#device-list .dev-row[data-device-id=\"' + id + '\"]'); "
+        "return !!row && !!row.dataset.status && row.dataset.status !== 'offline' && row.dataset.status !== 'stale'; }",
+        arg=first_id,
+        timeout=15,
+    )
     row = page.locator(f'#grid-order [data-device-id="{first_id}"]')
     rig.check(
         "A reconnect does not overwrite the intentional exclusion",
@@ -2798,8 +2854,9 @@ def historical_membership(rig: Rig) -> None:
         {
             "included": row.locator('input[type="checkbox"]').is_checked(),
             "membership": row.get_attribute("data-membership-source"),
+            "reconnect_frame": observed["payload"].get("type"),
         },
-        {"included": False, "membership": "operator"},
+        {"included": False, "membership": "operator", "reconnect_frame": "device_online|device_status"},
     )
     rig.check(
         "A reconnect retains the explicit size choice",
@@ -3016,15 +3073,18 @@ def historical_uncertainty(rig: Rig) -> None:
         page,
         "() => /may have completed/i.test(document.getElementById('image-message').textContent)",
     )
+    blind_message = page.locator("#image-message").inner_text()
     rig.check(
-        "A blind retry is refused before transport while the durable result is uncertain",
+        "A blind retry is refused before transport by the current 409 uncertain-command latch",
         scene_put_count() == scene_writes
-        and "may have completed" in page.locator("#image-message").inner_text().lower(),
+        and "may have completed" in blind_message.lower()
+        and "Refresh status and review the wall before retrying" in blind_message,
         {
-            "message": page.locator("#image-message").inner_text(),
+            "message": blind_message,
             "scene_writes": scene_writes,
         },
-        {"message": "may have completed", "scene_writes": scene_writes},
+        {"message": "may have completed … Refresh status and review the wall before retrying",
+         "scene_writes": scene_writes},
     )
     page.click("#refresh-command-status")
     wait_until(page, "() => document.getElementById('command-uncertainty').hidden")
