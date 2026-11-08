@@ -123,11 +123,9 @@ window.OperatorContent = {
             const active = preferred && buttons.includes(preferred) ? preferred : buttons[0];
             active.tabIndex = 0;
         }
-        function closestVisibleButton(buttons, index) {
+        function closestVisibleButton(buttons, index, order) {
             if (!buttons.length) return null;
             if (index < 0) return buttons[0];
-            const list = $("image-gallery");
-            const order = list && list.children ? Array.from(list.children).map(galleryButton).filter(Boolean) : buttons;
             let best = null;
             for (const button of buttons) {
                 const at = order.indexOf(button);
@@ -170,9 +168,11 @@ window.OperatorContent = {
                     thumbnail.addEventListener("error", () => {
                         item.dataset.thumbnail = "unavailable"; thumbnail.hidden = true;
                         thumbnailNote.textContent = "Thumbnail unavailable.";
+                        renderGallery();
                     });
                     thumbnail.addEventListener("load", () => {
                         delete item.dataset.thumbnail; thumbnail.hidden = false; thumbnailNote.textContent = "";
+                        renderGallery();
                     });
                     row = { item, button, thumbnail, name, thumbnailNote, appliedNote }; gallery.set(image.id, row);
                 }
@@ -216,7 +216,7 @@ window.OperatorContent = {
                 const shown = buttons.includes(focusedBefore) && !focusedBefore.hidden
                     && !(focusedBefore.parentElement && focusedBefore.parentElement.hidden);
                 if (!shown) {
-                    const next = closestVisibleButton(buttons, focusedIndex);
+                    const next = closestVisibleButton(buttons, focusedIndex, orderBefore);
                     if (next) { focusTarget(next); setGalleryTabStop(next); }
                     else {
                         const searchField = $("image-search");
@@ -371,6 +371,9 @@ window.OperatorContent = {
                     $("upload-message").textContent = selectedUpload ? "Image added and selected. Review Fit / Fill, then Show image. Nothing was shown automatically."
                         : "Image added to the library. Nothing was shown automatically.";
                     await refresh();
+                    if (selectedUpload && (!state.previewContent || state.previewContent.asset !== id)) {
+                        $("upload-message").textContent = "Image added to the library. Nothing was shown automatically.";
+                    }
                 } else $("upload-message").textContent = "Image addition refused. " + (result && (typeof result.detail === "string" ? result.detail : result.detail && result.detail.message) || "HTTP " + request.status) + ". Check the file or launch admission, then retry.";
             };
             request.onerror = uncertain; request.ontimeout = uncertain;

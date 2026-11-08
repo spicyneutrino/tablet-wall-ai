@@ -104,5 +104,17 @@ function fixture() {
         assert.equal(f.state.previewContent.asset, "sha256:operator", "the upload never replaces a newer selection");
         assert.equal(f.state.scene.content.type, "color");
     }
+    {
+        const f = fixture();
+        f.submit();
+        const finished = f.requests[0].reply(201, body);
+        await new Promise(resolve => setImmediate(resolve));
+        f.content.previewScene({ name: "Later choice", content: { type: "image", asset: "sha256:operator" } }, "e");
+        f.reads[0].resolve({ images: [uploaded] });
+        await finished;
+        assert.equal(f.state.previewContent.asset, "sha256:operator");
+        assert.match(f.node("upload-message").textContent, /Image added to the library/);
+        assert.doesNotMatch(f.node("upload-message").textContent, /added and selected/);
+    }
     console.log("Upload ambiguity, stale inventory, reconciliation, known refusals and selection-version admission passed");
 })().catch(error => { console.error(error); process.exitCode = 1; });

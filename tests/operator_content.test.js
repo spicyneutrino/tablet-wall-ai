@@ -367,6 +367,11 @@ async function inventoryState() {
     assert.equal(rows().length, 1, "a stale inventory read cannot replace a newer result");
     assert.equal(rows()[0].dataset.assetId, "a");
 
+    await refreshWith("abcdefgh".split("").map(asset));
+    rows().find(row => row.dataset.assetId === "e").children[0].focus();
+    await refreshWith([asset("d"), asset("g")]);
+    assert.equal(doc.activeElement.parentElement.dataset.assetId, "d", "inventory removal finds the nearest survivor in the previous row order");
+    node("image-search").focus();
     node("image-search").value = ""; node("image-search").input();
     await refreshWith([]);
     const empty = node("image-search-empty");
@@ -388,12 +393,12 @@ async function inventoryState() {
     const rowA = rows().find(row => row.dataset.assetId === "a");
     const buttonA = rowA.children[0];
     const thumbnail = buttonA.children[0];
-    thumbnail.error(); content.render();
+    thumbnail.error();
     assert.equal(rowA.dataset.thumbnail, "unavailable");
     assert.equal(thumbnail.hidden, true, "a missing thumbnail is not rendered as a broken image");
     assert.match(buttonA.attrs["aria-label"], /thumbnail unavailable/);
     assert.match(buttonA.attrs["aria-describedby"], /image-thumbnail-note/);
-    thumbnail.load(); content.render();
+    thumbnail.load();
     assert.equal(rowA.dataset.thumbnail, undefined);
     assert.equal(thumbnail.hidden, false);
     assert.doesNotMatch(buttonA.attrs["aria-label"] || "", /thumbnail unavailable/);
