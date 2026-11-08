@@ -333,6 +333,9 @@ async def watch_page(context: Any, spec: ClientSpec, observations: list[Observat
     await page.add_init_script(INIT_SCRIPT)
     page.on("console", lambda message: observation.event("console", level=message.type, text=message.text))
     page.on("pageerror", lambda error: observation.event("page_error", text=str(error)))
+    page.on("request", lambda request: observation.event(
+        "request_started", url=request.url, resource_type=request.resource_type
+    ))
     page.on("requestfailed", lambda request: observation.event("request_failed", url=request.url, error=request.failure))
     page.on("response", lambda response: observation.event("http", url=response.url, status=response.status))
 

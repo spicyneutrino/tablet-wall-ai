@@ -339,3 +339,41 @@ def test_video_audit_requires_completed_superseding_static_render():
     changed[-1] = {"kind": "ws_sent", "frame": {"type": "render_ack", "status": "displayed",
                    "token": {**token, "render_seq": 7}}}
     assert unexpected_browser_issues(SimpleNamespace(events=changed))
+
+
+def test_watch_page_records_fetch_lifecycle_for_video_audit():
+    class Page:
+        def __init__(self):
+            self.handlers = {}
+
+        def set_default_timeout(self, value):
+            pass
+
+        async def expose_binding(self, name, callback):
+            pass
+
+        async def add_init_script(self, script):
+            pass
+
+        def on(self, name, callback):
+            self.handlers[name] = callback
+
+    page = Page()
+
+    async def new_page():
+        return page
+
+    observations = []
+    _, observation = asyncio.run(run.watch_page(
+        SimpleNamespace(new_page=new_page), run.ClientSpec("fetch", 240, 160, 1), observations
+    ))
+    request = SimpleNamespace(url="http://localhost/assets/sha256:idle", resource_type="fetch",
+                              failure="net::ERR_ABORTED")
+    page.handlers["request"](request)
+    page.handlers["requestfailed"](request)
+    page.handlers["response"](SimpleNamespace(url=request.url, status=200))
+    assert observations == [observation]
+    assert [event["kind"] for event in observation.events] == ["request_started", "request_failed", "http"]
+    assert observation.events[0]["url"] == request.url
+    assert observation.events[0]["resource_type"] == "fetch"
+    assert observation.events[0]["time"] <= observation.events[1]["time"] <= observation.events[2]["time"]
