@@ -2237,7 +2237,9 @@
             for (const [verb, handler] of [["Recall geometry", () => recallLayout(entry)], ["Delete", () => deleteLayout(entry)]]) {
                 const button = document.createElement("button"); button.type = "button"; button.className = "btn btn-sm";
                 if (verb === "Delete") button.classList.add("btn-danger");
-                button.textContent = verb; button.setAttribute("aria-label", verb + " for arrangement “" + entry.name + "”");
+                button.textContent = verb;
+                button.setAttribute("aria-label", verb === "Delete" ? "Delete arrangement “" + entry.name + "”"
+                    : "Recall geometry for arrangement “" + entry.name + "”");
                 button.dataset.invalid = String(verb === "Recall geometry" && entry.valid === false);
                 button.disabled = state.busy || !state.etag || state.etagState !== "current" || button.dataset.invalid === "true";
                 button.addEventListener("click", handler); actions.append(button);
@@ -2345,7 +2347,9 @@
             for (const verb of ["Preview content", "Delete"]) {
                 const button = document.createElement("button"); button.type = "button"; button.className = "btn btn-sm";
                 if (verb === "Delete") button.classList.add("btn-danger");
-                button.textContent = verb; button.setAttribute("aria-label", verb + " for content “" + entry.name + "”");
+                button.textContent = verb;
+                button.setAttribute("aria-label", verb === "Delete" ? "Delete content “" + entry.name + "”"
+                    : "Preview content “" + entry.name + "”");
                 button.disabled = state.busy || verb === "Preview content" && entry.valid === false;
                 button.addEventListener("click", async () => {
                     if (state.busy) return;
