@@ -927,8 +927,7 @@ def stale_scene(rig):
     expect(p.locator("#scene-message")).to_contain_text("Content saved")
     p.get_by_role("button", name="Preview content “Guarded scene”", exact=True).click()
     old_guard = rig.config()["etag"]
-    task(other, "Settings")
-    other.get_by_text("Check patterns", exact=True).click()
+    task(other, "Images")
     rig.open_disclosures(other.locator("#show-colours"))
     other.locator("#show-colours").click()
     expect(other.locator("#stage-mode-label")).to_have_text("Showing tablet colours")
