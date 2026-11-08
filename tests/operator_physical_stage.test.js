@@ -48,6 +48,7 @@ assert.equal(stageModel.exceptionLabel("loading", "Loading image"), "Loading");
 assert.equal(stageModel.exceptionLabel("blocked", "Blocked"), "Blocked");
 assert.equal(stageModel.exceptionLabel("unknown", "Current image unconfirmed"), "Unconfirmed");
 assert.equal(stageModel.exceptionLabel("stale", "Previous paint · current image unconfirmed"), "Stale paint");
+assert.equal(stageModel.exceptionLabel("stale", "Active mapping revisions differ from the pinned slot"), "Mapping mismatch");
 assert.equal(stageModel.exceptionLabel("hidden", "Page hidden"), "Hidden");
 assert.equal(stageModel.exceptionLabel("offline", "Offline · spot reserved"), "Offline");
 assert.equal(stageModel.exceptionLabel("excluded", "Excluded from show"), "Excluded");

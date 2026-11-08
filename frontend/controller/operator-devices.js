@@ -71,6 +71,7 @@
             $("tablet-action-name").textContent = id ? labelFor(id) : "Select a tablet in the list or stage.";
             const evidence = id ? window.OperatorState.tabletState(config(), id, performance.now()) : null;
             const power = id ? powerFor(id) : null;
+            const mappingStale = evidence?.status === "stale" && evidence.text === "Active mapping revisions differ from the pinned slot";
             if (impact || replacement) $("tablet-lifecycle").open = true;
             const keepEvidence = evidence && !evidence.showing && evidence.status !== "unplaced";
             const paintText = keepEvidence ? evidence.text : "";
@@ -91,6 +92,7 @@
                 : evidence.status === "identifying" ? "The Identify overlay temporarily covers the image. Wait for it to clear before relying on current image proof."
                 : ["unsupported_client", "unsupported_content", "unsupported"].includes(evidence.status) ? "Reopen the current tablet page in its existing browser and check browser support. The operator cannot remotely install or wake the tablet."
                 : evidence.status === "failed" ? "The tablet reported a failed image. Check the image availability, then retry it."
+                : mappingStale ? "Active mapping revisions differ from this placement. Review its measurements and pinned profile or calibration before relying on the wall."
                 : evidence.status === "stale" ? "The tablet's previous paint no longer matches the current content. Keep the page visible, check its connection, then retry the image. Power readiness does not confirm paint."
                 : ["blocked", "invalid", "stale_calibration", "needs_calibration", "needs_profile", "viewport_mismatch", "zoom_changed", "missing_profile", "missing_calibration", "invalid_mapping"].includes(evidence.status) ? "Return the tablet to its calibrated rotation, 100% zoom and launch mode, or review its measurements."
                 : "Current matching reports are separate from connection status. Reconnect keeps this browser identity.";
@@ -112,7 +114,7 @@
                 const button = $(action);
                 if (button) button.hidden = !tabletOnline;
             }
-            $("open-tablet-measurements").hidden = !["blocked", "invalid", "stale_calibration", "needs_calibration", "needs_profile", "viewport_mismatch", "zoom_changed", "missing_profile", "missing_calibration", "invalid_mapping"].includes(evidence?.status);
+            $("open-tablet-measurements").hidden = !mappingStale && !["blocked", "invalid", "stale_calibration", "needs_calibration", "needs_profile", "viewport_mismatch", "zoom_changed", "missing_profile", "missing_calibration", "invalid_mapping"].includes(evidence?.status);
             $("tablet-arrange").hidden = !id || evidence?.status !== "unplaced";
             const oldIds = Object.keys(state.roster).filter(key => key !== id && !state.roster[key].online);
             $("replacement-offer").hidden = !device || !device.online || !!active || !oldIds.length;

@@ -102,6 +102,15 @@ async function run() {
     assert.match(node("tablet-recovery").textContent, /does not confirm paint/);
     assert.match(node("tablet-recovery").textContent, /not proof/);
 
+    evidence = require("../frontend/controller/operator-state.js").tabletState({
+        layout: { kind: "physical", slots: { a: { profile_revision: 1, calibration_revision: 1 } } },
+        runtime: { devices: { a: { online: true, mapping: { state: "ready", profile_revision: 2, calibration_revision: 1 } } } }
+    }, "a", performance.now());
+    devices.render();
+    assert.match(node("tablet-recovery").textContent, /measurements/);
+    assert.doesNotMatch(node("tablet-recovery").textContent, /retry the image/);
+    assert.equal(node("open-tablet-measurements").hidden, false, "mapping revision staleness exposes measurements recovery");
+
     delete state.roster.a.wake_lock;
     evidence = { status: "displayed", text: "Reports current image", showing: true };
     devices.render();

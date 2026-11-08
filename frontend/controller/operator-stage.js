@@ -17,6 +17,7 @@
         "unsupported_client", "unsupported_content"]);
     function exceptionLabel(status, text) {
         if (!status || status === "displayed" || status === "preview") return "";
+        if (status === "stale" && text === "Active mapping revisions differ from the pinned slot") return "Mapping mismatch";
         if (status === "failed") return String(text || "").split(" · ")[0] || "Failed";
         if (EXCEPTION_LABELS[status]) return EXCEPTION_LABELS[status];
         return MAPPING_STATUSES.has(status) ? "Blocked" : "Needs review";
