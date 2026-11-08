@@ -407,6 +407,15 @@ dialog.tablet-selection::backdrop { background: var(--backdrop); }
     .arrange-workspace { grid-template-columns: minmax(0, 1fr); }
     .arrange-tools { grid-column: 1; grid-row: 2; }
 }
+@media (min-width: 1101px) {
+    .arrange-tools {
+        max-block-size: calc(100dvh - 5.5rem);
+        overflow-y: auto;
+        overscroll-behavior: contain;
+        scrollbar-width: thin;
+        scrollbar-color: var(--control) var(--surface);
+    }
+}
 @media (max-width: 48rem) {
     :root { --page-pad: .6rem; --panel-pad: .6rem; --control-primary: 44px; --control-min: 28px; }
     body { display: block; block-size: auto; min-block-size: 100dvh; }
