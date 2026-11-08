@@ -37,6 +37,17 @@ else:  # script mode: this file's directory is sys.path[0]
 
 REPO = Path(__file__).resolve().parents[2]
 
+async def wait_for_predicate(page, expression, *, arg=None, timeout=30000):
+    deadline = time.monotonic() + timeout / 1000 if timeout else float("inf")
+    while True:
+        value = await page.evaluate(expression, arg)
+        if value:
+            return value
+        if time.monotonic() >= deadline:
+            raise TimeoutError(f"Browser predicate did not settle in {timeout} ms: {expression}")
+        await asyncio.sleep(0.05)
+
+
 
 @dataclass(frozen=True)
 class ClientSpec:
@@ -345,7 +356,7 @@ async def watch_page(context: Any, spec: ClientSpec, observations: list[Observat
 
 
 async def connected(page: Any) -> str:
-    await page.wait_for_function("document.querySelector('#status').dataset.state === 'connected'")
+    await wait_for_predicate(page, "document.querySelector('#status').dataset.state === 'connected'")
     return await page.evaluate("localStorage.getItem('tablet-wall-device-id')")
 
 
@@ -1045,7 +1056,7 @@ async def exercise(artifacts: Path, report: dict[str, Any], observation_seconds:
         async with controller.expect_response(lambda response: response.url == base + "/scene" and response.request.method == "PUT") as changed:
             await controller.get_by_role("button", name="Calibration", exact=True).click()
         check("controller calibration response", (await changed.value).ok)
-        await controller.wait_for_function("document.querySelector('[data-content=calibration]').getAttribute('aria-pressed') === 'true'")
+        await wait_for_predicate(controller, "document.querySelector('[data-content=calibration]').getAttribute('aria-pressed') === 'true'")
         await controller.wait_for_selector(".map-number", timeout=5000)
         check("controller calibration paints each screen",
               await controller.locator('.map-vis[data-calibration="true"]').count() >= 1)
@@ -1056,7 +1067,7 @@ async def exercise(artifacts: Path, report: dict[str, Any], observation_seconds:
         async with controller.expect_response(lambda response: response.url == base + "/scene" and response.request.method == "PUT") as changed:
             await controller.locator("#btn-image-apply").click()
         check("controller image response", (await changed.value).ok)
-        await controller.wait_for_function("document.querySelector('[data-content=image]').getAttribute('aria-pressed') === 'true'")
+        await wait_for_predicate(controller, "document.querySelector('[data-content=image]').getAttribute('aria-pressed') === 'true'")
         wall_after_image = await api("GET", "/wall")
         check("controller selects and shows curated image",
               wall_after_image["scene"]["content"]["asset"] == asset)
@@ -1180,8 +1191,8 @@ async def exercise(artifacts: Path, report: dict[str, Any], observation_seconds:
         # stopped page. Nothing here is automatic.
         takeover_start = time.monotonic()
         await original.click("#takeover")
-        await original.wait_for_function("document.querySelector('#status').dataset.state === 'connected'")
-        await duplicate.wait_for_function("document.querySelector('#status').dataset.state === 'replaced'")
+        await wait_for_predicate(original, "document.querySelector('#status').dataset.state === 'connected'")
+        await wait_for_predicate(duplicate, "document.querySelector('#status').dataset.state === 'replaced'")
         await asyncio.sleep(1)
         original_after = events_since(original_obs, takeover_start)
         duplicate_after = events_since(duplicate_obs, takeover_start)
@@ -1246,7 +1257,7 @@ async def exercise(artifacts: Path, report: dict[str, Any], observation_seconds:
                 await mode_page.wait_for_selector('#fs-toggle[data-visible="true"]', timeout=5000)
                 await mode_page.click("#fs-toggle")
                 try:
-                    await mode_page.wait_for_function(
+                    await wait_for_predicate(mode_page, 
                         "document.fullscreenElement !== null", timeout=5000
                     )
                 except Exception as error:
@@ -1259,7 +1270,7 @@ async def exercise(artifacts: Path, report: dict[str, Any], observation_seconds:
                     fullscreen = await measure_mode(mode_page)
                     await mode_page.screenshot(path=str(artifacts / "fullscreen.png"))
                     await mode_page.evaluate("document.exitFullscreen()")
-                    await mode_page.wait_for_function(
+                    await wait_for_predicate(mode_page, 
                         "document.fullscreenElement === null", timeout=5000
                     )
                     await asyncio.sleep(.2)
@@ -1326,7 +1337,7 @@ async def exercise(artifacts: Path, report: dict[str, Any], observation_seconds:
                 probe_page = await browser.new_page(viewport={"width": 420, "height": 320},
                                                     device_scale_factor=1)
                 await probe_page.goto(probe_origin + "/probe.html")
-                await probe_page.wait_for_function(
+                await wait_for_predicate(probe_page, 
                     "window.probe.video.readyState >= 2 && Number.isFinite(window.probe.video.duration)",
                     timeout=10000,
                 )
@@ -1345,7 +1356,7 @@ async def exercise(artifacts: Path, report: dict[str, Any], observation_seconds:
                     }
                     return v.play();
                 }""")
-                await probe_page.wait_for_function(
+                await wait_for_predicate(probe_page, 
                     "window.probe.video.currentTime > 0.4", timeout=10000
                 )
                 playing = await probe_page.evaluate("""() => {
@@ -1370,7 +1381,7 @@ async def exercise(artifacts: Path, report: dict[str, Any], observation_seconds:
 
                 await probe_page.evaluate("window.probe.video.currentTime = 1.2")
                 try:
-                    await probe_page.wait_for_function(
+                    await wait_for_predicate(probe_page, 
                         "Math.abs(window.probe.video.currentTime - 1.2) <= 0.15 "
                         "&& !window.probe.video.seeking",
                         timeout=5000,
@@ -1507,7 +1518,7 @@ async def exercise(artifacts: Path, report: dict[str, Any], observation_seconds:
         await controller.wait_for_selector("#upload-block:not([hidden])", timeout=10000)
         await controller.set_input_files("#upload-file", str(upload_path))
         await controller.click("#btn-upload")
-        await controller.wait_for_function(
+        await wait_for_predicate(controller, 
             "document.querySelector('#upload-status').textContent.startsWith('Ready:')",
             timeout=30000,
         )
@@ -1548,7 +1559,7 @@ async def exercise(artifacts: Path, report: dict[str, Any], observation_seconds:
         r1_rejection_start = time.monotonic()
         await controller.set_input_files("#upload-file", str(bad_path))
         await controller.click("#btn-upload")
-        await controller.wait_for_function(
+        await wait_for_predicate(controller, 
             "document.querySelector('#upload-status').textContent.startsWith('Upload failed:')",
             timeout=15000,
         )
@@ -1896,17 +1907,17 @@ async def exercise(artifacts: Path, report: dict[str, Any], observation_seconds:
                   [entry["colour"] for entry in observed][:2] == ["green", "yellow"],
                   observed=observed)
 
-            await editor_page.wait_for_function(
+            await wait_for_predicate(editor_page, 
                 "document.querySelector('#playback-status').dataset.state === 'playing'",
                 timeout=5000,
             )
             await editor_page.click("#btn-playback-pause")
-            await editor_page.wait_for_function(
+            await wait_for_predicate(editor_page, 
                 "document.querySelector('#playback-status').dataset.state === 'paused'",
                 timeout=5000,
             )
             await editor_page.click("#btn-playback-stop")
-            await editor_page.wait_for_function(
+            await wait_for_predicate(editor_page, 
                 "document.querySelector('#playback-status').dataset.state === 'stopped'",
                 timeout=5000,
             )

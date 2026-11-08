@@ -212,7 +212,8 @@ def entry_recovery(rig):
                 rig.base
                 + "/controller/physical.html?acceptance=preserve%20me&x=2#wall-proof"
             )
-            expect(page.locator("#rail-tabs")).to_be_visible()
+            navigation = "#compact-task-select" if page.evaluate("matchMedia('(max-width: 48rem)').matches") else "#rail-tabs"
+            expect(page.locator(navigation)).to_be_visible()
             expect(page.locator("body")).to_have_attribute("data-connection", "current")
             page.evaluate("document.fonts.ready")
             sockets = [
@@ -299,7 +300,7 @@ def visual_states(rig):
     task(p, "Images")
     p.locator("#refresh-images").click()
     expect(
-        p.get_by_role("button", name="Preview " + long_name, exact=True)
+        p.get_by_role("button", name="Preview " + long_name + ", thumbnail unavailable", exact=True)
     ).to_have_count(1)
     for width, height in ((1440, 900), (390, 844), (320, 640)):
         p.set_viewport_size({"width": width, "height": height})
