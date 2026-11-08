@@ -1136,6 +1136,7 @@
         beginManual();
         const before = clone(state.draft);
         mutator(state.draft);
+        reconcileLogicalErrors(state.draft);
         if (layoutSignature(before) === layoutSignature(state.draft)) return false;
         pushUndo(before);
         afterDraftChange();
@@ -1342,6 +1343,22 @@
         if (node) node.textContent = "";
         syncDraftUi();
     }
+    function reconcileLogicalErrors(draft) {
+        if (!draft || draft.kind !== "logical") return;
+        for (const input of Array.from(logicalInvalid.keys())) {
+            const field = input.dataset.field || input.id.slice("logical-".length);
+            const placement = input.dataset.field ? draft.placements[input.dataset.deviceId] : null;
+            if (input.dataset.field && !placement) continue;
+            const result = window.PhysicalSizing.validateLogicalField(field, input.value, draft, placement);
+            if (!result.valid) continue;
+            if (placement) {
+                if (field.startsWith("bezel-")) placement.bezel[field.slice(6)] = result.value;
+                else placement[field] = result.value;
+            } else if (field === "padding") draft.sizing.padding = result.value;
+            else draft[field] = result.value;
+            clearLogicalError(input);
+        }
+    }
     function renderLogicalEditor() {
         const box = document.getElementById("logical-editor"), draft = state.draft;
         if (!box) return;
@@ -1367,7 +1384,15 @@
         document.getElementById("logical-message").textContent = placement ? "Editing " + numberedLabel(state.selectedId) + ". Apply arrangement writes all reviewed geometry once." : "Select a placed tablet to edit its position and size.";
     }
 
+    let logicalResetPending = false;
     function bindLogicalEditor() {
+        document.addEventListener("pointerdown", event => {
+            const button = event.target.closest && event.target.closest("#btn-reload, #btn-cancel");
+            logicalResetPending = !!button && !button.disabled;
+        }, true);
+        for (const type of ["pointerup", "pointercancel"]) {
+            document.addEventListener(type, () => { logicalResetPending = false; }, true);
+        }
         const fields = document.getElementById("logical-fields");
         for (const [field, name] of [["x", "X"], ["y", "Y"], ["w", "Width"], ["h", "Height"],
             ["bezel-top", "Top bezel"], ["bezel-right", "Right bezel"], ["bezel-bottom", "Bottom bezel"], ["bezel-left", "Left bezel"]]) {
@@ -1378,6 +1403,7 @@
             label.append(input); fields.append(label); logicalFields.set(field, input);
             input.addEventListener("blur", renderLogicalEditor);
             input.addEventListener("change", () => {
+                if (logicalResetPending) return;
                 const id = input.dataset.deviceId || state.selectedId;
                 const placement = state.draft && state.draft.placements[id];
                 if (!placement) return;
@@ -1394,6 +1420,7 @@
         }
         for (const [id, field] of [["logical-width", "width"], ["logical-height", "height"], ["logical-padding", "padding"], ["logical-mode", "mode"]]) {
             document.getElementById(id).addEventListener("change", event => {
+                if (logicalResetPending) return;
                 if (field === "mode") {
                     const resetInvalid = logicalInvalid.size > 0;
                     clearLogicalErrors();
