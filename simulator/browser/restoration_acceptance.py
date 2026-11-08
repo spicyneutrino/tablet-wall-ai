@@ -2233,9 +2233,9 @@ def geometry_tools(rig: Rig) -> None:
     matched = draft_placement(page, ids[0])
     rig.check(
         "Match uses the current online viewport shape and mutates only the draft",
-        bool(matched and matched["h"] == 38 and matched["x"] == match_before["x"]),
+        bool(matched and matched["h"] == 375 and matched["x"] == match_before["x"]),
         matched,
-        {"h": 38, "x": match_before["x"]},
+        {"h": 375, "x": match_before["x"]},
     )
     rig.check(
         "Match sends no durable write before Apply",
@@ -2246,16 +2246,16 @@ def geometry_tools(rig: Rig) -> None:
     )
     page.click("#btn-apply")
     rig.wait_config(
-        lambda config: config["layout"]["placements"][ids[0]]["h"] == 38,
+        lambda config: config["layout"]["placements"][ids[0]]["h"] == 375,
         timeout=15,
     )
     put_rows = [row for row in rig.requests if row["method"] == "PUT" and row["url"].endswith("/api/v3/logical-layout")]
     rig.check(
         "Apply sends one guarded logical-layout command with integer geometry",
         len(put_rows) == 1 and put_rows[0].get("if_match")
-        and rig.config()["layout"]["placements"][ids[0]]["h"] == 38,
+        and rig.config()["layout"]["placements"][ids[0]]["h"] == 375,
         {"puts": put_rows, "applied": rig.config()["layout"]["placements"][ids[0]]},
-        {"puts": 1, "if_match": True, "h": 38},
+        {"puts": 1, "if_match": True, "h": 375},
     )
 
     # Measured mode keeps pinned profile/calibration revisions and shows the
@@ -2555,6 +2555,7 @@ def historical_forms(rig: Rig) -> None:
 
     page.fill("#profile-label", "Lobby left checked")
     page.fill("#profile-active-width", "123.4")
+    page.fill("#profile-active-height", "80")
     page.fill("#profile-provenance", "datasheet")
     page.fill("#cal-method", "ruler across the active edge")
     page.select_option("#tablet-model", "manual")
@@ -2644,6 +2645,7 @@ def historical_forms(rig: Rig) -> None:
         {"profile_dirty": "false", "model": "manual", "label": "restored"},
     )
 
+    page.set_viewport_size({"width": 390, "height": 844})
     trigger = page.locator(f'#device-list .dev-pick[data-device-id="{ids[0]}"]')
     rig.task("Tablets")
     trigger.click()
@@ -2664,6 +2666,7 @@ def historical_membership(rig: Rig) -> None:
     page = rig.page
     rig.task("Arrange")
     page.locator("#grid-order").wait_for(state="attached")
+    rig.open_disclosures(page.locator("#grid-order"))
     rig.check(
         "Arrangement starts with no forced reservation before the first live join",
         not page.locator("#grid-order [data-device-id]").count(),
@@ -2784,8 +2787,6 @@ def historical_membership(rig: Rig) -> None:
         },
         {"first_reserved": True, "second_removed": True, "second_registered": True},
     )
-    page.keyboard.press("Escape")
-    wait_until(page, "() => document.getElementById('device-sheet')?.open !== true")
     page.locator(f'#device-list .dev-pick[data-device-id="{first_id}"]').click()
     wait_until(page, "() => document.getElementById('device-sheet')?.open === true")
     rig.open_disclosures(page.locator("#tablet-remove"))
@@ -2812,6 +2813,7 @@ def historical_uncertainty(rig: Rig) -> None:
     ids = rig.place_logical_clients(2)
     rig.task("Arrange")
     page.locator("#arrange-membership-summary").wait_for(state="visible")
+    rig.open_disclosures(page.locator("#grid-rows"))
     page.fill("#grid-rows", "1")
     page.fill("#grid-columns", "1")
     page.dispatch_event("#grid-columns", "change")
