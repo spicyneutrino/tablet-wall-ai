@@ -392,7 +392,10 @@ window.PhysicalStage = {
                 focusSheetFallback();
             });
             document.getElementById("device-sheet-close")?.addEventListener("click", function () { deviceSheet.close(); });
-            window.addEventListener("resize", syncDeviceSheetMode);
+            window.addEventListener("resize", function () {
+                if (state.drag) endDrag(false, "view");
+                syncDeviceSheetMode();
+            });
             syncDeviceSheetMode();
         }
 

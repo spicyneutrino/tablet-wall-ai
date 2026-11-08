@@ -151,9 +151,9 @@
             });
             const names = ids.map(labelFor);
             const subjects = names.every(name => /^Tablet \d+$/.test(name)) ? "Tablets " + names.map(name => name.slice(7)).join(", ") : names.join(", ");
-            $("arrange-membership-summary").textContent = !ids.length ? "Choose tablets"
-                : required ? subjects + " · review tablet sizes and mounting"
-                    : "Tablet order and measurements";
+            $("arrange-membership-summary").textContent = !ids.length ? "Order and mounting · choose tablets"
+                : required ? "Order and mounting · " + subjects + " · review tablet sizes and mounting"
+                    : "Order and mounting";
             if (required) $("arrange-membership").open = true;
             $("arrange-membership").dataset.required = String(!!required);
         }

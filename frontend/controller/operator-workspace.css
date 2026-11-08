@@ -309,6 +309,10 @@ body[data-view-zoom="2x"] #workbench-stage .stage-svg { max-block-size: none; }
 .exception-number { font-weight: 650; }
 .exception-name { font-weight: 600; font-size: .8125rem; }
 .exception-state { grid-column: 2; color: var(--muted); font-size: .6875rem; }
+.exception-power { grid-column: 2; color: var(--attention); font-size: .6875rem; font-weight: 600; }
+.exception-item[data-power-state="denied"] .exception-power,
+.exception-item[data-power-state="released"] .exception-power,
+.exception-item[data-power-state="insecure"] .exception-power { color: var(--error); }
 .exception-item[data-status="displayed"] .exception-state { color: var(--success); }
 .exception-item[data-status="offline"] .exception-state,
 .exception-item[data-status="stale"] .exception-state,
@@ -559,7 +563,15 @@ dialog.tablet-selection::backdrop { background: var(--backdrop); }
 
 #tablet-action-name:focus { outline: none; }
 
-#grid-title { position: absolute; inline-size: 1px; block-size: 1px; padding: 0; margin: -1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
+#grid-title { font-size: .9375rem; margin: 0; }
+
+.geometry-group { display: grid; gap: .5rem; padding-block-start: .55rem; border-block-start: 1px solid var(--border); }
+.grid-sizing-choice + .geometry-group, #logical-title + .geometry-group { border-block-start: 0; padding-block-start: 0; }
+.geometry-heading { margin: 0; color: var(--muted); font-size: .6875rem; font-weight: 650; letter-spacing: .045em; text-transform: uppercase; }
+.grid-preset-row { display: flex; flex-wrap: wrap; align-items: end; gap: .5rem; }
+.grid-size-fields { flex: 1 1 9rem; grid-template-columns: repeat(2, minmax(0, 1fr)); }
+.grid-preset-row .arrange-controls { flex: 1 1 12rem; }
+#arrange-model:not(:has(.group-setup:not([hidden]))) { display: none; }
 
 
 
