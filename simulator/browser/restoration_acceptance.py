@@ -2463,6 +2463,11 @@ def fleet_power(rig: Rig) -> None:
 
     rig.task("Tablets")
     wait_until(page, "(ids) => ids.every(id => document.querySelector('#device-list .dev-row[data-device-id=\"' + id + '\"]'))", arg=ids)
+    wait_until(
+        page,
+        "(id) => [...document.querySelectorAll('#device-list .dev-row')].some(row => row.dataset.deviceId === id && row.dataset.status === 'displayed')",
+        arg=ids[1],
+    )
     denied_row = page.locator(f'#device-list .dev-row[data-device-id="{ids[1]}"]')
     held_row = page.locator(f'#device-list .dev-row[data-device-id="{ids[0]}"]')
     unsupported_row = page.locator(f'#device-list .dev-row[data-device-id="{ids[2]}"]')
