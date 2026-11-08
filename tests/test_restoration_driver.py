@@ -34,23 +34,173 @@ def clean_cleanup() -> dict:
     }
 
 
-def test_registry_is_explicit_about_planned_scenarios():
-    assert len(driver.SCENARIOS) == 10
-    assert set(driver.IMPLEMENTED) == {
+def test_registry_and_bodies_cover_all_ten_durable_scenarios():
+    expected = {
         "gallery-focus",
         "recovery-sheet",
         "library-composer",
         "scene-paint",
+        "fit-feedback",
+        "geometry-tools",
+        "fleet-power",
+        "historical-forms",
+        "historical-membership",
+        "historical-uncertainty",
     }
-    for name in driver.INCOMPLETE:
-        entry = driver.SCENARIOS[name]
-        assert entry["status"] == "incomplete"
-        assert entry["owner"]
-        assert entry["reason"]
-        report = driver.incomplete_report(name)
-        assert report["pass"] is False
-        assert report["status"] == "incomplete"
-        assert report["failures"][0]["classification"] == "explicitly_incomplete"
+    assert len(driver.SCENARIOS) == 10
+    assert set(driver.SCENARIOS) == expected
+    assert set(driver.IMPLEMENTED) == expected
+    assert driver.INCOMPLETE == ()
+    assert set(driver.SCENARIO_BODIES) == expected
+    for name, body in driver.SCENARIO_BODIES.items():
+        assert callable(body), name
+        assert body.__name__ == name.replace("-", "_"), name
+        assert driver.SCENARIOS[name]["status"] == "implemented"
+        assert driver.SCENARIOS[name]["owner"] == ("M0-02" if name in {
+            "gallery-focus", "recovery-sheet", "library-composer", "scene-paint",
+        } else "M6-00")
+    assert set(driver.SCENARIO_FIXTURES) == expected
+    assert driver.SCENARIO_HOOKS["fit-feedback"]["owner"] == "M5-03"
+    assert driver.SCENARIO_HOOKS["fleet-power"]["owner"] == "M6-02"
+
+
+class FakeLocator:
+    def __init__(self, count):
+        self._count = count
+
+    def count(self):
+        return self._count
+
+
+class FakeHookPage:
+    def __init__(self, selectors=(), expressions=None):
+        self.selectors = set(selectors)
+        self.expressions = expressions or {}
+
+    def locator(self, selector):
+        return FakeLocator(1 if selector in self.selectors else 0)
+
+    def evaluate(self, expression):
+        return self.expressions.get(expression, False)
+
+
+class FakeHookRig:
+    def __init__(self, page):
+        self.page = page
+        self.results = []
+
+    def check(self, name, ok, actual=None, expected=True, **kwargs):
+        self.results.append(
+            {
+                "name": name,
+                "pass": bool(ok),
+                "actual": actual,
+                "expected": expected,
+                **kwargs,
+            }
+        )
+        return bool(ok)
+
+
+def test_missing_feature_hook_fails_explicitly_with_the_owner_named():
+    rig = FakeHookRig(FakeHookPage())
+    assert driver.require_hooks(rig, "fit-feedback") is False
+    assert len(rig.results) == 1
+    row = rig.results[0]
+    assert row["pass"] is False
+    assert row["classification"] == "missing_required_hook"
+    assert row["expected"] == "all registered hooks present"
+    assert "M5-03" in row["name"]
+    assert {item["selector"] for item in row["actual"]["missing"]} == {
+        "#fit-feedback",
+        "#fit-summary",
+        "#fit-applied",
+        "#crop-bars",
+    }
+
+
+def test_present_feature_hook_adds_no_failure_and_missing_js_hook_is_named():
+    present = FakeHookRig(
+        FakeHookPage(
+            selectors={"#fit-feedback", "#fit-summary", "#fit-applied", "#crop-bars"}
+        )
+    )
+    assert driver.require_hooks(present, "fit-feedback") is True
+    assert present.results == []
+
+    missing_js = FakeHookRig(
+        FakeHookPage(selectors={"#tablet-evidence"}, expressions={})
+    )
+    assert driver.require_hooks(missing_js, "fleet-power") is False
+    assert missing_js.results[0]["classification"] == "missing_required_hook"
+    assert "M6-02" in missing_js.results[0]["name"]
+    assert any(
+        "powerReadiness" in item.get("expression", "")
+        for item in missing_js.results[0]["actual"]["missing"]
+    )
+
+    present_js = FakeHookRig(
+        FakeHookPage(
+            selectors={"#tablet-evidence"},
+            expressions={
+                "() => typeof window.OperatorStage?.powerReadiness === 'function'": True,
+                "() => !!document.getElementById('tablet-evidence')": True,
+            },
+        )
+    )
+    assert driver.require_hooks(present_js, "fleet-power") is True
+    assert present_js.results == []
+
+
+def test_fit_feedback_missing_hook_does_not_fake_a_pass_or_touch_the_server():
+    rig = FakeHookRig(FakeHookPage())
+    driver.fit_feedback(rig)
+    assert len(rig.results) == 1
+    assert rig.results[0]["pass"] is False
+    assert rig.results[0]["classification"] == "missing_required_hook"
+    assert not hasattr(rig, "new_client")
+
+
+def test_current_guard_delete_sends_the_exact_config_if_match():
+    calls = []
+
+    class GuardRig:
+        def config(self):
+            return {"etag": "current-etag"}
+
+        def request(self, method, path, body=None, if_match=None):
+            calls.append((method, path, body, if_match))
+            return 200, {"removed": True}
+
+    status, _ = driver.delete_device_with_current_guard(GuardRig(), "device-1")
+    assert status == 200
+    assert calls == [("DELETE", "/devices/device-1", None, "current-etag")]
+
+
+def test_current_guard_delete_refuses_an_unguarded_request():
+    class NoGuardRig:
+        def config(self):
+            return {}
+
+        def request(self, *_args, **_kwargs):
+            raise AssertionError("must not send an unguarded DELETE")
+
+    with pytest.raises(RuntimeError, match="refusing an unguarded DELETE"):
+        driver.delete_device_with_current_guard(NoGuardRig(), "device-1")
+
+
+def test_pattern_controls_navigate_to_images_after_the_authorized_move():
+    events = []
+
+    class PatternRig:
+        def task(self, name):
+            events.append(("task", name))
+
+        def click(self, selector):
+            events.append(("click", selector))
+
+    driver.show_pattern(PatternRig(), "#show-colours")
+    assert events == [("task", "Images"), ("click", "#show-colours")]
 
 
 def test_artifacts_must_be_new_and_outside_both_repositories(tmp_path):
@@ -283,8 +433,21 @@ def test_server_launch_uses_the_selected_source_root_as_cwd(tmp_path, monkeypatc
         listener.close()
 
 
-def test_incomplete_scenario_writes_explicit_failure_without_a_server(tmp_path, monkeypatch):
+def test_an_incomplete_registry_entry_still_writes_explicit_failure_without_a_server(
+    tmp_path, monkeypatch
+):
     source = fake_source(tmp_path / "source")
+    monkeypatch.setitem(
+        driver.SCENARIOS,
+        "fit-feedback",
+        {
+            "name": "fit-feedback",
+            "status": "incomplete",
+            "owner": "M5-03",
+            "reason": "Fixture test forces the old incomplete branch.",
+            "known_baseline_failure": None,
+        },
+    )
 
     def forbidden(*_args, **_kwargs):
         raise AssertionError("incomplete scenarios must not launch a server or browser")
@@ -359,12 +522,7 @@ def test_single_implemented_scenario_creates_its_own_artifacts_target(tmp_path, 
     assert result["scenario"] == "gallery-focus"
     assert result["fixture_coverage"] == {
         "generated_groups": [0, 1, 8, 24],
-        "served_by_scenario": {
-            "gallery-focus": 24,
-            "recovery-sheet": 1,
-            "library-composer": 24,
-            "scene-paint": 1,
-        },
+        "served_by_scenario": dict(driver.SCENARIO_FIXTURES),
         "note": driver.FIXTURE_COVERAGE_NOTE,
     }
 
@@ -395,9 +553,21 @@ def test_all_scenario_uses_new_child_artifact_directories(tmp_path, monkeypatch)
     assert code == 1
     assert [call[1] for call in calls] == list(driver.IMPLEMENTED)
     assert [call[0] for call in calls] == [out.resolve() / name for name in driver.IMPLEMENTED]
+    assert len(calls) == 10
     result = json.loads((out / "results.json").read_text())
-    assert len(result["incomplete"]) == 6
-    assert all(row["status"] == "incomplete" for row in result["incomplete"])
+    assert result["incomplete"] == []
+    assert [report["scenario"] for report in result["reports"]] == [
+        "gallery-focus",
+        "recovery-sheet",
+        "library-composer",
+        "scene-paint",
+        "fit-feedback",
+        "geometry-tools",
+        "fleet-power",
+        "historical-forms",
+        "historical-membership",
+        "historical-uncertainty",
+    ]
     assert result["fixture_coverage"]["generated_groups"] == [0, 1, 8, 24]
 
 

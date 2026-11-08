@@ -5,10 +5,11 @@ tree as a private app server with explicit data roots, drives the shipped
 controller and client pages, and records source, fixture, viewport, request,
 console, assertion and cleanup evidence.
 
-Scenarios in the registry either have a current-route baseline implementation
-or are explicitly incomplete. An incomplete scenario fails; it is never a
-synthetic pass. Baseline scenarios may intentionally fail their predicted
-assertion on clean HEAD; that failure is reported with the observed value.
+Every registry scenario has a durable body. A feature that has not landed yet
+is gated by an explicit missing-hook failure that names the owning task; it is
+never a skipped or synthetic pass. Baseline scenarios may intentionally fail
+their predicted assertion on clean HEAD; that failure is reported with the
+observed value.
 """
 
 from __future__ import annotations
@@ -83,44 +84,46 @@ SCENARIO_ENTRIES = (
     },
     {
         "name": "fit-feedback",
-        "status": "incomplete",
-        "owner": "M6-04",
-        "reason": "Needs the reviewed workbench/1 chooser and presentation DOM from M5/M6-04.",
-        "known_baseline_failure": None,
+        "status": "implemented",
+        "owner": "M6-00",
+        "reason": None,
+        "known_baseline_failure": "The M5-03 fit-feedback slots are absent until that candidate is "
+        "integrated. The scenario fails explicitly with a missing-hook diagnostic.",
     },
     {
         "name": "geometry-tools",
-        "status": "incomplete",
-        "owner": "M6-04",
-        "reason": "Needs the frozen workbench/1 geometry controls from M6-01/M6-04.",
+        "status": "implemented",
+        "owner": "M6-00",
+        "reason": None,
         "known_baseline_failure": None,
     },
     {
         "name": "fleet-power",
-        "status": "incomplete",
-        "owner": "M6-04",
-        "reason": "Needs the frozen workbench/1 fleet/power surfaces from M6-02/M6-04.",
-        "known_baseline_failure": None,
+        "status": "implemented",
+        "owner": "M6-00",
+        "reason": None,
+        "known_baseline_failure": "The M6-02 power readiness hook is absent until that candidate is "
+        "integrated. The scenario fails explicitly with a missing-hook diagnostic.",
     },
     {
         "name": "historical-forms",
-        "status": "incomplete",
-        "owner": "M7-03",
-        "reason": "Historical form obligation is implemented by M7-03, not guessed here.",
+        "status": "implemented",
+        "owner": "M6-00",
+        "reason": None,
         "known_baseline_failure": None,
     },
     {
         "name": "historical-membership",
-        "status": "incomplete",
-        "owner": "M7-03",
-        "reason": "Historical membership obligation is implemented by M7-03, not guessed here.",
+        "status": "implemented",
+        "owner": "M6-00",
+        "reason": None,
         "known_baseline_failure": None,
     },
     {
         "name": "historical-uncertainty",
-        "status": "incomplete",
-        "owner": "M7-03",
-        "reason": "Historical uncertainty obligation is implemented by M7-03, not guessed here.",
+        "status": "implemented",
+        "owner": "M6-00",
+        "reason": None,
         "known_baseline_failure": None,
     },
 )
@@ -138,6 +141,28 @@ SCENARIO_FIXTURES = {
     "recovery-sheet": 1,
     "library-composer": 24,
     "scene-paint": 1,
+    "fit-feedback": 8,
+    "geometry-tools": 8,
+    "fleet-power": 1,
+    "historical-forms": 1,
+    "historical-membership": 0,
+    "historical-uncertainty": 1,
+}
+# These are the additive DOM hooks owned by tasks that may land after this
+# authoring task. A missing hook is an explicit failure with the owning task
+# named, never a skipped or synthetic pass.
+SCENARIO_HOOKS = {
+    "fit-feedback": {
+        "owner": "M5-03",
+        "selectors": ("#fit-feedback", "#fit-summary", "#fit-applied", "#crop-bars"),
+    },
+    "fleet-power": {
+        "owner": "M6-02",
+        "expressions": (
+            "() => typeof window.OperatorStage?.powerReadiness === 'function'",
+            "() => !!document.getElementById('tablet-evidence')",
+        ),
+    },
 }
 CLIENT_SPECS = (
     # Unequal viewports and DPRs. Orientation is overridden in the page so the
@@ -150,17 +175,22 @@ CLIENT_SPECS = (
 CLIENT_COLOURS = ("#7c2d12", "#14532d", "#1e3a8a", "#4c1d95")
 TASK_VALUES = {"Images": "content", "Tablets": "tablet", "Arrange": "show", "Settings": "system"}
 FIXTURE_COVERAGE_NOTE = (
-    "Fixture groups 0 and 8 are generated and unit-tested but no scenario serves them. "
-    "Current servers serve 24 assets (gallery-focus, library-composer) or 1 "
-    "(recovery-sheet, scene-paint). Empty-library and 8-asset server states remain "
-    "explicit M0-03 coverage."
+    "Scenario servers now serve 0 (historical-membership), 1 (recovery-sheet, "
+    "scene-paint, fleet-power, historical-forms, historical-uncertainty), 8 "
+    "(fit-feedback, geometry-tools) and 24 (gallery-focus, library-composer) "
+    "deterministic assets. Asset aspect and fit coverage is exercised at 8; a "
+    "different library count is not a new visual claim."
 )
 LIMITATIONS = [
     "Software browser evidence only. No physical tablet, optical seam, sleep/wake, "
     "native screen reader, native browser zoom, network ingress or hardware certification.",
-    "The client pages are real shipped pages. Protocol-only or mutated state copies are "
-    "labelled state_rule_probe and are never counted as painted evidence.",
-    "An incomplete registry entry fails explicitly. It is not a skipped pass.",
+    "The client pages are real shipped pages. Protocol-only, synthetic-pointer or "
+    "mutated state copies are labelled state_rule_probe or simulation and are never "
+    "counted as physical or painted acceptance evidence.",
+    "A missing feature hook fails explicitly with its owning task named. It is never "
+    "a skipped or synthetic pass.",
+    "Final assembled execution remains M6-04/M7-04. These durable bodies replace "
+    "the former incomplete stubs; they do not accept an unrun journey.",
     FIXTURE_COVERAGE_NOTE,
 ]
 
@@ -781,7 +811,12 @@ class Rig:
             else None,
         )
 
-    def new_client(self, spec: dict[str, Any], index: int) -> tuple[Any, str]:
+    def new_client(
+        self,
+        spec: dict[str, Any],
+        index: int,
+        init_script: str | None = None,
+    ) -> tuple[Any, str]:
         options = {
             "viewport": {"width": spec["width"], "height": spec["height"]},
             "screen": {"width": spec["width"], "height": spec["height"]},
@@ -795,6 +830,8 @@ class Rig:
             "Object.defineProperty(screen.orientation,'angle',"
             f"{{get:()=>{spec['orientation']},configurable:true}})"
         )
+        if init_script:
+            context.add_init_script(init_script)
         page = context.new_page()
         page.set_default_timeout(10_000)
         label = f"tablet-{index + 1}"
@@ -1189,6 +1226,155 @@ def _state_probes(page: Any, negatives: bool = True) -> dict[str, Any]:
     )
 
 
+def require_hooks(rig: Rig, scenario: str) -> bool:
+    """Fail explicitly when an owning task's additive DOM/JS hook is absent."""
+    hooks = SCENARIO_HOOKS.get(scenario)
+    if not hooks:
+        return True
+    missing: list[dict[str, str]] = []
+    for selector in hooks.get("selectors", ()):
+        try:
+            present = rig.page.locator(selector).count() > 0
+        except Exception as error:
+            missing.append({"selector": selector, "error": repr(error)})
+            continue
+        if not present:
+            missing.append({"selector": selector, "error": "not present"})
+    for expression in hooks.get("expressions", ()):
+        try:
+            present = rig.page.evaluate(expression) is True
+        except Exception as error:
+            missing.append({"expression": expression, "error": repr(error)})
+            continue
+        if not present:
+            missing.append({"expression": expression, "error": "not true"})
+    if not missing:
+        return True
+    rig.check(
+        f"{scenario} required hook is present (owner {hooks['owner']})",
+        False,
+        {"missing": missing},
+        "all registered hooks present",
+        fatal=False,
+        classification="missing_required_hook",
+    )
+    return False
+
+
+def delete_device_with_current_guard(rig: Rig, device_id: str) -> tuple[int, Any]:
+    """Send the current If-Match guard, never an unguarded stale delete."""
+    etag = rig.config().get("etag")
+    if not etag:
+        raise RuntimeError("current config etag is unavailable; refusing an unguarded DELETE")
+    return rig.request("DELETE", f"/devices/{device_id}", if_match=etag)
+
+
+def show_pattern(rig: Rig, selector: str) -> None:
+    """Pattern controls live in Images after the authorized workbench move."""
+    rig.task("Images")
+    rig.click(selector)
+
+
+def slot_rect(page: Any, device_id: str) -> dict[str, float] | None:
+    return page.evaluate(
+        """id => {
+            const slot = document.querySelector('#stage-svg .slot[data-device-id="' + id + '"]');
+            if (!slot) return null;
+            const body = slot.querySelector('.operator-body-outline') || slot;
+            const rect = body.getBoundingClientRect();
+            return {x: rect.x, y: rect.y, w: rect.width, h: rect.height};
+        }""",
+        device_id,
+    )
+
+
+def draft_placement(page: Any, device_id: str) -> dict[str, float] | None:
+    return page.evaluate(
+        """id => {
+            const body = document.querySelector('#stage-svg .slot[data-device-id="' + id + '"] .operator-body-outline');
+            if (!body) return null;
+            return {x: Number(body.getAttribute('x')), y: Number(body.getAttribute('y')),
+                w: Number(body.getAttribute('width')), h: Number(body.getAttribute('height'))};
+        }""",
+        device_id,
+    )
+
+
+def select_stage_slot(rig: Rig, device_id: str) -> bool:
+    rect = slot_rect(rig.page, device_id)
+    if not rect:
+        return False
+    rig.page.mouse.click(rect["x"] + rect["w"] / 2, rect["y"] + rect["h"] / 2)
+    try:
+        wait_until(
+            rig.page,
+            "(id) => document.querySelector('#stage-svg .slot[aria-pressed=\"true\"]')?.dataset.deviceId === id",
+            timeout=5,
+            arg=device_id,
+        )
+    except TimeoutError:
+        return False
+    return True
+
+
+def drag_slot(
+    rig: Rig,
+    device_id: str,
+    dx: float,
+    dy: float,
+    *,
+    steps: int = 12,
+    alt: bool = False,
+    escape: bool = False,
+    viewport_resize: tuple[int, int] | None = None,
+) -> None:
+    """Drag a real rendered slot; deltas are draft logical units (or mm)."""
+    page = rig.page
+    page.evaluate("() => window.scrollTo(0, 0)")
+    rect = slot_rect(page, device_id)
+    placement = draft_placement(page, device_id)
+    if not rect or not placement:
+        raise RuntimeError(f"missing rendered slot {device_id}")
+    combined = rect["w"] / max(1.0, placement["w"])
+    start_x = rect["x"] + rect["w"] / 2
+    start_y = rect["y"] + rect["h"] / 2
+    page.mouse.move(start_x, start_y)
+    page.mouse.down()
+    if alt:
+        page.keyboard.down("Alt")
+    page.mouse.move(start_x + dx * combined / 2, start_y + dy * combined / 2, steps=max(2, steps // 2))
+    if viewport_resize is not None:
+        page.set_viewport_size({"width": viewport_resize[0], "height": viewport_resize[1]})
+    elif escape:
+        page.keyboard.press("Escape")
+    page.mouse.move(start_x + dx * combined, start_y + dy * combined, steps=max(2, steps))
+    page.mouse.up()
+    if alt:
+        page.keyboard.up("Alt")
+    page.wait_for_timeout(150)
+
+
+def open_measurement_details(rig: Rig) -> None:
+    rig.task("Settings")
+    wait_until(rig.page, "() => !document.getElementById('panel-system').hidden")
+    details = rig.page.locator("#measurement-details")
+    if details.get_attribute("open") is None:
+        details.locator(":scope > summary").click()
+    rig.page.locator("#profile-form").wait_for(state="visible")
+
+
+def set_logical_snap(rig: Rig, enabled: bool, step: int = 1) -> None:
+    page = rig.page
+    page.fill("#logical-snap", str(step))
+    page.dispatch_event("#logical-snap", "change")
+    if page.is_checked("#logical-snap-enabled") != enabled:
+        if enabled:
+            page.check("#logical-snap-enabled")
+        else:
+            page.uncheck("#logical-snap-enabled")
+    page.wait_for_timeout(60)
+
+
 def gallery_focus(rig: Rig) -> None:
     page = rig.page
     rig.place_logical_clients(2)
@@ -1558,8 +1744,13 @@ def recovery_sheet(rig: Rig) -> None:
                 fatal=False,
             )
 
-    status, payload = rig.request("DELETE", f"/devices/{ids[1]}")
-    rig.check("Offline reservation can be removed deliberately", status in (200, 404), status, 200)
+    status, payload = delete_device_with_current_guard(rig, ids[1])
+    rig.check(
+        "Offline reservation can be removed deliberately with the current If-Match guard",
+        status == 200,
+        {"status": status, "if_match": rig.api_calls[-1].get("if_match")},
+        200,
+    )
     try:
         wait_until(
             page,
@@ -1604,8 +1795,14 @@ def scene_paint(rig: Rig) -> None:
         status, _ = rig.request("POST", f"/devices/{device_id}/color", {"color": colour})
         rig.check(f"Test colour accepted for {device_id[-6:]}", status == 200, status, 200)
 
-    rig.task("Settings")
-    rig.click("#show-colours")
+    rig.check(
+        "Presentation pattern controls are in the Images workbench",
+        page.locator("#panel-content #presentation-checks").count() == 1,
+        page.locator("#panel-content #presentation-checks").count(),
+        1,
+        fatal=False,
+    )
+    show_pattern(rig, "#show-colours")
     page.wait_for_timeout(300)
     for index, (client_page, device_id) in enumerate(clients):
         colour = CLIENT_COLOURS[index]
@@ -1763,11 +1960,1071 @@ def scene_paint(rig: Rig) -> None:
         )
 
 
+def fit_feedback(rig: Rig) -> None:
+    page = rig.page
+    if not require_hooks(rig, "fit-feedback"):
+        return
+    clients = [rig.new_client(spec, index) for index, spec in enumerate(CLIENT_SPECS[:2])]
+    ids = [device_id for _, device_id in clients]
+    status, _ = rig.request("PUT", "/wall", {"width": 200, "height": 200})
+    rig.check("Fit feedback wall accepts 200 x 200 relative bounds", status == 200, status, 200)
+    for index, device_id in enumerate(ids):
+        status, _ = rig.request(
+            "PUT",
+            f"/devices/{device_id}/placement",
+            {"x": index * 100, "y": 0, "w": 100, "h": 100},
+        )
+        rig.check(f"Fit feedback client {index + 1} placement accepted", status == 200, status, 200)
+    rig.wait_config(lambda config: all(device_id in config["layout"]["placements"] for device_id in ids))
+    rig.task("Images")
+    wait_until(page, "() => document.querySelectorAll('#image-gallery > li').length === 8")
+
+    page.locator("#image-gallery > li .image-choice-button").first.click()
+    wait_until(page, "() => document.getElementById('image-preview-controls')?.hidden === false")
+    page.select_option("#image-fit", "cover")
+    page.wait_for_timeout(120)
+    summary = page.locator("#fit-summary").inner_text()
+    width_text = page.locator("#crop-width").inner_text()
+    height_text = page.locator("#crop-height").inner_text()
+    rig.check(
+        "Fill preview reports source-width crop on a square logical wall",
+        "37.5% of the source width" in summary and "0% of the source height" in summary,
+        {"summary": summary, "width": width_text, "height": height_text},
+        {"source_width": "37.5%", "source_height": "0%"},
+    )
+    rig.check(
+        "Crop bars use the same percentages and denominator",
+        width_text == "37.5% of source width cropped" and height_text == "0% of source height cropped",
+        {"width": width_text, "height": height_text},
+        {"width": "37.5% of source width cropped", "height": "0% of source height cropped"},
+    )
+    rig.check(
+        "Proposal preview does not claim applied fit",
+        "no image fit" in page.locator("#fit-applied").inner_text(),
+        page.locator("#fit-applied").inner_text(),
+        "no image fit",
+    )
+    before = rig.config()
+    scene_writes = [
+        row for row in rig.requests if row["method"] == "PUT" and row["url"].endswith("/api/v3/scene")
+    ]
+    rig.check(
+        "Choosing and changing fit sends no durable scene write",
+        not scene_writes and rig.config()["revision"] == before["revision"],
+        {"writes": scene_writes, "before": before["revision"], "after": rig.config()["revision"]},
+        {"writes": [], "revision": before["revision"]},
+    )
+
+    page.select_option("#image-fit", "contain")
+    page.wait_for_timeout(120)
+    contain_summary = page.locator("#fit-summary").inner_text()
+    rig.check(
+        "Fit preview reports wall-height bands without mixing denominators",
+        "0% of the wall width" in contain_summary
+        and "37.5% of the wall height" in contain_summary,
+        contain_summary,
+        {"wall_width": "0%", "wall_height": "37.5%"},
+    )
+
+    page.click("#show-image")
+    rig.wait_config(
+        lambda config: config["scene"]["content"].get("type") == "image"
+        and config["scene"]["content"].get("fit") == "contain"
+    )
+    rig.check(
+        "Settled image names the applied Fit and explicit background",
+        "Applied: Fit" in page.locator("#fit-applied").inner_text()
+        and "#0b1120" in page.locator("#fit-applied").inner_text(),
+        page.locator("#fit-applied").inner_text(),
+        {"fit": "Fit", "background": "#0b1120"},
+    )
+    applied_summary = page.locator("#fit-summary").inner_text()
+    rig.check(
+        "Applied feedback reports the committed fit after Show",
+        applied_summary.startswith("Applied Fit of 1600 × 1000:")
+        and "37.5% of the wall height" in applied_summary,
+        applied_summary,
+        "Applied Fit of 1600 × 1000 with 37.5% wall height uncovered",
+    )
+
+    applied_line = page.locator("#fit-applied").inner_text()
+    page.locator("#image-gallery > li .image-choice-button").nth(1).click()
+    page.wait_for_timeout(120)
+    rig.check(
+        "A later draft selection never rewrites the settled applied line",
+        page.locator("#fit-applied").inner_text() == applied_line,
+        page.locator("#fit-applied").inner_text(),
+        applied_line,
+    )
+    rig.check(
+        "Tall draft exposes its own proposed crop estimate",
+        "1000 × 1600" in page.locator("#fit-summary").inner_text(),
+        page.locator("#fit-summary").inner_text(),
+        "1000 × 1600 preview",
+    )
+
+
+def geometry_tools(rig: Rig) -> None:
+    page = rig.page
+    ids = rig.place_logical_clients(2)
+    rig.task("Arrange")
+    wait_until(page, "() => document.querySelectorAll('#stage-svg .slot').length >= 2")
+    rig.check(
+        "Geometry controls are enabled from the reviewed stage module",
+        page.locator("#view-zoom-2x").is_enabled()
+        and page.locator("#view-zoom-fit").is_enabled()
+        and page.locator("#logical-snap-enabled").is_enabled()
+        and page.locator("#btn-match-shape").count() == 1,
+        {
+            "2x": page.locator("#view-zoom-2x").is_enabled(),
+            "snap": page.locator("#logical-snap-enabled").is_enabled(),
+            "match_present": page.locator("#btn-match-shape").count(),
+        },
+        {"2x": True, "snap": True, "match_present": 1},
+    )
+    help_text = page.locator("#geometry-help-text").inner_text()
+    rig.check(
+        "Geometry help names the real keyboard and view alternatives",
+        "Alt" in help_text and "2x" in help_text and "unit" in help_text.lower(),
+        help_text,
+        "Alt, 2x and unit alternatives",
+    )
+    rig.check(
+        "Initial wall view is Fit",
+        page.evaluate("() => (document.body.dataset.viewZoom || 'fit') === 'fit'")
+        and page.get_attribute("#view-zoom-fit", "aria-pressed") == "true",
+        page.evaluate("() => document.body.dataset.viewZoom || 'fit'"),
+        "fit",
+    )
+
+    before = rig.config()
+    page.click("#view-zoom-2x")
+    wait_until(page, "() => document.body.dataset.viewZoom === '2x'")
+    rig.check(
+        "2x changes only the view state and pressed control",
+        page.get_attribute("#view-zoom-2x", "aria-pressed") == "true"
+        and rig.config()["revision"] == before["revision"]
+        and rig.config()["layout"] == before["layout"]
+        and page.evaluate("() => document.body.dataset.outputDirty === 'false'"),
+        {"zoom": page.evaluate("() => document.body.dataset.viewZoom"),
+         "revision": rig.config()["revision"], "dirty": page.evaluate("() => document.body.dataset.outputDirty")},
+        {"zoom": "2x", "revision": before["revision"], "dirty": "false"},
+    )
+    rig.check(
+        "2x is view-only and writes no network command",
+        not [row for row in rig.requests if row["method"] != "GET"],
+        [row for row in rig.requests if row["method"] != "GET"],
+        [],
+    )
+    page.click("#view-zoom-fit")
+    wait_until(page, "() => (document.body.dataset.viewZoom || 'fit') === 'fit'")
+
+    rig.check("First stage slot can be selected for direct editing", select_stage_slot(rig, ids[0]))
+    set_logical_snap(rig, False, 1)
+    original = rig.config()["layout"]["placements"][ids[0]]
+    drag_slot(rig, ids[0], 12, 8)
+    moved = draft_placement(page, ids[0])
+    rig.check(
+        "Fit pointer drag commits the requested relative displacement in the draft",
+        bool(moved and moved["x"] == original["x"] + 12 and moved["y"] == original["y"] + 8),
+        {"before": original, "after": moved},
+        {"x": original["x"] + 12, "y": original["y"] + 8},
+    )
+    rig.check(
+        "A draft drag writes no durable layout before Apply",
+        rig.config()["layout"]["placements"][ids[0]] == original,
+        rig.config()["layout"]["placements"][ids[0]],
+        original,
+    )
+    page.click("#btn-undo")
+    wait_until(
+        page,
+        "(expected) => { const slot = document.querySelector('#stage-svg .slot[data-device-id=\"' + expected.id + '\"] .operator-body-outline'); "
+        "return slot && Number(slot.getAttribute('x')) === expected.x; }",
+        arg={"id": ids[0], "x": original["x"]},
+    )
+    rig.check(
+        "One undo restores the exact pre-drag geometry",
+        draft_placement(page, ids[0])["x"] == original["x"],
+        draft_placement(page, ids[0]),
+        original,
+    )
+
+    page.click("#view-zoom-2x")
+    wait_until(page, "() => document.body.dataset.viewZoom === '2x'")
+    drag_slot(rig, ids[0], 8, 0)
+    scaled = draft_placement(page, ids[0])
+    rig.check(
+        "2x pointer delta maps to the same logical units without double transform",
+        bool(scaled and scaled["x"] == original["x"] + 8),
+        scaled,
+        {"x": original["x"] + 8},
+    )
+    page.click("#view-zoom-fit")
+    wait_until(page, "() => (document.body.dataset.viewZoom || 'fit') === 'fit'")
+
+    pre_escape = draft_placement(page, ids[0])
+    drag_slot(rig, ids[0], 20, 0, escape=True)
+    rig.check(
+        "Escape mid-drag cancels and restores the pre-draft geometry",
+        draft_placement(page, ids[0]) == pre_escape,
+        draft_placement(page, ids[0]),
+        pre_escape,
+    )
+    pre_resize = draft_placement(page, ids[0])
+    drag_slot(rig, ids[0], 20, 0, viewport_resize=(1280, 800))
+    page.set_viewport_size({"width": 1440, "height": 900})
+    page.wait_for_timeout(160)
+    rig.check(
+        "A view resize mid-drag cancels and restores the pre-draft geometry",
+        draft_placement(page, ids[0]) == pre_resize,
+        draft_placement(page, ids[0]),
+        pre_resize,
+    )
+    page.click("#btn-cancel")
+    wait_until(page, "() => document.body.dataset.outputDirty === 'false'")
+
+    set_logical_snap(rig, True, 20)
+    before_snap = rig.config()["layout"]["placements"][ids[0]]
+    drag_slot(rig, ids[0], 12, 0)
+    snapped = draft_placement(page, ids[0])
+    rig.check(
+        "Enabled grid snap rounds a relative drag to the declared step",
+        bool(snapped and snapped["x"] % 20 == 0 and snapped["x"] != before_snap["x"] + 12),
+        snapped,
+        {"multiple_of": 20, "not_raw": before_snap["x"] + 12},
+    )
+    page.click("#btn-cancel")
+    wait_until(page, "() => document.body.dataset.outputDirty === 'false'")
+    set_logical_snap(rig, True, 20)
+    drag_slot(rig, ids[0], 12, 0, alt=True)
+    bypass = draft_placement(page, ids[0])
+    rig.check(
+        "Alt bypasses grid snap and keeps the raw whole-unit delta",
+        bool(bypass and bypass["x"] == before_snap["x"] + 12),
+        bypass,
+        {"x": before_snap["x"] + 12},
+    )
+    page.click("#btn-cancel")
+    wait_until(page, "() => document.body.dataset.outputDirty === 'false'")
+
+    tie = page.evaluate(
+        """() => window.PhysicalSizing.snapLogical(
+            {x: 17, y: 40, w: 60, h: 40, bezel: {top: 0, right: 0, bottom: 0, left: 2}},
+            {kind: 'logical', width: 200, height: 100, placements: {
+                a: {x: 17, y: 40, w: 60, h: 40, bezel: {top: 0, right: 0, bottom: 0, left: 2}},
+                b: {x: 16, y: 0, w: 20, h: 20, bezel: {top: 0, right: 0, bottom: 0, left: 2}}}},
+            {id: 'a', mode: 'move', step: 20, enabled: true, threshold: 2})"""
+    )
+    rig.check(
+        "Edge decision runs before grid spacing at an exact tie",
+        tie["x"] == 16,
+        tie,
+        {"x": 16},
+    )
+
+    # Match is a draft-only, current-viewport operation.
+    set_logical_snap(rig, False, 1)
+    select_stage_slot(rig, ids[0])
+    match_before = rig.config()["layout"]["placements"][ids[0]]
+    requests_before = len(rig.requests)
+    page.click("#btn-match-shape")
+    page.wait_for_timeout(180)
+    matched = draft_placement(page, ids[0])
+    rig.check(
+        "Match uses the current online viewport shape and mutates only the draft",
+        bool(matched and matched["h"] == 38 and matched["x"] == match_before["x"]),
+        matched,
+        {"h": 38, "x": match_before["x"]},
+    )
+    rig.check(
+        "Match sends no durable write before Apply",
+        not [row for row in rig.requests[requests_before:] if row["method"] != "GET"]
+        and rig.config()["layout"]["placements"][ids[0]] == match_before,
+        {"writes": [row for row in rig.requests[requests_before:] if row["method"] != "GET"]},
+        {"writes": []},
+    )
+    page.click("#btn-apply")
+    rig.wait_config(
+        lambda config: config["layout"]["placements"][ids[0]]["h"] == 38,
+        timeout=15,
+    )
+    put_rows = [row for row in rig.requests if row["method"] == "PUT" and row["url"].endswith("/api/v3/logical-layout")]
+    rig.check(
+        "Apply sends one guarded logical-layout command with integer geometry",
+        len(put_rows) == 1 and put_rows[0].get("if_match")
+        and rig.config()["layout"]["placements"][ids[0]]["h"] == 38,
+        {"puts": put_rows, "applied": rig.config()["layout"]["placements"][ids[0]]},
+        {"puts": 1, "if_match": True, "h": 38},
+    )
+
+    # Measured mode keeps pinned profile/calibration revisions and shows the
+    # measured path instead of logical-only controls.
+    config = rig.config()
+    status, profile = rig.request(
+        "PUT",
+        f"/api/v3/displays/{ids[0]}",
+        {
+            "active_width_mm": 240,
+            "active_height_mm": 150,
+            "bezels": {"left": 5, "top": 5, "right": 5, "bottom": 5},
+            "panel_pixels": None,
+            "label": "Fixture tablet",
+            "provenance": "datasheet",
+        },
+        if_match=config["etag"],
+    )
+    rig.check("Measured fixture profile accepted", status == 200, status, 200)
+    config = rig.config()
+    status, calibration = rig.request(
+        "PUT",
+        f"/api/v3/calibrations/{ids[0]}",
+        {
+            "profile_revision": profile["display"]["revision"],
+            "viewport_width": 1280,
+            "viewport_height": 800,
+            "dpr": 1.0,
+            "orientation": 0,
+            "mode": "tab",
+            "quarter_turn": 0,
+            "panel_offset_mm": [0, 0],
+            "mm_per_css": [0.1875, 0.1875],
+            "anchor_edge": "top-left",
+            "uncertainty_mm": 3,
+            "method": "datasheet",
+        },
+        if_match=config["etag"],
+    )
+    rig.check("Measured fixture calibration accepted", status == 200, status, 200)
+    config = rig.config()
+    status, _ = rig.request(
+        "PUT",
+        "/api/v3/layout",
+        {
+            "bounds": {"x": 0, "y": 0, "width": 480, "height": 300},
+            "slots": {
+                ids[0]: {
+                    "center_x_mm": 130,
+                    "center_y_mm": 85,
+                    "mount_angle": 0,
+                    "nudge_x_mm": 0,
+                    "nudge_y_mm": 0,
+                    "profile_revision": profile["display"]["revision"],
+                    "calibration_revision": calibration["calibration"]["revision"],
+                    "participating": True,
+                }
+            },
+            "sizing": {"mode": "fixed", "padding": 0},
+        },
+        if_match=config["etag"],
+    )
+    rig.check("Measured fixture layout accepted", status == 200, status, 200)
+    rig.wait_config(lambda config: config["layout"].get("kind") == "physical")
+    rig.task("Arrange")
+    wait_until(page, "() => document.body.dataset.stageMode !== 'live' || document.querySelector('#stage-svg .slot')")
+    select_stage_slot(rig, ids[0])
+    page.wait_for_timeout(150)
+    rig.check(
+        "Measured mode hides logical-only controls and explains pinned measurements",
+        page.locator("#logical-editor").is_hidden()
+        and page.locator("#btn-match-shape").is_disabled()
+        and "measured" in page.locator("#match-shape-note").inner_text().lower(),
+        {
+            "logical_hidden": page.locator("#logical-editor").is_hidden(),
+            "match_disabled": page.locator("#btn-match-shape").is_disabled(),
+            "note": page.locator("#match-shape-note").inner_text(),
+        },
+        {"logical_hidden": True, "match_disabled": True, "note": "measured path"},
+    )
+    measured_before = rig.config()["layout"]["slots"][ids[0]]
+    drag_slot(rig, ids[0], 5, 0)
+    measured_after = rig.config()["layout"]["slots"][ids[0]]
+    rig.check(
+        "Measured drag changes decimal millimetres only in the draft",
+        measured_after == measured_before,
+        {"before": measured_before, "durable_after": measured_after},
+    )
+    measured_draft = page.evaluate(
+        "() => ({x: document.getElementById('slot-center-x')?.value, "
+        "provenance: document.getElementById('tablet-provenance')?.textContent || ''})"
+    )
+    rig.check(
+        "Measured draft exposes the edited millimetre centre and pinned provenance",
+        measured_draft["x"] not in (None, "")
+        and f"{measured_before['profile_revision']}" in measured_draft["provenance"],
+        measured_draft,
+        {"x": "number", "provenance": "pinned revision"},
+    )
+    page.click("#btn-apply")
+    rig.wait_config(
+        lambda config: config["layout"]["slots"][ids[0]]["center_x_mm"]
+        != measured_before["center_x_mm"],
+        timeout=15,
+    )
+    applied_measured = rig.config()["layout"]["slots"][ids[0]]
+    rig.check(
+        "Measured Apply preserves pinned profile and calibration revisions",
+        applied_measured["profile_revision"] == measured_before["profile_revision"]
+        and applied_measured["calibration_revision"] == measured_before["calibration_revision"],
+        applied_measured,
+        {"profile_revision": measured_before["profile_revision"],
+         "calibration_revision": measured_before["calibration_revision"]},
+    )
+
+
+WAKE_LOCK_HELD = """
+Object.defineProperty(navigator, 'wakeLock', {configurable: true, value: {
+  request: async () => ({addEventListener() {}, release: async () => {}})
+}});
+"""
+WAKE_LOCK_DENIED = """
+Object.defineProperty(navigator, 'wakeLock', {configurable: true, value: {
+  request: async () => { throw Object.assign(new Error('denied'), {name: 'NotAllowedError'}); }
+}});
+"""
+WAKE_LOCK_UNSUPPORTED = """
+Object.defineProperty(navigator, 'wakeLock', {configurable: true, value: undefined});
+"""
+
+
+def fleet_power(rig: Rig) -> None:
+    page = rig.page
+    if not require_hooks(rig, "fleet-power"):
+        return
+    clients = [
+        rig.new_client(CLIENT_SPECS[0], 0, WAKE_LOCK_HELD),
+        rig.new_client(CLIENT_SPECS[1], 1, WAKE_LOCK_DENIED),
+        rig.new_client(CLIENT_SPECS[2], 2, WAKE_LOCK_UNSUPPORTED),
+    ]
+    ids = [device_id for _, device_id in clients]
+    status, _ = rig.request("PUT", "/wall", {"width": 1200, "height": 800})
+    rig.check("Fleet wall accepts three unequal clients", status == 200, status, 200)
+    for index, device_id in enumerate(ids):
+        status, _ = rig.request(
+            "PUT",
+            f"/devices/{device_id}/placement",
+            {"x": (index % 2) * 600, "y": (index // 2) * 400, "w": 600, "h": 400},
+        )
+        rig.check(f"Fleet client {index + 1} placement accepted", status == 200, status, 200)
+    rig.wait_config(
+        lambda config: [config["runtime"]["devices"][device_id].get("wake_lock") for device_id in ids]
+        == ["held", "denied", "unsupported"],
+        timeout=20,
+    )
+    asset = rig.assets[0]
+    status, _ = rig.put_scene({"type": "image", "asset": "sha256:" + asset["sha256"], "fit": "cover"})
+    rig.check("Fleet fixture image scene accepted", status == 200, status, 200)
+    rig.wait_config(
+        lambda config: all(
+            config["runtime"]["devices"][device_id]["render"].get("state") == "displayed"
+            for device_id in ids
+        ),
+        timeout=20,
+    )
+    aggregate = _aggregate(page)
+    rig.check(
+        "Mixed power states do not change the confirmed paint count",
+        aggregate["aggregate"]["showing"] == 3,
+        aggregate["aggregate"],
+        3,
+    )
+
+    rig.task("Tablets")
+    wait_until(page, "(ids) => ids.every(id => document.querySelector('#device-list .dev-row[data-device-id=\"' + id + '\"]'))", arg=ids)
+    denied_row = page.locator(f'#device-list .dev-row[data-device-id="{ids[1]}"]')
+    held_row = page.locator(f'#device-list .dev-row[data-device-id="{ids[0]}"]')
+    unsupported_row = page.locator(f'#device-list .dev-row[data-device-id="{ids[2]}"]')
+    rig.check(
+        "Roster keeps paint and wake readiness on separate facts",
+        denied_row.get_attribute("data-status") == "displayed"
+        and denied_row.get_attribute("data-power-state") == "denied"
+        and denied_row.get_attribute("data-power-warning") == "true"
+        and held_row.get_attribute("data-power-warning") == "false"
+        and unsupported_row.get_attribute("data-power-state") == "unsupported",
+        {
+            "denied": denied_row.get_attribute("data-status"),
+            "denied_power": denied_row.get_attribute("data-power-state"),
+            "held_warning": held_row.get_attribute("data-power-warning"),
+            "unsupported": unsupported_row.get_attribute("data-power-state"),
+        },
+        {"denied": "displayed", "denied_power": "denied", "held_warning": "false", "unsupported": "unsupported"},
+    )
+    denied_row.locator(".dev-pick").click()
+    wait_until(page, "() => document.getElementById('device-sheet')?.open === true")
+    rig.check(
+        "Painted but denied power still renders an independent warning",
+        "Power: denied" in page.locator("#tablet-evidence").inner_text()
+        and page.locator("#tablet-evidence").get_attribute("data-power-warning") == "true"
+        and page.locator("#tablet-recovery").is_visible()
+        and "denied" in page.locator("#tablet-recovery").inner_text().lower()
+        and "cannot wake" in page.locator("#tablet-recovery").inner_text().lower(),
+        {
+            "evidence": page.locator("#tablet-evidence").inner_text(),
+            "warning": page.locator("#tablet-evidence").get_attribute("data-power-warning"),
+            "recovery": page.locator("#tablet-recovery").inner_text(),
+        },
+        {"evidence": "Power: denied", "warning": "true", "recovery": "cannot wake"},
+    )
+    retry_title = page.locator("#tablet-retry-image").get_attribute("title")
+    reconnect_title = page.locator("#tablet-reconnect").get_attribute("title")
+    rig.check(
+        "Retry image and Reconnect stay distinct and do not promise remote wake",
+        retry_title != reconnect_title and "does not wake" in retry_title and "does not wake" in reconnect_title,
+        {"retry": retry_title, "reconnect": reconnect_title},
+        {"distinct": True, "remote_wake": False},
+    )
+    denied_slot = page.locator(f'#stage-svg .slot[data-device-id="{ids[1]}"]')
+    rig.check(
+        "Stage annotates the denied paint position without turning it into a paint failure",
+        denied_slot.get_attribute("data-power-state") == "denied"
+        and denied_slot.get_attribute("data-power-warning") == "true"
+        and denied_slot.get_attribute("data-status") == "displayed",
+        {
+            "power": denied_slot.get_attribute("data-power-state"),
+            "warning": denied_slot.get_attribute("data-power-warning"),
+            "paint": denied_slot.get_attribute("data-status"),
+        },
+        {"power": "denied", "warning": "true", "paint": "displayed"},
+    )
+
+    requests_before = len(rig.requests)
+    rig.open_disclosures(page.locator("#tablet-retry-image"))
+    page.click("#tablet-retry-image")
+    wait_until(page, "() => /Image retry requested/.test(document.getElementById('tablet-action-message').textContent)")
+    page.click("#tablet-reconnect")
+    wait_until(page, "() => /Reconnect requested/.test(document.getElementById('tablet-action-message').textContent)")
+    posts = [row for row in rig.requests[requests_before:] if row["method"] == "POST"]
+    rig.check(
+        "Retry image and Reconnect call different endpoints with distinct receipts",
+        {row["url"].rsplit("/", 1)[-1] for row in posts} == {"retry-image", "reconnect"},
+        posts,
+        {"endpoints": {"retry-image", "reconnect"}},
+    )
+
+    # A held browser report is not paint evidence. Close the held client and
+    # verify both the real count and the state rule stay honest.
+    held_context = clients[0][0].context
+    rig.contexts.remove(held_context)
+    held_context.close()
+    rig.wait_config(lambda config: config["runtime"]["devices"][ids[0]]["online"] is False, timeout=20)
+    page.wait_for_timeout(300)
+    rig.task("Tablets")
+    held_row = page.locator(f'#device-list .dev-row[data-device-id="{ids[0]}"]')
+    rig.check(
+        "An offline held report remains last known power and never a current paint claim",
+        held_row.get_attribute("data-status") != "displayed"
+        and held_row.get_attribute("data-power-state") == "held"
+        and _aggregate(page)["aggregate"]["showing"] == 2,
+        {
+            "status": held_row.get_attribute("data-status"),
+            "power": held_row.get_attribute("data-power-state"),
+            "showing": _aggregate(page)["aggregate"]["showing"],
+        },
+        {"status": "offline/stale", "power": "held", "showing": 2},
+    )
+    page.evaluate("config => { window.__restorationConfig = config; }", rig.config())
+    state_probe = page.evaluate(
+        """id => {
+            const config = JSON.parse(JSON.stringify(window.__restorationConfig));
+            const now = performance.now();
+            config.runtime.devices[id].wake_lock = 'held';
+            config.runtime.devices[id].render.state = 'stale';
+            config.runtime.devices[id].render.observed_mono = now - 20000;
+            config.runtime.devices[id].render.age_ms = 20000;
+            const observed = window.OperatorState.observeConfig(config, now);
+            return window.OperatorState.tabletState(observed, id, now);
+        }""",
+        ids[0],
+    )
+    rig.check(
+        "Held wake lock with stale paint is still not displayed",
+        state_probe["showing"] is False,
+        state_probe,
+        {"showing": False},
+        classification="state_rule_probe",
+    )
+
+
+def historical_forms(rig: Rig) -> None:
+    page = rig.page
+    ids = rig.place_logical_clients(2)
+    rig.task("Tablets")
+    page.locator(f'#device-list .dev-pick[data-device-id="{ids[0]}"]').click()
+    wait_until(page, "() => document.getElementById('device-sheet')?.open === true")
+    open_measurement_details(rig)
+
+    page.fill("#profile-label", "Lobby left checked")
+    page.fill("#profile-active-width", "123.4")
+    page.fill("#profile-provenance", "datasheet")
+    page.fill("#cal-method", "ruler across the active edge")
+    page.select_option("#tablet-model", "manual")
+    page.wait_for_timeout(80)
+    rig.check(
+        "Measurement edits mark their keyed forms dirty without a write",
+        page.locator("#tablet-label-form").get_attribute("data-dirty") == "false"
+        and page.locator("#profile-label").get_attribute("data-dirty") == "true"
+        and not [row for row in rig.requests if row["method"] == "PUT"],
+        {
+            "profile_dirty": page.locator("#profile-label").get_attribute("data-dirty"),
+            "writes": [row for row in rig.requests if row["method"] == "PUT"],
+        },
+        {"profile_dirty": "true", "writes": []},
+    )
+
+    page.click("#refresh-status")
+    page.wait_for_timeout(250)
+    for task in ("Images", "Settings"):
+        rig.task(task)
+    rig.check(
+        "Dirty profile, calibration and model fields survive task changes and heartbeat refresh",
+        page.input_value("#profile-label") == "Lobby left checked"
+        and page.input_value("#profile-active-width") == "123.4"
+        and page.input_value("#cal-method") == "ruler across the active edge"
+        and page.input_value("#tablet-model") == "manual",
+        {
+            "label": page.input_value("#profile-label"),
+            "active_width": page.input_value("#profile-active-width"),
+            "cal_method": page.input_value("#cal-method"),
+            "model": page.input_value("#tablet-model"),
+        },
+        {"label": "Lobby left checked", "active_width": "123.4",
+         "cal_method": "ruler across the active edge", "model": "manual"},
+    )
+
+    rig.task("Tablets")
+    page.locator(f'#device-list .dev-pick[data-device-id="{ids[1]}"]').click()
+    wait_until(page, "() => document.getElementById('device-sheet')?.open === true")
+    open_measurement_details(rig)
+    wait_until(page, "() => document.getElementById('device-card-name')?.textContent !== '–'")
+    rig.task("Tablets")
+    page.locator(f'#device-list .dev-pick[data-device-id="{ids[0]}"]').click()
+    wait_until(page, "() => document.getElementById('device-sheet')?.open === true")
+    open_measurement_details(rig)
+    page.wait_for_timeout(150)
+    rig.check(
+        "Selection changes retain each tablet's own dirty values",
+        page.input_value("#profile-label") == "Lobby left checked"
+        and page.input_value("#profile-active-width") == "123.4",
+        {"label": page.input_value("#profile-label"), "active_width": page.input_value("#profile-active-width")},
+        {"label": "Lobby left checked", "active_width": "123.4"},
+    )
+
+    writes_before = len([row for row in rig.requests if row["method"] == "PUT"])
+    page.fill("#profile-label", "")
+    page.locator("#btn-profile-save").focus()
+    page.keyboard.press("Enter")
+    page.wait_for_timeout(200)
+    rig.check(
+        "Keyboard submitting an empty name announces a named error and focuses the editable field",
+        page.locator("#profile-msg").is_visible()
+        and "Label" in page.locator("#profile-msg").inner_text()
+        and page.evaluate("() => document.activeElement?.id") == "profile-label"
+        and page.get_attribute("#profile-label", "aria-invalid") == "true"
+        and len([row for row in rig.requests if row["method"] == "PUT"]) == writes_before,
+        {
+            "message": page.locator("#profile-msg").inner_text() if page.locator("#profile-msg").is_visible() else None,
+            "focus": page.evaluate("() => document.activeElement?.id"),
+            "invalid": page.get_attribute("#profile-label", "aria-invalid"),
+        },
+        {"message": "Label must be 1 to 80 characters.", "focus": "profile-label", "invalid": "true"},
+    )
+
+    page.click("#discard-profile")
+    page.wait_for_timeout(120)
+    rig.check(
+        "Discarding one dirty group leaves the other retained model choice",
+        page.locator("#profile-label").get_attribute("data-dirty") == "false"
+        and page.input_value("#tablet-model") == "manual"
+        and page.input_value("#profile-label") != "",
+        {
+            "profile_dirty": page.locator("#profile-label").get_attribute("data-dirty"),
+            "model": page.input_value("#tablet-model"),
+            "label": page.input_value("#profile-label"),
+        },
+        {"profile_dirty": "false", "model": "manual", "label": "restored"},
+    )
+
+    trigger = page.locator(f'#device-list .dev-pick[data-device-id="{ids[0]}"]')
+    rig.task("Tablets")
+    trigger.click()
+    wait_until(page, "() => document.getElementById('device-sheet')?.open === true")
+    page.keyboard.press("Escape")
+    wait_until(page, "() => document.getElementById('device-sheet')?.open !== true")
+    rig.check(
+        "The native tablet dialog stays usable and Escape restores a visible trigger",
+        page.evaluate(
+            "() => { const e = document.activeElement; return !!e && e.isConnected && !e.hidden && e.getClientRects().length > 0; }"
+        ),
+        page.evaluate("() => document.activeElement?.className"),
+        "visible connected trigger",
+    )
+
+
+def historical_membership(rig: Rig) -> None:
+    page = rig.page
+    rig.task("Arrange")
+    page.locator("#grid-order").wait_for(state="attached")
+    rig.check(
+        "Arrangement starts with no forced reservation before the first live join",
+        not page.locator("#grid-order [data-device-id]").count(),
+        page.locator("#grid-order [data-device-id]").count(),
+        0,
+    )
+    first_page, first_id = rig.new_client(CLIENT_SPECS[0], 0)
+    rig.wait_config(lambda config: first_id in config["runtime"]["devices"])
+    wait_until(
+        page,
+        "(id) => !!document.querySelector('#grid-order [data-device-id=\"' + id + '\"]')",
+        arg=first_id,
+    )
+    row = page.locator(f'#grid-order [data-device-id="{first_id}"]')
+    rig.check(
+        "A first live join becomes included before any user freeze with a fresh viewport aspect",
+        row.locator('input[type="checkbox"]').is_checked()
+        and row.get_attribute("data-size-source") == "viewport"
+        and row.get_attribute("data-membership-source") == "automatic"
+        and row.locator('input[data-field="w"]').input_value() == "160",
+        {
+            "included": row.locator('input[type="checkbox"]').is_checked(),
+            "size_source": row.get_attribute("data-size-source"),
+            "membership": row.get_attribute("data-membership-source"),
+            "width": row.locator('input[data-field="w"]').input_value(),
+        },
+        {"included": True, "size_source": "viewport", "membership": "automatic", "width": "160"},
+    )
+    row.locator('input[type="checkbox"]').uncheck()
+    page.wait_for_timeout(80)
+    rig.check(
+        "An explicit exclusion is remembered as an operator choice",
+        not row.locator('input[type="checkbox"]').is_checked()
+        and row.get_attribute("data-membership-source") == "operator",
+        row.get_attribute("data-membership-source"),
+        "operator",
+    )
+    first_page.reload()
+    wait_until(first_page, "() => document.querySelector('#status')?.dataset.state === 'connected'")
+    rig.wait_config(lambda config: config["runtime"]["devices"][first_id]["online"] is True)
+    page.wait_for_timeout(200)
+    row = page.locator(f'#grid-order [data-device-id="{first_id}"]')
+    rig.check(
+        "A reconnect does not overwrite the intentional exclusion",
+        not row.locator('input[type="checkbox"]').is_checked()
+        and row.get_attribute("data-membership-source") == "operator",
+        {
+            "included": row.locator('input[type="checkbox"]').is_checked(),
+            "membership": row.get_attribute("data-membership-source"),
+        },
+        {"included": False, "membership": "operator"},
+    )
+
+    second_page, second_id = rig.new_client(CLIENT_SPECS[1], 1)
+    rig.wait_config(lambda config: second_id in config["runtime"]["devices"])
+    wait_until(
+        page,
+        "(id) => !!document.querySelector('#grid-order [data-device-id=\"' + id + '\"]')",
+        arg=second_id,
+    )
+    second_row = page.locator(f'#grid-order [data-device-id="{second_id}"]')
+    rig.check(
+        "A join after membership editing requires an explicit Include",
+        not second_row.locator('input[type="checkbox"]').is_checked()
+        and second_row.get_attribute("data-available") == "true"
+        and second_row.get_by_role("button", name=re.compile("^Include ")).is_visible(),
+        {
+            "included": second_row.locator('input[type="checkbox"]').is_checked(),
+            "available": second_row.get_attribute("data-available"),
+            "include_visible": second_row.get_by_role("button", name=re.compile("^Include ")).is_visible(),
+        },
+        {"included": False, "available": "true", "include_visible": True},
+    )
+    second_row.get_by_role("button", name=re.compile("^Include ")).click()
+    row.locator('input[type="checkbox"]').check()
+    page.wait_for_timeout(80)
+    page.click("#grid-2x2")
+    page.wait_for_timeout(80)
+    page.click("#grid-preview")
+    wait_until(page, "() => /tablets ·/.test(document.getElementById('grid-message').textContent)")
+    page.click("#btn-apply")
+    rig.wait_config(
+        lambda config: all(device_id in config["layout"]["placements"] for device_id in (first_id, second_id)),
+        timeout=15,
+    )
+    rig.check(
+        "The reviewed membership applies one arrangement with both live tablets",
+        all(device_id in rig.config()["layout"]["placements"] for device_id in (first_id, second_id)),
+        rig.config()["layout"]["placements"],
+        "both placements",
+    )
+
+    # Offline reservations stay until deliberately removed; removing the last
+    # active tablet does not erase the registration or a reserved position.
+    second_context = second_page.context
+    rig.contexts.remove(second_context)
+    second_context.close()
+    rig.wait_config(lambda config: config["runtime"]["devices"][second_id]["online"] is False, timeout=20)
+    rig.task("Tablets")
+    page.locator(f'#device-list .dev-pick[data-device-id="{second_id}"]').click()
+    wait_until(page, "() => document.getElementById('device-sheet')?.open === true")
+    page.on("dialog", lambda dialog: dialog.accept())
+    rig.open_disclosures(page.locator("#tablet-remove"))
+    page.click("#tablet-remove")
+    rig.wait_config(
+        lambda config: second_id not in config["layout"]["placements"]
+        and first_id in config["layout"]["placements"],
+        timeout=15,
+    )
+    rig.check(
+        "Removing one active tablet retains the other reserved position and both registrations",
+        rig.config()["layout"]["placements"].get(first_id) is not None
+        and second_id not in rig.config()["layout"]["placements"]
+        and second_id in rig.config()["runtime"]["devices"],
+        {
+            "placements": rig.config()["layout"]["placements"],
+            "registered": second_id in rig.config()["runtime"]["devices"],
+        },
+        {"first_reserved": True, "second_removed": True, "second_registered": True},
+    )
+    page.keyboard.press("Escape")
+    wait_until(page, "() => document.getElementById('device-sheet')?.open !== true")
+    page.locator(f'#device-list .dev-pick[data-device-id="{first_id}"]').click()
+    wait_until(page, "() => document.getElementById('device-sheet')?.open === true")
+    rig.open_disclosures(page.locator("#tablet-remove"))
+    page.click("#tablet-remove")
+    rig.wait_config(lambda config: not config["layout"]["placements"], timeout=15)
+    rig.check(
+        "A deliberate last-tablet removal succeeds, keeps registration and clears stale focus",
+        not rig.config()["layout"]["placements"]
+        and first_id in rig.config()["runtime"]["devices"]
+        and page.evaluate(
+            "() => { const e = document.activeElement; return !!e && e.isConnected && !e.hidden && e.getClientRects().length > 0; }"
+        ),
+        {
+            "placements": rig.config()["layout"]["placements"],
+            "registered": first_id in rig.config()["runtime"]["devices"],
+            "focus": page.evaluate("() => document.activeElement?.id || document.activeElement?.className"),
+        },
+        {"placements": {}, "registered": True, "focus": "visible"},
+    )
+
+
+def historical_uncertainty(rig: Rig) -> None:
+    page = rig.page
+    ids = rig.place_logical_clients(2)
+    rig.task("Arrange")
+    page.locator("#arrange-membership-summary").wait_for(state="visible")
+    page.fill("#grid-rows", "1")
+    page.fill("#grid-columns", "1")
+    page.dispatch_event("#grid-columns", "change")
+    page.click("#grid-preview")
+    wait_until(page, "() => document.getElementById('grid-message').textContent.length > 0")
+    rig.check(
+        "A refused grid retains the typed rows and columns and explains the refusal",
+        "exactly 1" in page.locator("#grid-message").inner_text().lower()
+        and "empty trailing cells" in page.locator("#grid-message").inner_text().lower()
+        and page.input_value("#grid-rows") == "1"
+        and page.input_value("#grid-columns") == "1",
+        {
+            "message": page.locator("#grid-message").inner_text(),
+            "rows": page.input_value("#grid-rows"),
+            "columns": page.input_value("#grid-columns"),
+        },
+        {"message": "capacity or empty cells", "rows": "1", "columns": "1"},
+    )
+    page.fill("#grid-columns", "2")
+    page.dispatch_event("#grid-columns", "change")
+    page.click("#grid-preview")
+    wait_until(page, "() => /2 tablets ·/.test(document.getElementById('grid-message').textContent)")
+    rig.check(
+        "A valid manual grid previews without rewriting the typed fields",
+        page.input_value("#grid-rows") == "1" and page.input_value("#grid-columns") == "2",
+        {"rows": page.input_value("#grid-rows"), "columns": page.input_value("#grid-columns")},
+        {"rows": "1", "columns": "2"},
+    )
+    page.click("#btn-cancel")
+    wait_until(page, "() => document.body.dataset.outputDirty === 'false'")
+
+    rig.task("Images")
+    wait_until(page, "() => document.querySelectorAll('#image-gallery > li').length === 1")
+    asset_id = page.locator("#image-gallery > li").first.get_attribute("data-asset-id")
+    before_scene = rig.config()
+    lost_scene: list[bool] = []
+
+    def lose_scene(route: Any) -> None:
+        if lost_scene:
+            route.continue_()
+            return
+        lost_scene.append(True)
+        route.fetch()
+        route.abort()
+
+    page.route("**/api/v3/scene", lose_scene)
+    page.locator("#image-gallery > li .image-choice-button").first.click()
+    wait_until(page, "() => !document.getElementById('show-image').disabled")
+    page.click("#show-image")
+    wait_until(page, "() => !document.getElementById('command-uncertainty').hidden", timeout=10)
+    committed = rig.config()
+    rig.check(
+        "A lost response is reported as uncertain while the durable commit is visible",
+        "may have completed" in page.locator("#command-uncertainty").inner_text().lower()
+        and committed["scene"]["content"].get("asset") == asset_id
+        and committed["revision"] > before_scene["revision"],
+        {
+            "banner": page.locator("#command-uncertainty").inner_text(),
+            "asset": committed["scene"]["content"].get("asset"),
+            "revision": [before_scene["revision"], committed["revision"]],
+        },
+        {"banner": "may have completed", "asset": asset_id, "revision": "increased"},
+    )
+    page.click("#refresh-command-status")
+    wait_until(page, "() => document.getElementById('command-uncertainty').hidden")
+    rig.check(
+        "Refresh status reconciles the actual durable result and clears the uncertainty latch",
+        page.locator("#command-uncertainty").is_hidden()
+        and rig.config()["scene"]["content"].get("asset") == asset_id,
+        {"hidden": page.locator("#command-uncertainty").is_hidden(),
+         "asset": rig.config()["scene"]["content"].get("asset")},
+        {"hidden": True, "asset": asset_id},
+    )
+    page.unroute("**/api/v3/scene", lose_scene)
+
+    # Upload ambiguity uses the real controller XHR and a lost response after
+    # the server published the asset.
+    page.click("#add-image")
+    page.locator("#upload-form").wait_for(state="visible")
+    lost_upload: list[bool] = []
+
+    def lose_upload(route: Any) -> None:
+        if lost_upload:
+            route.continue_()
+            return
+        lost_upload.append(True)
+        route.fetch()
+        route.abort()
+
+    upload_source = next(
+        group["files"][0]["path"] for group in rig.fixtures if group["count"] == 8
+    )
+    page.route("**/uploads*", lose_upload)
+    page.set_input_files("#upload-file", upload_source)
+    upload_before = rig.config()
+    page.click("#upload-submit")
+    wait_until(
+        page,
+        "() => /uncertain/i.test(document.getElementById('upload-message').textContent)",
+        timeout=15,
+    )
+    rig.check(
+        "A lost upload response requires a real inventory refresh before retry",
+        "Refresh images" in page.locator("#upload-message").inner_text()
+        and page.locator("#upload-submit").is_disabled()
+        and rig.config()["scene"] == upload_before["scene"],
+        {
+            "message": page.locator("#upload-message").inner_text(),
+            "submit_disabled": page.locator("#upload-submit").is_disabled(),
+            "scene_unchanged": rig.config()["scene"] == upload_before["scene"],
+        },
+        {"message": "Refresh images", "submit_disabled": True, "scene_unchanged": True},
+    )
+    page.unroute("**/uploads*", lose_upload)
+    page.click("#refresh-images")
+    wait_until(page, "() => document.querySelectorAll('#image-gallery > li').length === 2")
+    rig.check(
+        "Inventory refresh reveals the published upload, re-enables retry and shows nothing automatically",
+        page.locator("#upload-submit").is_enabled()
+        and rig.config()["scene"] == upload_before["scene"]
+        and page.locator("#image-gallery > li").count() == 2,
+        {
+            "submit_enabled": page.locator("#upload-submit").is_enabled(),
+            "scene_unchanged": rig.config()["scene"] == upload_before["scene"],
+            "gallery": page.locator("#image-gallery > li").count(),
+        },
+        {"submit_enabled": True, "scene_unchanged": True, "gallery": 2},
+    )
+
+    # Redo is an output command: a competing image proposal must be resolved
+    # before redo can restore the arrangement.
+    rig.task("Arrange")
+    select_stage_slot(rig, ids[0])
+    set_logical_snap(rig, False, 1)
+    original = rig.config()["layout"]["placements"][ids[0]]
+    drag_slot(rig, ids[0], 10, 0)
+    page.click("#btn-undo")
+    wait_until(
+        page,
+        "(expected) => { const slot = document.querySelector('#stage-svg .slot[data-device-id=\"' + expected.id + '\"] .operator-body-outline'); "
+        "return slot && Number(slot.getAttribute('x')) === expected.x; }",
+        arg={"id": ids[0], "x": original["x"]},
+    )
+    rig.task("Images")
+    page.locator("#image-gallery > li .image-choice-button").nth(1).click()
+    wait_until(page, "() => document.body.dataset.outputDirty === 'true'")
+    wait_until(page, "() => !document.getElementById('show-image').disabled")
+    rig.task("Arrange")
+    wait_until(page, "() => document.getElementById('draft-resolution')?.open === true")
+    rig.check(
+        "A task switch with a competing image proposal opens current-owner resolution",
+        "image preview has not been shown" in page.locator("#draft-resolution-text").inner_text().lower(),
+        page.locator("#draft-resolution-text").inner_text(),
+        "image preview has not been shown",
+    )
+    page.click("#resolve-stay")
+    wait_until(page, "() => document.getElementById('draft-resolution')?.open !== true")
+    rig.check(
+        "Stay preserves both the image preview and the arrangement history",
+        page.locator("#image-preview-controls").is_visible()
+        and page.evaluate("() => document.body.dataset.outputDirty === 'true'")
+        and page.evaluate("() => document.body.dataset.task === 'images'"),
+        {
+            "preview": page.locator("#image-preview-controls").is_visible(),
+            "dirty": page.evaluate("() => document.body.dataset.outputDirty"),
+            "task": page.evaluate("() => document.body.dataset.task"),
+        },
+        {"preview": True, "dirty": "true", "task": "images"},
+    )
+    rig.task("Arrange")
+    wait_until(page, "() => document.getElementById('draft-resolution')?.open === true")
+    page.click("#resolve-discard")
+    wait_until(page, "() => document.body.dataset.task === 'arrange'")
+    rig.check(
+        "Discard scopes to the image proposal and leaves the arrangement history intact",
+        page.evaluate("() => document.body.dataset.outputDirty === 'false'")
+        and draft_placement(page, ids[0])["x"] == original["x"]
+        and not page.locator("#btn-redo").is_hidden(),
+        {
+            "dirty": page.evaluate("() => document.body.dataset.outputDirty"),
+            "x": draft_placement(page, ids[0])["x"],
+            "redo_hidden": page.locator("#btn-redo").is_hidden(),
+        },
+        {"dirty": "false", "x": original["x"], "redo_hidden": False},
+    )
+    page.click("#btn-redo")
+    wait_until(
+        page,
+        "(expected) => { const slot = document.querySelector('#stage-svg .slot[data-device-id=\"' + expected.id + '\"] .operator-body-outline'); "
+        "return slot && Number(slot.getAttribute('x')) === expected.x; }",
+        arg={"id": ids[0], "x": original["x"] + 10},
+    )
+    rig.check(
+        "After the competing proposal is discarded, redo restores the current owner's arrangement",
+        draft_placement(page, ids[0])["x"] == original["x"] + 10,
+        draft_placement(page, ids[0]),
+        {"x": original["x"] + 10},
+    )
+    page.click("#btn-cancel")
+    wait_until(page, "() => document.body.dataset.outputDirty === 'false'")
+
+
 SCENARIO_BODIES = {
     "gallery-focus": gallery_focus,
     "recovery-sheet": recovery_sheet,
     "library-composer": library_composer,
     "scene-paint": scene_paint,
+    "fit-feedback": fit_feedback,
+    "geometry-tools": geometry_tools,
+    "fleet-power": fleet_power,
+    "historical-forms": historical_forms,
+    "historical-membership": historical_membership,
+    "historical-uncertainty": historical_uncertainty,
 }
 
 
