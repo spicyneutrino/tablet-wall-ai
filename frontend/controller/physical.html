@@ -8,7 +8,7 @@
     <title>Tablet wall · tablet-wall-ai</title>
     <link rel="icon" href="favicon.svg" type="image/svg+xml">
     <link rel="stylesheet" href="operator-tokens.css?v=3">
-    <link rel="stylesheet" href="operator-workspace.css?v=32">
+    <link rel="stylesheet" href="operator-workspace.css?v=33">
     <link rel="stylesheet" href="operator-stage.css?v=6">
 </head>
 <body class="physical">
@@ -417,6 +417,24 @@
     </div>
     <p id="image-message" class="form-msg" role="status" aria-live="polite"></p>
     <div class="commit-evidence">
+      <section class="fit-feedback" id="fit-feedback" aria-labelledby="fit-feedback-title">
+        <h3 class="sr-only" id="fit-feedback-title">Image fit and crop</h3>
+        <p class="fit-summary" id="fit-summary" role="status" aria-live="polite">Select an image to estimate Fill crop or Fit bands.</p>
+        <ul class="crop-bars" id="crop-bars" aria-hidden="true" hidden>
+          <li class="crop-bar" data-axis="width">
+            <span class="crop-bar-axis">Width</span>
+            <span class="crop-bar-track"><span class="crop-bar-fill"></span></span>
+            <span class="crop-bar-value" id="crop-width">Unavailable</span>
+          </li>
+          <li class="crop-bar" data-axis="height">
+            <span class="crop-bar-axis">Height</span>
+            <span class="crop-bar-track"><span class="crop-bar-fill"></span></span>
+            <span class="crop-bar-value" id="crop-height">Unavailable</span>
+          </li>
+        </ul>
+        <p class="hint fit-bezel-note">Bezels and wall gaps reduce each tablet's visible area; they are separate from source crop.</p>
+        <p class="hint" id="fit-applied">Applied: nothing on the wall.</p>
+      </section>
       <div class="image-action-row image-recovery"><button class="btn" id="image-rebuild" type="button" hidden data-action="image-rebuild">Rebuild preview</button></div>
     </div>
   </section>
@@ -1032,7 +1050,7 @@
 <script src="operator-state.js?v=3"></script>
 <script src="operator-forms.js?v=2"></script>
 <script src="operator-stage.js?v=15"></script>
-<script src="operator-content.js?v=12"></script>
+<script src="operator-content.js?v=13"></script>
 <script src="operator-grid.js?v=9"></script>
 <script src="operator-devices.js?v=6"></script>
 <script src="operator-readiness.js?v=4"></script>

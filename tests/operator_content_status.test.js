@@ -273,3 +273,150 @@ const content = context.window.OperatorContent.create({ state, renderStage() {},
         "restore previous never adds controller chrome to the scene body");
     console.log("Content status, applied/draft ownership, command feedback, error retention and draft races passed");
 })().catch(error => { console.error(error); process.exitCode = 1; });
+
+(async () => {
+    const nodes = new Map();
+    const fitNode = id => { if (!nodes.has(id)) nodes.set(id, element(id)); return nodes.get(id); };
+    const bars = element("ul");
+    const widthRow = element("li"); widthRow.dataset.axis = "width";
+    const heightRow = element("li"); heightRow.dataset.axis = "height";
+    bars.children = [widthRow, heightRow];
+    nodes.set("crop-bars", bars);
+    const fitDocument = { activeElement: null, getElementById: fitNode, createElement: tag => element(tag) };
+    const state = { layoutKind: "logical", etag: "e", etagState: "current", configLoaded: true,
+        capabilities: {}, scene: { content: { type: "color" } },
+        base: { kind: "logical", width: 200, height: 200, placements: {} },
+        draft: { kind: "logical", width: 200, height: 200, placements: {} } };
+    const assets = {
+        wide: { id: "wide", name: "wide.png", width: 1600, height: 1000, url: "/w", thumbnail_url: "/w" },
+        tall: { id: "tall", name: "tall.png", width: 1000, height: 1600, url: "/t", thumbnail_url: "/t" },
+        square: { id: "square", name: "square.png", width: 1000, height: 1000, url: "/s", thumbnail_url: "/s" },
+        missing: { id: "missing", name: "missing.png", url: "/m", thumbnail_url: "/m" }
+    };
+    const requests = [];
+    const context = vm.createContext({ window: { OperatorState: model }, document: fitDocument, Option });
+    vm.runInContext(fs.readFileSync(require.resolve("../frontend/controller/operator-dom.js"), "utf8"), context);
+    vm.runInContext(fs.readFileSync(require.resolve("../frontend/controller/operator-content.js"), "utf8"), context);
+    const content = context.window.OperatorContent.create({ state, renderStage() {}, announce() {}, showConflict() {},
+        ingestConfig(result) { state.scene = result.scene; },
+        async api(method, path, body) {
+            requests.push({ method, path, body });
+            if (path === "/api/v3/images") return { images: Object.values(assets) };
+            if (path === "/api/v3/scene") { const asset = assets[body.content.asset];
+                return { scene: { content: { ...body.content, intrinsicWidth: asset.width, intrinsicHeight: asset.height } } }; }
+            throw Error(path);
+        } });
+    const text = id => fitNode(id).textContent;
+    const choose = id => fitNode("image-gallery").children.find(item => item.dataset.assetId === id).children[0].click();
+    const setFit = async value => { fitNode("image-fit").value = value;
+        fitNode("image-fit").change({ target: fitNode("image-fit") }); await new Promise(resolve => setImmediate(resolve)); };
+    const wall = (width, height) => { state.base.width = width; state.base.height = height;
+        state.draft.width = width; state.draft.height = height; content.render(); };
+    await content.refresh();
+    assert.equal(text("fit-summary"), "Select an image to estimate Fill crop or Fit bands.");
+    assert.equal(text("fit-applied"), "Applied: tablet colours · no image fit");
+    assert.equal(fitNode("crop-bars").hidden, true);
+
+    await choose("wide");
+    assert.equal(text("fit-summary"), "Preview Fill of 1600 × 1000: 37.5% of the source width and 0% of the source height are cropped.");
+    assert.equal(text("crop-width"), "37.5% of source width cropped");
+    assert.equal(text("crop-height"), "0% of source height cropped");
+    assert.equal(widthRow.getAttribute("style"), "--crop:37.5%");
+    assert.equal(heightRow.getAttribute("style"), "--crop:0%");
+    assert.equal(fitNode("crop-bars").hidden, false);
+    assert.equal(text("fit-applied"), "Applied: tablet colours · no image fit", "the proposal never rewrites the applied summary");
+
+    await setFit("contain");
+    assert.equal(text("fit-summary"), "Preview Fit of 1600 × 1000: 0% of the wall width and 37.5% of the wall height are uncovered.");
+    assert.equal(text("crop-width"), "0% of wall width uncovered");
+    assert.equal(text("crop-height"), "37.5% of wall height uncovered");
+    assert.equal(widthRow.getAttribute("style"), "--crop:0%");
+    assert.equal(heightRow.getAttribute("style"), "--crop:37.5%");
+
+    await setFit("cover");
+    await choose("square");
+    wall(200, 100);
+    assert.equal(text("fit-summary"), "Preview Fill of 1000 × 1000: 0% of the source width and 50% of the source height are cropped.");
+    wall(100, 200);
+    assert.equal(text("fit-summary"), "Preview Fill of 1000 × 1000: 50% of the source width and 0% of the source height are cropped.");
+    await choose("tall");
+    wall(200, 200);
+    assert.equal(text("fit-summary"), "Preview Fill of 1000 × 1600: 0% of the source width and 37.5% of the source height are cropped.");
+    await setFit("contain");
+    assert.equal(text("fit-summary"), "Preview Fit of 1000 × 1600: 37.5% of the wall width and 0% of the wall height are uncovered.");
+
+    await choose("missing");
+    assert.match(text("fit-summary"), /^Preview crop estimate unavailable: source dimensions are missing\.$/);
+    assert.equal(text("crop-width"), "Unavailable");
+    assert.equal(text("crop-height"), "Unavailable");
+    assert.equal(fitNode("crop-bars").hidden, true, "missing source dimensions never invent zero crop");
+
+    await choose("wide");
+    state.base.width = 0;
+    content.render();
+    assert.match(text("fit-summary"), /^Preview crop estimate unavailable: wall bounds are missing\.$/);
+    assert.equal(fitNode("crop-bars").hidden, true);
+    wall(200, 200);
+
+    state.scene = { content: { type: "image", asset: "wide", fit: "contain", background: "#123456",
+        intrinsicWidth: 1600, intrinsicHeight: 1000 } };
+    content.discard();
+    assert.equal(text("fit-summary"), "Applied Fit of 1600 × 1000: 0% of the wall width and 37.5% of the wall height are uncovered.");
+    assert.equal(text("fit-applied"), "Applied: Fit · background #123456");
+    await choose("tall");
+    assert.equal(text("fit-applied"), "Applied: Fit · background #123456", "a draft image never changes the applied fit or background");
+    assert.match(text("fit-summary"), /^Preview Fit of 1000 × 1600:/);
+
+    content.discard();
+    state.scene = { content: { type: "image", asset: "missing" } };
+    content.render();
+    assert.match(text("fit-summary"), /^Applied crop estimate unavailable: source dimensions are missing\.$/);
+    assert.equal(fitNode("crop-bars").hidden, true);
+
+    state.scene = { content: { type: "image", asset: "wide", fit: "cover", background: "#0b1120",
+        intrinsicWidth: 1600, intrinsicHeight: 1000 } };
+    content.render();
+    const summary = fitNode("fit-summary");
+    let summaryValue = summary.textContent, summaryWrites = 0;
+    Object.defineProperty(summary, "textContent", { get: () => summaryValue,
+        set: value => { summaryWrites += 1; summaryValue = value; } });
+    for (let index = 0; index < 5; index += 1) content.render();
+    assert.equal(summaryWrites, 0, "heartbeats and repeated renders never announce an unchanged fit");
+    state.base.width = 400;
+    content.render();
+    assert.equal(summaryWrites, 1, "a settled wall change updates the authoritative fit summary once");
+    assert.match(summaryValue, /^Applied Fill of 1600 × 1000:/);
+
+    state.scene = { content: { type: "color" } };
+    state.base.width = 200;
+    content.render();
+    await content.refresh();
+    await choose("wide");
+    await setFit("cover");
+    assert.equal(requests.some(request => request.method === "PUT"), false, "choosing and fitting a proposal issues no scene PUT");
+    assert.equal(await content.showSelected(), true);
+    const pushed = requests.at(-1);
+    assert.equal(pushed.method, "PUT");
+    assert.equal(pushed.path, "/api/v3/scene");
+    assert.deepEqual(Object.keys(pushed.body.content).sort(), ["asset", "background", "fit", "type"],
+        "fit feedback never adds controller fields to the scene body");
+    assert.match(text("fit-summary"), /^Applied Fill of 1600 × 1000:/);
+    assert.equal(text("fit-applied"), "Applied: Fill · background #0b1120", "Show settles the committed fit and background");
+    console.log("Fit feedback distinguishes source crop from wall bands, keeps applied and draft separate, and updates only on settled changes");
+})().catch(error => { console.error(error); process.exitCode = 1; });
+
+{
+    const html = fs.readFileSync(require.resolve("../frontend/controller/physical.html"), "utf8");
+    for (const id of ["fit-feedback", "fit-feedback-title", "crop-bars", "crop-width", "crop-height", "fit-summary", "fit-applied"]) {
+        assert.equal((html.match(new RegExp('id="' + id + '"', "g")) || []).length, 1, "one #" + id);
+    }
+    assert.ok(html.indexOf('id="fit-feedback"') > html.indexOf('id="show-image"'), "fit feedback follows Show in source order");
+    assert.ok(html.indexOf('id="fit-feedback"') > html.indexOf('class="commit-evidence"'), "fit feedback sits in commit evidence");
+    assert.match(html, /id="fit-feedback"[^>]*aria-labelledby="fit-feedback-title"/);
+    assert.match(html, /id="fit-feedback-title"[^>]*>Image fit and crop</);
+    assert.match(html, /id="crop-bars"[^>]*aria-hidden="true"/);
+    assert.match(html, /id="fit-summary"[^>]*role="status"[^>]*aria-live="polite"/);
+    const bars = html.slice(html.indexOf('id="crop-bars"'), html.indexOf("</ul>", html.indexOf('id="crop-bars"')));
+    assert.ok(bars.includes('id="crop-width"') && bars.includes('id="crop-height"'), "crop values belong to the decorative bars");
+}
+console.log("Fit feedback slots are unique, labelled, decorative and placed after Show");
