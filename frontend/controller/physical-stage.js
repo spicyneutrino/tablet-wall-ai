@@ -388,6 +388,7 @@ window.PhysicalStage = {
                 const trigger = state.sheetTrigger;
                 state.sheetTrigger = null;
                 if (!modal && !trigger && !inside) return;
+                if (!trigger && !inside && document.activeElement !== document.body && originVisible(document.activeElement)) return;
                 if (originVisible(trigger)) { trigger.focus({ preventScroll: true }); return; }
                 focusSheetFallback();
             });

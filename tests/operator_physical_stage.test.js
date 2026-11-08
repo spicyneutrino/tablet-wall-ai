@@ -184,6 +184,17 @@ function stageSetup(overrides = {}) {
     assert.equal(triggerB.focusCount, 1, "close restores the invoking issue control");
     assert.equal(other.state.sheetTrigger, null);
 
+    const navigated = stageSetup();
+    navigated.state.selectedId = "a";
+    navigated.stage.selectDevice("a", { reveal: true, taskOpened: true, trigger: navigated.node("review-trigger") });
+    await new Promise(setImmediate);
+    navigated.state.sheetTrigger = null;
+    const measurement = navigated.node("tablet-model");
+    measurement.focus();
+    navigated.sheet.close();
+    assert.equal(navigated.document.activeElement, measurement, "task navigation keeps its deliberately focused measurement field after the queued close");
+    assert.equal(navigated.node("issues-title").focusCount, 0);
+
     const gone = stageSetup();
     const staleTrigger = gone.node("issue-gone");
     staleTrigger.isConnected = false;
