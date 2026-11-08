@@ -1,7 +1,7 @@
 "use strict";
 const assert = require("node:assert/strict");
 const test = require("node:test");
-const { createPayloads } = require("../frontend/controller/operator-measurements.js");
+const { createPayloads, liveViewportText, updateLiveViewport } = require("../frontend/controller/operator-measurements.js");
 
 function form(overrides = {}, markInvalid) {
     const values = {
@@ -55,6 +55,22 @@ test("calibration payload retains independent axes, offsets and ruler guard", ()
             assert.equal(form({ calOrientation: orientation, calMode: mode }).buildCalibrationBody().orientation, Number(orientation));
         }
     }
+});
+
+test("identical live viewport text is written once per distinct viewport", () => {
+    let text = "", writes = 0;
+    const node = {
+        get textContent() { return text; },
+        set textContent(value) { text = String(value); writes += 1; }
+    };
+    const first = { width: 800, height: 600, dpr: 2, orientation: 90, mode: "tab" };
+    updateLiveViewport(node, first);
+    updateLiveViewport(node, { ...first });
+    assert.equal(writes, 1, "an unchanged routine render must not rewrite the live region");
+    assert.equal(node.textContent, "Selected tablet: 800 × 600 CSS px · DPR 2 · 90° · tab");
+    updateLiveViewport(node, { ...first, width: 801 });
+    assert.equal(writes, 2, "changed evidence still updates");
+    assert.match(liveViewportText(null), /Waiting for the selected tablet/);
 });
 
 test("calibration validation rejects invalid form state with the existing messages", () => {

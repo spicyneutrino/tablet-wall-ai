@@ -8,7 +8,7 @@
     <title>Tablet wall · tablet-wall-ai</title>
     <link rel="icon" href="favicon.svg" type="image/svg+xml">
     <link rel="stylesheet" href="operator-tokens.css?v=3">
-    <link rel="stylesheet" href="operator-workspace.css?v=34">
+    <link rel="stylesheet" href="operator-workspace.css?v=35">
     <link rel="stylesheet" href="operator-stage.css?v=7">
 </head>
 <body class="physical" data-view-zoom="fit">
@@ -536,20 +536,61 @@
         <div id="operator-readiness">
             <section class="card task-section" aria-labelledby="readiness-title">
                 <div class="sec-head">
-                    <h2 id="readiness-title">Server checks</h2>
+                    <h2 id="readiness-title">Joining and launch admission</h2>
                     <button class="btn btn-ghost" type="button" id="btn-readiness-refresh" aria-label="Refresh server checks" data-action="btn-readiness-refresh">Refresh</button>
                 </div>
+            <p class="hint">These server checks decide whether tablets can join and which launch modes are admitted.</p>
             <p id="readiness-status" role="status" aria-live="polite">Reading server checks…</p>
             <p id="readiness-errors" role="alert" hidden></p>
 
             <p class="hint" id="readiness-refreshed" hidden></p>
             <dl id="operator-readiness-facts" class="operator-facts"></dl>
             </section></div>
-        <details class="card" id="measurement-details">
-            <summary>Measurements and diagnostics</summary>
-            <section class="task-section">
-                <h3>Server and connection</h3>
+        <section class="card task-section settings-evidence" id="settings-evidence" aria-labelledby="settings-evidence-title">
+            <div class="sec-head">
+                <h2 id="settings-evidence-title">Diagnostics and current evidence</h2>
+                <span class="chip" id="diag-state" data-kind="info">loading</span>
+            </div>
+            <p class="hint">Current server evidence for this session. A failed refresh keeps the last known report labelled; it never becomes current wall evidence.</p>
+            <section class="task-section" aria-labelledby="settings-connection-title">
+                <h3 id="settings-connection-title">Server and connection</h3>
                 <dl id="operator-readiness-details" class="operator-facts"></dl>
+            </section>
+            <section class="field-card task-section" id="settings-diagnostics" aria-labelledby="field-title">
+                <h3 id="field-title">Server diagnostics report</h3>
+                <div class="field-actions">
+                    <button type="button" class="btn" id="btn-diag-refresh" data-action="btn-diag-refresh">Refresh diagnostics</button>
+                    <button type="button" class="btn btn-ghost" id="btn-diag-verify" data-action="btn-diag-verify">Verify object bytes</button>
+                    <button type="button" class="btn btn-ghost" id="btn-diag-download" disabled data-action="btn-diag-download">Download report</button>
+                </div>
+                <p class="form-msg" id="diag-msg" role="status" aria-live="polite" hidden></p>
+                <p class="hint" id="diag-last-known" hidden></p>
+                <dl class="diag-grid" id="diag-grid"></dl>
+
+                <div class="diag-integrity" id="diag-integrity" hidden>
+                    <h3>Object integrity</h3>
+                    <p class="diag-integrity-text" id="diag-integrity-text"></p>
+                    <ul class="diag-problems" id="diag-problems" aria-label="Damaged objects"></ul>
+                </div>
+            </section>
+            <section class="diagnostic-colours task-section" aria-labelledby="diagnostic-colours-title">
+                <h3 id="diagnostic-colours-title">Tablet test colours</h3>
+                <p id="diagnostic-colour-subject">Select a tablet in Tablets.</p>
+                <label class="field" for="diagnostic-colour">Test colour<input type="color" id="diagnostic-colour" value="#ef4444" data-field="diagnostic-colour"></label>
+                <div class="operator-actions">
+                    <button type="button" class="btn" id="diagnostic-colour-one" data-action="diagnostic-colour-one">Set selected tablet colour</button>
+                    <button type="button" class="btn" id="diagnostic-colour-all" data-action="diagnostic-colour-all">Set all tablet colours</button>
+                    <button type="button" class="btn" id="diagnostic-colour-refresh" data-action="diagnostic-colour-refresh">Read selected colour</button>
+                </div>
+                <p id="diagnostic-colour-message" role="status"></p>
+            </section>
+        </section>
+        <details class="card settings-backup" id="backup-restore">
+            <summary>Backup and restore</summary>
+            <section class="task-section" aria-labelledby="backup-title">
+                <h3 id="backup-title">Snapshot evidence</h3>
+                <p class="hint">Copy the database and referenced media from the paths below while the server is stopped. A manifest is a record on disk, not proof that this snapshot restores; rehearse a restore before relying on it.</p>
+                <dl id="operator-readiness-backup" class="operator-facts"></dl>
             </section>
             <section class="task-section" id="readiness-paths">
                 <h3>Data paths</h3>
@@ -559,6 +600,9 @@
                 <h3>What this server cannot do</h3>
                 <ul id="operator-readiness-advice"></ul>
             </section>
+        </details>
+        <details class="card" id="measurement-details">
+            <summary>Measurements and calibration</summary>
             <section class="field-review" id="measurement-review" hidden>
                 <h3>Review changed saved fields</h3>
                 <pre class="form-comparison" id="measurement-comparison"></pre>
@@ -784,26 +828,12 @@
                 </form>
             </div>
         </section>
-        <section class="field-card task-section" aria-labelledby="field-title">
-            <h3><span id="field-title">Diagnostics</span> <span class="chip" id="diag-state" data-kind="info">loading</span></h3>
-            <div class="field-actions">
-                <button type="button" class="btn" id="btn-diag-refresh" data-action="btn-diag-refresh">Refresh diagnostics</button>
-                <button type="button" class="btn btn-ghost" id="btn-diag-verify" data-action="btn-diag-verify">Verify object bytes</button>
-                <button type="button" class="btn btn-ghost" id="btn-diag-download" disabled data-action="btn-diag-download">Download report</button>
-            </div>
-            <p class="form-msg" id="diag-msg" role="status" aria-live="polite" hidden></p>
-            <dl class="diag-grid" id="diag-grid"></dl>
-
-            <div class="diag-integrity" id="diag-integrity" hidden>
-                <h3>Object integrity</h3>
-                <p class="diag-integrity-text" id="diag-integrity-text"></p>
-                <ul class="diag-problems" id="diag-problems" aria-label="Damaged objects"></ul>
-            </div>
-        </section>
         </details>
 
-            <section class="card task-section"><h2>Experimental playback</h2><p>Software evidence only. Playback has not been validated on tablets.</p>
-            <label class="check-label"><input type="checkbox" id="experimental-opt-in" data-field="experimental-opt-in"> Enable experimental playlist and playback controls</label>
+            <section class="card task-section settings-experimental" id="settings-experimental" aria-labelledby="settings-experimental-title">
+                <h2 id="settings-experimental-title">Experimental</h2>
+                <p>Software evidence only. Playback has not been validated on tablets. Nothing starts until you opt in here.</p>
+                <label class="check-label"><input type="checkbox" id="experimental-opt-in" data-field="experimental-opt-in"> Enable experimental playlist and playback controls</label>
             <div id="experimental-controls" hidden>        <section class="playback-card task-section" id="playback-card" aria-labelledby="playback-title">
             <div class="playback-head">
                 <h2 id="playback-title">Playback</h2>
@@ -937,17 +967,6 @@
         </section>
 </div>
         </section>
-            <section class="diagnostic-colours task-section" aria-labelledby="diagnostic-colours-title">
-                <h3 id="diagnostic-colours-title">Tablet test colours</h3>
-                <p id="diagnostic-colour-subject">Select a tablet in Tablets.</p>
-                <label class="field" for="diagnostic-colour">Test colour<input type="color" id="diagnostic-colour" value="#ef4444" data-field="diagnostic-colour"></label>
-                <div class="operator-actions">
-                    <button type="button" class="btn" id="diagnostic-colour-one" data-action="diagnostic-colour-one">Set selected tablet colour</button>
-                    <button type="button" class="btn" id="diagnostic-colour-all" data-action="diagnostic-colour-all">Set all tablet colours</button>
-                    <button type="button" class="btn" id="diagnostic-colour-refresh" data-action="diagnostic-colour-refresh">Read selected colour</button>
-                </div>
-                <p id="diagnostic-colour-message" role="status"></p>
-            </section>
             <details class="destructive-area">
                 <summary>Destructive wall actions</summary>
                 <p>Clear removes the applied arrangement. Review the confirmation before continuing.</p>
@@ -957,39 +976,45 @@
         <section class="rail-panel task-panel" id="panel-saved" data-task="saved" role="tabpanel" aria-labelledby="tab-saved" hidden>
             <h2 class="task-title sr-only" tabindex="-1">Saved</h2>
             <div class="operator-actions saved-toolbar">
-                <button type="button" class="btn btn-ghost btn-sm" id="btn-layouts-refresh" aria-label="Refresh saved" data-action="btn-layouts-refresh">Refresh</button>
+                <button type="button" class="btn btn-ghost btn-sm" id="btn-layouts-refresh" aria-label="Refresh saved arrangements and content" data-action="btn-layouts-refresh">Refresh saved</button>
             </div>
             <section class="card saved-card task-section" aria-labelledby="saved-title">
             <div class="sec-head">
                 <h3 id="saved-title">Arrangements</h3>
+                <span class="sec-count" id="layouts-count" hidden></span>
             </div>
+            <p class="hint">Recall changes wall geometry only. The applied image is kept, and a real named return point is created.</p>
             <form class="saved-form" id="layout-save-form" novalidate data-form="layout-save-form">
                 <div class="field">
-                    <label class="label" for="layout-name">Name</label>
+                    <label class="label" for="layout-name">Arrangement name</label>
                     <input class="inp" id="layout-name" type="text" maxlength="64" autocomplete="off" spellcheck="false" aria-describedby="layout-msg" data-field="layout-name">
                 </div>
                 <button type="submit" class="btn btn-primary" id="btn-layout-save" data-action="btn-layout-save">Save applied arrangement</button>
             </form>
             <p class="form-msg" id="layout-msg" role="status" aria-live="polite" hidden></p>
-            <p class="form-msg" id="layouts-status" role="status" hidden></p>
-            <ul class="saved-list" id="saved-layouts" aria-label="Saved arrangements"></ul><p class="empty-note" id="saved-empty" hidden>No saved arrangements yet.</p>
-
+            <p class="form-msg saved-state" id="layouts-status" role="status" aria-live="polite" hidden></p>
+            <ul class="saved-list" id="saved-layouts" aria-label="Saved arrangements"></ul>
+            <p class="empty-note" id="saved-empty" hidden>No saved arrangements yet. Save the applied arrangement above.</p>
         </section>
         <section class="saved-scenes task-section" aria-labelledby="saved-scenes-title">
             <div class="sec-head">
                 <h3 id="saved-scenes-title">Content</h3>
+                <span class="sec-count" id="scenes-count" hidden></span>
             </div>
+            <p class="hint">Preview changes this screen only. Show image on the wall remains a separate command.</p>
             <form id="scene-save-form" data-form="scene-save-form">
                 <label class="field" for="scene-name">Content name<input class="inp" id="scene-name" maxlength="64" autocomplete="off" aria-describedby="scene-message" data-field="scene-name"></label>
                 <button type="submit" class="btn btn-primary" id="scene-save" data-action="scene-save">Save applied content</button>
             </form>
-            <p id="scene-message" role="status"></p>
+            <p class="form-msg" id="scene-message" role="status" aria-live="polite" hidden></p>
+            <p class="form-msg saved-state" id="scenes-status" role="status" aria-live="polite" hidden></p>
             <ul id="saved-scenes" class="saved-list" aria-label="Saved content"></ul>
+            <p class="empty-note" id="saved-scenes-empty" hidden>No saved content yet. Save the applied content above.</p>
         </section>
         <section class="return-point task-section" id="return-point" hidden>
-            <h3>Return point saved</h3>
+            <h3>Automatic restore point saved</h3>
             <p id="return-point-name"></p>
-            <button type="button" class="btn" id="return-point-recall" data-action="return-point-recall">Recall return point</button>
+            <button type="button" class="btn" id="return-point-recall" data-action="return-point-recall">Recall geometry from return point</button>
         </section>
     </section>
 </div>
@@ -1078,7 +1103,7 @@
 <script src="operator-content.js?v=14"></script>
 <script src="operator-grid.js?v=10"></script>
 <script src="operator-devices.js?v=7"></script>
-<script src="operator-readiness.js?v=4"></script>
+<script src="operator-readiness.js?v=5"></script>
 <script src="operator-sync.js?v=2"></script>
 <script src="operator-session.js?v=2"></script>
 <script src="operator-workspace.js?v=15"></script>
@@ -1086,8 +1111,8 @@
 <script src="physical-sizing.js?v=2"></script>
 <script src="physical-stage.js?v=16"></script>
 <script src="physical-calibration.js?v=1"></script>
-<script src="operator-measurements.js?v=1"></script>
-<script src="physical.js?v=37"></script>
+<script src="operator-measurements.js?v=2"></script>
+<script src="physical.js?v=39"></script>
 <dialog class="draft-resolution" id="draft-resolution" aria-labelledby="draft-resolution-title">
     <h2 id="draft-resolution-title">Resolve your preview</h2>
     <p id="draft-resolution-text"></p>

@@ -937,8 +937,11 @@
         if (conflict) showConflict("The wall changed. Your arrangement preview and its original guard are retained. Review the live wall, then rebuild or discard the preview.");
         else if (!state.draftConflict) hideConflict();
         renderAll(); maybeChooseInitialTab();
-        if (firstConfig) announce(Object.keys(window.OperatorState.entries(state.base)).length ? "Controller connected to the server. Review current tablet reports."
+        if (firstConfig) {
+            loadLayouts(); loadScenes();
+            announce(Object.keys(window.OperatorState.entries(state.base)).length ? "Controller connected to the server. Review current tablet reports."
             : Object.values(state.roster).some(device => device.online) ? "Controller connected to the server. Arrange connected tablets." : "Controller connected to the server. Add tablets to begin.");
+        }
     }
 
     function ensureSelection() {
@@ -1968,12 +1971,12 @@
         let text = "loading";
         let kind = "info";
         if (state.diagnosticsState === "refreshing") text = "refreshing";
-        else if (state.diagnosticsState === "ready") { text = "loaded"; kind = "ok"; }
+        else if (state.diagnosticsState === "ready") { text = "current"; kind = "ok"; }
         else if (state.diagnosticsState === "error") { text = "error"; kind = "err"; }
         else if (state.diagnosticsState === "forbidden") { text = "unavailable"; kind = "warn"; }
         setTextIfChanged(el.diagState, text);
         el.diagState.dataset.kind = kind;
-        el.diagState.hidden = state.diagnosticsState === "ready";
+        el.diagState.hidden = false;
     }
 
     function wakeLockSummary(counts) {
@@ -2022,15 +2025,17 @@
         if (!el.diagGrid) return;
         const data = state.diagnostics;
         const facts = [];
+        const reading = state.diagnosticsState === "pending" || state.diagnosticsState === "loading"
+            || state.diagnosticsState === "refreshing";
         if (!data) {
-            facts.push(["Status", state.diagnosticsState === "loading"
-                ? "Reading diagnostics…" : "No diagnostics loaded."]);
+            facts.push(["Status", reading ? "Reading diagnostics…" : "No diagnostics loaded."]);
         } else {
             const media = data.media && typeof data.media === "object" ? data.media : {};
             const db = data.db && typeof data.db === "object" ? data.db : {};
             const backup = data.backup && typeof data.backup === "object" ? data.backup : {};
             const clients = data.clients && typeof data.clients === "object" ? data.clients : {};
-            facts.push(["Last checked", new Date(state.diagnosticsCapturedAt).toLocaleString()]);
+            facts.push(["Report", (state.diagnosticsState === "ready" ? "Current" : "Last known")
+                + " · " + new Date(state.diagnosticsCapturedAt).toLocaleString()]);
             facts.push(["Storage",
                 formatBytes(media.used_bytes) + " used of " + formatBytes(media.quota_bytes)
                 + " (" + formatPercent(media.used_bytes, media.quota_bytes) + ")"]);
@@ -2051,6 +2056,18 @@
                 (clients.online ?? "—") + " online · " + (clients.total ?? "—") + " registered"]);
             facts.push(["Wake lock", wakeLockSummary(clients.wake_lock)]);
         }
+        const lastKnown = document.getElementById("diag-last-known");
+        if (lastKnown) {
+            const stale = !!data && state.diagnosticsState !== "ready";
+            lastKnown.hidden = !stale;
+            lastKnown.textContent = stale
+                ? (reading ? "Showing the last known diagnostics report while this refresh runs."
+                    : "Showing the last known diagnostics report. This read did not complete, so it is not current evidence for the wall.")
+                : "";
+            lastKnown.dataset.kind = reading ? "info" : "err";
+        }
+        const evidence = document.getElementById("settings-evidence");
+        if (evidence) evidence.dataset.state = state.diagnosticsState;
         renderFactList(el.diagGrid, facts);
     }
 
@@ -2137,13 +2154,18 @@
      * ---------------------------------------------------------------- */
 
     let layoutsVersion = 0, scenesVersion = 0, savedScenes = [], returnPoint = null;
+    let layoutsLoaded = false, scenesLoaded = false;
     function snapshotMatches(entry, kind) {
         const item = (state.snapshots[kind] || []).find(row => row.name === entry.name);
         return !!item && !!entry.etag && item.etag === entry.etag;
     }
 
     async function loadLayouts() {
+        if (!state.configLoaded) return;
         const version = ++layoutsVersion;
+        const status = document.getElementById("layouts-status");
+        setMsg(status, layoutsLoaded ? "Refreshing saved arrangements…" : "Reading saved arrangements…", "info");
+        if (el.btnLayoutsRefresh) el.btnLayoutsRefresh.disabled = true;
         try {
             const results = await Promise.all([api("GET", API_LAYOUTS, undefined, { fenced: "durable" }), api("GET", "/api/v3/logical-layouts", undefined, { fenced: "durable" })]);
             if (version !== layoutsVersion) return;
@@ -2151,9 +2173,25 @@
             (results[0].layouts || []).forEach(entry => byName.set(entry.name, { ...entry, logical: false }));
             (results[1].layouts || []).forEach(entry => byName.set(entry.name, { ...entry, logical: true }));
             state.savedLayouts = [...byName.values()].sort((a, b) => a.name.localeCompare(b.name));
-            renderSavedLayouts(); clearMsg(document.getElementById("layouts-status"));
+            layoutsLoaded = true;
+            renderSavedLayouts(); clearMsg(status);
             if (operatorDevices) operatorDevices.render();
-        } catch (error) { if (version === layoutsVersion) setMsg(document.getElementById("layouts-status"), "Saved arrangements could not be refreshed. " + error.message + " Use Refresh to retry.", "err"); }
+        } catch (error) {
+            if (version !== layoutsVersion) return;
+            renderSavedLayouts();
+            setMsg(status, (layoutsLoaded ? "Showing last known saved arrangements. " : "Saved arrangements could not be read. ")
+                + error.message + " Use Refresh saved to retry.", "err");
+        } finally {
+            if (version === layoutsVersion && el.btnLayoutsRefresh) el.btnLayoutsRefresh.disabled = state.busy;
+        }
+    }
+
+    const restorePointName = name => /^Before (physical|logical) [a-f0-9]{12}$/.test(name);
+
+    function savedTag(text, kind) {
+        const tag = document.createElement("span"); tag.className = "saved-tag"; tag.textContent = text;
+        if (kind) tag.dataset.kind = kind;
+        return tag;
     }
 
     function renderSavedLayouts() {
@@ -2162,12 +2200,19 @@
         el.savedLayouts.replaceChildren();
         for (const entry of state.savedLayouts) {
             const layout = entry.layout || {}, count = Object.keys(window.OperatorState.entries(layout)).length;
-            const row = document.createElement("li"); row.className = "saved-row"; row.dataset.snapshotName = entry.name; row.dataset.kind = entry.logical ? "logical" : "physical";
+            const automatic = restorePointName(entry.name);
+            const row = document.createElement("li"); row.className = "saved-row saved-row-layout"; row.dataset.snapshotName = entry.name;
+            row.dataset.kind = entry.logical ? "logical" : "physical";
+            if (automatic) row.dataset.automatic = "true";
             const info = document.createElement("span"); info.className = "saved-info";
-            const name = document.createElement("strong"); name.className = "saved-name"; name.textContent = (/^Before (physical|logical) [a-f0-9]{12}$/.test(entry.name) ? "Restore point · " : "") + entry.name;
+            const name = document.createElement("strong"); name.className = "saved-name"; name.textContent = entry.name;
+            const tags = document.createElement("span"); tags.className = "saved-tags";
+            tags.append(savedTag(entry.logical ? "Relative geometry" : "Measured geometry", "kind"));
+            if (automatic) tags.append(savedTag("Automatic restore point", "auto"));
             const meta = document.createElement("span"); meta.className = "saved-meta";
-            meta.textContent = entry.valid === false ? "Damaged saved data · replace or delete" : count + (count === 1 ? " tablet" : " tablets") + " · " + (entry.logical ? "Relative" : "Measured");
-            info.append(name, meta);
+            meta.textContent = entry.valid === false ? "Damaged saved data · replace or delete"
+                : count + (count === 1 ? " tablet" : " tablets") + " · Recall restores geometry only";
+            info.append(name, tags, meta);
             if (entry.valid !== false) {
                 const svg = document.createElementNS("http://www.w3.org/2000/svg", "svg");
                 svg.classList.add("saved-thumb"); svg.setAttribute("aria-hidden", "true");
@@ -2193,17 +2238,24 @@
             }
             row.append(info);
             const actions = document.createElement("span"); actions.className = "saved-actions";
-            for (const [verb, handler] of [["Recall", () => recallLayout(entry)], ["Delete", () => deleteLayout(entry)]]) {
+            for (const [verb, handler] of [["Recall geometry", () => recallLayout(entry)], ["Delete", () => deleteLayout(entry)]]) {
                 const button = document.createElement("button"); button.type = "button"; button.className = "btn btn-sm";
                 if (verb === "Delete") button.classList.add("btn-danger");
-                button.textContent = verb; button.setAttribute("aria-label", verb + " arrangement “" + entry.name + "”");
-                button.dataset.invalid = String(verb === "Recall" && entry.valid === false);
-                button.disabled = state.busy || !state.etag || button.dataset.invalid === "true";
+                button.textContent = verb;
+                button.setAttribute("aria-label", verb === "Delete" ? "Delete arrangement “" + entry.name + "”"
+                    : "Recall geometry for arrangement “" + entry.name + "”");
+                button.dataset.invalid = String(verb === "Recall geometry" && entry.valid === false);
+                button.disabled = state.busy || !state.etag || state.etagState !== "current" || button.dataset.invalid === "true";
                 button.addEventListener("click", handler); actions.append(button);
             }
             row.append(actions); el.savedLayouts.append(row);
         }
-        el.savedEmpty.hidden = state.savedLayouts.length > 0;
+        el.savedEmpty.hidden = !layoutsLoaded || state.savedLayouts.length > 0;
+        const countNode = document.getElementById("layouts-count");
+        if (countNode) {
+            countNode.textContent = state.savedLayouts.length + (state.savedLayouts.length === 1 ? " arrangement" : " arrangements");
+            countNode.hidden = !layoutsLoaded;
+        }
         if (focusName && document.activeElement === document.body) {
             const row = Array.from(el.savedLayouts.children).find(item => item.dataset.snapshotName === focusName);
             (row?.querySelector("button:not(:disabled)") || el.layoutName).focus({ preventScroll: true });
@@ -2268,54 +2320,91 @@
         finally { setBusy(false); }
     }
 
+    function sceneMeta(content) {
+        if (content.type !== "image") {
+            return content.type === "calibration" ? "Calibration pattern · preview only" : "Colour test · preview only";
+        }
+        return "Image · " + (content.fit === "contain" ? "Show whole image" : "Fill wall") + " · preview only";
+    }
+
+    function renderSavedScenes() {
+        const focused = document.activeElement;
+        const focusName = focused && focused.closest("[data-snapshot-name]")?.dataset.snapshotName;
+        const list = document.getElementById("saved-scenes"); list.replaceChildren();
+        for (const entry of savedScenes) {
+            const row = document.createElement("li"); row.className = "saved-row saved-row-content"; row.dataset.snapshotName = entry.name; row.dataset.kind = "scene";
+            const label = document.createElement("span"); label.className = "saved-info";
+            const name = document.createElement("strong"); name.className = "saved-name"; name.textContent = entry.name;
+            const tags = document.createElement("span"); tags.className = "saved-tags";
+            tags.append(savedTag("Content", "kind"));
+            const meta = document.createElement("span"); meta.className = "saved-meta";
+            meta.textContent = entry.valid === false ? "Damaged saved data" : sceneMeta(entry.content);
+            label.append(name, tags, meta);
+            const image = entry.valid !== false && operatorContent.imageFor(entry.content.asset);
+            if (image) {
+                const thumbnail = document.createElement("img"); thumbnail.className = "saved-thumb"; thumbnail.alt = ""; thumbnail.src = image.thumbnail_url;
+                thumbnail.addEventListener("error", () => { thumbnail.hidden = true; }); row.append(thumbnail);
+                const source = document.createElement("span"); source.className = "saved-meta"; source.textContent = image.name; label.append(source);
+            }
+            row.append(label);
+            const actions = document.createElement("span"); actions.className = "saved-actions";
+            for (const verb of ["Preview content", "Delete"]) {
+                const button = document.createElement("button"); button.type = "button"; button.className = "btn btn-sm";
+                if (verb === "Delete") button.classList.add("btn-danger");
+                button.textContent = verb;
+                button.setAttribute("aria-label", verb === "Delete" ? "Delete content “" + entry.name + "”"
+                    : "Preview content “" + entry.name + "”");
+                button.disabled = state.busy || verb === "Preview content" && entry.valid === false;
+                button.addEventListener("click", async () => {
+                    if (state.busy) return;
+                    if (!await resolveOutput(verb + " saved content “" + entry.name + "”")) return;
+                    if (!snapshotMatches(entry, "scenes")) { setMsg(document.getElementById("scene-message"), "The saved content changed. Refresh saved and review it again.", "err"); return; }
+                    if (verb === "Preview content") {
+                        operatorContent.previewScene(entry, state.etag); await showTab("content", { focus: true, persist: true });
+                        return;
+                    }
+                    if (!window.confirm("Delete saved content “" + entry.name + "”? Applied content is unchanged.")) return;
+                    try {
+                        const result = await api("DELETE", "/api/v3/scenes/" + encodeURIComponent(entry.name), undefined, { etag: true });
+                        ingestConfig(result, { preserveDraft: true }); await loadScenes();
+                        setMsg(document.getElementById("scene-message"), "Saved content deleted.", "ok"); document.getElementById("scene-name").focus();
+                    } catch (error) { setMsg(document.getElementById("scene-message"), error.message, "err"); }
+                });
+                actions.append(button);
+            }
+            row.append(actions);
+            list.append(row);
+        }
+        const empty = document.getElementById("saved-scenes-empty");
+        if (empty) empty.hidden = !scenesLoaded || savedScenes.length > 0;
+        const countNode = document.getElementById("scenes-count");
+        if (countNode) {
+            countNode.textContent = savedScenes.length + (savedScenes.length === 1 ? " item" : " items");
+            countNode.hidden = !scenesLoaded;
+        }
+        if (focusName && document.activeElement === document.body) {
+            const row = Array.from(list.children).find(item => item.dataset.snapshotName === focusName);
+            (row?.querySelector("button:not(:disabled)") || document.getElementById("scene-name")).focus({ preventScroll: true });
+        }
+    }
+
     async function loadScenes() {
+        if (!state.configLoaded) return;
         const version = ++scenesVersion;
+        const status = document.getElementById("scenes-status");
+        setMsg(status, scenesLoaded ? "Refreshing saved content…" : "Reading saved content…", "info");
         try {
             const result = await api("GET", "/api/v3/scenes", undefined, { fenced: "durable" });
             if (version !== scenesVersion) return;
-            savedScenes = result.scenes || [];
-            document.getElementById("scene-message").textContent = "";
-            const list = document.getElementById("saved-scenes"); list.replaceChildren();
-            for (const entry of savedScenes) {
-                const row = document.createElement("li"); row.className = "saved-row"; row.dataset.snapshotName = entry.name; row.dataset.kind = "scene";
-                const label = document.createElement("span"); label.className = "saved-info";
-                const name = document.createElement("strong"); name.textContent = entry.name;
-                const meta = document.createElement("span"); meta.className = "saved-meta";
-                meta.textContent = (entry.valid === false ? "Damaged saved data" : entry.content.type === "image" ? "Image · " + (entry.content.fit === "contain" ? "Show whole image" : "Fill wall") : "Test content");
-                label.append(name, meta);
-                const image = entry.valid !== false && operatorContent.imageFor(entry.content.asset);
-                if (image) {
-                    const thumbnail = document.createElement("img"); thumbnail.className = "saved-thumb"; thumbnail.alt = ""; thumbnail.src = image.thumbnail_url;
-                    thumbnail.addEventListener("error", () => { thumbnail.hidden = true; }); row.append(thumbnail);
-                    const source = document.createElement("span"); source.className = "saved-meta"; source.textContent = image.name; label.append(source);
-                }
-                row.append(label);
-                const actions = document.createElement("span"); actions.className = "saved-actions";
-                for (const verb of ["Preview", "Delete"]) {
-                    const button = document.createElement("button"); button.type = "button"; button.className = "btn btn-sm";
-                    if (verb === "Delete") button.classList.add("btn-danger");
-                    button.textContent = verb; button.setAttribute("aria-label", verb + " content “" + entry.name + "”"); button.disabled = verb === "Preview" && entry.valid === false;
-                    button.addEventListener("click", async () => {
-                        if (!await resolveOutput(verb + " saved content “" + entry.name + "”")) return;
-                        if (!snapshotMatches(entry, "scenes")) { document.getElementById("scene-message").textContent = "The saved content changed. Refresh saved and review it again."; return; }
-                        if (verb === "Preview") {
-                            operatorContent.previewScene(entry, state.etag); await showTab("content", { focus: true, persist: true });
-                            return;
-                        }
-                        if (!window.confirm("Delete saved content “" + entry.name + "”? Applied content is unchanged.")) return;
-                        try {
-                            const result = await api("DELETE", "/api/v3/scenes/" + encodeURIComponent(entry.name), undefined, { etag: true });
-                            ingestConfig(result, { preserveDraft: true }); await loadScenes();
-                            document.getElementById("scene-message").textContent = "Saved content deleted."; document.getElementById("scene-name").focus();
-                        } catch (error) { document.getElementById("scene-message").textContent = error.message; }
-                    });
-                    actions.append(button);
-                }
-                row.append(actions);
-                list.append(row);
-            }
-            if (!savedScenes.length) document.getElementById("scene-message").textContent = "No saved content yet.";
-        } catch (error) { if (version === scenesVersion) document.getElementById("scene-message").textContent = "Saved content could not be read. " + error.message + " Use Refresh saved to retry."; }
+            savedScenes = (result.scenes || []).slice().sort((a, b) => a.name.localeCompare(b.name));
+            scenesLoaded = true;
+            renderSavedScenes(); clearMsg(status);
+        } catch (error) {
+            if (version !== scenesVersion) return;
+            renderSavedScenes();
+            setMsg(status, (scenesLoaded ? "Showing last known saved content. " : "Saved content could not be read. ")
+                + error.message + " Use Refresh saved to retry.", "err");
+        }
     }
 
     function bindDiagnosticColours() {
@@ -2464,14 +2553,14 @@
         document.getElementById("scene-save-form").addEventListener("submit", async event => {
             event.preventDefault();
             const name = document.getElementById("scene-name").value.trim(), message = document.getElementById("scene-message");
-            if (!name) { message.textContent = "Enter a content name."; document.getElementById("scene-name").focus(); return; }
+            if (!name) { setMsg(message, "Enter a content name.", "err"); document.getElementById("scene-name").focus(); return; }
             if (!await resolveOutput("Save the applied content")) return;
             const existing = savedScenes.find(entry => entry.name === name);
             if (existing && !window.confirm("Overwrite saved content “" + name + "” with the applied content? Geometry is excluded.")) return;
             try {
                 const result = await api("PUT", "/api/v3/scenes/" + encodeURIComponent(name) + (existing ? "?replace=true" : ""), undefined, { etag: true });
-                ingestConfig(result, { preserveDraft: true }); await loadScenes(); message.textContent = "Content saved.";
-            } catch (error) { message.textContent = error.message; }
+                ingestConfig(result, { preserveDraft: true }); await loadScenes(); setMsg(message, "Content saved.", "ok");
+            } catch (error) { setMsg(message, error.message, "err"); }
         });
     }
 
@@ -2985,8 +3074,6 @@
         renderDiagnostics();
         session.start();
         operatorContent.refresh();
-        loadLayouts();
-        loadScenes();
         loadDiagnostics(false);
         startPlaybackPolling();
     }

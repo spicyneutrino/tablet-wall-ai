@@ -4,8 +4,8 @@ const fs = require("node:fs");
 const vm = require("node:vm");
 
 function element(id) {
-    return {
-        id: id, hidden: false, disabled: false, textContent: "", value: "", innerHTML: "",
+    const node = {
+        id: id, hidden: false, disabled: false, value: "", innerHTML: "", writes: 0,
         dataset: {}, attrs: {}, children: [], listeners: {},
         setAttribute(key, value) { this.attrs[key] = String(value); },
         getAttribute(key) { return Object.prototype.hasOwnProperty.call(this.attrs, key) ? this.attrs[key] : null; },
@@ -15,14 +15,20 @@ function element(id) {
         addEventListener(type, handler) { (this.listeners[type] = this.listeners[type] || []).push(handler); },
         click() { (this.listeners.click || []).forEach(handler => handler({})); }
     };
+    let text = "";
+    Object.defineProperty(node, "textContent", {
+        get() { return text; },
+        set(value) { text = String(value); node.writes += 1; }
+    });
+    return node;
 }
 
 function harness() {
     const ids = ["operator-readiness", "readiness-status", "readiness-errors", "tablet-url",
         "copy-tablet-url", "tablet-join-line", "join-network", "tablet-url-note", "tablet-qr-figure", "tablet-qr", "tablet-qr-note",
         "tablet-qr-error", "btn-readiness-qr-retry", "readiness-refreshed", "btn-readiness-refresh",
-        "operator-readiness-facts", "operator-readiness-details", "readiness-paths", "operator-readiness-paths", "readiness-advice",
-        "operator-readiness-advice", "readiness-message"];
+        "operator-readiness-facts", "operator-readiness-details", "operator-readiness-backup",
+        "readiness-paths", "operator-readiness-paths", "readiness-advice", "operator-readiness-advice", "readiness-message"];
     const nodes = {};
     ids.forEach(id => { nodes[id] = element(id); });
     const document = {
@@ -177,9 +183,16 @@ function factsText(nodes) {
     assert.equal(page.nodes["readiness-refreshed"].hidden, true, "a healthy read has one timestamp");
     assert.ok(factsText(page.nodes).includes("Wall-Net"));
     assert.ok(!factsText(page.nodes).includes("Backup proof"), "routine server checks lead with connection facts");
-    assert.ok(page.nodes["operator-readiness-details"].children.some(node => node.textContent === "Backup proof"),
-        "the complete backup and server evidence remains available in details");
+    assert.ok(page.nodes["operator-readiness-backup"].children.some(node => node.textContent === "Backup proof"),
+        "backup and restore evidence is grouped separately");
+    assert.ok(page.nodes["operator-readiness-backup"].children.some(node => node.textContent === "Restore rehearsal"));
+    assert.ok(!page.nodes["operator-readiness-details"].children.some(node => node.textContent === "Backup proof"),
+        "current evidence does not repeat backup facts");
     assert.equal(page.nodes["readiness-status"].dataset.kind, "ok");
+    const statusWrites = page.nodes["readiness-status"].writes;
+    page.instance.render(); page.instance.render();
+    assert.equal(page.nodes["readiness-status"].writes, statusWrites,
+        "routine renders do not rewrite identical readiness status text");
     page.state.operatorConfig = { layout: { kind: "logical", placements: { a: {}, b: {}, retained: {} } },
         runtime: { devices: { a: { online: true }, b: { online: true } } } };
     page.instance.render();

@@ -383,13 +383,21 @@ dialog.tablet-selection::backdrop { background: var(--backdrop); }
 .saved-list { container-type: inline-size; }
 .saved-list:empty, .issue-list:empty, .playlist-list:empty { display: none; }
 #panel-saved { max-inline-size: 48rem; }
-#panel-system > .task-section, #panel-system > .destructive-area, #operator-readiness, #measurement-details { max-inline-size: 48rem; }
+#panel-system > .task-section, #panel-system > .destructive-area, #operator-readiness, #settings-evidence, #backup-restore, #measurement-details, #settings-experimental { max-inline-size: 48rem; }
 #layout-name, #scene-name { max-inline-size: 32rem; }
 .destructive-area { border-block-start: 1px solid var(--error); padding-block-start: 1rem; color: var(--error); }
-.saved-row { grid-template-columns: 8rem minmax(0, 1fr) auto; align-items: center; gap: 1rem; }
-.saved-thumb { inline-size: 8rem; block-size: 6rem; object-fit: contain; background: var(--stage); border-radius: var(--radius); }
+.saved-row { grid-template-columns: 4rem minmax(0, 1fr) auto; align-items: center; gap: .75rem; }
+.saved-thumb { inline-size: 4rem; block-size: 3rem; object-fit: contain; background: var(--stage); border-radius: var(--radius); }
 .saved-row:not(:has(.saved-thumb)) { grid-template-columns: minmax(0, 1fr) auto; }
 .saved-row .saved-actions { align-items: center; }
+.saved-name { overflow-wrap: anywhere; }
+.saved-info > * { min-inline-size: 0; }
+.saved-tags { display: flex; flex-wrap: wrap; gap: .25rem; }
+.saved-tag { display: inline-block; max-inline-size: 100%; padding: .05rem .35rem; border: 1px solid var(--border); border-radius: var(--radius); color: var(--muted); font-size: .6875rem; line-height: 1.35; }
+.saved-tag[data-kind="auto"] { color: var(--attention); border-color: var(--attention); background: var(--attention-bg); }
+.saved-state:not([hidden]) { padding-block: .5rem; }
+#diag-last-known[data-kind="err"] { color: var(--error); }
+#diag-last-known[data-kind="info"] { color: var(--muted); }
 @media (max-width: 68rem) {
     .operator-workspace { max-inline-size: 1600px; }
     .main { position: static; }
@@ -457,8 +465,8 @@ dialog.tablet-selection::backdrop { background: var(--backdrop); }
     .task-footer { padding: 0; }
     .task-footer .operator-actions { align-items: stretch; }
     .task-footer .operator-actions > .btn { flex: 1 1 9rem; }
-    .saved-row { grid-template-columns: 6rem minmax(0, 1fr); }
-    .saved-thumb { inline-size: 6rem; block-size: 4.5rem; }
+    .saved-row { grid-template-columns: 4rem minmax(0, 1fr); }
+    .saved-thumb { inline-size: 4rem; block-size: 3rem; }
     .saved-actions { grid-column: 1 / -1; }
     .saved-actions > .btn { flex: 1 1 8rem; }
     .tablet-row { flex-wrap: wrap; }
@@ -626,7 +634,8 @@ body[data-image-actions-inline="true"][data-output-dirty="true"] .image-primary-
 }
 @container (max-width: 20rem) {
     .saved-row, .saved-row:not(:has(.saved-thumb)) { grid-template-columns: minmax(0, 1fr); }
-    .saved-thumb { inline-size: min(6rem, 100%); block-size: auto; aspect-ratio: 4 / 3; }
+    .saved-thumb { inline-size: min(4rem, 100%); block-size: auto; aspect-ratio: 4 / 3; }
+    .saved-actions > .btn { min-inline-size: 0; white-space: normal; }
 }
 
 .playback-exclusion-meta { display: flex; flex-wrap: wrap; align-items: baseline; gap: .25rem .5rem; }

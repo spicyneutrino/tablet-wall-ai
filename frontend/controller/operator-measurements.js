@@ -1,5 +1,18 @@
 "use strict";
 (function (root) {
+    const { setTextIfChanged } = typeof module !== "undefined" && module.exports
+        ? require("./operator-dom.js") : root.OperatorDom;
+
+    function liveViewportText(viewport) {
+        return viewport
+            ? "Selected tablet: " + viewport.width + " × " + viewport.height + " CSS px · DPR " + viewport.dpr + " · " + viewport.orientation + "° · " + viewport.mode
+            : "Waiting for the selected tablet’s online viewport at 100% zoom. Advanced manual entry is available.";
+    }
+
+    function updateLiveViewport(node, viewport) {
+        setTextIfChanged(node, liveViewportText(viewport));
+    }
+
     function createPayloads({ fields: el, num, ValidationError = Error, markInvalid = () => {} }) {
         function requirePositive(label, input) {
             const value = num(input.value);
@@ -325,9 +338,7 @@
 
         function renderCalibrationHelper() {
             const v = physicalCalibration.selectedViewport(state.roster, state.selectedId);
-            document.getElementById("cal-live-viewport").textContent = v
-                ? "Selected tablet: " + v.width + " × " + v.height + " CSS px · DPR " + v.dpr + " · " + v.orientation + "° · " + v.mode
-                : "Waiting for the selected tablet’s online viewport at 100% zoom. Advanced manual entry is available.";
+            updateLiveViewport(document.getElementById("cal-live-viewport"), v);
             document.getElementById("cal-use-viewport").disabled = !v || state.busy;
             document.getElementById("cal-use-ruler").disabled = !v || state.busy || rulerReview.status === "checking";
             if (rulerReview.key && ["checking", "review", "prepared"].includes(rulerReview.status)) {
@@ -593,7 +604,7 @@
         return { requireNonNegative, requireInteger, profileFieldValues, fillViewport, calibrationFieldValues, rulerSaveBlocked, invalidateRuler, checkRuler, decideRuler, renderCalibrationHelper, loadRulerAddress, rememberFields, populateDeviceCard, saveProfile, saveCalibration };
     }
 
-    const measurements = { create, createPayloads };
+    const measurements = { create, createPayloads, liveViewportText, updateLiveViewport };
     if (typeof module !== "undefined" && module.exports) module.exports = measurements;
     else root.OperatorMeasurements = measurements;
 })(typeof window !== "undefined" ? window : globalThis);
