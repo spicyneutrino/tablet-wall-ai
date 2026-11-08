@@ -86,3 +86,11 @@ assert.equal(offline.view().d.included, true);
 const matched = sizing.matchScreenShape({ x: 0, y: 0, w: 100, h: 70, bezel: { top: 3, right: 5, bottom: 7, left: 11 } }, { width: 1600, height: 1000 });
 assert.equal(Number.isInteger(matched.placement.h), true, "Match keeps logical grid sizes integral");
 console.log("Operator membership provenance, frozen sizes and integer Match geometry passed");
+
+const hugeViewport = membership();
+hugeViewport.observe({ huge: { online: true, viewport: { width: 1e307, height: 1e307 } } }, emptyLogical);
+assert.deepEqual(hugeViewport.view().huge.size, { w: 100, h: 100 }, "large finite square dimensions retain a finite square ratio");
+assert.equal(hugeViewport.view().huge.sizeSource, "viewport");
+hugeViewport.observe({ overflow: { online: true, viewport: { width: 1e307, height: 1 } } }, emptyLogical);
+assert.deepEqual(hugeViewport.view().overflow.size, { w: 100, h: 100 }, "a ratio whose derived width overflows keeps fallback geometry");
+assert.equal(hugeViewport.view().overflow.sizeSource, "fallback");

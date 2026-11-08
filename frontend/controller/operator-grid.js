@@ -16,10 +16,11 @@
                     const viewport = device.viewport;
                     const viewportWidth = Number(viewport && viewport.width);
                     const viewportHeight = Number(viewport && viewport.height);
+                    const logicalWidth = Math.round(100 * (viewportWidth / viewportHeight));
                     if (!frozen && ["fallback", "viewport"].includes(member.sizeSource) && device.online
                             && Number.isFinite(viewportWidth) && Number.isFinite(viewportHeight)
-                            && viewportWidth > 0 && viewportHeight > 0) {
-                        member.size = { w: Math.max(1, Math.round(100 * viewportWidth / viewportHeight)), h: 100 };
+                            && viewportWidth > 0 && viewportHeight > 0 && Number.isFinite(logicalWidth)) {
+                        member.size = { w: Math.max(1, logicalWidth), h: 100 };
                         member.sizeSource = "viewport";
                     }
                 }
