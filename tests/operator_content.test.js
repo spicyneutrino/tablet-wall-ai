@@ -85,7 +85,9 @@ const content = context.window.OperatorContent.create({ state, renderStage() {},
     resolveOutput(true); await choosing;
     assert.equal(state.previewContent.asset, next.id, "a delayed preview choice cannot replace a newer choice");
     await galleryNavigation();
-    console.log("Generated pattern canonical DTO, publication/read ordering, scene application and row-aware gallery focus passed");
+    await inventoryState();
+    await closestFocus();
+    console.log("Generated pattern canonical DTO, publication/read ordering, scene application, row-aware gallery focus, inventory state and closest fallback passed");
 })().catch(error => { console.error(error); process.exitCode = 1; });
 
 async function galleryNavigation() {
@@ -281,4 +283,181 @@ async function galleryNavigation() {
     galleryNode("image-search").input();
     assert.equal(focused(), galleryNode("image-search"), "hiding every choice falls back to the search field");
     assert.equal(tabStops().length, 0);
+}
+
+async function inventoryState() {
+    const nodes = new Map();
+    const doc = { activeElement: null, getElementById: null, createElement: tag => focusedElement(tag, doc) };
+    function focusedElement(tag, owner) {
+        const node = element(tag, owner);
+        let disabled = false;
+        Object.defineProperty(node, "disabled", {
+            get() { return disabled; },
+            set(value) {
+                disabled = Boolean(value);
+                if (disabled && owner.activeElement === node) owner.activeElement = owner.body || null;
+            }
+        });
+        return node;
+    }
+    doc.body = focusedElement("body", doc);
+    doc.getElementById = id => {
+        if (!nodes.has(id)) nodes.set(id, focusedElement(id, doc));
+        return nodes.get(id);
+    };
+    const node = id => doc.getElementById(id);
+    const state = { layoutKind: "logical", etag: "e", etagState: "current", capabilities: { uploads: false },
+        scene: { content: { type: "color" } }, draft: {} };
+    const asset = id => ({ id, name: id + ".png", width: 100, height: 100, url: "/" + id, thumbnail_url: "/" + id + ".thumb" });
+    const a = asset("a"), b = asset("b"), c = asset("c"), d = asset("d");
+    const pending = [];
+    const context = vm.createContext({ window: { OperatorState: model }, document: doc, Option: function () {} });
+    vm.runInContext(fs.readFileSync(require.resolve("../frontend/controller/operator-dom.js"), "utf8"), context);
+    vm.runInContext(fs.readFileSync(require.resolve("../frontend/controller/operator-content.js"), "utf8"), context);
+    const content = context.window.OperatorContent.create({ state, renderStage() {}, announce() {}, showConflict() {},
+        ingestConfig(config) { state.scene = config.scene; },
+        api(method, path) {
+            if (path !== "/api/v3/images") throw new Error("unexpected route " + path);
+            return new Promise((resolve, reject) => pending.push({ resolve, reject }));
+        } });
+    const refreshWith = async images => {
+        const read = content.refresh();
+        pending.shift().resolve({ images });
+        await read;
+    };
+    const click = async id => node("image-gallery").children.find(row => row.dataset.assetId === id).children[0].click();
+    const rows = () => node("image-gallery").children;
+
+    await refreshWith([a, b, c]);
+    node("image-search").value = ""; node("image-search").input();
+    const before = new Map(rows().map(row => [row.dataset.assetId, row]));
+    node("refresh-images").focus();
+    const read = content.refresh();
+    const request = pending.shift();
+    assert.equal(node("refresh-images").disabled, true, "a pending inventory read disables its trigger");
+    assert.equal(doc.activeElement, doc.body, "disabling the focused refresh control moves focus to BODY in the browser model");
+    assert.match(node("image-message").textContent, /Refreshing the image library/);
+    assert.match(node("image-message").textContent, /last known library state/);
+    request.resolve({ images: [a, b, c, d] });
+    await read;
+    assert.equal(doc.activeElement, node("refresh-images"), "the settled refresh restores its invoking focus");
+    assert.equal(node("refresh-images").disabled, false);
+    assert.equal(rows().length, 4, "new inventory rows appear after the read settles");
+    assert.equal(rows().find(row => row.dataset.assetId === "a"), before.get("a"), "an inventory refresh reuses existing row nodes");
+    assert.equal(node("image-message").textContent, "", "routine inventory success clears the refreshing label");
+
+    node("refresh-images").focus();
+    const failed = content.refresh();
+    pending.shift().reject(new Error("offline"));
+    await failed;
+    assert.equal(doc.activeElement, node("refresh-images"), "a failed refresh also restores its invoking focus");
+    assert.equal(rows().length, 4, "a failed refresh keeps the last known inventory");
+    assert.match(node("image-message").textContent, /library unavailable/);
+    assert.match(node("image-message").textContent, /last known library state is still shown/);
+    assert.equal(node("refresh-images").disabled, false);
+
+    const slow = content.refresh();
+    const slowRequest = pending.shift();
+    const fast = content.refresh();
+    const fastRequest = pending.shift();
+    fastRequest.resolve({ images: [a] });
+    await fast;
+    slowRequest.resolve({ images: [a, b, c, d] });
+    await slow;
+    assert.equal(rows().length, 1, "a stale inventory read cannot replace a newer result");
+    assert.equal(rows()[0].dataset.assetId, "a");
+
+    await refreshWith("abcdefgh".split("").map(asset));
+    rows().find(row => row.dataset.assetId === "e").children[0].focus();
+    await refreshWith([asset("d"), asset("g")]);
+    assert.equal(doc.activeElement.parentElement.dataset.assetId, "d", "inventory removal finds the nearest survivor in the previous row order");
+    node("image-search").focus();
+    node("image-search").value = ""; node("image-search").input();
+    await refreshWith([]);
+    const empty = node("image-search-empty");
+    assert.equal(empty.hidden, false, "a real empty inventory shows a message inside the library");
+    assert.equal(empty.textContent, "No images available.");
+    assert.equal(node("image-message").textContent, "No images available.");
+    assert.equal(rows().length, 0);
+    node("image-search").value = "anything"; node("image-search").input();
+    assert.equal(empty.textContent, "No images available.", "a search cannot turn a real empty inventory into a filter miss");
+
+    node("image-search").value = ""; node("image-search").input();
+    await refreshWith([a, b]);
+    assert.equal(empty.hidden, true);
+    node("image-search").value = "zzz"; node("image-search").input();
+    assert.equal(empty.hidden, false);
+    assert.equal(empty.textContent, "No images match your search.");
+    node("image-search").value = ""; node("image-search").input();
+
+    const rowA = rows().find(row => row.dataset.assetId === "a");
+    const buttonA = rowA.children[0];
+    const thumbnail = buttonA.children[0];
+    thumbnail.error();
+    assert.equal(rowA.dataset.thumbnail, "unavailable");
+    assert.equal(thumbnail.hidden, true, "a missing thumbnail is not rendered as a broken image");
+    assert.match(buttonA.attrs["aria-label"], /thumbnail unavailable/);
+    assert.match(buttonA.attrs["aria-describedby"], /image-thumbnail-note/);
+    thumbnail.load();
+    assert.equal(rowA.dataset.thumbnail, undefined);
+    assert.equal(thumbnail.hidden, false);
+    assert.doesNotMatch(buttonA.attrs["aria-label"] || "", /thumbnail unavailable/);
+
+    await click("a");
+    assert.equal(content.dirty(), true);
+    assert.equal(state.previewContent.asset, "a");
+    await refreshWith([b]);
+    assert.equal(content.dirty(), true, "an inventory drop keeps the selected proposal explicit");
+    assert.equal(state.previewContent.asset, "a");
+    assert.equal(state.previewContent.available, false);
+    assert.equal(node("image-title").textContent, "Unavailable image");
+    assert.equal(node("image-details").textContent, "Selected image unavailable. Refresh images or choose a replacement.");
+    assert.equal(node("show-image").disabled, true, "an unavailable selected proposal cannot be shown");
+    assert.equal(rows().length, 1, "the missing selection never silently switches to a surviving image");
+    assert.equal(rows()[0].dataset.assetId, "b");
+    await click("b");
+    assert.equal(state.previewContent.asset, "b", "an explicit replacement selection wins");
+    assert.equal(state.previewContent.available, undefined);
+
+    console.log("Inventory refresh focus, last-known failure, stale read, empty/filter/missing-thumbnail and unavailable proposal states passed");
+}
+
+async function closestFocus() {
+    const nodes = new Map();
+    const doc = { activeElement: null, getElementById: null, createElement: tag => element(tag, doc) };
+    doc.getElementById = id => {
+        if (!nodes.has(id)) nodes.set(id, element(id, doc));
+        return nodes.get(id);
+    };
+    const list = doc.getElementById("image-gallery");
+    const images = ["keep-0", "drop-1", "keep-2", "drop-3", "keep-4", "drop-5", "keep-6", "drop-7", "keep-8"]
+        .map((name, index) => ({ id: "img-" + index, name, width: 100, height: 100, url: "/" + index, thumbnail_url: "/" + index }));
+    const state = { layoutKind: "logical", etag: "e", etagState: "current", capabilities: { uploads: false },
+        scene: { content: { type: "color" } }, draft: {} };
+    const context = vm.createContext({ window: { OperatorState: model }, document: doc, Option: function () {} });
+    vm.runInContext(fs.readFileSync(require.resolve("../frontend/controller/operator-dom.js"), "utf8"), context);
+    vm.runInContext(fs.readFileSync(require.resolve("../frontend/controller/operator-content.js"), "utf8"), context);
+    const content = context.window.OperatorContent.create({ state, renderStage() {}, announce() {}, showConflict() {},
+        ingestConfig(config) { state.scene = config.scene; },
+        async api(method, path) { if (path === "/api/v3/images") return { images }; throw new Error("unexpected route " + path); } });
+    await content.refresh();
+    const rows = () => list.children;
+    const buttons = () => rows().map(row => row.children[0]);
+    buttons().forEach((button, index) => {
+        const column = index % 3, row = Math.floor(index / 3);
+        const left = column * 108, top = row * 108;
+        button.rect = { left, top, right: left + 100, bottom: top + 100, width: 100, height: 100 };
+    });
+    buttons()[3].focus();
+    doc.getElementById("image-search").value = "keep";
+    doc.getElementById("image-search").input();
+    assert.equal(doc.activeElement, buttons()[2], "hiding the focused choice focuses the closest visible choice, not the first");
+    assert.equal(buttons()[2].tabIndex, 0, "the closest fallback is the one roving tab entry");
+    const kept = rows()[2];
+    list.scrollTop = 120;
+    await content.refresh();
+    assert.equal(rows()[2], kept, "a filtered refresh keeps the same row node");
+    assert.equal(doc.activeElement, buttons()[2], "a filtered inventory refresh keeps gallery focus");
+    assert.equal(list.scrollTop, 120, "an inventory refresh does not reset gallery scroll");
+    console.log("Closest visible gallery fallback, filtered row identity, focus and scroll passed");
 }

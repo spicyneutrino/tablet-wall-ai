@@ -5,7 +5,7 @@ window.OperatorContent = {
         let images = [], selected = null, fit = "cover", background = "#0b1120", selectionDirty = false, loading = false, busy = false, inventoryReady = false;
         let previous = null, xhr = null, inventoryVersion = 0, selectionVersion = 0, baseEtag = null, savedScene = null, uploadUncertain = false;
         const gallery = new Map();
-        let retainMessage = false;
+        let retainMessage = false, noteSequence = 0;
         const shownRevisions = new Map();
         const message = (text, retain = false, kind = "info", target = "image-message") => { shownRevisions.delete(target); if (target === "image-message") retainMessage = retain; $(target).dataset.kind = kind; $(target).textContent = text; };
         function renderShownStatus() {
@@ -123,13 +123,34 @@ window.OperatorContent = {
             const active = preferred && buttons.includes(preferred) ? preferred : buttons[0];
             active.tabIndex = 0;
         }
+        function closestVisibleButton(buttons, index, order) {
+            if (!buttons.length) return null;
+            if (index < 0) return buttons[0];
+            let best = null;
+            for (const button of buttons) {
+                const at = order.indexOf(button);
+                if (at < 0) continue;
+                const distance = Math.abs(at - index);
+                if (!best || distance < best.distance || (distance === best.distance && at < best.at)) best = { button, distance, at };
+            }
+            return best ? best.button : buttons[0];
+        }
+        function restoreRefreshFocus(trigger) {
+            if (!trigger || trigger !== $("refresh-images") || trigger.disabled) return;
+            const active = typeof document.activeElement !== "undefined" ? document.activeElement : null;
+            const body = typeof document.body !== "undefined" ? document.body : null;
+            if (active && active !== body && active !== document.documentElement) return;
+            trigger.focus({ preventScroll: true });
+        }
         function renderGallery() {
             const list = $("image-gallery");
             if (!list || typeof document.createElement !== "function") return;
             const focusedBefore = typeof document.activeElement !== "undefined" ? document.activeElement : null;
-            const focusedWasGallery = Boolean(focusedBefore
-                && Array.from(list.children).some(item => galleryButton(item) === focusedBefore));
+            const orderBefore = Array.from(list.children).map(galleryButton).filter(Boolean);
+            const focusedIndex = focusedBefore ? orderBefore.indexOf(focusedBefore) : -1;
+            const focusedWasGallery = focusedIndex >= 0;
             const search = $("image-search").value.toLocaleLowerCase();
+            const matches = images.filter(image => image.name.toLocaleLowerCase().includes(search));
             for (const [id, row] of gallery) if (!images.some(image => image.id === id)) { row.item.remove(); gallery.delete(id); }
             images.forEach(image => {
                 let row = gallery.get(image.id);
@@ -139,30 +160,52 @@ window.OperatorContent = {
                     const thumbnail = document.createElement("img"); thumbnail.alt = ""; thumbnail.loading = "lazy";
                     const name = document.createElement("span");
                     name.className = "image-choice-name";
+                    const thumbnailNote = document.createElement("span"); thumbnailNote.className = "sr-only";
+                    thumbnailNote.id = "image-thumbnail-note-" + (++noteSequence);
                     const appliedNote = document.createElement("span"); appliedNote.className = "sr-only";
-                    button.append(thumbnail, name); item.append(button, appliedNote); list.append(item);
+                    button.append(thumbnail, name, thumbnailNote); item.append(button, appliedNote); list.append(item);
                     button.addEventListener("click", () => choose(image.id));
-                    thumbnail.addEventListener("error", () => { item.dataset.thumbnail = "unavailable"; thumbnail.hidden = true; });
-                    row = { item, button, thumbnail, name, appliedNote }; gallery.set(image.id, row);
+                    thumbnail.addEventListener("error", () => {
+                        item.dataset.thumbnail = "unavailable"; thumbnail.hidden = true;
+                        thumbnailNote.textContent = "Thumbnail unavailable.";
+                        renderGallery();
+                    });
+                    thumbnail.addEventListener("load", () => {
+                        delete item.dataset.thumbnail; thumbnail.hidden = false; thumbnailNote.textContent = "";
+                        renderGallery();
+                    });
+                    row = { item, button, thumbnail, name, thumbnailNote, appliedNote }; gallery.set(image.id, row);
                 }
                 row.item.hidden = !image.name.toLocaleLowerCase().includes(search);
                 const inspected = selectionDirty && image.id === selected;
                 row.button.setAttribute("aria-pressed", String(inspected)); row.button.disabled = busy;
                 const applied = Boolean(state.scene && state.scene.content.type === "image" && state.scene.content.asset === image.id);
                 row.item.dataset.applied = String(applied);
-                row.button.setAttribute("aria-label", "Preview " + image.name);
-                row.button.title = image.name;
+                const unavailableThumbnail = row.item.dataset.thumbnail === "unavailable";
+                row.button.setAttribute("aria-label", "Preview " + image.name + (unavailableThumbnail ? ", thumbnail unavailable" : ""));
+                row.button.title = image.name + (unavailableThumbnail ? " — thumbnail unavailable" : "");
                 row.appliedNote.textContent = applied ? "Applied configuration. This image is the saved wall content; tablet reports are separate." : "";
+                const describedBy = [];
                 if (applied) {
                     if (!row.appliedNote.id) row.appliedNote.id = "image-applied-" + image.id.replace(/[^a-zA-Z0-9_-]/g, "_");
-                    row.button.setAttribute("aria-describedby", row.appliedNote.id);
-                } else row.button.removeAttribute("aria-describedby");
+                    describedBy.push(row.appliedNote.id);
+                }
+                if (unavailableThumbnail) describedBy.push(row.thumbnailNote.id);
+                if (describedBy.length) row.button.setAttribute("aria-describedby", describedBy.join(" "));
+                else row.button.removeAttribute("aria-describedby");
                 if (row.thumbnail.getAttribute("src") !== image.thumbnail_url) row.thumbnail.src = image.thumbnail_url;
                 const thumbnailScale = Math.min(160 / image.width, 160 / image.height);
                 row.thumbnail.width = Math.max(1, Math.round(image.width * thumbnailScale)); row.thumbnail.height = Math.max(1, Math.round(image.height * thumbnailScale));
                 row.name.textContent = image.name;
             });
-            $("image-search-empty").hidden = !search || images.some(image => image.name.toLocaleLowerCase().includes(search));
+            const empty = $("image-search-empty");
+            if (empty) {
+                const noAssets = inventoryReady && images.length === 0;
+                const noMatches = inventoryReady && images.length > 0 && Boolean(search) && matches.length === 0;
+                const text = noAssets ? "No images available." : "No images match your search.";
+                empty.hidden = !noAssets && !noMatches;
+                if (empty.textContent !== text) empty.textContent = text;
+            }
             const focused = typeof document.activeElement !== "undefined" ? document.activeElement : null;
             const buttons = visibleGalleryButtons();
             const selectedRow = selected && gallery.get(selected);
@@ -170,10 +213,10 @@ window.OperatorContent = {
             const selectedButton = selectedRow && !selectedRow.item.hidden && !selectedRow.button.disabled ? selectedRow.button : null;
             setGalleryTabStop(fallback || selectedButton);
             if (focusedWasGallery) {
-                const shown = buttons.includes(focused) && !focused.hidden
-                    && !(focused.parentElement && focused.parentElement.hidden);
+                const shown = buttons.includes(focusedBefore) && !focusedBefore.hidden
+                    && !(focusedBefore.parentElement && focusedBefore.parentElement.hidden);
                 if (!shown) {
-                    const next = buttons[0];
+                    const next = closestVisibleButton(buttons, focusedIndex, orderBefore);
                     if (next) { focusTarget(next); setGalleryTabStop(next); }
                     else {
                         const searchField = $("image-search");
@@ -243,7 +286,10 @@ window.OperatorContent = {
         }
         async function refresh() {
             const version = ++inventoryVersion;
-            loading = true; message("Reading the image library…"); render();
+            const trigger = typeof document.activeElement !== "undefined" ? document.activeElement : null;
+            loading = true;
+            message(inventoryReady ? "Refreshing the image library. Showing the last known library state." : "Reading the image library…");
+            render();
             try {
                 const result = await api("GET", "/api/v3/images");
                 if (version !== inventoryVersion) return;
@@ -251,8 +297,14 @@ window.OperatorContent = {
                 images = result.images; inventoryReady = true; uploadUncertain = false;
                 message(images.length ? "" : "No images available.");
             } catch (error) {
-                if (version === inventoryVersion) message("Image library unavailable. " + error.message.replace(/[.!?\s]+$/, "") + ". Use Refresh images to retry.", true, "err");
-            } finally { if (version === inventoryVersion) { loading = false; render(); renderStage(); } }
+                if (version === inventoryVersion) message("Image library unavailable. " + error.message.replace(/[.!?\s]+$/, "") + "."
+                    + (inventoryReady ? " The last known library state is still shown." : "") + " Use Refresh images to retry.", true, "err");
+            } finally {
+                if (version === inventoryVersion) {
+                    loading = false; render(); renderStage();
+                    restoreRefreshFocus(trigger);
+                }
+            }
         }
         async function show(content, { guard = baseEtag || state.etag, scene = null, feedback = "image-message" } = {}) {
             const trigger = document.activeElement;
@@ -319,6 +371,9 @@ window.OperatorContent = {
                     $("upload-message").textContent = selectedUpload ? "Image added and selected. Review Fit / Fill, then Show image. Nothing was shown automatically."
                         : "Image added to the library. Nothing was shown automatically.";
                     await refresh();
+                    if (selectedUpload && (!state.previewContent || state.previewContent.asset !== id)) {
+                        $("upload-message").textContent = "Image added to the library. Nothing was shown automatically.";
+                    }
                 } else $("upload-message").textContent = "Image addition refused. " + (result && (typeof result.detail === "string" ? result.detail : result.detail && result.detail.message) || "HTTP " + request.status) + ". Check the file or launch admission, then retry.";
             };
             request.onerror = uncertain; request.ontimeout = uncertain;

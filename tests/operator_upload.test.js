@@ -62,5 +62,59 @@ function fixture() {
         assert.match(f.node("upload-message").textContent, /Image addition refused/);
         assert.equal(f.node("upload-submit").disabled, false);
     }
-    console.log("Upload ambiguity, stale inventory, reconciliation and known refusals passed");
+    {
+        const f = fixture();
+        f.state.capabilities.uploads = false;
+        f.content.render();
+        assert.equal(f.node("upload-form").hidden, true, "refused admission hides the upload form");
+        f.submit();
+        assert.equal(f.requests.length, 0, "refused admission never sends a transport");
+        f.state.capabilities = {};
+        f.content.render();
+        assert.equal(f.node("upload-form").hidden, true, "unknown admission hides the upload form");
+        f.submit();
+        assert.equal(f.requests.length, 0, "unknown admission never sends a transport");
+    }
+    const uploaded = { id: "sha256:new", name: "new.png", width: 10, height: 10, url: "/new", thumbnail_url: "/new" };
+    const body = JSON.stringify({ asset: uploaded });
+    {
+        const f = fixture();
+        f.submit();
+        const finished = f.requests[0].reply(201, body);
+        await new Promise(resolve => setImmediate(resolve));
+        assert.equal(f.reads.length, 1, "a successful upload reads the library after admission");
+        assert.match(f.node("upload-message").textContent, /Image added and selected/);
+        assert.equal(f.state.previewContent.asset, "sha256:new", "an unchanged selection may adopt the uploaded asset");
+        f.reads[0].resolve({ images: [uploaded] });
+        await finished;
+        assert.equal(f.state.previewContent.asset, "sha256:new");
+        assert.equal(f.state.scene.content.type, "color", "upload selection never shows the wall");
+    }
+    {
+        const f = fixture();
+        f.submit();
+        f.content.previewScene({ name: "Operator choice", content: { type: "image", asset: "sha256:operator" } }, "e");
+        const finished = f.requests[0].reply(201, body);
+        await new Promise(resolve => setImmediate(resolve));
+        assert.equal(f.reads.length, 1);
+        assert.match(f.node("upload-message").textContent, /Image added to the library/);
+        assert.equal(f.state.previewContent.asset, "sha256:operator", "a later operator selection wins over the upload");
+        f.reads[0].resolve({ images: [uploaded] });
+        await finished;
+        assert.equal(f.state.previewContent.asset, "sha256:operator", "the upload never replaces a newer selection");
+        assert.equal(f.state.scene.content.type, "color");
+    }
+    {
+        const f = fixture();
+        f.submit();
+        const finished = f.requests[0].reply(201, body);
+        await new Promise(resolve => setImmediate(resolve));
+        f.content.previewScene({ name: "Later choice", content: { type: "image", asset: "sha256:operator" } }, "e");
+        f.reads[0].resolve({ images: [uploaded] });
+        await finished;
+        assert.equal(f.state.previewContent.asset, "sha256:operator");
+        assert.match(f.node("upload-message").textContent, /Image added to the library/);
+        assert.doesNotMatch(f.node("upload-message").textContent, /added and selected/);
+    }
+    console.log("Upload ambiguity, stale inventory, reconciliation, known refusals and selection-version admission passed");
 })().catch(error => { console.error(error); process.exitCode = 1; });

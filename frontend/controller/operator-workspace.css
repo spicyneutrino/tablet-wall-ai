@@ -135,6 +135,7 @@ details > :not(summary, [hidden], :is(div, p, ul, ol, dl, pre):empty) { margin-b
 .image-choice-button img { inline-size: 100%; aspect-ratio: 4 / 3; block-size: auto; object-fit: cover; background: var(--stage); border-radius: 3px; }
 .image-choice-button::after { content: ""; min-block-size: 1.5rem; grid-row: 3; color: var(--muted); font-size: .875rem; font-weight: 400; }
 .image-choice[data-applied="true"] .image-choice-button::after { content: "Applied"; }
+.image-choice[data-thumbnail="unavailable"]:not([data-applied="true"]) .image-choice-button::after { content: "No preview"; color: var(--attention); }
 .image-choice-name { font-weight: 500; line-height: 1.4; min-inline-size: 0; overflow-wrap: anywhere; word-break: normal; display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2; overflow: hidden; }
 #image-thumbnail { inline-size: 100%; max-block-size: 14rem; object-fit: contain; background: var(--stage); border-radius: var(--radius); }
 #tablet-qr { inline-size: 10rem; background: white; }
@@ -322,6 +323,9 @@ body[data-view-zoom="2x"] #workbench-stage .stage-svg { max-block-size: none; }
     @container (max-width: 40em) {
         #workbench-stage .stage-chip { max-inline-size: 9rem; }
     }
+}
+@media (min-width: 1025px) {
+    #exception-rail .image-library { block-size: max(min(21rem, 44vh), 18rem); }
 }
 @media (max-width: 1360px) { :root { --rail-w: 296px; } }
 .arrange-workspace { display: grid; grid-template-columns: minmax(0, 1fr) clamp(18rem, 31vw, 22.5rem); gap: 2rem; align-items: start; }
