@@ -52,7 +52,11 @@ occupied ports, denied firewall authorization, and failed checks produce an
 error instead of a ready message. Logs stay in the data directory.
 
 This HTTP mode serves curated assets on a trusted local hotspot. It requires
-application authentication to be unset and managed uploads to be disabled.
+application authentication to be unset. Uploads are disabled by default.
+For this launch only, `make hotspot ARGS='--operator-uploads'` admits image
+uploads directly from the exact loopback controller Origin. Forwarded
+requests and the tablet listener remain denied. See the
+[upload admission procedure](IMAGE-WALL-RUNBOOK.md#2-start).
 Automatic screen wake-lock needs HTTPS, so keep screens awake manually.
 The backend and controller remain on loopback. Do not bind the backend to
 `0.0.0.0` to work around a connection problem.
@@ -265,17 +269,32 @@ when you cannot:
    to the operator origin:
 
    ```sh
-   curl --netrc-file "$WALL_OPERATOR_NETRC" -X POST \
+   wall_old_id=REPLACE_WITH_OLD_UUID
+   wall_new_id=REPLACE_WITH_NEW_UUID
+   wall_config_etag=$(curl --fail --silent --show-error \
+     --cacert "$WALL_CA_PUBLIC_CERT" --netrc-file "$WALL_OPERATOR_NETRC" \
+     https://localhost:8444/api/v3/config | \
+     python -c 'import json,sys; print(json.load(sys.stdin)["etag"])') || exit 1
+   test -n "$wall_config_etag" || exit 1
+   curl --fail-with-body --cacert "$WALL_CA_PUBLIC_CERT" \
+     --netrc-file "$WALL_OPERATOR_NETRC" -X POST \
      -H "Origin: https://localhost:8444" -H 'Content-Type: application/json' \
-     -d '{"replaces": "<old-id>"}' \
-     https://localhost:8444/devices/<new-id>/rebind
+     -H "If-Match: $wall_config_etag" \
+     -d "{\"replaces\": \"$wall_old_id\"}" \
+     "https://localhost:8444/devices/$wall_new_id/rebind" || exit 1
    ```
+
+   Set `WALL_CA_PUBLIC_CERT` to the trusted public CA certificate path first.
+   Review the config and intended identities before this write. Missing
+   `If-Match` returns `428`; stale config returns `412`. After a conflict or
+   lost response, read current state and review the operation before retrying.
 
    The new device takes over the old placement (logical) or slot plus its
    display profiles and calibrations (physical), and the old id's display
    number; the old roster record disappears and the tablet reconnects once to
-   learn its number. If the server also restarted, the old number is unknown:
-   add `"number": N` (the label on the glass; it must be free). Refusals:
+   learn its number. Safe device metadata preserves the old number across
+   restart. If the old metadata lacks it, add `"number": N` from the label
+   on the glass; the number must be free. Refusals:
    `409` old device online, new device already placed, number in use, or new
    device already holding display records; `404` unknown device.
 5. Fix named layouts: rebinding changes the active layout only. A saved

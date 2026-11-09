@@ -294,9 +294,19 @@ slot, display records and number:
 ```http
 POST /devices/<new-device-id>/rebind
 Content-Type: application/json
+If-Match: <current config etag from GET /api/v3/config>
 
 {"replaces": "<old-device-id>", "number": <n>}
 ```
+
+Fetch current config through the authenticated operator origin, review the
+identities, and pass its `etag` as `If-Match`. See the
+[complete curl example](../../deploy/README.md#origin-migration-and-rebinding).
+A missing guard returns `428`; a stale guard returns `412`. Framework body
+validation can return `422` first. After valid body parsing, an invalid or
+unknown new identity returns `404` before the guard is checked. Lifecycle
+conflicts follow the guard. Refresh and review after a conflict or uncertain
+response before attempting another write.
 
 Rules from the implementation:
 
@@ -323,9 +333,12 @@ Procedure:
    label and supply it explicitly.
 4. Compare before/after: active slot/placement, display number, profile
    revision, calibration revision, viewport/DPR and quarter turn.
-5. Recall each saved layout that named the old id. Saved layouts keep the old
-   id, so recall and save again under the new id. Do not silently edit the
-   JSON; use the controller.
+5. Use the workspace replacement preview to select saved arrangements for
+   migration with their current digests. The legacy command above keeps all
+   saved layouts unchanged. For those layouts, recall each one, explicitly
+   replace its old slot or placement with the new identity at the same
+   geometry, apply, and save with replacement confirmation. Recall and save
+   alone preserves the old id.
 6. Recheck the seam and calibration after any viewport or orientation change.
    A pure origin change does not change the panel, but a new browser profile
    can change viewport chrome, so recheck rather than assume.
@@ -349,8 +362,8 @@ Procedure:
 
 - A saved layout records arrangement, not content and not the device trust
   store. Rebinding does not make an old layout point at the new id.
-- Recall every layout used by the wall, confirm the intended arrangement and
-  content, then save it under the new identity. Record the old and new names.
+- Explicitly replace the old identity in every retained arrangement before
+  saving it. Record the old and new names and the before/after geometry.
 - Calibration is keyed by device id. The rebind copies the saved revisions,
   but the tablet still has its own viewport, DPR, mode and orientation; after
   a browser/origin change, confirm the client reports the expected values and
