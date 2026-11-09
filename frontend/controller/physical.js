@@ -1346,9 +1346,10 @@
     function reconcileLogicalErrors(draft) {
         if (!draft || draft.kind !== "logical") return;
         for (const input of Array.from(logicalInvalid.keys())) {
-            const field = input.dataset.field || input.id.slice("logical-".length);
-            const placement = input.dataset.field ? draft.placements[input.dataset.deviceId] : null;
-            if (input.dataset.field && !placement) continue;
+            const placementField = Array.from(logicalFields.entries()).find(([, node]) => node === input);
+            const field = placementField ? placementField[0] : input.id.slice("logical-".length);
+            const placement = placementField ? draft.placements[input.dataset.deviceId] : null;
+            if (placementField && !placement) continue;
             const result = window.PhysicalSizing.validateLogicalField(field, input.value, draft, placement);
             if (!result.valid) continue;
             if (placement) {
