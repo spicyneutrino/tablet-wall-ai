@@ -7,7 +7,7 @@ window.OperatorWorkspace = {
                 && window.getComputedStyle(node).visibility === "visible"
                 && !node.closest("details:not([open]) > :not(summary)"));
         const index = controls.indexOf(document.activeElement);
-        if (!controls.length || (event.shiftKey ? index <= 0 : index === controls.length - 1)) {
+        if (!controls.length || index < 0 || (event.shiftKey ? index === 0 : index === controls.length - 1)) {
             event.preventDefault();
             (controls.length ? controls[event.shiftKey ? controls.length - 1 : 0] : dialog).focus();
         }

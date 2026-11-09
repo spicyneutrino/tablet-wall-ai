@@ -82,6 +82,19 @@ function setupIssue(options = {}) {
     assert.equal(keyboard.document.activeElement, keyboard.element("resolve-commit"));
     assert.equal(tab(keyboard.element("resolve-commit"), true), true, "reverse Tab wraps from the first draft action");
     assert.equal(keyboard.document.activeElement, keyboard.element("resolve-stay"));
+    const allControls = dialog.querySelectorAll;
+    dialog.querySelectorAll = () => [keyboard.element("resolve-commit"), keyboard.element("resolve-discard")];
+    for (const shiftKey of [false, true]) {
+        keyboard.document.activeElement = keyboard.element("body");
+        const event = { key: "Tab", shiftKey, currentTarget: keyboard.document,
+            preventDefault() { this.defaultPrevented = true; } };
+        keyboard.document.listeners.keydown(event);
+        assert.equal(event.defaultPrevented, true, "a removed focused action recovers from BODY");
+        assert.equal(keyboard.document.activeElement,
+            keyboard.element(shiftKey ? "resolve-discard" : "resolve-commit"),
+            "surviving controls receive the correct directional focus");
+    }
+    dialog.querySelectorAll = allControls;
     keyboard.element("resolve-commit").disabled = true;
     assert.equal(tab(keyboard.element("resolve-stay")), true);
     assert.equal(keyboard.document.activeElement, keyboard.element("resolve-discard"), "disabled commit is skipped at the boundary");
