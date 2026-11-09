@@ -5,15 +5,25 @@ const vm = require("node:vm");
 
 function setup() {
     const nodes = new Map();
+    const document = { activeElement: null, listeners: {},
+        addEventListener(name, handler) { this.listeners[name] = handler; },
+        removeEventListener(name) { delete this.listeners[name]; } };
     const element = id => {
-        if (!nodes.has(id)) nodes.set(id, { textContent: "", listeners: {}, isConnected: true,
+        if (!nodes.has(id)) nodes.set(id, { id, textContent: "", listeners: {}, isConnected: true, tabIndex: 0, visibility: "visible",
+            getClientRects() { return this.hidden ? [] : [{}]; },
+            closest() { return this.collapsed ? {} : null; },
+            matches(selector) { return selector === ":modal" ? !!this.open : !!this.disabled; },
             addEventListener(event, handler) { this.listeners[event] = handler; },
-            showModal() { this.open = true; }, close() { this.open = false; }, focus() {} });
+            showModal() { this.open = true; },
+            close() { this.open = false; if (this.listeners.close) this.listeners.close(); },
+            querySelectorAll() { return [element("resolve-commit"), element("resolve-discard"), element("resolve-stay")]; },
+            focus() { document.activeElement = this; } });
         return nodes.get(id);
     };
-    const window = {};
+    document.getElementById = element; document.querySelector = () => element("stage"); document.activeElement = element("trigger");
+    const window = { getComputedStyle: node => ({ visibility: node.visibility }) };
     vm.runInNewContext(fs.readFileSync(require.resolve("../frontend/controller/operator-dom.js"), "utf8") + "\n" + fs.readFileSync(require.resolve("../frontend/controller/operator-workspace.js"), "utf8"),
-        { window, document: { getElementById: element, querySelector: () => element("stage"), activeElement: element("trigger") } });
+        { window, document });
     const draft = { arrangement: true, image: true, applied: [] };
     const workspace = window.OperatorWorkspace.create({ state: {}, arrangementDirty: () => draft.arrangement,
         arrangementPreview: () => draft.arrangement, imageDirty: () => draft.image,
@@ -21,7 +31,7 @@ function setup() {
         showImage: async () => { draft.applied.push("image"); draft.image = false; },
         discardArrangement: () => { draft.arrangement = false; }, discardImage: () => { draft.image = false; },
         commitTask() {}, renderStage() {}, refreshReadiness() {}, refreshStatus() {}, selectTablet() {}, canCommit: () => true });
-    return { workspace, draft, element, choose: choice => element("resolve-" + choice).listeners.click() };
+    return { workspace, draft, element, document, choose: choice => element("resolve-" + choice).listeners.click() };
 }
 
 function setupIssue(options = {}) {
@@ -57,6 +67,67 @@ function setupIssue(options = {}) {
 }
 
 (async () => {
+    const keyboard = setup();
+    keyboard.draft.arrangement = false;
+    const resolution = keyboard.workspace.resolve("Open Arrange");
+    const dialog = keyboard.element("draft-resolution");
+    function tab(from, shiftKey = false) {
+        from.focus();
+        const event = { key: "Tab", shiftKey, currentTarget: dialog, defaultPrevented: false,
+            preventDefault() { this.defaultPrevented = true; } };
+        dialog.listeners.keydown?.(event);
+        return event.defaultPrevented;
+    }
+    assert.equal(tab(keyboard.element("resolve-stay")), true, "Tab at the final draft action prevents the native BODY stop");
+    assert.equal(keyboard.document.activeElement, keyboard.element("resolve-commit"));
+    assert.equal(tab(keyboard.element("resolve-commit"), true), true, "reverse Tab wraps from the first draft action");
+    assert.equal(keyboard.document.activeElement, keyboard.element("resolve-stay"));
+    const allControls = dialog.querySelectorAll;
+    dialog.querySelectorAll = () => [keyboard.element("resolve-commit"), keyboard.element("resolve-discard")];
+    for (const shiftKey of [false, true]) {
+        keyboard.document.activeElement = keyboard.element("body");
+        const event = { key: "Tab", shiftKey, currentTarget: keyboard.document,
+            preventDefault() { this.defaultPrevented = true; } };
+        keyboard.document.listeners.keydown(event);
+        assert.equal(event.defaultPrevented, true, "a removed focused action recovers from BODY");
+        assert.equal(keyboard.document.activeElement,
+            keyboard.element(shiftKey ? "resolve-discard" : "resolve-commit"),
+            "surviving controls receive the correct directional focus");
+    }
+    dialog.querySelectorAll = allControls;
+    keyboard.element("resolve-commit").disabled = true;
+    assert.equal(tab(keyboard.element("resolve-stay")), true);
+    assert.equal(keyboard.document.activeElement, keyboard.element("resolve-discard"), "disabled commit is skipped at the boundary");
+    keyboard.element("resolve-stay").hidden = true;
+    assert.equal(tab(keyboard.element("resolve-discard"), true), true);
+    assert.equal(keyboard.document.activeElement, keyboard.element("resolve-discard"), "a single rendered action wraps to itself");
+    keyboard.element("resolve-stay").hidden = false;
+    keyboard.element("resolve-stay").visibility = "hidden";
+    assert.equal(tab(keyboard.element("resolve-discard")), true);
+    assert.equal(keyboard.document.activeElement, keyboard.element("resolve-discard"), "visibility-hidden actions cannot own focus");
+    keyboard.element("resolve-discard").disabled = true;
+    keyboard.document.activeElement = keyboard.element("body");
+    const bodyTab = { key: "Tab", currentTarget: keyboard.document, preventDefault() { this.defaultPrevented = true; } };
+    keyboard.document.listeners.keydown(bodyTab);
+    assert.equal(bodyTab.defaultPrevented, true);
+    assert.equal(keyboard.document.activeElement, dialog, "focus cleared by unavailable actions is recovered into the native modal");
+    keyboard.element("trigger").hidden = true;
+    dialog.listeners.cancel({ preventDefault() {} });
+    assert.equal(await resolution, false);
+    assert.equal(keyboard.document.listeners.keydown, undefined, "closing the modal removes document keyboard handling");
+    assert.equal(keyboard.draft.image, true, "Escape retains the image draft");
+    assert.deepEqual(keyboard.draft.applied, [], "Escape never writes");
+    assert.equal(keyboard.document.activeElement, keyboard.element("compact-task-select"), "an invisible trigger uses a visible fallback");
+
+    const nativeClose = setup();
+    const closedResolution = nativeClose.workspace.resolve("Open Images");
+    nativeClose.element("draft-resolution").close();
+    assert.equal(await closedResolution, false, "native close resolves as Stay instead of leaving the action pending");
+    assert.equal(nativeClose.draft.arrangement, true);
+    assert.equal(nativeClose.draft.image, true);
+    assert.equal(nativeClose.document.activeElement, nativeClose.element("trigger"), "native close restores the exact visible trigger");
+    assert.deepEqual(nativeClose.draft.applied, []);
+    console.log("Modal draft boundaries skip unavailable actions and close without writing");
     const { workspace, draft, element, choose } = setup();
     const result = workspace.resolve("Save tablet name");
     assert.equal(element("resolve-commit").textContent, "Apply arrangement");
