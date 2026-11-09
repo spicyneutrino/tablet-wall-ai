@@ -283,9 +283,55 @@
         return { available: true, viewport: { width: width, height: height } };
     }
 
+    const LOGICAL_FIELD_LABELS = {
+        x: "X", y: "Y", w: "Width", h: "Height",
+        "bezel-top": "Top bezel", "bezel-right": "Right bezel",
+        "bezel-bottom": "Bottom bezel", "bezel-left": "Left bezel",
+        width: "Wall width", height: "Wall height", padding: "Outer padding"
+    };
+
+    function validateLogicalField(field, raw, layout, placement) {
+        const label = LOGICAL_FIELD_LABELS[field] || field;
+        const value = typeof raw === "number" ? raw : Number(raw);
+        if (raw === "" || raw === null || raw === undefined || !Number.isFinite(value)) {
+            return { valid: false, message: label + " must be a whole number." };
+        }
+        if (!Number.isInteger(value)) return { valid: false, message: label + " must be a whole number." };
+        if (field === "w" || field === "h" || field === "width" || field === "height") {
+            if (value < 1) return { valid: false, message: label + " must be at least 1 relative unit." };
+        } else if (field === "padding" || field.indexOf("bezel-") === 0) {
+            if (value < 0) return { valid: false, message: label + " cannot be negative." };
+        }
+        const fixed = !layout || !layout.sizing || layout.sizing.mode !== "tablets";
+        if (fixed && layout && placement && (field === "w" || field === "h")) {
+            const limit = field === "w" ? layout.width : layout.height;
+            if (Number.isFinite(limit) && value > limit) {
+                return { valid: false, message: label + " " + value + " is larger than the wall "
+                    + (field === "w" ? "width " : "height ") + limit
+                    + " relative units. Use a size that fits the wall." };
+            }
+        }
+        if (fixed && layout && (field === "width" || field === "height")) {
+            const dimension = field === "width" ? "w" : "h";
+            const oversized = Object.values(layout.placements || {}).some(item => item[dimension] > value);
+            if (oversized) return { valid: false, message: label + " is smaller than an existing tablet body. Resize the tablet first or use fit-to-tablets sizing." };
+        }
+        if (placement) {
+            const next = Object.assign({}, placement, { bezel: Object.assign({}, placement.bezel) });
+            if (field.indexOf("bezel-") === 0) next.bezel[field.slice(6)] = value;
+            else if (field === "w" || field === "h") next[field] = value;
+            const visibleW = linear(next.w, 0) - linear(next.bezel.left, 0) - linear(next.bezel.right, 0);
+            const visibleH = linear(next.h, 0) - linear(next.bezel.top, 0) - linear(next.bezel.bottom, 0);
+            if (!(visibleW > 0)) return { valid: false, message: "Bezels leave no visible width. Reduce the left or right bezel." };
+            if (!(visibleH > 0)) return { valid: false, message: "Bezels leave no visible height. Reduce the top or bottom bezel." };
+        }
+        return { valid: true, value: value };
+    }
+
     const api = { fitBounds: fitBounds, packSlots: packSlots, nextPosition: nextPosition,
         LOGICAL_EDGE_THRESHOLD_PX: LOGICAL_EDGE_THRESHOLD_PX, edgeThreshold: edgeThreshold,
-        snapLogical: snapLogical, matchScreenShape: matchScreenShape, freshViewport: freshViewport };
+        snapLogical: snapLogical, matchScreenShape: matchScreenShape, freshViewport: freshViewport,
+        validateLogicalField: validateLogicalField };
     root.PhysicalSizing = api;
     if (typeof module !== "undefined" && module.exports) module.exports = api;
 }(typeof window !== "undefined" ? window : globalThis));
