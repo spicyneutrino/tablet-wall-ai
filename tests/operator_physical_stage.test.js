@@ -89,7 +89,9 @@ console.log("Physical stage roster counts and device-sheet mode transitions pass
 function stageSetup(overrides = {}) {
     const nodes = new Map();
     let compact = true;
-    const document = { activeElement: null, body: { dataset: {} } };
+    const document = { activeElement: null, body: { dataset: {} }, listeners: {},
+        addEventListener(name, handler) { this.listeners[name] = handler; },
+        removeEventListener(name) { delete this.listeners[name]; } };
     function node(id) {
         if (!nodes.has(id)) {
             const item = {
@@ -102,7 +104,11 @@ function stageSetup(overrides = {}) {
                 showModal() { this.open = true; this.modal = true; this.modalCount += 1; },
                 close() { this.open = false; this.modal = false; if (this.listeners.close) this.listeners.close(); },
                 getClientRects() { return this.hidden ? [] : [{}]; },
-                contains(child) { return child === this; },
+                contains(child) { return child === this || this.controls?.includes(child); },
+                tabIndex: 0, visibility: "visible",
+                matches(selector) { return selector === ":modal" ? this.modal : this.disabled; },
+                querySelectorAll() { return this.controls || []; },
+                closest() { return this.collapsed ? {} : null; },
                 scrollIntoView() { this.scrolled = true; }
             };
             nodes.set(id, item);
@@ -114,6 +120,7 @@ function stageSetup(overrides = {}) {
     const resizeListeners = [];
     const window = {
         OperatorState: Object.assign({}, require("../frontend/controller/operator-state.js"), { stageView: () => ({}) }),
+        getComputedStyle: node => ({ visibility: node.visibility }),
         matchMedia: () => ({ matches: compact }),
         addEventListener(event, handler) { if (event === "resize") resizeListeners.push(handler); }
     };
@@ -133,6 +140,7 @@ function stageSetup(overrides = {}) {
         rosterStatus: node("roster-status"), deviceList: node("device-list")
     };
     const context = vm.createContext({ window, document });
+    vm.runInContext(fs.readFileSync(require.resolve("../frontend/controller/operator-workspace.js"), "utf8"), context);
     vm.runInContext(fs.readFileSync(require.resolve("../frontend/controller/physical-stage.js"), "utf8"), context);
     const heading = node("tablet-action-name");
     const stage = context.window.PhysicalStage.create({
@@ -183,6 +191,46 @@ function stageSetup(overrides = {}) {
     other.sheet.close();
     assert.equal(triggerB.focusCount, 1, "close restores the invoking issue control");
     assert.equal(other.state.sheetTrigger, null);
+
+    const controls = [other.node("close"), other.node("name"), other.node("save"), other.node("remove")];
+    other.sheet.controls = controls;
+    other.stage.selectDevice("b", { reveal: true, taskOpened: true, trigger: triggerB });
+    await new Promise(setImmediate);
+    function sheetTab(from, shiftKey = false) {
+        from.focus();
+        const event = { key: "Tab", shiftKey, currentTarget: other.sheet, defaultPrevented: false,
+            preventDefault() { this.defaultPrevented = true; } };
+        other.sheet.listeners.keydown?.(event);
+        return event.defaultPrevented;
+    }
+    assert.equal(sheetTab(controls[3]), true, "modal sheet Tab prevents the native BODY stop");
+    assert.equal(other.document.activeElement, controls[0]);
+    assert.equal(sheetTab(controls[0], true), true);
+    assert.equal(other.document.activeElement, controls[3]);
+    controls[3].collapsed = true;
+    controls[2].disabled = true;
+    assert.equal(sheetTab(controls[0], true), true);
+    assert.equal(other.document.activeElement, controls[1], "closed disclosure content with layout boxes and disabled actions cannot own the reverse boundary");
+    assert.equal(sheetTab(controls[0]), false, "ordinary internal Tab keeps native navigation");
+    other.node("draft-resolution").modal = true;
+    const draftAction = other.node("resolve-stay");
+    draftAction.focus();
+    const nestedTab = { key: "Tab", shiftKey: true, currentTarget: other.document,
+        preventDefault() { this.defaultPrevented = true; } };
+    other.document.listeners.keydown(nestedTab);
+    assert.equal(nestedTab.defaultPrevented, undefined, "the lower sheet leaves reverse navigation to the draft modal above it");
+    assert.equal(other.document.activeElement, draftAction);
+    other.node("draft-resolution").modal = false;
+    controls[0].hidden = controls[1].hidden = true;
+    other.document.activeElement = other.document.body;
+    const bodyTab = { key: "Tab", currentTarget: other.document, preventDefault() { this.defaultPrevented = true; } };
+    other.document.listeners.keydown(bodyTab);
+    assert.equal(bodyTab.defaultPrevented, true);
+    assert.equal(other.document.activeElement, other.sheet, "a modal with no available actions recovers cleared focus");
+    other.setCompact(false); other.resize();
+    assert.equal(other.document.listeners.keydown, undefined, "leaving modal mode removes document keyboard handling");
+    assert.equal(other.sheet.open, true);
+    assert.equal(sheetTab(controls[0], true), false, "desktop inline sheet does not intercept Tab after a phone-to-desktop transition");
 
     const navigated = stageSetup();
     navigated.state.selectedId = "a";
@@ -644,6 +692,7 @@ function rosterSetup() {
     const window = { OperatorState: require("../frontend/controller/operator-state.js"), OperatorStage: stageModel,
         matchMedia: () => ({ matches: false }), addEventListener() {} };
     const context = vm.createContext({ window, document: doc, performance });
+    vm.runInContext(fs.readFileSync(require.resolve("../frontend/controller/operator-workspace.js"), "utf8"), context);
     vm.runInContext(fs.readFileSync(require.resolve("../frontend/controller/physical-stage.js"), "utf8"), context);
     const stage = context.window.PhysicalStage.create({
         DRAG_THRESHOLD_PX: 3, afterDraftChange() {}, announce() {}, bodyMetrics: () => null,

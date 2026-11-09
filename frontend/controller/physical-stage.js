@@ -324,6 +324,9 @@ window.PhysicalStage = {
          * ---------------------------------------------------------------- */
 
         const deviceSheet = typeof document !== "undefined" ? document.getElementById("device-sheet") : null;
+        const containSheetFocus = event => {
+            if (!document.getElementById("draft-resolution").matches(":modal")) window.OperatorWorkspace.containModalFocus(event, deviceSheet);
+        };
         let deviceSheetCompactMode = null;
         function compactSheet() {
             return typeof window.matchMedia === "function" && window.matchMedia("(max-width: 48rem)").matches;
@@ -354,6 +357,7 @@ window.PhysicalStage = {
             if (!deviceSheet || !compactSheet()) return false;
             if (deviceSheet.open && deviceSheet.dataset.modal !== "true") deviceSheet.close();
             state.sheetTrigger = trigger || document.activeElement;
+            document.addEventListener("keydown", containSheetFocus);
             if (!deviceSheet.open) { deviceSheet.dataset.modal = "true"; deviceSheet.showModal(); }
             const heading = document.getElementById("tablet-action-name");
             if (focusNode(heading) && typeof heading.scrollIntoView === "function") heading.scrollIntoView({ block: "nearest" });
@@ -381,7 +385,9 @@ window.PhysicalStage = {
             revealAfterTask(id, trigger, state.tabName === "tablet");
         }
         if (deviceSheet && deviceSheet.addEventListener) {
+            deviceSheet.addEventListener("keydown", window.OperatorWorkspace.containModalFocus);
             deviceSheet.addEventListener("close", function () {
+                document.removeEventListener("keydown", containSheetFocus);
                 const modal = deviceSheet.dataset.modal === "true";
                 const inside = typeof deviceSheet.contains === "function" && deviceSheet.contains(document.activeElement);
                 deviceSheet.dataset.modal = "";

@@ -1,5 +1,17 @@
 "use strict";
 window.OperatorWorkspace = {
+    containModalFocus(event, dialog = event.currentTarget) {
+        if (event.key !== "Tab" || event.defaultPrevented || !dialog.matches(":modal")) return;
+        const controls = [...dialog.querySelectorAll("button, input, select, textarea, a[href], summary, [tabindex]")]
+            .filter(node => node.tabIndex >= 0 && !node.matches(":disabled") && node.getClientRects().length
+                && window.getComputedStyle(node).visibility === "visible"
+                && !node.closest("details:not([open]) > :not(summary)"));
+        const index = controls.indexOf(document.activeElement);
+        if (!controls.length || (event.shiftKey ? index <= 0 : index === controls.length - 1)) {
+            event.preventDefault();
+            (controls.length ? controls[event.shiftKey ? controls.length - 1 : 0] : dialog).focus();
+        }
+    },
     create({ state, labelFor, arrangementDirty, arrangementPreview, imageDirty, applyArrangement, showImage, discardArrangement, discardImage,
         commitTask, renderStage, stageNames, onViewChange = () => {}, selectTablet, canCommit }) {
         const { $, setTextIfChanged } = window.OperatorDom;
@@ -130,6 +142,8 @@ window.OperatorWorkspace = {
             if (resolving) return false;
             resolving = true;
             const dialog = $("draft-resolution"), trigger = document.activeElement;
+            const containFocus = event => window.OperatorWorkspace.containModalFocus(event, dialog);
+            document.addEventListener("keydown", containFocus);
             try {
                 for (let kind = nextKind(); kind; kind = nextKind()) {
                     $("draft-resolution-text").textContent = reason + ". " + (kind === "arrangement"
@@ -149,11 +163,20 @@ window.OperatorWorkspace = {
                 }
                 return true;
             } finally {
+                document.removeEventListener("keydown", containFocus);
                 resolving = false; pending = null; dialog.close();
-                if (trigger && trigger.isConnected && !trigger.disabled) trigger.focus({ preventScroll: true });
+                for (const node of [trigger, $("compact-task-select"), $("tab-" + state.tabName), $("btn-wall-health")]) {
+                    if (node && node.isConnected && !node.disabled && node.getClientRects().length
+                            && window.getComputedStyle(node).visibility === "visible") {
+                        node.focus({ preventScroll: true });
+                        break;
+                    }
+                }
             }
         }
         for (const choice of ["commit", "discard", "stay"]) $("resolve-" + choice).addEventListener("click", () => { if (pending) pending(choice); });
+        $("draft-resolution").addEventListener("keydown", window.OperatorWorkspace.containModalFocus);
+        $("draft-resolution").addEventListener("close", () => { if (!$("draft-resolution").open && pending) pending("stay"); });
         $("draft-resolution").addEventListener("cancel", event => { event.preventDefault(); if (pending) pending("stay"); });
         async function open(name, options = {}) {
             if (name === "content" && !await resolve("Open Images", "image")) return false;
