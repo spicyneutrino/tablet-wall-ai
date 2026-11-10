@@ -658,6 +658,32 @@ function descendants(node, predicate) {
     delete global.document;
 }
 
+{
+    const { doc, svg, draw } = drawSetup();
+    const layout = { kind: "logical", width: 600, height: 200, placements: Object.fromEntries(
+        ["a", "b", "offline"].map((id, index) => [id, { x: index * 200, y: 0, w: 180, h: 150, bezel: {} }])) };
+    const devices = { a: { online: true, wake_lock: "denied" }, b: { online: true, wake_lock: "denied" },
+        offline: { online: false, wake_lock: "denied" } };
+    const powerFor = id => stageModel.powerReadiness(devices[id]);
+    global.document = doc;
+    draw({ svg, layout, content: null, profileFor: () => null, labelFor: id => id,
+        statusFor: id => id === "offline" ? { status: "offline", text: "Offline" } : { status: "displayed", text: "Reports current image" },
+        powerFor, runtime: { devices }, fleet: stageModel.fleetPower(Object.keys(devices).map(id => ({ id, online: devices[id].online, power: powerFor(id) }))) });
+    const slot = id => descendants(svg, node => node.getAttribute("data-device-id") === id)[0];
+    for (const id of ["a", "b"]) {
+        assert.equal(descendants(slot(id), node => node.getAttribute("class") === "operator-slot-status").length, 0);
+        assert.equal(descendants(slot(id), node => node.getAttribute("class") === "operator-slot-power").length, 1);
+        assert.equal(slot(id).dataset.powerState, "denied");
+        assert.equal(slot(id).dataset.powerWarning, "true");
+        assert.equal(slot(id).dataset.powerStale, "false");
+        assert.equal(slot(id).getAttribute("aria-label"), id + ", Reports current image, Power: denied");
+    }
+    assert.equal(descendants(slot("offline"), node => node.getAttribute("class") === "operator-slot-status")[0].textContent,
+        "Offline · Last known power denied");
+    delete global.document;
+    console.log("Fleet stage text is stated once while offline text, power marks and accessible evidence remain");
+}
+
 function rosterSetup() {
     const nodes = new Map();
     const doc = { activeElement: null, body: { dataset: {} },

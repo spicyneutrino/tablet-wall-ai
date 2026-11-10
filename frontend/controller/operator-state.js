@@ -178,6 +178,9 @@
             stale: "Confirmation expired", unsupported: "Unsupported client or content", unplaced: "No placement", unknown: "Current " + subject + " unconfirmed" };
         return result(status in texts ? status : "unknown", (texts[status] || texts.unknown) + (render.reason ? " · " + render.reason : ""));
     }
+    function needsAttention(item) {
+        return !item.showing && item.status !== "excluded";
+    }
     function aggregate(config, nowMs) {
         const ids = Object.keys(entries(config.layout)).filter(id => entries(config.layout)[id].participating !== false);
         const states = ids.map(id => tabletState(config, id, nowMs));
@@ -188,7 +191,7 @@
         return { event() { epoch += 1; }, start() { return { epoch, sequence: ++issued }; }, current(ticket) { return ticket.epoch === epoch; },
             accept(ticket) { if (ticket.epoch !== epoch || ticket.sequence < accepted) return false; accepted = ticket.sequence; return true; } };
     }
-    const api = { stageView, layoutSignature, fitLogical, arrangeLogical, rotateLogical, clone, entries, registrationCounts, layoutDraft, bounds, fitTransform, compareIds, sameToken, observeDevice, observeConfig, tabletState, aggregate, readFence };
+    const api = { stageView, layoutSignature, fitLogical, arrangeLogical, rotateLogical, clone, entries, registrationCounts, layoutDraft, bounds, fitTransform, compareIds, sameToken, observeDevice, observeConfig, tabletState, needsAttention, aggregate, readFence };
     if (typeof module !== "undefined" && module.exports) module.exports = api;
     else root.OperatorState = api;
 }(typeof window !== "undefined" ? window : globalThis));
