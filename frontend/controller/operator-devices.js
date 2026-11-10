@@ -1,5 +1,16 @@
 "use strict";
 (function (root) {
+    const RECOVERY_ACTION = /^(Allow|Bring|Open|Check|Reopen|Keep|Return|Wait|Refresh|Review|On the tablet,)/;
+    const RECOVERY_LIMIT = /\b(cannot|not proof|does not confirm)\b/i;
+    function recoveryParagraphs(text) {
+        const parts = [[], [], []];
+        for (const raw of String(text || "").match(/[^.!?]+[.!?]+/g) || []) {
+            const sentence = raw.trim();
+            if (!sentence) continue;
+            parts[RECOVERY_ACTION.test(sentence) ? 1 : RECOVERY_LIMIT.test(sentence) ? 2 : 0].push(sentence);
+        }
+        return parts.map(sentences => sentences.join(" ")).filter(Boolean);
+    }
     async function confirmModels({ ids, modelId, hardwareDeclared, reviewedEtag, api, ingestConfig, currentEtag, progress = () => {}, readAuthority = () => api("GET", "/api/v3/config", undefined, { fenced: true }) }) {
         if (!hardwareDeclared || !ids.length || new Set(ids).size !== ids.length || !modelId || !reviewedEtag) throw new Error("Review the exact tablets, select a model, and declare that you checked their hardware.");
         const captured = ids.slice(), completed = [];
@@ -31,11 +42,33 @@
             ? powerReadiness(state.roster[id], { stale: !!state.rosterError, checkedAt: state.rosterCheckedAt }) : null;
 
         let selectedId = null, impact = null, replacement = null, busy = false, snapshotsKey = "", replaceVersion = 0;
+        let replacementCandidate = null, replacementPointer = null;
         const results = new Map();
         let nameReview = null;
         const message = text => { $("tablet-action-message").textContent = text; };
         const path = (id, suffix = "") => "/api/v3/devices/" + encodeURIComponent(id) + suffix;
         function config() { return state.operatorConfig || { layout: state.base, scene: state.scene, runtime: { devices: state.roster }, revision: state.revision, generation: state.generation }; }
+        function ensureReplacementPointer() {
+            if (replacementPointer) return replacementPointer;
+            replacementPointer = $("tablet-replacement-pointer");
+            if (!replacementPointer) {
+                replacementPointer = document.createElement("div");
+                replacementPointer.id = "tablet-replacement-pointer";
+                replacementPointer.className = "operator-actions";
+                const recovery = $("tablet-recovery");
+                if (recovery && recovery.parentElement) recovery.parentElement.insertBefore(replacementPointer, recovery.nextSibling);
+            }
+            const button = document.createElement("button");
+            button.type = "button"; button.className = "btn"; button.textContent = "Review replacement with a new tablet";
+            button.addEventListener("click", () => {
+                if (!replacementCandidate) return;
+                selectTablet(replacementCandidate);
+                const first = $("replacement-old");
+                if (first && typeof first.focus === "function") first.focus();
+            });
+            replacementPointer.append(button);
+            return replacementPointer;
+        }
         function clearPlans() { nameReview = null; $("tablet-name-review").hidden = true; impact = null; replacement = null; $("tablet-forget-impact").hidden = true; $("replace-apply").disabled = true; $("replace-cancel").disabled = true; }
         function render() {
             renderRoster();
@@ -97,7 +130,12 @@
                 : ["blocked", "invalid", "stale_calibration", "needs_calibration", "needs_profile", "viewport_mismatch", "zoom_changed", "missing_profile", "missing_calibration", "invalid_mapping"].includes(evidence.status) ? "Return the tablet to its calibrated rotation, 100% zoom and launch mode, or review its measurements."
                 : "Current matching reports are separate from connection status. Reconnect keeps this browser identity.";
             const powerGuidance = power && (power.warning || power.stale || !evidence || !evidence.showing) ? power.guidance : "";
-            $("tablet-recovery").textContent = [paintGuidance, powerGuidance].filter(Boolean).join(" ");
+            const recoveryText = [paintGuidance, powerGuidance].filter(Boolean).join(" ");
+            $("tablet-recovery").replaceChildren(...recoveryParagraphs(recoveryText).map(part => {
+                const paragraph = document.createElement("p");
+                paragraph.textContent = part;
+                return paragraph;
+            }));
             $("tablet-recovery").dataset.powerState = power ? power.state : "";
             $("tablet-recovery").dataset.powerWarning = String(!!power && power.warning);
             $("tablet-recovery").dataset.powerStale = String(!!power && power.stale);
@@ -114,8 +152,18 @@
                 const button = $(action);
                 if (button) button.hidden = !tabletOnline;
             }
-            $("open-tablet-measurements").hidden = !mappingStale && !["blocked", "invalid", "stale_calibration", "needs_calibration", "needs_profile", "viewport_mismatch", "zoom_changed", "missing_profile", "missing_calibration", "invalid_mapping"].includes(evidence?.status);
+            const mapped = mappingStale || ["blocked", "invalid", "stale_calibration", "needs_calibration", "needs_profile", "viewport_mismatch", "zoom_changed", "missing_profile", "missing_calibration", "invalid_mapping"].includes(evidence?.status);
+            const measured = state.layoutKind === "physical" || !!(state.base && state.base.kind === "physical")
+                || !!$("grid-kind") && $("grid-kind").value === "physical";
+            $("open-tablet-measurements").hidden = !id || !(measured || mapped);
             $("tablet-arrange").hidden = !id || evidence?.status !== "unplaced";
+            const applied = state.base ? window.OperatorState.entries(state.base) : {};
+            const onlineUnplaced = Object.keys(state.roster)
+                .filter(key => state.roster[key] && state.roster[key].online === true && !applied[key])
+                .sort((a, b) => window.OperatorState.compareIds(state.roster, state.deviceLabels || {}, a, b));
+            replacementCandidate = onlineUnplaced.length ? onlineUnplaced[onlineUnplaced.length - 1] : null;
+            const pointer = ensureReplacementPointer();
+            pointer.hidden = !device || device.online === true || !replacementCandidate;
             const oldIds = Object.keys(state.roster).filter(key => key !== id && !state.roster[key].online);
             $("replacement-offer").hidden = !device || !device.online || !!active || !oldIds.length;
             const oldSelect = $("replacement-old"), oldKey = oldIds.map(key => key + labelFor(key)).join("|");

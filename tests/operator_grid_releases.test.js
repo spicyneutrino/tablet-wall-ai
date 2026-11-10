@@ -13,7 +13,7 @@ class Node {
     querySelectorAll(tag) { const all = node => (node.children || []).flatMap(child => [child, ...all(child)]); return all(this).filter(node => node.tag === tag); }
     closest() { return this; }
     remove() {}
-    focus() {}
+    focus() { global.document.activeElement = this; }
 }
 const nodes = new Map();
 global.document = { getElementById(id) { if (!nodes.has(id)) nodes.set(id, new Node("div")); return nodes.get(id); },
@@ -117,4 +117,65 @@ nodes.get("grid-preview").listeners.click().then(async () => {
         assert.equal(input.value, typed, "committing the field does not restore the previous preset");
     }
     console.log("Grid release acknowledgements and preset labels follow authority updates");
+    const makeDocument = () => {
+        const map = new Map();
+        return { map, activeElement: null,
+            getElementById(id) { if (!map.has(id)) map.set(id, new Node("div")); return map.get(id); },
+            createElement: tag => new Node(tag), createTextNode: text => ({ textContent: text }) };
+    };
+    let dirty = { value: false }, discarded = { calls: 0 }, measured = [];
+    const setup = { doc: makeDocument(), requests: [] };
+    global.document = setup.doc;
+    const openState = { base: { kind: "physical", slots: {} }, layoutKind: "physical", etag: "one", etagState: "current", busy: false,
+        roster: { a: { online: true }, b: { online: true } } };
+    const openOwner = grid.create({ state: openState, api: async (...args) => { setup.requests.push(args); throw new Error("blocked previews send no request"); },
+        labelFor: id => id, validPair: () => null, profileFor: () => null, calibrationFor: () => null,
+        ingestConfig() {}, renderStage() {}, syncDraftUi() {}, isDirty: () => dirty.value, announce() {}, showConflict() {},
+        discardDraft: () => { discarded.calls += 1; dirty.value = false; openOwner.render(); },
+        openMeasurements: id => measured.push(id) });
+    openOwner.render();
+    const node = id => setup.doc.getElementById(id);
+    assert.equal(node("grid-lock-note").hidden, true, "the place lock note is hidden while no placement draft is open");
+    dirty.value = true;
+    openOwner.render();
+    assert.equal(node("grid-lock-note").hidden, false, "a manual placement draft shows the place lock note");
+    assert.equal(node("grid-2x2").disabled, true, "the draft still disables the grid presets");
+    assert.equal(node("grid-lock-note").children[0].textContent,
+        "Wall shapes are paused while your placement draft is open. Apply it, or discard it to use a wall shape.");
+    assert.equal(node("grid-lock-note").children[1].textContent, "Discard");
+    assert.equal(node("grid-lock-note").children[1].className, "btn btn-sm");
+    node("grid-lock-note").children[1].listeners.click();
+    assert.equal(discarded.calls, 1, "the note's Discard runs the existing arrangement discard");
+    assert.equal(node("grid-lock-note").hidden, true, "discarding the draft hides the place lock note");
+    assert.equal(node("grid-2x2").disabled, false, "discarding the draft re-enables the grid presets");
+
+    dirty.value = false;
+    node("grid-rows").value = "1"; node("grid-columns").value = "2";
+    node("grid-gap").value = "0"; node("grid-padding").value = "0";
+    node("grid-sizing").value = "tablets"; node("grid-orientation").value = "preserve";
+    openOwner.render();
+    assert.equal(node("arrange-membership-summary").textContent, "Order and mounting (2 tablets)");
+    const row = id => node("grid-order").children.find(item => item.dataset.deviceId === id);
+    await node("grid-preview").listeners.click();
+    assert.equal(setup.requests.length, 0, "missing mount angles send no preview request");
+    let blockers = node("grid-blockers");
+    assert.equal(blockers.hidden, false, "a blocked measured preview lists its blockers");
+    assert.deepEqual(blockers.children.map(button => button.textContent), ["a: declare mounted top edge", "b: declare mounted top edge"]);
+    assert.deepEqual(blockers.children.map(button => button.className), ["btn btn-sm", "btn btn-sm"]);
+    assert.ok(blockers.children.every(button => button.type === "button"));
+    blockers.children[0].listeners.click();
+    assert.equal(node("arrange-membership").open, true, "the angle blocker opens Order and mounting");
+    assert.equal(setup.doc.activeElement, row("a").querySelectorAll("select")[0], "the angle blocker focuses that tablet's angle control");
+    for (const id of ["a", "b"]) {
+        const angle = row(id).querySelectorAll("select")[0];
+        angle.value = "0"; angle.listeners.change();
+    }
+    await node("grid-preview").listeners.click();
+    assert.equal(setup.requests.length, 0, "missing pinned measurements send no preview request");
+    assert.match(node("grid-message").textContent, /Cannot preview arrangement\. Confirm a model or save measurements/);
+    blockers = node("grid-blockers");
+    assert.deepEqual(blockers.children.map(button => button.textContent), ["a: open measurements", "b: open measurements"]);
+    blockers.children[1].listeners.click();
+    assert.deepEqual(measured, ["b"], "the measurements blocker calls the measurements action for its tablet");
+    console.log("Place lock note and measured blocker links passed");
 }).catch(error => { console.error(error); process.exitCode = 1; });

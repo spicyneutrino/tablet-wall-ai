@@ -66,20 +66,61 @@
         }
         return result;
     }
-    function create({ state, api, labelFor, validPair, profileFor, calibrationFor, ingestConfig, renderStage, syncDraftUi, isDirty, announce, showConflict, modelBusy = () => false, modelReview = () => null, identifyTablet = () => {}, canIdentify = () => false }) {
+    function create({ state, api, labelFor, validPair, profileFor, calibrationFor, ingestConfig, renderStage, syncDraftUi, isDirty, announce, showConflict, modelBusy = () => false, modelReview = () => null, identifyTablet = () => {}, canIdentify = () => false, discardDraft = null, openMeasurements = null }) {
         const { $ } = typeof module !== "undefined" && module.exports ? require("./operator-dom.js") : root.OperatorDom;
         let order = [], selected = new Set(), sizes = {}, angles = {}, storedAngles = {}, rows = new Map(), busy = false, initialized = false;
         let previewCommand = null, inputVersion = 0, releaseRows = new Map(), selectedPreset = null;
         let members = membership(), edited = false, baseEtag = null;
+        let lockNote = null, blockerList = null;
+        const LOCK_TEXT = "Wall shapes are paused while your placement draft is open. Apply it, or discard it to use a wall shape.";
         const named = value => order.reduce((line, id) => line.split(id).join(labelFor(id)), value);
         const text = value => { $("grid-message").textContent = named(value); };
+        function ensureLockNote() {
+            if (lockNote) return lockNote;
+            lockNote = $("grid-lock-note");
+            if (!lockNote) {
+                lockNote = document.createElement("div");
+                lockNote.id = "grid-lock-note"; lockNote.className = "operator-actions";
+                const presets = $("grid-2x2"), row = presets && presets.closest ? presets.closest(".operator-actions") : null;
+                if (row && row.parentElement && typeof row.parentElement.insertBefore === "function") row.parentElement.insertBefore(lockNote, row.nextSibling || null);
+            }
+            const copy = document.createElement("p"); copy.className = "hint"; copy.textContent = LOCK_TEXT;
+            const discard = document.createElement("button"); discard.type = "button"; discard.className = "btn btn-sm"; discard.textContent = "Discard";
+            discard.addEventListener("click", () => { if (discardDraft) discardDraft(); });
+            lockNote.append(copy, discard);
+            return lockNote;
+        }
+        function renderBlockers(blocked) {
+            if (!blockerList) {
+                blockerList = $("grid-blockers");
+                if (!blockerList) {
+                    blockerList = document.createElement("div");
+                    blockerList.id = "grid-blockers"; blockerList.className = "operator-actions";
+                    const message = $("grid-message");
+                    if (message && message.parentElement && typeof message.parentElement.insertBefore === "function") message.parentElement.insertBefore(blockerList, message.nextSibling || null);
+                }
+            }
+            blockerList.replaceChildren(...blocked.map(item => {
+                const button = document.createElement("button");
+                button.type = "button"; button.className = "btn btn-sm";
+                button.textContent = labelFor(item.id) + (item.kind === "angle" ? ": declare mounted top edge" : ": open measurements");
+                button.addEventListener("click", () => {
+                    if (item.kind !== "angle") { if (openMeasurements) openMeasurements(item.id); return; }
+                    $("arrange-membership").open = true;
+                    const row = rows.get(item.id);
+                    if (row && row.angle && typeof row.angle.focus === "function") row.angle.focus();
+                });
+                return button;
+            }));
+            blockerList.hidden = !blocked.length;
+        }
         function invalidate() {
             if (!edited) baseEtag = state.etag;
             edited = true;
             state.viewLive = false;
             inputVersion += 1;
             state.gridPreview = null; previewCommand = null;
-            text("");
+            text(""); renderBlockers([]);
             syncDraftUi(); updateButtons(); renderStage();
         }
         const presets = [["grid-2x2", true], ["grid-1x4", false]];
@@ -110,6 +151,7 @@
                 $("grid-holes").checked = holes;
             }
             const manualDirty = !state.gridPreview && isDirty();
+            ensureLockNote().hidden = !manualDirty;
             for (const id of ["grid-kind", "grid-rows", "grid-columns", "grid-gap", "grid-padding", "grid-orientation", "grid-sizing", "grid-holes", "grid-2x2", "grid-1x4", "grid-common-mount", "group-confirm"]) if ($(id)) $(id).disabled = manualDirty || state.busy;
             if ($("group-confirm")) $("group-confirm").disabled ||= modelBusy();
             order.forEach((id, index) => {
@@ -149,11 +191,8 @@
                 return !pair || !slot && angles[id] === "" && $("grid-common-mount").value === ""
                     || slot && pair && (slot.profile_revision !== pair.profile.revision || slot.calibration_revision !== pair.calibration.revision);
             });
-            const names = ids.map(labelFor);
-            const subjects = names.every(name => /^Tablet \d+$/.test(name)) ? "Tablets " + names.map(name => name.slice(7)).join(", ") : names.join(", ");
             $("arrange-membership-summary").textContent = !ids.length ? "Order and mounting · choose tablets"
-                : required ? "Order and mounting · " + subjects + " · review tablet sizes and mounting"
-                    : "Order and mounting";
+                : "Order and mounting (" + ids.length + " tablet" + (ids.length === 1 ? "" : "s") + ")";
             if (required) $("arrange-membership").open = true;
             $("arrange-membership").dataset.required = String(!!required);
         }
@@ -270,17 +309,20 @@
             if (released.some(id => !Array.from($("grid-releases").querySelectorAll("input")).some(input => input.dataset.release === id && input.checked))) {
                 text("Explicitly acknowledge every released active tablet, including offline reservations."); return;
             }
+            let blocked = [];
             try {
                 const kind = $("grid-kind").value, ids = order.filter(id => selected.has(id));
                 if ($("grid-orientation").value === "auto" && ids.some(id => !state.roster[id] || !state.roster[id].online)) throw new Error("Auto orientation needs a fresh online viewport. Choose Preserve for offline reservations.");
                 const common = $("grid-common-mount") ? $("grid-common-mount").value : "";
                 const submittedAngles = Object.fromEntries(ids.map(id => [id, angles[id] !== "" ? angles[id] : common !== "" ? common : storedAngles[id]]));
-                if (kind === "physical" && ids.some(id => submittedAngles[id] === "")) throw new Error("Declare the mounted top edge for every new measured tablet. 90° and 270° are distinct physical directions.");
+                blocked = kind === "physical" ? ids.filter(id => submittedAngles[id] === "").map(id => ({ id, kind: "angle" })) : [];
+                if (blocked.length) throw new Error("Declare the mounted top edge for every new measured tablet. 90° and 270° are distinct physical directions.");
                 const revisions = {};
                 ids.forEach(id => { const slot = state.base.slots && state.base.slots[id], pair = validPair(id);
                     if (slot) revisions[id] = { profile_revision: slot.profile_revision, calibration_revision: slot.calibration_revision };
                     else if (pair) revisions[id] = { profile_revision: pair.profile.revision, calibration_revision: pair.calibration.revision };
                 });
+                blocked = kind === "physical" ? ids.filter(id => !revisions[id]).map(id => ({ id, kind: "measurements" })) : [];
                 const number = id => $(id).value.trim() === "" ? NaN : Number($(id).value);
                 previewCommand = command({ kind, ids, rows: number("grid-rows"), columns: number("grid-columns"), gap: number("grid-gap"), padding: number("grid-padding"), sizing: $("grid-sizing").value,
                     orientation: kind === "physical" ? "preserve" : $("grid-orientation").value, holes: $("grid-holes").checked, releases: released, sizes, revisions, angles: submittedAngles });
@@ -309,7 +351,10 @@
                 updateButtons(); syncDraftUi(); renderStage();
                 if ($("arrange-membership").dataset.required === "false") $("arrange-membership").open = false;
                 $("btn-apply").focus();
-            } catch (error) { text("Cannot preview arrangement. " + error.message + " The committed wall is unchanged."); }
+            } catch (error) {
+                text("Cannot preview arrangement. " + error.message + " The committed wall is unchanged.");
+                renderBlockers(/mounted top edge|Confirm a model or save measurements/.test(error.message) ? blocked : []);
+            }
             finally { busy = false; updateButtons(); }
         }
         async function apply() {

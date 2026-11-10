@@ -521,6 +521,12 @@ window.PhysicalStage = {
                     const number = document.createElement("span"); number.className = "dev-number";
                     const name = document.createElement("span"); name.className = "dev-label";
                     const meta = document.createElement("span"); meta.className = "dev-meta";
+                    const facts = {};
+                    for (const fact of ["connection", "image", "power"]) {
+                        const node = document.createElement("span"); node.className = "dev-fact"; node.dataset.fact = fact;
+                        if (Object.keys(facts).length) meta.append(document.createTextNode(" · "));
+                        facts[fact] = node; meta.append(node);
+                    }
                     identity.append(number, name); pick.append(identity, meta); item.append(pick);
                     pick.addEventListener("click", () => selectDevice(entry.id, { reveal: true }));
                     const add = document.createElement("button"); add.type = "button"; add.className = "btn btn-sm dev-action"; add.textContent = "Place";
@@ -531,21 +537,32 @@ window.PhysicalStage = {
                             else addSelectedDevice();
                         }
                     });
-                    item.append(add); row = { item, pick, number, name, meta, add }; deviceRows.set(entry.id, row);
+                    item.append(add); row = { item, pick, number, name, meta, facts, add }; deviceRows.set(entry.id, row);
                 }
                 const online = isOnline(entry.id), current = state.operatorConfig && !state.rosterError
                     && window.OperatorState.tabletState(state.operatorConfig, entry.id, performance.now());
                 const status = state.rosterError ? "Status stale · refresh the operator connection"
                     : current ? current.text : online ? "Connected · not on the wall" : "Offline";
                 const power = powerFor(entry.id);
+                const device = state.roster[entry.id];
+                const seen = device && device.last_seen ? Date.parse(device.last_seen) : NaN;
+                const connection = state.rosterError ? "Status stale"
+                    : online ? "Connected"
+                    : Number.isFinite(seen) ? "Offline · last seen " + new Date(seen).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })
+                    : "Offline";
+                const image = current ? (current.status === "unplaced" ? "Not on the wall" : current.text)
+                    : state.rosterError ? "Current image evidence unavailable"
+                    : "Status unknown";
                 row.number.textContent = numberTag(entry.id);
                 row.name.textContent = entry.label;
-                row.meta.textContent = [current && current.showing ? "" : status, power ? power.short : ""].filter(Boolean).join(" · ");
+                row.facts.connection.textContent = connection;
+                row.facts.image.textContent = image;
+                row.facts.power.textContent = power ? power.short : "";
                 row.item.dataset.status = state.rosterError ? "stale" : current ? current.status : online ? "online" : "offline";
                 row.item.dataset.powerState = power ? power.state : "unknown";
                 row.item.dataset.powerWarning = String(!!power && power.warning);
                 row.item.dataset.powerStale = String(!!power && power.stale);
-                row.pick.setAttribute("aria-label", numberedLabel(entry.id) + ", " + status + (power ? ". " + power.label : ""));
+                row.pick.setAttribute("aria-label", numberedLabel(entry.id) + ", " + connection + ", " + status + (power ? ". " + power.label : ""));
                 row.add.hidden = !!(entry.slot || entry.placement); row.add.disabled = state.busy;
                 if (el.deviceList.children[index] !== row.item) el.deviceList.insertBefore(row.item, el.deviceList.children[index] || null);
             }
