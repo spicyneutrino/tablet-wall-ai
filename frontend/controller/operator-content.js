@@ -273,6 +273,7 @@ window.OperatorContent = {
                 const pattern = isTestPattern(image);
                 row.item.hidden = !image.name.toLocaleLowerCase().includes(search);
                 row.patternTag.hidden = !pattern;
+                row.patternTag.textContent = pattern ? "Test pattern" : "";
                 const inspected = selectionDirty && image.id === selected;
                 row.button.setAttribute("aria-pressed", String(inspected)); row.button.disabled = busy;
                 const applied = Boolean(state.scene && state.scene.content.type === "image" && state.scene.content.asset === image.id);

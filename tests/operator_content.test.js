@@ -525,6 +525,7 @@ async function patternGrouping() {
     assert.equal(tag(patternA.id).hidden, false, "a pattern shows its visible tag");
     assert.equal(tag(patternB.id).hidden, false);
     assert.equal(tag(managed.id).hidden, true, "a managed upload shaped like a pattern is not labelled");
+    assert.equal(tag(managed.id).textContent, "", "ordinary gallery tiles retain their plain text contract");
     assert.equal(tag(wrongId.id).hidden, true, "a curated file whose name does not match its own id is not labelled");
     assert.equal(tag(plain.id).hidden, true);
     assert.equal(button(patternA.id).attrs["aria-label"], "Preview " + patternA.name + ", test pattern",
