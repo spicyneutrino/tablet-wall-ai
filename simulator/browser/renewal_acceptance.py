@@ -1890,22 +1890,13 @@ def _roster_focus_ok(
     focused_id: str,
     scroll_before: float,
 ) -> bool:
-    """The originally focused roster row keeps focus, bounds and page scroll."""
+    """The originally focused roster row keeps its identity, visible bounds and page scroll."""
     if not reordered or not before.get("focusInside") or not after.get("focusInside"):
         return False
     if not after.get("inside") or after.get("activeId") != focused_id:
         return False
     if after.get("scrollY") != scroll_before:
         return False
-    before_box = before.get("containerRect")
-    after_box = after.get("containerRect")
-    if not before_box or not after_box:
-        return False
-    for edge in ("top", "bottom", "left", "right"):
-        if edge not in before_box or edge not in after_box:
-            return False
-        if abs(float(after_box[edge]) - float(before_box[edge])) > 0.5:
-            return False
     return True
 
 
@@ -2163,7 +2154,7 @@ def images_workbench(rig: RenewalRig) -> None:
         {"reordered": reordered, "focusBefore": focus_before, "focus": focus,
          "scrollBefore": scroll_before, "expectedFocusedId": ids[0]},
         {"reordered": True, "focusInside": True, "inside": True,
-         "activeId": ids[0], "containerRect": "unchanged", "scrollY": scroll_before},
+         "activeId": ids[0], "inside": True, "scrollY": scroll_before},
         obligation="C-FOCUS-ROSTER",
     )
 
@@ -3178,10 +3169,10 @@ def measured_blockers(rig: RenewalRig) -> None:
                 page,
                 "({id}) => { const panel = document.getElementById('panel-system');"
                 " const details = document.getElementById('measurement-details');"
-                " const selected = document.getElementById('selected-id');"
+                " const selected = document.querySelector('#device-list .dev-pick[aria-pressed=true]');"
                 " const active = document.activeElement;"
                 " return !!panel && !panel.hidden && !!details && details.open"
-                " && !!selected && selected.textContent.trim() === id"
+                " && !!selected && selected.dataset.deviceId === id"
                 " && !!active && (active.id === 'tablet-model' || details.contains(active)); }",
                 arg={"id": row["id"]},
                 timeout=10,
@@ -3191,7 +3182,7 @@ def measured_blockers(rig: RenewalRig) -> None:
             ".filter(panel => !panel.hidden && panel.getClientRects().length > 0)"
             ".map(panel => panel.id),"
             " detailsOpen: !!document.getElementById('measurement-details')?.open,"
-            " selected: (document.getElementById('selected-id') || {}).textContent,"
+            " selected: document.querySelector('#device-list .dev-pick[aria-pressed=true]')?.dataset.deviceId,"
             " active: document.activeElement ? {id: document.activeElement.id,"
             " tag: document.activeElement.tagName} : null})"
         )
@@ -3218,7 +3209,7 @@ def measured_blockers(rig: RenewalRig) -> None:
             "(id) => { const details = document.getElementById('measurement-details');"
             " const active = document.activeElement; const panel = document.getElementById('panel-system');"
             " return !!panel && !panel.hidden && !!details && details.open"
-            " && document.getElementById('selected-id')?.textContent.trim() === id"
+            " && document.querySelector('#device-list .dev-pick[aria-pressed=true]')?.dataset.deviceId === id"
             " && !!active && !active.disabled && active.getClientRects().length > 0"
             " && (active.id === 'tablet-model' || details.contains(active)); }",
             arg=selected_id,

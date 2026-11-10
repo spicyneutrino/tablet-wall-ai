@@ -125,7 +125,7 @@ const content = context.window.OperatorContent.create({ state, renderStage() {},
     assert.equal(node("image-message").textContent, "", "routine success is silent; the header carries the state");
     assert.equal(buttonA.attrs["aria-pressed"], "false", "a completed Show clears the rust draft outline");
     assert.equal(cardA.dataset.applied, "true", "the applied marker remains when no draft exists");
-    const appliedNote = cardA.children[1];
+    const appliedNote = cardA.children.find(child => child.id === buttonA.attrs["aria-describedby"]);
     assert.match(appliedNote.textContent, /Applied configuration/);
     assert.match(appliedNote.textContent, /tablet reports are separate/);
     assert.equal(buttonA.attrs["aria-describedby"], appliedNote.id, "the applied marker has an accessible description");
