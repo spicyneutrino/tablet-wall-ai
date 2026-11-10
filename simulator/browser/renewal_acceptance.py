@@ -18,9 +18,20 @@ not from the parallel T1 and T2 implementations. The five P0 scenarios are:
     pattern-grouping      D7, C-PATTERN, C-GALLERY
     layout-foundation     C-LAYOUT, C-TOUCH
 
+The five wave-2 scenarios are:
+
+    images-workbench      D9, D10, C-WORKBENCH, C-FOCUS-ROSTER
+    first-wall            D11, D12, C-GUARD, C-STATUS, C-GEOMETRY
+    tablet-facts          D13, C-RECOVERY, C-POWER, C-STATUS
+    measured-blockers     D12, C-GEOMETRY
+    server-stop           C-OFFLINE
+
 The private runtime directory is chosen with TABLET_WALL_RENEWAL_RUNTIME when
 set, so a caller can keep DB, assets, media, backups, HOME, XDG and TMPDIR under
 its evidence directory outside the repository. It is removed after each run.
+The private port range defaults to 43300-43319 and is overridable per worker
+with TABLET_WALL_RENEWAL_PORT_RANGE=START-END, so parallel workers never share
+a port.
 """
 
 from __future__ import annotations
@@ -36,9 +47,12 @@ import socket
 import subprocess
 import sys
 import tempfile
+import time
 import traceback
 from datetime import datetime, timezone
 from typing import Any
+
+from PIL import Image, ImageDraw
 
 REPO = Path(__file__).resolve().parents[2]
 RENEWAL_TASK_ID = "renewal-1"
@@ -46,7 +60,28 @@ DRIVER_PATHS = (
     "simulator/browser/renewal_acceptance.py",
     "simulator/browser/restoration_acceptance.py",
 )
-PORTS = tuple(range(43300, 43320))
+
+
+def _port_range() -> tuple[int, int]:
+    """Return the assigned private port range as an inclusive pair."""
+    raw = os.environ.get("TABLET_WALL_RENEWAL_PORT_RANGE", "").strip()
+    if not raw:
+        return 43300, 43319
+    start_text, _, end_text = raw.partition("-")
+    try:
+        start = int(start_text)
+        end = int(end_text) if end_text else start
+    except ValueError as error:
+        raise ValueError(
+            f"TABLET_WALL_RENEWAL_PORT_RANGE must be START-END, got {raw!r}"
+        ) from error
+    if not (0 < start <= end < 65536):
+        raise ValueError(f"TABLET_WALL_RENEWAL_PORT_RANGE is out of range: {raw!r}")
+    return start, end
+
+
+PORT_START, PORT_END = _port_range()
+PORTS = tuple(range(PORT_START, PORT_END + 1))
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 
@@ -102,6 +137,39 @@ SCENARIO_ENTRIES = (
         "fixtures": 0,
         "obligations": ("C-LAYOUT", "C-TOUCH"),
     },
+    {
+        "name": "images-workbench",
+        "owner": "T4",
+        "fixtures": 10,
+        "obligations": (
+            "D9", "D10", "C-WORKBENCH", "C-FOCUS-ROSTER", "C-GALLERY",
+            "C-LAYOUT", "C-TOUCH", "C-NAV",
+        ),
+    },
+    {
+        "name": "first-wall",
+        "owner": "T4",
+        "fixtures": 8,
+        "obligations": ("D11", "D12", "C-GUARD", "C-STATUS", "C-GEOMETRY", "C-POWER"),
+    },
+    {
+        "name": "tablet-facts",
+        "owner": "T5",
+        "fixtures": 8,
+        "obligations": ("D13", "C-RECOVERY", "C-POWER"),
+    },
+    {
+        "name": "measured-blockers",
+        "owner": "T5",
+        "fixtures": 0,
+        "obligations": ("D12", "C-GEOMETRY"),
+    },
+    {
+        "name": "server-stop",
+        "owner": "T6",
+        "fixtures": 8,
+        "obligations": ("C-OFFLINE",),
+    },
 )
 SCENARIOS = {entry["name"]: entry for entry in SCENARIO_ENTRIES}
 SCENARIO_FIXTURES = {entry["name"]: entry["fixtures"] for entry in SCENARIO_ENTRIES}
@@ -149,7 +217,73 @@ LIMITATIONS = [
     "same-origin fractional iframe cannot prove it without weakening that policy.",
     "A gallery tile's accessible name is read from its aria-label, which is the name "
     "Chromium computes for a button without aria-labelledby.",
+    "images-workbench serves a purpose-built ten-image library (4000x600, 900x2400 and "
+    "3200x1000 among them) labelled GENERATED FIXTURE; it is not the shipped library.",
 ]
+
+# The ten generated workbench images. Three exercise extreme whole-image shapes.
+WORKBENCH_IMAGES = (
+    ("01-4000x600", 4000, 600),
+    ("02-900x2400", 900, 2400),
+    ("03-3200x1000", 3200, 1000),
+    ("04-1600x1000", 1600, 1000),
+    ("05-1000x1600", 1000, 1600),
+    ("06-2400x1000", 2400, 1000),
+    ("07-1280x720", 1280, 720),
+    ("08-720x1280", 720, 1280),
+    ("09-2048x1152", 2048, 1152),
+    ("10-1024x1024", 1024, 1024),
+)
+WORKBENCH_SHAPES = (
+    ("GENERATED-FIXTURE-01-4000x600.png", 4000, 600),
+    ("GENERATED-FIXTURE-02-900x2400.png", 900, 2400),
+    ("GENERATED-FIXTURE-03-3200x1000.png", 3200, 1000),
+)
+
+
+def prepare_workbench_assets(assets_root: Path) -> list[dict[str, Any]]:
+    """Write the ten reviewed GENERATED FIXTURE images and return their hashes."""
+    target = Path(assets_root)
+    target.mkdir(parents=True, exist_ok=True)
+    prepared: list[dict[str, Any]] = []
+    for label, width, height in WORKBENCH_IMAGES:
+        name = f"GENERATED-FIXTURE-{label}.png"
+        path = target / name
+        image = Image.new("RGB", (width, height), (28, 36, 48))
+        draw = ImageDraw.Draw(image)
+        columns, rows = 8, 6
+        cell_w, cell_h = max(1, width // columns), max(1, height // rows)
+        for row in range(rows):
+            for column in range(columns):
+                value = hashlib.sha256(f"{label}:{row}:{column}".encode()).digest()
+                draw.rectangle(
+                    (
+                        column * cell_w,
+                        row * cell_h,
+                        min(width - 1, (column + 1) * cell_w - 1),
+                        min(height - 1, (row + 1) * cell_h - 1),
+                    ),
+                    fill=tuple(24 + byte % 200 for byte in value[:3]),
+                )
+        draw.rectangle(
+            (max(0, width // 2 - 20), max(0, height // 2 - 20),
+             min(width - 1, width // 2 + 20), min(height - 1, height // 2 + 20)),
+            fill=(240, 240, 240),
+        )
+        image.save(path, format="PNG")
+        prepared.append(
+            {
+                "name": name,
+                "path": str(path),
+                "sha256": _sha256_bytes(path.read_bytes()),
+                "bytes": path.stat().st_size,
+                "width": width,
+                "height": height,
+                "format": "png",
+                "generated_fixture": True,
+            }
+        )
+    return prepared
 
 
 # ---------------------------------------------------------------------------
@@ -190,7 +324,7 @@ def resolved_width(requested: float) -> int:
 
 
 class RenewalRig(Rig):
-    """The restoration Rig, bound to 43300-43319 and a caller-owned runtime root."""
+    """The restoration Rig, bound to the assigned private port range."""
 
     def setup(self, playwright: Any) -> None:
         runtime_root = Path(os.environ.get("TABLET_WALL_RENEWAL_RUNTIME") or tempfile.gettempdir())
@@ -198,8 +332,11 @@ class RenewalRig(Rig):
         self.private = Path(tempfile.mkdtemp(prefix=f"renewal-{self.scenario}-", dir=runtime_root))
         data = self.private / "data"
         self.fixtures = generate_fixtures(self.private / "fixtures")
-        count = SCENARIO_FIXTURES[self.scenario]
-        self.assets = prepare_assets(self.private / "fixtures", data / "assets", count)
+        if self.scenario == "images-workbench":
+            self.assets = prepare_workbench_assets(data / "assets")
+        else:
+            count = SCENARIO_FIXTURES[self.scenario]
+            self.assets = prepare_assets(self.private / "fixtures", data / "assets", count)
         self.listener = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
         self.listener.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
         bound = None
@@ -1437,12 +1574,1645 @@ def layout_foundation(rig: RenewalRig) -> None:
     page.set_viewport_size({"width": 1440, "height": 900})
 
 
+# ---------------------------------------------------------------------------
+# Wave-2 shared helpers
+# ---------------------------------------------------------------------------
+
+
+def _url_path(row: dict[str, Any]) -> str:
+    return row["url"].split("?")[0]
+
+
+def _controller_write_rows(rig: RenewalRig, start: int) -> list[dict[str, Any]]:
+    """Non-GET requests issued by the operator page since ``start``."""
+    return [
+        row
+        for row in rig.requests[start:]
+        if row.get("page") == "controller" and row.get("method") not in ("GET", "HEAD")
+    ]
+
+
+def _layout_write_rows(rig: RenewalRig, start: int) -> list[dict[str, Any]]:
+    """Durable arrangement writes since ``start``; previews are not writes."""
+    rows = []
+    for row in rig.requests[start:]:
+        if row.get("page") != "controller" or row.get("method") not in ("PUT", "POST", "DELETE"):
+            continue
+        path = _url_path(row)
+        if (
+            path.endswith("/api/v3/grid")
+            or path.endswith("/api/v3/layout")
+            or path.endswith("/api/v3/logical-layout")
+            or path.startswith("/api/v3/layouts")
+            or path.startswith("/api/v3/logical-layouts")
+        ):
+            rows.append(row)
+    return rows
+
+
+def _scene_write_rows(rig: RenewalRig, start: int) -> list[dict[str, Any]]:
+    return [
+        row
+        for row in rig.requests[start:]
+        if row.get("page") == "controller"
+        and row.get("method") == "PUT"
+        and _url_path(row).endswith("/api/v3/scene")
+    ]
+
+
+def _place_grid(
+    rig: RenewalRig, clients: list[tuple[Any, str]], width: int, height: int, columns: int
+) -> list[str]:
+    """Place the joined clients on a logical wall with ``columns`` per row."""
+    ids = [device_id for _, device_id in clients]
+    status, _ = rig.request("PUT", "/wall", {"width": width, "height": height})
+    if status != 200:
+        raise RuntimeError(f"logical wall write failed: {status}")
+    rows = max(1, math.ceil(len(ids) / columns))
+    cell_width = max(1, width // columns)
+    cell_height = max(1, height // rows)
+    for index, device_id in enumerate(ids):
+        status, _ = rig.request(
+            "PUT",
+            f"/devices/{device_id}/placement",
+            {
+                "x": (index % columns) * cell_width,
+                "y": (index // columns) * cell_height,
+                "w": cell_width,
+                "h": cell_height,
+            },
+        )
+        if status != 200:
+            raise RuntimeError(f"placement write failed for {index}: {status}")
+    rig.wait_config(
+        lambda config: all(device_id in config["layout"]["placements"] for device_id in ids),
+        timeout=20,
+    )
+    return ids
+
+
+def _gallery_metrics(page: Any, *, reset_scroll: bool = True) -> dict[str, Any]:
+    return page.evaluate(
+        """reset => {
+            const gallery = document.getElementById('image-gallery');
+            if (!gallery) return {present: false};
+            if (reset) gallery.scrollTop = 0;
+            const g = gallery.getBoundingClientRect();
+            const tiles = [...gallery.children].filter(li => !li.hidden).map(li => {
+                const button = li.querySelector('button');
+                const name = li.querySelector('.image-choice-name');
+                const size = li.querySelector('.image-size');
+                const img = li.querySelector('img');
+                const rect = li.getBoundingClientRect();
+                const imageRect = img ? img.getBoundingClientRect() : null;
+                return {
+                    assetId: li.dataset.assetId || '',
+                    name: name ? name.textContent : null,
+                    buttonText: button ? button.textContent.trim() : null,
+                    ariaLabel: button ? button.getAttribute('aria-label') : null,
+                    imageSize: size ? size.textContent.trim() : null,
+                    rect: {top: rect.top, bottom: rect.bottom, left: rect.left, right: rect.right},
+                    img: imageRect ? {
+                        width: imageRect.width,
+                        height: imageRect.height,
+                        objectFit: getComputedStyle(img).objectFit,
+                        hidden: img.hidden,
+                    } : null,
+                    insideGallery: rect.top >= g.top - 1 && rect.bottom <= g.bottom + 1
+                        && rect.left >= g.left - 1 && rect.right <= g.right + 1,
+                    insideViewport: rect.top >= -1 && rect.bottom <= innerHeight + 1
+                        && rect.left >= -1 && rect.right <= innerWidth + 1,
+                };
+            });
+            return {
+                present: true,
+                gallery: {
+                    top: g.top, bottom: g.bottom, left: g.left, right: g.right,
+                    clientHeight: gallery.clientHeight,
+                    scrollHeight: gallery.scrollHeight,
+                    overflowY: getComputedStyle(gallery).overflowY,
+                    scrollTop: gallery.scrollTop,
+                },
+                tiles,
+                innerWidth,
+                innerHeight,
+                scrollY: window.scrollY,
+            };
+        }""",
+        reset_scroll,
+    )
+
+
+def _drawing_metrics(page: Any) -> dict[str, Any]:
+    return page.evaluate(
+        """() => {
+            const host = document.getElementById('wall-context-content');
+            const svg = document.getElementById('stage-svg');
+            if (!host || !svg) return {present: false};
+            const style = getComputedStyle(host);
+            const innerWidth = host.clientWidth
+                - parseFloat(style.paddingLeft) - parseFloat(style.paddingRight);
+            const innerHeight = host.clientHeight
+                - parseFloat(style.paddingTop) - parseFloat(style.paddingBottom);
+            const rect = svg.getBoundingClientRect();
+            const viewBox = svg.viewBox.baseVal;
+            if (!viewBox.width || !viewBox.height) return {present: false};
+            const widthBudget = innerWidth / viewBox.width;
+            const heightBudget = innerHeight / viewBox.height;
+            const limiting = widthBudget <= heightBudget ? 'width' : 'height';
+            const fill = limiting === 'width' ? rect.width / innerWidth : rect.height / innerHeight;
+            return {
+                present: true,
+                innerWidth, innerHeight,
+                drawing: {width: rect.width, height: rect.height, left: rect.left, top: rect.top},
+                viewBox: {width: viewBox.width, height: viewBox.height},
+                limiting,
+                fill,
+            };
+        }"""
+    )
+
+
+def _commit_positions(page: Any) -> dict[str, Any]:
+    return page.evaluate(
+        """() => {
+            const bar = document.getElementById('commit-bar');
+            const evidence = document.querySelector('.commit-evidence');
+            return {
+                bar: bar ? getComputedStyle(bar).position : null,
+                evidence: evidence ? getComputedStyle(evidence).position : null,
+            };
+        }"""
+    )
+
+
+def _select_gallery_image(rig: RenewalRig, index: int = 0) -> bool:
+    page = rig.page
+    tiles = page.locator("#image-gallery > li:not([hidden]) .image-choice-button")
+    if tiles.count() <= index:
+        return False
+    tiles.nth(index).click()
+    page.wait_for_timeout(120)
+    return _soft_wait(
+        page, "() => document.getElementById('show-image')?.disabled === false", timeout=15
+    )
+
+
+def _box_in_viewport(page: Any, selector: str) -> dict[str, Any]:
+    locator = page.locator(selector)
+    if not locator.count():
+        return {"present": False, "inside": False}
+    box = locator.first.bounding_box()
+    viewport = page.evaluate("() => ({width: innerWidth, height: innerHeight})")
+    if not box:
+        return {"present": True, "inside": False, "visible": False, "viewport": viewport}
+    inside = (
+        box["x"] >= -0.5
+        and box["y"] >= -0.5
+        and box["x"] + box["width"] <= viewport["width"] + 0.5
+        and box["y"] + box["height"] <= viewport["height"] + 0.5
+    )
+    return {"present": True, "inside": inside, "box": box, "viewport": viewport}
+
+
+def _navigation_modes(page: Any) -> dict[str, bool]:
+    return page.evaluate(
+        """() => {
+            const shown = node => {
+                if (!node) return false;
+                const style = getComputedStyle(node);
+                return style.display !== 'none' && style.visibility !== 'hidden'
+                    && node.getClientRects().length > 0;
+            };
+            return {
+                tabs: shown(document.getElementById('rail-tabs')),
+                compact: shown(document.getElementById('compact-task-select')),
+            };
+        }"""
+    )
+
+
+def _overflow(page: Any) -> dict[str, Any]:
+    return page.evaluate(
+        "() => ({scrollWidth: document.documentElement.scrollWidth, innerWidth})"
+    )
+
+
+def _roster_focus_metrics(page: Any) -> dict[str, Any]:
+    return page.evaluate(
+        """() => {
+            const active = document.activeElement;
+            const roster = document.getElementById('exception-roster');
+            if (!active || !roster || !roster.contains(active)) return {focusInside: false};
+            let container = null, node = active.parentElement;
+            while (node && node !== document.body) {
+                const style = getComputedStyle(node);
+                if (/(auto|scroll)/.test(style.overflowY + style.overflowX)) { container = node; break; }
+                node = node.parentElement;
+            }
+            container = container || roster;
+            const bounds = container.getBoundingClientRect();
+            const rect = active.getBoundingClientRect();
+            return {
+                focusInside: true,
+                inside: rect.top >= bounds.top - 1 && rect.bottom <= bounds.bottom + 1
+                    && rect.left >= bounds.left - 1 && rect.right <= bounds.right + 1
+                    && rect.top >= -1 && rect.bottom <= innerHeight + 1,
+                container: container.id || String(container.className),
+                activeId: active.closest('li') ? active.closest('li').dataset.deviceId : null,
+                rect: {top: rect.top, bottom: rect.bottom, left: rect.left, right: rect.right},
+                containerRect: {top: bounds.top, bottom: bounds.bottom, left: bounds.left, right: bounds.right},
+                scrollY: window.scrollY,
+            };
+        }"""
+    )
+
+
+def _tablet_rows(page: Any) -> list[dict[str, Any]]:
+    return page.evaluate(
+        """() => [...document.querySelectorAll('#device-list .dev-row')].map(row => {
+            const pick = row.querySelector('.dev-pick');
+            return {
+                id: row.dataset.deviceId,
+                status: row.dataset.status,
+                powerState: row.dataset.powerState,
+                powerWarning: row.dataset.powerWarning,
+                powerStale: row.dataset.powerStale,
+                pickLabel: pick ? pick.getAttribute('aria-label') : null,
+                facts: [...row.querySelectorAll('.dev-fact')].map(node => ({
+                    fact: node.dataset.fact,
+                    text: (node.textContent || '').trim(),
+                })),
+            };
+        })"""
+    )
+
+
+def _fact(row: dict[str, Any], name: str) -> str | None:
+    for fact in row["facts"]:
+        if fact["fact"] == name:
+            return fact["text"]
+    return None
+
+
+def _restart_server(rig: RenewalRig) -> dict[str, Any]:
+    """Restart the private server on the same port and data roots."""
+    listener = None
+    for _ in range(50):
+        candidate = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+        candidate.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+        try:
+            candidate.bind(("127.0.0.1", rig.port))
+            candidate.listen(128)
+            listener = candidate
+            break
+        except OSError:
+            candidate.close()
+            time.sleep(0.2)
+    if listener is None:
+        raise RuntimeError(f"could not rebind private port {rig.port} for the restart")
+    if rig.server_log is not None:
+        try:
+            rig.server_log.close()
+        except OSError:
+            pass
+    log_path = rig.out / "server-restart.log"
+    server, log, argv = launch_server(rig.source_root, rig.env, log_path, listener)
+    listener.close()
+    wait_ready(rig.base, server, log_path)
+    rig.server = server
+    rig.server_log = log
+    rig.argv = argv
+    return {"pid": server.pid, "log": str(log_path), "argv": argv}
+
+
+# ---------------------------------------------------------------------------
+# images-workbench (D9, D10, C-WORKBENCH, C-FOCUS-ROSTER)
+# ---------------------------------------------------------------------------
+
+
+def images_workbench(rig: RenewalRig) -> None:
+    page = rig.page
+    clients = [
+        rig.new_client(CLIENT_SPECS[index % len(CLIENT_SPECS)], index)
+        for index in range(6)
+    ]
+    ids = _place_grid(rig, clients, 1800, 1000, 3)
+    _task(rig, "Images")
+    wait_until(
+        page, "() => document.querySelectorAll('#image-gallery > li').length === 10", timeout=40
+    )
+    wait_until(page, "() => document.querySelectorAll('#stage-svg .slot').length === 6", timeout=30)
+
+    payload = rig.request("GET", "/api/v3/images")[1]
+    images = payload.get("images", []) if isinstance(payload, dict) else []
+    inventory = {item["name"]: item for item in images}
+    rig.check(
+        "The workbench serves the ten GENERATED FIXTURE images, including the three extreme shapes",
+        len(images) == 10 and all(name in inventory for name, _, _ in WORKBENCH_SHAPES),
+        {"count": len(images), "names": sorted(inventory)},
+        {"count": 10, "shapes": [name for name, _, _ in WORKBENCH_SHAPES]},
+        obligation="C-WORKBENCH",
+    )
+
+    def viewport(width: int, height: int) -> None:
+        page.set_viewport_size({"width": width, "height": height})
+        page.wait_for_timeout(180)
+        page.evaluate("() => window.scrollTo(0, 0)")
+        _task(rig, "Images")
+        wait_until(
+            page, "() => document.querySelectorAll('#stage-svg .slot').length === 6", timeout=20
+        )
+
+    # 1440x900: drawing width, gallery whole thumbnails, sticky bar, phone gate.
+    viewport(1440, 900)
+    gallery = _gallery_metrics(page)
+    whole = [
+        tile for tile in gallery["tiles"] if tile["insideGallery"] and tile["insideViewport"]
+    ]
+    rig.check(
+        "1440x900: at least six whole thumbnails lie inside the gallery's visible box at page scroll 0",
+        gallery["scrollY"] == 0 and len(whole) >= 6,
+        {"count": len(whole), "scrollY": gallery["scrollY"], "gallery": gallery["gallery"],
+         "whole": [tile["name"] for tile in whole]},
+        {"count": ">= 6", "scrollY": 0},
+        obligation="C-WORKBENCH",
+    )
+    drawing = _drawing_metrics(page)
+    rig.check(
+        "1440x900: the six-tablet wall drawing is at least 900 px wide",
+        drawing["present"] and drawing["drawing"]["width"] >= 900 - 0.5,
+        drawing,
+        {"drawing.width": ">= 900"},
+        obligation="D9",
+    )
+    rig.check(
+        "1440x900: the drawing fills at least 90% of the stage box in its limiting dimension",
+        drawing["present"] and drawing["fill"] >= 0.9,
+        {"fill": drawing.get("fill"), "limiting": drawing.get("limiting"),
+         "drawing": drawing.get("drawing"),
+         "inner": [drawing.get("innerWidth"), drawing.get("innerHeight")]},
+        {"fill": ">= 0.9"},
+        obligation="C-WORKBENCH",
+    )
+    for name, width, height in WORKBENCH_SHAPES:
+        tile = next((item for item in gallery["tiles"] if item["name"] == name), None)
+        aspect = (
+            tile["img"]["width"] / tile["img"]["height"]
+            if tile and tile["img"] and tile["img"]["height"]
+            else None
+        )
+        expected = width / height
+        ok = bool(
+            tile
+            and tile["img"]
+            and not tile["img"]["hidden"]
+            and tile["img"]["objectFit"] == "contain"
+            and aspect is not None
+            and abs(aspect / expected - 1) <= 0.02
+        )
+        rig.check(
+            f"1440x900: {name} is shown whole with object-fit contain and its own aspect",
+            ok,
+            {"tile": tile, "expectedAspect": expected, "actualAspect": aspect},
+            {"objectFit": "contain", "aspectWithin": "2%"},
+            obligation="C-WORKBENCH",
+        )
+    rig.check(
+        "Gallery tile buttons keep the plain image name so gallery-focus still reads it",
+        bool(gallery["tiles"])
+        and all(tile["name"] and tile["buttonText"] == tile["name"] for tile in gallery["tiles"]),
+        [{"name": tile["name"], "buttonText": tile["buttonText"]} for tile in gallery["tiles"]],
+        {"buttonText": "equals the image name"},
+        obligation="C-GALLERY",
+    )
+    sized = [tile for tile in gallery["tiles"] if tile["imageSize"]]
+    sizes_ok = len(sized) == len(gallery["tiles"]) and all(
+        tile["name"] in inventory
+        and str(inventory[tile["name"]]["width"]) in tile["imageSize"]
+        and str(inventory[tile["name"]]["height"]) in tile["imageSize"]
+        for tile in sized
+    )
+    rig.check(
+        "Each gallery tile states its pixel size under the name",
+        sizes_ok,
+        [{"name": tile["name"], "size": tile["imageSize"]} for tile in gallery["tiles"]],
+        {"size": "width and height shown for every tile"},
+        obligation="C-WORKBENCH",
+    )
+    commits = _commit_positions(page)
+    rig.check(
+        "1440x900: the commit bar is sticky and commit evidence stays in flow",
+        commits["bar"] == "sticky" and commits["evidence"] not in ("sticky", "fixed"),
+        commits,
+        {"bar": "sticky", "evidence": "not sticky"},
+        obligation="D10",
+    )
+    jump_display = page.evaluate(
+        "() => { const node = document.getElementById('jump-to-library');"
+        " return node ? getComputedStyle(node).display : null; }"
+    )
+    rig.check(
+        "1440x900: the phone Choose an image button is not displayed",
+        jump_display == "none",
+        jump_display,
+        "none",
+        obligation="C-WORKBENCH",
+    )
+    selected = _select_gallery_image(rig, 0)
+    show_box = _box_in_viewport(page, "#show-image")
+    rig.check(
+        "1440x900: Show image is fully inside the viewport after selecting",
+        selected and show_box["inside"],
+        {"selected": selected, "show": show_box},
+        {"inside": True},
+        obligation="C-WORKBENCH",
+    )
+    page.locator("#image-discard").click()
+    page.wait_for_timeout(120)
+
+    # Status-driven reorder: focus a row that stays, then take another tablet offline.
+    roster_row = page.locator(f'#exception-roster li[data-device-id="{ids[0]}"] .exception-review')
+    if roster_row.count():
+        roster_row.focus()
+    scroll_before = page.evaluate("() => window.scrollY")
+    _close_client(rig, clients[-1][0], ids[-1])
+    reordered = _soft_wait(
+        page,
+        "(id) => document.querySelector('#exception-roster > li')?.dataset.deviceId === id",
+        arg=ids[-1],
+        timeout=20,
+    )
+    focus = _roster_focus_metrics(page)
+    rig.check(
+        "After a status-driven reorder the focused roster row stays inside the roster box "
+        "and the page does not scroll",
+        reordered and focus["focusInside"] and focus["inside"]
+        and focus["scrollY"] == scroll_before,
+        {"reordered": reordered, "focus": focus, "scrollBefore": scroll_before},
+        {"reordered": True, "focusInside": True, "inside": True,
+         "scrollY": scroll_before},
+        obligation="C-FOCUS-ROSTER",
+    )
+
+    # 1280x800: drawing fill, four whole thumbnails, Show in viewport.
+    viewport(1280, 800)
+    drawing = _drawing_metrics(page)
+    rig.check(
+        "1280x800: the drawing fills at least 90% of the stage box in its limiting dimension",
+        drawing["present"] and drawing["fill"] >= 0.9,
+        {"fill": drawing.get("fill"), "limiting": drawing.get("limiting"),
+         "drawing": drawing.get("drawing")},
+        {"fill": ">= 0.9"},
+        obligation="C-WORKBENCH",
+    )
+    gallery = _gallery_metrics(page)
+    whole = [
+        tile for tile in gallery["tiles"] if tile["insideGallery"] and tile["insideViewport"]
+    ]
+    rig.check(
+        "1280x800: at least four whole thumbnails lie inside the gallery's visible box",
+        len(whole) >= 4,
+        {"count": len(whole), "whole": [tile["name"] for tile in whole]},
+        {"count": ">= 4"},
+        obligation="C-WORKBENCH",
+    )
+    selected = _select_gallery_image(rig, 0)
+    show_box = _box_in_viewport(page, "#show-image")
+    rig.check(
+        "1280x800: Show image is fully inside the viewport after selecting",
+        selected and show_box["inside"],
+        {"selected": selected, "show": show_box},
+        {"inside": True},
+        obligation="C-WORKBENCH",
+    )
+    overflow = _overflow(page)
+    rig.check(
+        "1280x800: Images has no horizontal overflow",
+        overflow["scrollWidth"] <= overflow["innerWidth"],
+        overflow,
+        {"scrollWidth": "<= innerWidth"},
+        obligation="C-LAYOUT",
+    )
+    page.locator("#image-discard").click()
+    page.wait_for_timeout(120)
+
+    # 1280x800 with labelled CSS 200% text.
+    page.set_viewport_size({"width": 1280, "height": 800})
+    page.wait_for_timeout(120)
+    page.evaluate(
+        "() => { const style = document.createElement('style'); style.id = 'renewal-text-200';"
+        " style.textContent = 'html{font-size:200%}'; document.head.append(style); }"
+    )
+    try:
+        _task(rig, "Images")
+        selected = _select_gallery_image(rig, 0)
+        show_box = _box_in_viewport(page, "#show-image")
+        overflow = _overflow(page)
+        rig.check(
+            "CSS text 200% (emulation) 1280x800: Show image is inside the viewport and "
+            "there is no horizontal overflow",
+            selected and show_box["inside"] and overflow["scrollWidth"] <= overflow["innerWidth"],
+            {"selected": selected, "show": show_box, "overflow": overflow},
+            {"inside": True, "scrollWidth": "<= innerWidth"},
+            obligation="C-WORKBENCH",
+        )
+    finally:
+        page.evaluate("() => document.getElementById('renewal-text-200')?.remove()")
+        try:
+            page.locator("#image-discard").click(timeout=2000)
+        except Exception:
+            pass
+
+    # 390x844 phone reach.
+    page.set_viewport_size({"width": 390, "height": 844})
+    page.wait_for_timeout(180)
+    page.evaluate("() => window.scrollTo(0, 0)")
+    _task(rig, "Images")
+    jump = page.locator("#jump-to-library")
+    jump_visible = jump.count() == 1 and jump.is_visible()
+    jump_box = jump.first.bounding_box() if jump.count() else None
+    rig.check(
+        "390x844: Choose an image is visible at the top of the page",
+        jump_visible and jump_box is not None and jump_box["y"] <= 844,
+        {"visible": jump_visible, "box": jump_box},
+        {"visible": True, "top": "<= 844"},
+        obligation="C-WORKBENCH",
+    )
+    focused_gallery = False
+    if jump_visible:
+        jump.first.click()
+        focused_gallery = _soft_wait(
+            page,
+            "() => document.getElementById('image-gallery')?.contains(document.activeElement)",
+            timeout=10,
+        )
+    rig.check(
+        "390x844: one activation of Choose an image puts focus in the gallery",
+        focused_gallery,
+        page.evaluate(
+            "() => ({tag: document.activeElement?.tagName, id: document.activeElement?.id,"
+            " inGallery: !!document.getElementById('image-gallery')?.contains(document.activeElement)})"
+        ),
+        {"inGallery": True},
+        obligation="C-WORKBENCH",
+    )
+    gallery = _gallery_metrics(page, reset_scroll=False)
+    in_view = [tile for tile in gallery["tiles"] if tile["insideViewport"]]
+    rig.check(
+        "390x844: after one activation at least two whole thumbnails are in the viewport",
+        len(in_view) >= 2,
+        {"count": len(in_view), "inView": [tile["name"] for tile in in_view]},
+        {"count": ">= 2"},
+        obligation="C-WORKBENCH",
+    )
+    selected = _select_gallery_image(rig, 0)
+    show_box = _box_in_viewport(page, "#show-image")
+    overflow = _overflow(page)
+    rig.check(
+        "390x844: Show image is inside the viewport after selecting and there is no overflow",
+        selected and show_box["inside"] and overflow["scrollWidth"] <= overflow["innerWidth"],
+        {"selected": selected, "show": show_box, "overflow": overflow},
+        {"inside": True, "scrollWidth": "<= innerWidth"},
+        obligation="C-WORKBENCH",
+    )
+    commits = _commit_positions(page)
+    rig.check(
+        "390x844: the commit bar is sticky at phone height and commit evidence stays in flow",
+        commits["bar"] == "sticky" and commits["evidence"] not in ("sticky", "fixed"),
+        commits,
+        {"bar": "sticky", "evidence": "not sticky"},
+        obligation="D10",
+    )
+    page.locator("#image-discard").click()
+    page.wait_for_timeout(120)
+
+    # 320x740: no overflow, Show reachable by scrolling.
+    page.set_viewport_size({"width": 320, "height": 740})
+    page.wait_for_timeout(180)
+    _task(rig, "Images")
+    overflow = _overflow(page)
+    rig.check(
+        "320x740: Images has no horizontal overflow",
+        overflow["scrollWidth"] <= overflow["innerWidth"],
+        overflow,
+        {"scrollWidth": "<= innerWidth"},
+        obligation="C-LAYOUT",
+    )
+    selected = _select_gallery_image(rig, 0)
+    page.locator("#show-image").scroll_into_view_if_needed()
+    show_box = _box_in_viewport(page, "#show-image")
+    rig.check(
+        "320x740: Show image is reachable by scrolling",
+        selected and show_box["inside"],
+        {"selected": selected, "show": show_box},
+        {"inside": True},
+        obligation="C-WORKBENCH",
+    )
+    page.locator("#image-discard").click()
+    page.wait_for_timeout(120)
+
+    coarse = rig.browser.new_context(
+        viewport={"width": 320, "height": 740},
+        has_touch=True,
+        is_mobile=True,
+        reduced_motion="reduce",
+    )
+    rig.contexts.append(coarse)
+    coarse_page = coarse.new_page()
+    coarse_page.set_default_timeout(10_000)
+    rig.observe(coarse_page, "coarse-controller")
+    coarse_page.goto(rig.base + "/controller/physical.html")
+    wait_until(
+        coarse_page,
+        "() => document.getElementById('wall-health')?.textContent !== 'Checking tablet status…'",
+    )
+    rig.page = coarse_page
+    try:
+        _task(rig, "Images")
+        sweep = coarse_page.evaluate(CONTROL_SWEEP)
+        coverage = touch_coverage(sweep, "Images")
+        rig.check(
+            "Coarse pointer 320x740 Images: the expected visible controls exist before sizing",
+            coverage["ok"],
+            coverage,
+            {"ids": list(TOUCH_EXPECTED["Images"]["ids"]), "controls": ">= 1"},
+            obligation="C-TOUCH",
+        )
+        rig.check(
+            "Coarse pointer 320x740 Images: every visible enabled control is at least 44px tall",
+            sweep["coarse"] and sweep["count"] > 0 and sweep["short"] == [],
+            {"coarse": sweep["coarse"], "count": sweep["count"], "short": sweep["short"]},
+            {"coarse": True, "count": "> 0", "short": []},
+            obligation="C-TOUCH",
+        )
+    finally:
+        rig.page = page
+
+    # 844x390: the commit bar is not sticky at landscape phone height.
+    page.set_viewport_size({"width": 844, "height": 390})
+    page.wait_for_timeout(180)
+    _task(rig, "Images")
+    commits = _commit_positions(page)
+    rig.check(
+        "844x390: the commit bar exists and is not sticky, and commit evidence stays in flow",
+        commits["bar"] not in (None, "sticky")
+        and commits["evidence"] not in ("sticky", "fixed"),
+        commits,
+        {"bar": "present and not sticky", "evidence": "not sticky"},
+        obligation="D10",
+    )
+
+    # Fractional widths: integer additional coverage only; exact fractions stay unproven.
+    for requested in FRACTIONAL_WIDTHS:
+        width = resolved_width(requested)
+        page.set_viewport_size({"width": width, "height": 900})
+        page.wait_for_timeout(150)
+        _task(rig, "Images")
+        overflow = _overflow(page)
+        modes = _navigation_modes(page)
+        rig.check(
+            f"Additional coverage at engine width {width}px for requested {requested}px: "
+            "Images has no horizontal overflow",
+            overflow["scrollWidth"] <= overflow["innerWidth"],
+            overflow,
+            {"scrollWidth": "<= innerWidth"},
+            obligation="C-LAYOUT",
+        )
+        rig.check(
+            f"Additional coverage at engine width {width}px for requested {requested}px: "
+            "exactly one of the tabs or the compact select is visible",
+            modes["tabs"] != modes["compact"],
+            modes,
+            {"tabs": "xor compact"},
+            obligation="C-NAV",
+        )
+
+    page.set_viewport_size({"width": 1440, "height": 900})
+
+
+# ---------------------------------------------------------------------------
+# first-wall (D11, D12, C-GUARD, C-STATUS, C-GEOMETRY)
+# ---------------------------------------------------------------------------
+
+
+def _first_wall_step_texts(page: Any) -> list[str]:
+    steps = page.locator("#first-wall-steps")
+    if not steps.count():
+        return []
+    return steps.locator("li").all_inner_texts()
+
+
+def first_wall(rig: RenewalRig) -> None:
+    page = rig.page
+    wake_scripts = (WAKE_LOCK_DENIED, WAKE_LOCK_HELD, WAKE_LOCK_DENIED, WAKE_LOCK_HELD)
+    clients = [
+        rig.new_client(CLIENT_SPECS[index], index, wake_scripts[index])
+        for index in range(4)
+    ]
+    ids = [device_id for _, device_id in clients]
+    expected_wake = {
+        ids[index]: "held" if wake_scripts[index] == WAKE_LOCK_HELD else "denied"
+        for index in range(4)
+    }
+    rig.wait_config(
+        lambda config: all(
+            config["runtime"]["devices"][device_id].get("wake_lock") == state
+            for device_id, state in expected_wake.items()
+        ),
+        timeout=25,
+    )
+    _task(rig, "Tablets")
+    wait_until(
+        page,
+        "(ids) => ids.every(id => {"
+        " const row = document.querySelector('#device-list .dev-row[data-device-id=\"' + id + '\"]');"
+        " return !!row && !!row.dataset.status && row.dataset.status !== 'offline'; })",
+        arg=ids,
+        timeout=25,
+    )
+
+    steps = page.locator("#first-wall-steps")
+    steps_present = steps.count() == 1
+    steps_visible = steps_present and steps.is_visible()
+    rig.check(
+        "First-wall steps are visible on Tablets before any wall exists",
+        steps_visible,
+        {"present": steps_present, "visible": steps_visible},
+        {"present": True, "visible": True},
+        obligation="D11",
+    )
+    texts = _first_wall_step_texts(page)
+    joined = " ".join(texts)
+    arranged_step = bool(re.search(r"not arranged yet|wall arranged", joined, re.IGNORECASE))
+    image_step = bool(re.search(r"no image shown yet|image shown", joined, re.IGNORECASE))
+    rig.check(
+        "The first-wall steps name the joined tablets and the two unstarted steps",
+        len(texts) == 3 and "4" in texts[0] and "tablet" in texts[0].lower()
+        and arranged_step and image_step,
+        {"texts": texts},
+        {"count": 3, "step1": "4 tablets online",
+         "step2": "Not arranged yet / Wall arranged", "step3": "No image shown yet / Image shown"},
+        obligation="D11",
+    )
+    focused_preset = False
+    if steps_visible:
+        step_two = steps.locator("li").nth(1).locator("button").first
+        if step_two.count():
+            step_two.click()
+            _wait_task_panel(rig, "Arrange")
+            focused_preset = _soft_wait(
+                page, "() => document.activeElement?.id === 'grid-2x2'", timeout=10
+            )
+    rig.check(
+        "Step 2 opens Arrange and lands focus on the 2 by 2 preset",
+        focused_preset,
+        page.evaluate(
+            "() => ({active: document.activeElement?.id, panel: document.querySelector('.task-panel:not([hidden])')?.id})"
+        ),
+        {"active": "grid-2x2"},
+        obligation="D11",
+    )
+
+    # Place one tablet from a Tablets row, using the visible Place action only.
+    _task(rig, "Tablets")
+    wait_until(
+        page,
+        "(id) => !!document.querySelector('#device-list .dev-row[data-device-id=\"' + id + '\"] .dev-action')",
+        arg=ids[0],
+        timeout=20,
+    )
+    place_start = len(rig.requests)
+    page.locator(
+        f'#device-list .dev-row[data-device-id="{ids[0]}"] .dev-action'
+    ).click()
+    _wait_task_panel(rig, "Arrange")
+    disabled_by_draft = _soft_wait(
+        page, "() => document.getElementById('grid-2x2')?.disabled === true", timeout=15
+    )
+    shape_text = page.locator("#panel-show").inner_text()
+    note_visible = (
+        "Wall shapes are paused while your placement draft is open" in shape_text
+    )
+    rig.check(
+        "Place from a Tablets row locks wall shapes and shows the pause note",
+        disabled_by_draft and note_visible,
+        {"grid2x2Disabled": disabled_by_draft, "noteVisible": note_visible,
+         "shapeText": shape_text[:400]},
+        {"grid2x2Disabled": True, "noteVisible": True},
+        obligation="D12",
+    )
+    discards = page.evaluate(
+        """() => [...document.querySelectorAll('#panel-show button')].map((button, index) => ({
+            index,
+            id: button.id,
+            text: (button.textContent || '').trim(),
+            aria: button.getAttribute('aria-label') || '',
+            visible: button.getClientRects().length > 0,
+            disabled: button.disabled,
+        })).filter(item => item.visible && !item.disabled && item.id !== 'btn-cancel'
+            && /discard/i.test(item.text + ' ' + item.aria))"""
+    )
+    discard_index = discards[0]["index"] if discards else None
+    if discard_index is not None:
+        page.locator("#panel-show button").nth(discard_index).click()
+    else:
+        page.locator("#btn-cancel").click()
+    reenabled = _soft_wait(
+        page, "() => document.getElementById('grid-2x2')?.disabled === false", timeout=15
+    )
+    rig.check(
+        "The pause note's Discard re-enables wall shapes",
+        note_visible and discard_index is not None and reenabled,
+        {"noteVisible": note_visible, "discard": discards, "reenabled": reenabled},
+        {"discard": "visible in the note", "reenabled": True},
+        obligation="D12",
+    )
+    place_writes = _layout_write_rows(rig, place_start)
+    rig.check(
+        "Placing and discarding a draft tablet sends no layout write",
+        not place_writes,
+        place_writes,
+        [],
+        obligation="C-GEOMETRY",
+    )
+
+    # Preview then Apply through the visible Arrange controls.
+    _task(rig, "Arrange")
+    wait_until(
+        page,
+        "() => document.querySelectorAll('#grid-order .tablet-order-row').length === 4",
+        timeout=20,
+    )
+    if page.locator("#grid-kind").input_value() != "logical":
+        page.select_option("#grid-kind", "logical")
+        page.wait_for_timeout(150)
+    page.fill("#grid-rows", "2")
+    page.fill("#grid-columns", "2")
+    if page.locator("#grid-holes").is_checked():
+        page.uncheck("#grid-holes")
+    page.wait_for_timeout(120)
+    page.click("#grid-preview")
+    preview_ready = _soft_wait(
+        page, "() => document.getElementById('btn-apply')?.disabled === false", timeout=25
+    )
+    rig.check(
+        "The four-tablet wall previews through the visible Arrange controls",
+        preview_ready,
+        page.evaluate(
+            "() => ({applyDisabled: document.getElementById('btn-apply')?.disabled,"
+            " message: document.getElementById('grid-message')?.textContent})"
+        ),
+        {"applyDisabled": False},
+        obligation="C-GEOMETRY",
+    )
+    if preview_ready:
+        page.click("#btn-apply")
+    applied = _soft_wait(
+        page, "() => document.body.dataset.stageMode === 'live'", timeout=25
+    )
+    rig.check(
+        "Applying the first wall reaches the live stage",
+        applied,
+        page.evaluate(
+            "() => ({stageMode: document.body.dataset.stageMode,"
+            " message: document.getElementById('grid-message')?.textContent})"
+        ),
+        {"stageMode": "live"},
+        obligation="C-GEOMETRY",
+    )
+
+    _task(rig, "Tablets")
+    wait_until(
+        page,
+        "() => document.querySelectorAll('#device-list .dev-row').length >= 4",
+        timeout=20,
+    )
+    hidden_after = steps.count() == 1 and not steps.is_visible()
+    rig.check(
+        "Applying the first wall hides the first-wall steps",
+        hidden_after,
+        {"present": steps.count(), "hidden": hidden_after},
+        {"present": 1, "hidden": True},
+        obligation="D11",
+    )
+
+    # Show the chosen image and prove exactly one guarded write and current paint.
+    _task(rig, "Images")
+    wait_until(
+        page, "() => document.querySelectorAll('#image-gallery > li').length >= 8", timeout=30
+    )
+    selected = _select_gallery_image(rig, 0)
+    show_start = len(rig.requests)
+    if selected:
+        page.click("#show-image")
+    health = _soft_wait(
+        page,
+        "() => /4 of 4 showing the current image/.test("
+        "document.getElementById('wall-health').textContent)",
+        timeout=35,
+    )
+    puts = _scene_write_rows(rig, show_start)
+    rig.check(
+        "Show sends exactly one guarded PUT /api/v3/scene",
+        selected and len(puts) == 1 and bool(puts[0].get("if_match")),
+        {"selected": selected, "puts": puts},
+        {"puts": 1, "if_match": True},
+        obligation="C-GUARD",
+    )
+    config = None
+    if health:
+        config = rig.wait_config(
+            lambda value: all(
+                value["runtime"]["devices"][device_id]["render"].get("current") is True
+                for device_id in ids
+            ),
+            timeout=30,
+        )
+    renders = (
+        {device_id: config["runtime"]["devices"][device_id].get("render") for device_id in ids}
+        if config
+        else {}
+    )
+    current_paint = bool(renders) and all(
+        render
+        and render.get("current") is True
+        and render.get("expected_token") == render.get("accepted_token")
+        and render["accepted_token"].get("generation") == config["generation"]
+        and render["accepted_token"].get("revision") == config["revision"]
+        for render in renders.values()
+    )
+    rig.check(
+        "All four clients report the current image paint",
+        current_paint,
+        renders,
+        {"clients": 4, "current": True},
+        obligation="C-STATUS",
+    )
+    health_text = _inner_text(page, "#wall-health")
+    health_label = page.get_attribute("#btn-wall-health", "aria-label")
+    rig.check(
+        "The wall health line says 4 of 4 showing the current image",
+        health_text == "4 of 4 showing the current image"
+        and health_label == "4 of 4 tablets showing the current image. Issues.",
+        {"text": health_text, "label": health_label},
+        {"text": "4 of 4 showing the current image",
+         "label": "4 of 4 tablets showing the current image. Issues."},
+        obligation="C-STATUS",
+    )
+
+    # Arrange with a mixed wake-lock fleet: the shared stage must keep each
+    # tablet's own power fact instead of depending on the Images fleet line.
+    _task(rig, "Arrange")
+    wait_until(
+        page, "() => document.querySelectorAll('#stage-svg .slot').length === 4", timeout=20
+    )
+    slots = page.evaluate(
+        """() => [...document.querySelectorAll('#stage-svg .slot')].map(slot => ({
+            id: slot.dataset.deviceId,
+            status: slot.dataset.status,
+            powerState: slot.dataset.powerState,
+            powerStale: slot.dataset.powerStale,
+            text: (slot.textContent || '').trim(),
+            label: slot.getAttribute('aria-label') || '',
+        }))"""
+    )
+    expected_power = expected_wake
+    by_id = {slot["id"]: slot for slot in slots}
+    mixed_ok = len(slots) == 4 and all(
+        by_id.get(device_id)
+        and by_id[device_id]["powerState"] == state
+        and state in by_id[device_id]["label"].lower()
+        and (state != "denied" or state in by_id[device_id]["text"].lower())
+        for device_id, state in expected_power.items()
+    )
+    rig.check(
+        "Arrange (mixed wake locks): every stage slot keeps its own per-tablet power text",
+        mixed_ok,
+        {"slots": slots, "expected": expected_power},
+        {"powerState": expected_power, "denied": "visible text on Arrange"},
+        obligation="C-POWER",
+    )
+
+
+# ---------------------------------------------------------------------------
+# tablet-facts (D13, C-RECOVERY, C-POWER, C-STATUS)
+# ---------------------------------------------------------------------------
+
+
+def tablet_facts(rig: RenewalRig) -> None:
+    page = rig.page
+    clients = [
+        rig.new_client(CLIENT_SPECS[index], index, WAKE_LOCK_DENIED)
+        for index in range(4)
+    ]
+    ids = [device_id for _, device_id in clients]
+    placed = [clients[0], clients[1], clients[3]]
+    _place_grid(rig, placed, 1200, 400, 3)
+    rig.wait_config(
+        lambda config: all(
+            config["runtime"]["devices"][device_id].get("wake_lock") == "denied"
+            for device_id in ids
+        ),
+        timeout=25,
+    )
+    asset = rig.assets[0]
+    status, _ = rig.put_scene(
+        {"type": "image", "asset": "sha256:" + asset["sha256"], "fit": "cover"}
+    )
+    if status != 200:
+        raise RuntimeError(f"scene write failed: {status}")
+    rig.wait_config(
+        lambda config: all(
+            config["runtime"]["devices"][device_id]["render"].get("state") == "displayed"
+            for device_id in [ids[0], ids[1], ids[3]]
+        ),
+        timeout=30,
+    )
+    _close_client(rig, clients[3][0], ids[3])
+    _task(rig, "Tablets")
+    wait_until(
+        page,
+        "(ids) => ids.every(id => !!document.querySelector("
+        "'#device-list .dev-row[data-device-id=\"' + id + '\"]'))",
+        arg=ids,
+        timeout=20,
+    )
+    wait_until(
+        page,
+        "(id) => document.querySelector('#device-list .dev-row[data-device-id=\"' + id + '\"]')"
+        "?.dataset.status === 'offline'",
+        arg=ids[3],
+        timeout=20,
+    )
+    wait_until(
+        page,
+        "(id) => document.querySelector('#device-list .dev-row[data-device-id=\"' + id + '\"]')"
+        "?.dataset.status === 'unplaced'",
+        arg=ids[2],
+        timeout=20,
+    )
+
+    rows = {row["id"]: row for row in _tablet_rows(page)}
+    expected = {
+        ids[0]: {"status": "displayed", "connection": "Connected",
+                 "image": "Reports current image", "power": "Power denied"},
+        ids[1]: {"status": "displayed", "connection": "Connected",
+                 "image": "Reports current image", "power": "Power denied"},
+        ids[2]: {"status": "unplaced", "connection": "Connected",
+                 "image": None, "power": "Power denied"},
+        ids[3]: {"status": "offline", "connection": None,
+                 "image": None, "power": "Last known power denied"},
+    }
+    for device_id, want in expected.items():
+        row = rows.get(device_id)
+        facts = {fact["fact"]: fact["text"] for fact in (row or {}).get("facts", [])}
+        connection = facts.get("connection")
+        image = facts.get("image")
+        power = facts.get("power")
+        connection_ok = (
+            connection == want["connection"]
+            if want["connection"]
+            else bool(connection and connection.startswith("Offline · last seen"))
+        )
+        image_ok = (
+            image == want["image"]
+            if want["image"]
+            else (
+                bool(image and "Offline" in image)
+                if want["status"] == "offline"
+                else bool(image and re.search(r"No placement|Not on the wall", image))
+            )
+        )
+        rig.check(
+            f"Tablet {device_id} shows three labelled facts with the expected connection, "
+            "image and power text",
+            row is not None
+            and len(row["facts"]) == 3
+            and set(facts) == {"connection", "image", "power"}
+            and connection_ok
+            and image_ok
+            and power == want["power"]
+            and row["status"] == want["status"],
+            {"row": row, "facts": facts},
+            {"facts": ["connection", "image", "power"], "status": want["status"]},
+            obligation="D13",
+        )
+
+    power_expectations = {
+        ids[0]: ("denied", "true", "false"),
+        ids[1]: ("denied", "true", "false"),
+        ids[2]: ("denied", "true", "false"),
+        ids[3]: ("denied", "true", "true"),
+    }
+    power_ok = all(
+        rows.get(device_id)
+        and rows[device_id]["powerState"] == state
+        and rows[device_id]["powerWarning"] == warning
+        and rows[device_id]["powerStale"] == stale
+        for device_id, (state, warning, stale) in power_expectations.items()
+    )
+    rig.check(
+        "Every row keeps its per-device data-power attributes exactly",
+        power_ok,
+        {
+            device_id: {
+                "powerState": (rows.get(device_id) or {}).get("powerState"),
+                "powerWarning": (rows.get(device_id) or {}).get("powerWarning"),
+                "powerStale": (rows.get(device_id) or {}).get("powerStale"),
+            }
+            for device_id in power_expectations
+        },
+        {"state": "denied", "warning": "true", "stale": "false/true for offline"},
+        obligation="C-POWER",
+    )
+
+    # Arrange with a uniform denied fleet: the shared stage must still show the
+    # per-tablet power text instead of relying on the Images-only fleet line.
+    _task(rig, "Arrange")
+    wait_until(
+        page, "() => document.querySelectorAll('#stage-svg .slot').length === 3", timeout=20
+    )
+    arrange_slots = page.evaluate(
+        """() => [...document.querySelectorAll('#stage-svg .slot')].map(slot => ({
+            id: slot.dataset.deviceId,
+            status: slot.dataset.status,
+            powerState: slot.dataset.powerState,
+            powerStale: slot.dataset.powerStale,
+            text: (slot.textContent || '').trim(),
+            label: slot.getAttribute('aria-label') || '',
+        }))"""
+    )
+    uniform_ok = len(arrange_slots) == 3 and all(
+        slot["powerState"] == "denied"
+        and "denied" in slot["label"].lower()
+        and "denied" in slot["text"].lower()
+        for slot in arrange_slots
+    )
+    rig.check(
+        "Arrange (uniform denied): every stage slot keeps its per-tablet power text",
+        uniform_ok,
+        arrange_slots,
+        {"powerState": "denied", "denied": "visible text on Arrange"},
+        obligation="C-POWER",
+    )
+    _task(rig, "Tablets")
+    wait_until(
+        page,
+        "(ids) => ids.every(id => !!document.querySelector("
+        "'#device-list .dev-row[data-device-id=\"' + id + '\"]'))",
+        arg=ids,
+        timeout=20,
+    )
+
+    page.locator(f'#device-list .dev-pick[data-device-id="{ids[3]}"]').click()
+    wait_until(page, "() => document.getElementById('device-sheet')?.open === true")
+    pointer = page.get_by_role(
+        "button", name="Review replacement with a new tablet", exact=True
+    )
+    pointer_visible = pointer.count() >= 1 and pointer.first.is_visible()
+    rig.check(
+        "An offline selected tablet offers the new-tablet replacement pointer",
+        pointer_visible,
+        {"count": pointer.count(),
+         "visible": pointer.first.is_visible() if pointer.count() else None},
+        {"visible": True},
+        obligation="C-RECOVERY",
+    )
+    pointer_start = len(rig.requests)
+    focused_offer = False
+    if pointer_visible:
+        pointer.first.click()
+        focused_offer = _soft_wait(
+            page,
+            "() => document.getElementById('replacement-offer')?.contains(document.activeElement)",
+            timeout=10,
+        )
+    rig.check(
+        "Activating the replacement pointer focuses inside the replacement offer",
+        focused_offer,
+        page.evaluate(
+            "() => ({active: document.activeElement?.id, tag: document.activeElement?.tagName,"
+            " offerVisible: !document.getElementById('replacement-offer')?.hidden,"
+            " inside: !!document.getElementById('replacement-offer')?.contains(document.activeElement)})"
+        ),
+        {"inside": True},
+        obligation="D13",
+    )
+    rebinds = [row for row in rig.requests[pointer_start:] if "rebind" in row["url"]]
+    rig.check(
+        "The replacement pointer sends no rebind request before Confirm",
+        not rebinds,
+        rebinds,
+        [],
+        obligation="C-RECOVERY",
+    )
+
+    page.locator(f'#device-list .dev-pick[data-device-id="{ids[3]}"]').click()
+    wait_until(
+        page,
+        "(id) => document.querySelector('#device-list .dev-row[data-device-id=\"' + id + '\"]')"
+        "?.dataset.selected === 'true'",
+        arg=ids[3],
+    )
+    recovery = page.evaluate(
+        """() => {
+            const node = document.getElementById('tablet-recovery');
+            if (!node) return {present: false};
+            return {
+                present: true,
+                hidden: node.hidden,
+                paragraphs: node.querySelectorAll('p').length,
+                text: node.textContent,
+            };
+        }"""
+    )
+    recovery_text = (recovery.get("text") or "").lower()
+    rig.check(
+        "The offline recovery guidance is three paragraphs that still say power, denied and cannot wake",
+        recovery["present"]
+        and not recovery["hidden"]
+        and recovery["paragraphs"] == 3
+        and "power" in recovery_text
+        and "denied" in recovery_text
+        and "cannot wake" in recovery_text,
+        recovery,
+        {"paragraphs": 3, "words": ["power", "denied", "cannot wake"]},
+        obligation="C-RECOVERY",
+    )
+
+    stopped = stop_owned_server(rig.server)
+    _write_json(
+        rig.out / "server_stop.json",
+        {
+            "reason": "make the Tablets roster stale after the live fact checks",
+            "restarted": False,
+            "server": stopped,
+        },
+    )
+    became_stale = _soft_wait(
+        page, "() => document.body.dataset.connection === 'stale'", timeout=15
+    )
+    wait_until(
+        page,
+        "() => [...document.querySelectorAll('#device-list .dev-row')]"
+        ".every(row => row.dataset.status === 'stale')",
+        timeout=20,
+    )
+    stale_rows = _tablet_rows(page)
+    stale_ok = became_stale and bool(stale_rows) and all(
+        len(row["facts"]) == 3
+        and set(fact["fact"] for fact in row["facts"]) == {"connection", "image", "power"}
+        and _fact(row, "connection") == "Status stale"
+        for row in stale_rows
+    )
+    rig.check(
+        "A stale roster makes every Tablets row's connection fact read Status stale",
+        stale_ok,
+        {"connection": became_stale, "rows": stale_rows},
+        {"connection": "stale", "fact": "Status stale"},
+        obligation="D13",
+    )
+
+
+# ---------------------------------------------------------------------------
+# measured-blockers (D12, C-GEOMETRY)
+# ---------------------------------------------------------------------------
+
+
+def measured_blockers(rig: RenewalRig) -> None:
+    page = rig.page
+    for index in range(3):
+        rig.new_client(CLIENT_SPECS[index], index)
+    _task(rig, "Arrange")
+    wait_until(
+        page,
+        "() => document.querySelectorAll('#grid-order .tablet-order-row').length === 3",
+        timeout=20,
+    )
+    page.select_option("#grid-kind", "physical")
+    page.wait_for_timeout(250)
+    labels = page.evaluate(
+        """() => [...document.querySelectorAll('#grid-order .tablet-order-row')].map(row => {
+            const select = row.querySelector('select[aria-label^="Mount angle for "]');
+            return select ? select.getAttribute('aria-label').replace('Mount angle for ', '') : null;
+        }).filter(Boolean)"""
+    )
+    preview_start = len(rig.requests)
+    page.click("#grid-preview")
+    messaged = _soft_wait(
+        page,
+        "() => /Declare the mounted top edge/.test("
+        "document.getElementById('grid-message').textContent)",
+        timeout=15,
+    )
+    buttons = page.evaluate(
+        """() => [...document.querySelectorAll('#panel-show button')]
+            .filter(button => {
+                const name = (button.getAttribute('aria-label') || button.textContent || '').trim();
+                return /: declare mounted top edge$/.test(name)
+                    && button.getClientRects().length > 0 && !button.disabled;
+            })
+            .map(button => (button.getAttribute('aria-label') || button.textContent || '').trim())"""
+    )
+    expected_names = sorted(f"{label}: declare mounted top edge" for label in labels)
+    rig.check(
+        "A blocked measured preview names every blocking tablet with one button each",
+        messaged and len(labels) == 3 and sorted(buttons) == expected_names,
+        {"labels": labels, "buttons": buttons, "messaged": messaged},
+        {"buttons": expected_names},
+        obligation="D12",
+    )
+    summary = _inner_text(page, "#arrange-membership-summary")
+    rig.check(
+        "The order and mounting summary counts the blocking tablets",
+        f"({len(labels)} tablets)" in summary,
+        summary,
+        f"contains ({len(labels)} tablets)",
+        obligation="D12",
+    )
+    for label in labels:
+        blocker = page.get_by_role(
+            "button", name=f"{label}: declare mounted top edge", exact=True
+        )
+        present = blocker.count() >= 1 and blocker.first.is_visible()
+        focused = False
+        active = None
+        if present:
+            blocker.first.click()
+            focused = _soft_wait(
+                page,
+                "(label) => { const node = document.activeElement;"
+                " return !!node && node.getAttribute('aria-label') === 'Mount angle for ' + label"
+                " && node.getClientRects().length > 0 && !node.disabled; }",
+                arg=label,
+                timeout=10,
+            )
+            active = page.evaluate(
+                "() => { const node = document.activeElement; return node ? {"
+                " tag: node.tagName, id: node.id, aria: node.getAttribute('aria-label'),"
+                " visible: node.getClientRects().length > 0, disabled: !!node.disabled } : null; }"
+            )
+        rig.check(
+            f"The blocker for {label} focuses that tablet's visible mount control",
+            present and focused,
+            {"present": present, "focused": focused, "active": active},
+            {"present": True, "aria": f"Mount angle for {label}"},
+            obligation="D12",
+        )
+    writes = _layout_write_rows(rig, preview_start)
+    rig.check(
+        "A blocked measured preview sends no layout write",
+        not writes,
+        writes,
+        [],
+        obligation="C-GEOMETRY",
+    )
+
+
+# ---------------------------------------------------------------------------
+# server-stop (C-OFFLINE)
+# ---------------------------------------------------------------------------
+
+
+def _dom_snapshot(page: Any) -> dict[str, Any]:
+    return page.evaluate(
+        """() => {
+            const text = id => { const node = document.getElementById(id); return node ? node.textContent : null; };
+            const roster = document.getElementById('exception-roster');
+            const pattern = document.getElementById('pattern-black');
+            const patternGrid = document.getElementById('pattern-grid');
+            const colours = document.getElementById('show-colours');
+            return {
+                connection: document.body.dataset.connection,
+                connectionText: (document.getElementById('page-status') || {}).textContent || null,
+                operatorConnection: (document.getElementById('operator-connection') || {}).textContent || null,
+                health: text('wall-health'),
+                healthLabel: document.getElementById('btn-wall-health')?.getAttribute('aria-label') || null,
+                checked: text('wall-checked'),
+                wallSummary: text('wall-status-summary'),
+                exceptionCount: text('exception-count'),
+                attention: text('attention-heading'),
+                positions: text('position-count'),
+                exceptionStrip: text('exception-strip'),
+                rosterStatus: (() => { const node = document.getElementById('roster-status');
+                    return node ? {hidden: node.hidden, text: node.textContent} : null; })(),
+                roster: roster ? [...roster.querySelectorAll('li')].map(row => ({
+                    id: row.dataset.deviceId,
+                    status: row.dataset.status,
+                    text: row.textContent.trim().slice(0, 200),
+                })) : [],
+                imageMessage: text('image-message'),
+                pageStatus: text('page-status'),
+                patternBlack: pattern ? {present: true, disabled: pattern.disabled,
+                    visible: pattern.getClientRects().length > 0} : {present: false},
+                patternGrid: patternGrid ? {present: true, disabled: patternGrid.disabled,
+                    visible: patternGrid.getClientRects().length > 0} : {present: false},
+                colours: colours ? {present: true, disabled: colours.disabled,
+                    visible: colours.getClientRects().length > 0} : {present: false},
+                etagState: text('etag-state'),
+            };
+        }"""
+    )
+
+
+def server_stop(rig: RenewalRig) -> None:
+    page = rig.page
+    clients = [rig.new_client(CLIENT_SPECS[index], index) for index in range(2)]
+    _place_grid(rig, clients, 1600, 800, 2)
+    asset = rig.assets[0]
+    status, _ = rig.put_scene(
+        {"type": "image", "asset": "sha256:" + asset["sha256"], "fit": "cover"}
+    )
+    if status != 200:
+        raise RuntimeError(f"scene write failed: {status}")
+    current = _soft_wait(
+        page,
+        "() => /2 of 2 showing the current image/.test("
+        "document.getElementById('wall-health').textContent)",
+        timeout=35,
+    )
+    _task(rig, "Images")
+    wait_until(
+        page, "() => document.querySelectorAll('#image-gallery > li').length >= 8", timeout=30
+    )
+    selected = _select_gallery_image(rig, 1)
+    before = page.evaluate(
+        "() => ({connection: document.body.dataset.connection,"
+        " dirty: document.body.dataset.outputDirty,"
+        " showDisabled: document.getElementById('show-image')?.disabled})"
+    )
+    rig.check(
+        "The controller loads with current status, a shown image and a draft ready to show",
+        current and selected and before["connection"] == "current" and before["dirty"] == "true"
+        and before["showDisabled"] is False,
+        {"current": current, "selected": selected, "before": before},
+        {"connection": "current", "dirty": "true", "showDisabled": False},
+        obligation="C-OFFLINE",
+    )
+
+    stop_index = len(rig.requests)
+    stopped = stop_owned_server(rig.server)
+    _write_json(
+        rig.out / "server_stop.json",
+        {"reason": "real server stop for C-OFFLINE", "server": stopped,
+         "stop_request_index": stop_index},
+    )
+    became_stale = _soft_wait(
+        page, "() => document.body.dataset.connection !== 'current'", timeout=10
+    )
+    after_stop = _dom_snapshot(page)
+    rig.check(
+        "A real server stop makes the operator connection non-current within 10 s",
+        became_stale and after_stop["connection"] != "current",
+        {"after": after_stop["connection"], "connectionText": after_stop["connectionText"],
+         "operatorConnection": after_stop["operatorConnection"], "health": after_stop["health"]},
+        {"connection": "!= current"},
+        obligation="C-OFFLINE",
+    )
+    _write_json(rig.out / "server_stop_observations.json", {"after_stop": after_stop})
+
+    if page.locator("#refresh-status").count():
+        page.click("#refresh-status")
+    stale_health = _soft_wait(
+        page,
+        "() => /Status stale|evidence unavailable|stale/i.test("
+        "document.getElementById('wall-health').textContent)",
+        timeout=15,
+    )
+    refreshed = _dom_snapshot(page)
+    health_text = (refreshed["health"] or "")
+    health_label = (refreshed["healthLabel"] or "")
+    counting_current = bool(re.search(r"\d+ of \d+ showing the current", health_text))
+    rig.check(
+        "Refresh status cannot present current wall evidence while the server is stopped",
+        stale_health
+        and (health_text.startswith("Status stale") or "evidence unavailable" in health_text.lower())
+        and not counting_current
+        and health_label.startswith("Status stale"),
+        {"health": health_text, "label": health_label, "counting": counting_current,
+         "connection": refreshed["connection"], "etagState": refreshed["etagState"]},
+        {"health": "Status stale · Current image evidence unavailable",
+         "counting": False, "label": "starts with Status stale."},
+        obligation="C-OFFLINE",
+    )
+    pre_show_writes = _controller_write_rows(rig, stop_index)
+    rig.check(
+        "No automatic operator write happens between the stop and the first operator command",
+        not pre_show_writes,
+        pre_show_writes,
+        [],
+        obligation="C-OFFLINE",
+    )
+
+    if page.locator("#show-image").count() and not page.locator("#show-image").is_disabled():
+        page.click("#show-image")
+    message_set = _soft_wait(
+        page,
+        "() => { const node = document.getElementById('image-message');"
+        " return !!node && /uncertain|may have completed|Could not show|Connection lost|Refresh status/i"
+        ".test(node.textContent); }",
+        timeout=20,
+    )
+    show = _dom_snapshot(page)
+    success = "Content applied" in (show["imageMessage"] or "") \
+        or "Content applied" in (show["pageStatus"] or "")
+    rig.check(
+        "Show on a draft is refused or raises uncertainty and never claims success",
+        message_set and not success
+        and bool(re.search(r"uncertain|may have completed|Could not show|Connection lost|Refresh status",
+                           show["imageMessage"] or "", re.IGNORECASE)),
+        {"message": show["imageMessage"], "pageStatus": show["pageStatus"],
+         "success": success},
+        {"message": "refused or uncertain", "success": False},
+        obligation="C-OFFLINE",
+    )
+    show_writes = _controller_write_rows(rig, stop_index)
+    _write_json(
+        rig.out / "server_stop_observations.json",
+        {
+            "after_stop": after_stop,
+            "after_refresh": refreshed,
+            "after_show": show,
+            "writes_since_stop": show_writes,
+        },
+    )
+
+    reports_current = [
+        row["text"] for row in refreshed["roster"]
+        if "Reports current image" in row["text"]
+    ]
+    rig.check(
+        "The stale Exceptions surface marks the status stale and does not keep reporting "
+        "current image evidence",
+        bool(refreshed["roster"])
+        and all(row["status"] == "stale" for row in refreshed["roster"])
+        and not reports_current,
+        {"count": refreshed["exceptionCount"], "attention": refreshed["attention"],
+         "positions": refreshed["positions"], "strip": refreshed["exceptionStrip"],
+         "rosterStatus": refreshed["rosterStatus"], "rows": refreshed["roster"],
+         "reportsCurrent": reports_current,
+         "patternBlack": refreshed["patternBlack"],
+         "patternGrid": refreshed["patternGrid"], "colours": refreshed["colours"]},
+        {"rows": "all stale", "reportsCurrent": []},
+        obligation="C-OFFLINE",
+    )
+
+    restart = _restart_server(rig)
+    restart_index = len(rig.requests)
+    if page.locator("#refresh-status").count():
+        page.click("#refresh-status")
+    restored = _soft_wait(
+        page,
+        "() => document.body.dataset.connection === 'current'"
+        " && /showing the current/.test(document.getElementById('wall-health').textContent)",
+        timeout=25,
+    )
+    recovered = _dom_snapshot(page)
+    rig.check(
+        "After a restart on the same port and data, Refresh status restores current status",
+        restored and recovered["connection"] == "current"
+        and "Status stale" not in (recovered["health"] or "")
+        and bool(re.search(r"\d+ of \d+ showing the current", recovered["health"] or "")),
+        {"restart": restart, "after": recovered["connection"],
+         "health": recovered["health"], "etagState": recovered["etagState"]},
+        {"connection": "current", "health": "not Status stale; N of M showing the current"},
+        obligation="C-OFFLINE",
+    )
+    post_restart_writes = _controller_write_rows(rig, restart_index)
+    rig.check(
+        "The page writes nothing automatically after the restart before the operator command",
+        not post_restart_writes,
+        post_restart_writes,
+        [],
+        obligation="C-OFFLINE",
+    )
+    _write_json(
+        rig.out / "server_stop_observations.json",
+        {
+            "after_stop": after_stop,
+            "after_refresh": refreshed,
+            "after_show": show,
+            "writes_since_stop": show_writes,
+            "pre_operator_command_writes": pre_show_writes,
+            "restart": restart,
+            "after_restart_refresh": recovered,
+            "post_restart_pre_command_writes": post_restart_writes,
+        },
+    )
+
+
 SCENARIO_BODIES = {
     "status-truth": status_truth,
     "guarded-show-focus": guarded_show_focus,
     "saved-name-rule": saved_name_rule,
     "pattern-grouping": pattern_grouping,
     "layout-foundation": layout_foundation,
+    "images-workbench": images_workbench,
+    "first-wall": first_wall,
+    "tablet-facts": tablet_facts,
+    "measured-blockers": measured_blockers,
+    "server-stop": server_stop,
 }
 
 
@@ -1606,7 +3376,9 @@ def main(argv: list[str] | None = None) -> int:
         "fixture_coverage": {
             "generated_groups": [0, 1, 8, 24],
             "served_by_scenario": dict(SCENARIO_FIXTURES),
-            "note": "Generated fixture libraries only; every image is labelled GENERATED FIXTURE.",
+            "workbench_library": [name for name, _, _ in WORKBENCH_SHAPES],
+            "note": "Generated fixture libraries only; every image is labelled GENERATED FIXTURE. "
+                    "images-workbench serves its own ten-image GENERATED FIXTURE library.",
         },
         "reports": reports,
         "pass": passed,
