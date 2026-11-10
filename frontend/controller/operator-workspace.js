@@ -56,11 +56,11 @@ window.OperatorWorkspace = {
             return revealIssue(id, trigger && trigger.closest ? trigger.closest("li") : trigger, trigger);
         }
         function renderExceptionRail(ids, evidence) {
-            const attention = ids.filter(id => {
-                const item = evidence.get(id);
-                return !item.showing && item.status !== "excluded";
-            });
-            const ordered = orderedIds(ids);
+            const attention = ids.filter(id => window.OperatorState.needsAttention(evidence.get(id)));
+            const ordered = orderedIds(attention).concat(orderedIds(ids.filter(id => !window.OperatorState.needsAttention(evidence.get(id)))));
+            const fleet = window.OperatorStage && window.OperatorStage.fleetPower(state.rosterError ? [] : ids
+                .filter(id => window.OperatorState.entries(state.operatorConfig.layout)[id].participating !== false)
+                .map(id => ({ id, online: !!state.roster[id] && state.roster[id].online === true, power: powerFor(id) })));
             const wantedStrip = attention.slice(0, 4);
             const strip = $("exception-strip"), roster = $("exception-roster");
             if (strip) {
@@ -85,6 +85,7 @@ window.OperatorWorkspace = {
                     if (strip.children[index] !== row) strip.insertBefore(row, strip.children[index] || null);
                 });
             }
+            const focused = roster && roster.contains(document.activeElement) ? document.activeElement : null;
             if (roster) {
                 for (const [id, row] of rosterRows) if (!ordered.includes(id)) { row.remove(); rosterRows.delete(id); }
                 ordered.forEach((id, index) => {
@@ -115,12 +116,13 @@ window.OperatorWorkspace = {
                     setTextIfChanged(row.name, name);
                     setTextIfChanged(row.state, item.text);
                     setTextIfChanged(row.power, powerLabel);
-                    row.power.hidden = !powerLabel;
+                    row.power.hidden = !powerLabel || !!(fleet && state.roster[id] && state.roster[id].online && power.state === fleet.state);
                     row.button.setAttribute("aria-label", name + ", " + item.text
                         + (powerLabel ? ", " + powerLabel : "") + ". Review recovery.");
                     if (roster.children[index] !== row) roster.insertBefore(row, roster.children[index] || null);
                 });
             }
+            if (focused && focused.isConnected && document.activeElement !== focused) focused.focus({ preventScroll: true });
             if ($("exception-count")) $("exception-count").textContent = attention.length
                 ? attention.length + (attention.length === 1 ? " needs attention" : " need attention") : "No attention";
             if ($("position-count")) $("position-count").textContent = ids.length + (ids.length === 1 ? " position" : " positions");
@@ -129,9 +131,12 @@ window.OperatorWorkspace = {
                 $("attention-heading").textContent = "Needs attention (" + attention.length + ")";
             }
             if ($("exception-empty")) $("exception-empty").hidden = !!ids.length;
-            const health = $("wall-health");
-            if ($("wall-status-summary") && health) {
-                $("wall-status-summary").textContent = health.textContent + (attention.length ? " · " + attention.length + (attention.length === 1 ? " needs attention" : " need attention") : "");
+            if ($("wall-status-summary")) setTextIfChanged($("wall-status-summary"), attention.length
+                ? attention.length + (attention.length === 1 ? " needs attention" : " need attention") : "No attention");
+            if ($("wall-power-summary")) {
+                setTextIfChanged($("wall-power-summary"), fleet
+                    ? "Screen wake lock: all " + fleet.count + " online tablets report " + fleet.label + ". Browser report, not proof the screen is lit." : "");
+                $("wall-power-summary").hidden = !fleet;
             }
             return attention;
         }
@@ -263,7 +268,7 @@ window.OperatorWorkspace = {
                         button.addEventListener("click", () => revealIssue(id, row, button));
                         row.append(button); $("wall-issues").append(row); issues.set(id, row);
                     }
-                    row.hidden = item.showing || item.status === "excluded";
+                    row.hidden = !window.OperatorState.needsAttention(item);
                     const device = state.roster[id] || {}, number = device.number;
                     const name = labelFor ? labelFor(id) : state.deviceLabels[id] || device.label || "Tablet " + (number || "unassigned");
                     row.firstElementChild.textContent = name + " · " + item.text + " · Review recovery";

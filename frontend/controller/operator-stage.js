@@ -40,6 +40,14 @@
                 + stamp + " Last known browser wake-lock state: " + entry.label + ". " + powerHelp : entry.guidance,
             checkedAt };
     }
+    function fleetPower(entries) {
+        const online = entries.filter(entry => entry.online);
+        if (online.length < 2) return null;
+        const power = online[0].power;
+        if (!power || !(power.warning || power.state === "unknown")
+                || !online.every(entry => entry.power && entry.power.stale === false && entry.power.state === power.state)) return null;
+        return { state: power.state, label: WAKE_STATES[power.state].label, count: online.length };
+    }
     const powerHelp = "Screen wake locks are browser reports, not proof the operating system will keep the screen on. "
         + "Check Auto-Lock, charging and kiosk settings; an insecure origin cannot take a wake lock, so open the wall over its trusted HTTPS origin. "
         + "The operator cannot wake a sleeping tablet remotely.";
@@ -224,7 +232,7 @@
         fitLabels(svg);
         return { width: fitWidth, height, availableWidth, availableHeight, zoom: size.zoom };
     }
-    function draw({ svg, layout, content, profileFor, labelFor, statusFor, powerFor = null, selectedId, runtime, resolutionNode, preview = false, editable = true, presentation = "context", viewport = null, compareIds = null }) {
+    function draw({ svg, layout, content, profileFor, labelFor, statusFor, powerFor = null, fleet = null, selectedId, runtime, resolutionNode, preview = false, editable = true, presentation = "context", viewport = null, compareIds = null }) {
         const ns = "http://www.w3.org/2000/svg";
         const node = (tag, attrs, text) => {
             const item = document.createElementNS(ns, tag);
@@ -323,7 +331,9 @@
                     "aria-hidden": "true" }));
             }
             group.append(outline);
-            const statusText = [exception, power && (power.warning || power.stale) ? power.short : ""].filter(Boolean).join(" · ");
+            const fleetCovered = fleet && runtime && runtime.devices && runtime.devices[panel.id]
+                && runtime.devices[panel.id].online && power && power.state === fleet.state;
+            const statusText = [exception, power && !fleetCovered && (power.warning || power.stale) ? power.short : ""].filter(Boolean).join(" · ");
             if (!panel.missing && statusText && panel.body.width * scale >= 40 && panel.body.height * scale >= 24) {
                 group.append(node("text", { x: panel.body.x + 6 / scale, y: panel.body.y + panel.body.height - 6 / scale,
                     class: "operator-slot-status", "font-size": 10 / scale, "stroke-width": 2 / scale,
@@ -347,7 +357,7 @@
         }
         return stage;
     }
-    const api = { panels, resolution, draw, fit, exceptionLabel, powerReadiness, viewZoom, viewSize, helpText };
+    const api = { panels, resolution, draw, fit, exceptionLabel, powerReadiness, fleetPower, viewZoom, viewSize, helpText };
     if (typeof module !== "undefined" && module.exports) module.exports = api;
     else root.OperatorStage = api;
 }(typeof window !== "undefined" ? window : globalThis));
