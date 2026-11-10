@@ -3126,12 +3126,13 @@
         const refreshStatus = document.getElementById("refresh-status");
         if (refreshStatus) refreshStatus.addEventListener("click", async () => {
             const restoreFocus = document.activeElement === refreshStatus;
+            const refreshTask = state.tabName;
             refreshStatus.disabled = true;
             try { await Promise.all([refreshRoster(), operatorReadiness.load()]); workspace.render(); }
             catch (error) { showError(error.message); }
             finally {
                 refreshStatus.disabled = false;
-                if (restoreFocus && document.activeElement === document.body) refreshStatus.focus({ preventScroll: true });
+                if (restoreFocus && state.tabName === refreshTask && document.activeElement === document.body) refreshStatus.focus({ preventScroll: true });
             }
         });
         window.addEventListener("beforeunload", event => {
