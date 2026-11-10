@@ -25,6 +25,8 @@ vm.runInNewContext(fs.readFileSync(require.resolve("../frontend/controller/opera
 const workspace = context.window.OperatorWorkspace.create({ state, arrangementDirty: () => false, arrangementPreview: () => false,
     imageDirty: () => dirty, canCommit: () => true, stageNames: () => ({ applied, pending: "b.png", unavailable }), commitTask: name => { state.tabName = name; } });
 workspace.render();
+assert.equal(node("commit-applied-name").textContent, "On wall: a.png");
+assert.equal(node("first-wall-steps").hidden, true);
 assert.equal(node("shared-stage").parent, node("wall-context-content"));
 assert.equal(node("stage-mode-label").textContent, "Showing");
 state.tabName = "show"; workspace.render();
@@ -156,7 +158,7 @@ console.log("Task commit draws the new task immediately after moving the origina
         assert.equal(count(id), 1, "the shell owns exactly one #" + id);
     }
     const images = html.slice(html.indexOf('id="panel-content"'), html.indexOf('id="panel-system"'));
-    for (const id of ["workbench-stage", "commit-shelf", "wall-status", "exception-rail", "exception-strip", "exception-roster", "wall-context-content"]) {
+    for (const id of ["workbench-stage", "commit-shelf", "commit-bar", "commit-draft-name", "commit-applied-name", "jump-to-library", "wall-status", "exception-rail", "exception-strip", "exception-roster", "wall-context-content"]) {
         assert.ok(images.includes('id="' + id + '"'), "Images contains #" + id);
     }
     assert.equal(images.includes('id="device-list"'), false, "the Images rail never duplicates the Tablets roster");

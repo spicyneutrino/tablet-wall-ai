@@ -299,6 +299,14 @@
                     </div>
                 </div>
 
+            <section id="first-wall-steps" aria-labelledby="first-wall-title" hidden>
+                <h3 id="first-wall-title">Set up your first wall</h3>
+                <ol>
+                    <li id="first-wall-join"><span id="first-wall-join-status"></span> <button class="btn" id="first-wall-join-action" type="button">Add tablets</button></li>
+                    <li id="first-wall-arrange"><span id="first-wall-arrange-status"></span> <button class="btn" id="first-wall-arrange-action" type="button">Arrange wall</button></li>
+                    <li id="first-wall-image"><span id="first-wall-image-status"></span> <button class="btn" id="first-wall-image-action" type="button">Choose image</button></li>
+                </ol>
+            </section>
             <div class="tablets-workspace"><div class="roster-workspace"><section class="card devices-card task-section" aria-labelledby="task-tablets">
             <p class="hint" id="roster-status" role="status" hidden>Tablet status has not been checked.</p>
 
@@ -408,6 +416,7 @@
 </section>
             <section class="rail-panel task-panel" id="panel-content" role="tabpanel" aria-labelledby="tab-content" tabindex="0" hidden data-task="images">
                 <h2 class="task-title sr-only" tabindex="-1" id="task-images">Images</h2>
+                <button id="jump-to-library" class="btn" type="button">Choose an image</button>
                 <div class="work-grid" id="images-workspace">
   <section class="stage-region" id="workbench-stage" aria-labelledby="stage-title">
     <figure class="stage-figure">
@@ -422,6 +431,8 @@
 
   <section class="commit-shelf" id="commit-shelf" aria-labelledby="image-title">
     <h2 class="sr-only" id="commit-title">Commit the draft image</h2>
+    <div id="commit-bar">
+    <div class="commit-names"><span id="commit-draft-name"></span><span id="commit-applied-name"></span></div>
     <div class="commit-first">
       <div class="draft-identity">
         <span class="state" id="draft-state">Draft · not on wall</span>
@@ -442,6 +453,7 @@
       </section>
     </div>
     <p id="image-message" class="form-msg" role="status" aria-live="polite" tabindex="-1"></p>
+    </div>
     <div class="commit-evidence">
       <section class="fit-feedback" id="fit-feedback" aria-labelledby="fit-feedback-title">
         <h3 class="sr-only" id="fit-feedback-title">Image fit and crop</h3>

@@ -44,6 +44,24 @@ window.OperatorWorkspace = {
             chooserButton.addEventListener("blur", () => { if (!chooserQuery.matches) chooserHadFocus = false; });
             chooserButton.addEventListener("click", () => setChooser(chooserBody.hidden, true));
         }
+        function focusGallery() {
+            setChooser(true, false);
+            const gallery = $("image-gallery");
+            const target = gallery.querySelector("button[tabindex=\"0\"]") || gallery;
+            gallery.scrollIntoView({ block: "start" });
+            target.focus({ preventScroll: true });
+        }
+        if ($("jump-to-library")) $("jump-to-library").addEventListener("click", focusGallery);
+        if ($("first-wall-join-action")) $("first-wall-join-action").addEventListener("click", () => {
+            $("tablet-joining").open = true;
+            $("tablet-joining").querySelector("summary").focus();
+        });
+        if ($("first-wall-arrange-action")) $("first-wall-arrange-action").addEventListener("click", async () => {
+            if (await open("show")) $("grid-2x2").focus();
+        });
+        if ($("first-wall-image-action")) $("first-wall-image-action").addEventListener("click", async () => {
+            if (await open("content")) focusGallery();
+        });
         const anyOnline = () => !state.rosterError && Object.values(state.roster).some(device => device.online);
         const shortEvidence = evidence => String(evidence.text || "").split(" · ")[0] || "Needs review";
         const positionTag = id => {
@@ -123,6 +141,11 @@ window.OperatorWorkspace = {
                 });
             }
             if (focused && focused.isConnected && document.activeElement !== focused) focused.focus({ preventScroll: true });
+            if (focused && roster && roster.contains(focused) && typeof focused.getBoundingClientRect === "function") {
+                const rowBox = focused.getBoundingClientRect(), box = roster.getBoundingClientRect();
+                if (rowBox.top < box.top) roster.scrollTop -= box.top - rowBox.top;
+                else if (rowBox.bottom > box.bottom) roster.scrollTop += rowBox.bottom - box.bottom;
+            }
             if ($("exception-count")) $("exception-count").textContent = attention.length
                 ? attention.length + (attention.length === 1 ? " needs attention" : " need attention") : "No attention";
             if ($("position-count")) $("position-count").textContent = ids.length + (ids.length === 1 ? " position" : " positions");
@@ -213,6 +236,16 @@ window.OperatorWorkspace = {
             document.body.dataset.outputDirty = String(arrangement || image);
             const wallEmpty = !state.base || !Object.keys(window.OperatorState.entries(state.base)).length;
             if ($("wall-context-tablet")) $("wall-context-tablet").hidden = !wallEmpty;
+            if ($("first-wall-steps")) {
+                $("first-wall-steps").hidden = !wallEmpty;
+                const online = state.rosterError ? 0 : Object.values(state.roster).filter(device => device.online).length;
+                setTextIfChanged($("first-wall-join-status"), online ? online + " tablets online" : "No tablets yet");
+                setTextIfChanged($("first-wall-arrange-status"), "Not arranged yet");
+                setTextIfChanged($("first-wall-image-status"), "No image shown yet");
+                $("first-wall-join").dataset.done = String(online > 0);
+                $("first-wall-arrange").dataset.done = String(!wallEmpty);
+                $("first-wall-image").dataset.done = String(!!(state.scene && state.scene.content && state.scene.content.type === "image"));
+            }
             const noTablets = !Object.keys(state.roster).length;
             if (joiningHasTablets !== !noTablets) { $("tablet-joining").open = noTablets; joiningHasTablets = !noTablets; }
             $("image-details-disclosure").hidden = $("presentation-checks").hidden = $("stage-technical").hidden = arrangeTools.hidden = noTablets;
@@ -222,6 +255,8 @@ window.OperatorWorkspace = {
                 stageTask = state.tabName;
             }
             const names = stageNames();
+            if ($("commit-draft-name")) setTextIfChanged($("commit-draft-name"), "Draft: " + (image && names.pending || "None"));
+            if ($("commit-applied-name")) setTextIfChanged($("commit-applied-name"), "On wall: " + (names.unavailable ? "Unavailable image" : names.applied || "No image"));
             const shownType = state.scene && state.scene.content && state.scene.content.type;
             const label = mode === "live" ? names.unavailable ? "Unavailable image" : names.applied ? state.tabName === "content" ? "Showing" : "Showing " + names.applied
                 : !wallEmpty && { color: "Showing tablet colours", calibration: "Showing calibration pattern" }[shownType] || "Nothing shown"

@@ -70,6 +70,14 @@ const content = context.window.OperatorContent.create({ state, renderStage() {},
         "controller stage chrome never enters the scene body");
     assert.equal(JSON.stringify(calls[2].body).includes("#22252a"), false);
     assert.equal(state.activeImageUnavailableId, null, "the new pattern is inventoried before its scene is shown");
+    const tile = node("image-gallery").children.find(item => item.dataset.assetId === image.id);
+    assert.equal(tile.children.find(child => child.className === "image-size").textContent, "64 × 64");
+    const preview = tile.children[0], thumbnail = preview.children[0];
+    assert.equal(preview.attrs["aria-label"], "Preview black.png");
+    assert.equal(thumbnail.alt, "");
+    assert.equal(thumbnail.loading, "lazy");
+    assert.equal(thumbnail.width, 160);
+    assert.equal(thumbnail.height, 160);
     assert.equal(content.stageNames().applied, "black.png");
     assert.equal(node("image-title").textContent, "black.png", "the composer names the applied image");
     assert.equal(node("pattern-message").textContent, "", "routine pattern success is silent");

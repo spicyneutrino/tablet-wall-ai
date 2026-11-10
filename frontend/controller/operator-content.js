@@ -149,7 +149,13 @@ window.OperatorContent = {
             if (!id) return false;
             const version = selectionVersion;
             if (!await resolveOutput("Preview this image", "image") || version !== selectionVersion) { render(); return false; }
-            select(id, nextFit); return true;
+            select(id, nextFit);
+            if (typeof window.matchMedia === "function" && (window.matchMedia("(max-width: 48rem)").matches
+                    || $("show-image").getBoundingClientRect().bottom > window.innerHeight)) {
+                $("show-image").scrollIntoView({ block: "nearest" });
+                $("show-image").focus({ preventScroll: true });
+            }
+            return true;
         }
         function visibleGalleryButtons() {
             const list = $("image-gallery");
@@ -257,7 +263,8 @@ window.OperatorContent = {
                     const thumbnailNote = document.createElement("span"); thumbnailNote.className = "sr-only";
                     thumbnailNote.id = "image-thumbnail-note-" + (++noteSequence);
                     const appliedNote = document.createElement("span"); appliedNote.className = "sr-only";
-                    button.append(thumbnail, name, patternTag, thumbnailNote); item.append(button, appliedNote); list.append(item);
+                    const size = document.createElement("span"); size.className = "image-size";
+                    button.append(thumbnail, name, patternTag, thumbnailNote); item.append(button, size, appliedNote); list.append(item);
                     button.addEventListener("click", () => choose(image.id));
                     thumbnail.addEventListener("error", () => {
                         item.dataset.thumbnail = "unavailable"; thumbnail.hidden = true;
@@ -268,7 +275,7 @@ window.OperatorContent = {
                         delete item.dataset.thumbnail; thumbnail.hidden = false; thumbnailNote.textContent = "";
                         renderGallery();
                     });
-                    row = { item, button, thumbnail, name, patternTag, thumbnailNote, appliedNote }; gallery.set(image.id, row);
+                    row = { item, button, thumbnail, name, size, patternTag, thumbnailNote, appliedNote }; gallery.set(image.id, row);
                 }
                 const pattern = isTestPattern(image);
                 row.item.hidden = !image.name.toLocaleLowerCase().includes(search);
@@ -294,6 +301,7 @@ window.OperatorContent = {
                 const thumbnailScale = Math.min(160 / image.width, 160 / image.height);
                 row.thumbnail.width = Math.max(1, Math.round(image.width * thumbnailScale)); row.thumbnail.height = Math.max(1, Math.round(image.height * thumbnailScale));
                 row.name.textContent = image.name;
+                setTextIfChanged(row.size, image.width + " × " + image.height);
             });
             let cursor = list.firstElementChild;
             const currentOrder = Array.from(list.children).map(item => item.dataset.assetId);
