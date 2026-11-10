@@ -22,7 +22,11 @@ reports 99/99 checks, 70 focused pytest passes, and a direct synthetic drill.
 It records online backup, verification, fresh-target restore, fresh shipped-client
 paint, rejection of an old acknowledgement, and old-code recovery using that
 code's own pre-upgrade backup. This used generated private fixture data,
-not an operator database. Independent acceptance is pending. See its
+not an operator database. The M10-01 generated-fixture rehearsal is independently
+reviewed and accepted; it does not verify an operator database. The
+[independent verdict](../../../artifacts/tablet-wall-restoration-2026-11-07/reviews/M10-01-rehearsal-review-2/review.md)
+supplies the live-client-at-backup proof and qualifies two canvas-readback
+instrumentation warnings in its raw 121/123 replay. See the author record's
 [commands](../../../artifacts/tablet-wall-restoration-2026-11-07/M10-01/attempt-1/command-transcripts.md),
 [recovery instructions](../../../artifacts/tablet-wall-restoration-2026-11-07/M10-01/attempt-1/recovery-instructions.md),
 [browser evidence](../../../artifacts/tablet-wall-restoration-2026-11-07/M10-01/attempt-1/browser-evidence.md),
@@ -93,7 +97,7 @@ Logs rotate at 1,000,000 bytes with two archives each.
 1. Connect the tablet to the hotspot Wi-Fi name printed by the launcher.
 2. Open the exact printed URL, ending in `/client/`. Typing `http://` and a
    bare address is not the same thing.
-3. Open the printed `http://127.0.0.1:<backend-port>/controller/` on the
+3. Open the printed `http://127.0.0.1:<backend-port>/controller/physical.html` on the
    laptop. Select **Tablets**, then open **Add tablets**. Copy the exact tablet
    address or scan its QR. The QR is a URL shortcut, not pairing; the tablet still
    registers and opens its own socket. A loopback address only works on the
@@ -169,8 +173,8 @@ Use the numeric position, size, and bezel fields for precise edits. If a field
 is invalid, correct its reported error before previewing or applying.
 
 For measured layouts, confirm each actual tablet model or provide measured
-calibration first. Model profiles stay approximate. In **Settings**, open
-**Check patterns**. **Wall-sized grid** generates an image for the committed
+calibration first. Model profiles stay approximate. In **Images**, open
+**Presentation checks**. **Wall-sized grid** generates an image for the committed
 physical bounds with 50 mm intervals. Use it to record actual seam/scale
 measurements; the generated coordinates do not prove physical accuracy.
 **Logical calibration pattern** is available only for logical layouts.
@@ -195,11 +199,11 @@ bytes or choosing another image.
 
 ## 7. Blank the wall
 
-Use **Presentation checks** in Images or **Check patterns** in Settings.
+Use **Presentation checks** in **Images**.
 These controls change wall content. Logical calibration needs relative
 bounds. A wall-sized grid needs committed measured bounds.
 Select **Black wall**. This shows an ordinary black image without deleting the layout.
-To return to the prior scene, open **Images**, then **Image details**, and select
+To return to the prior scene, open **Images**, then **Presentation checks**, and select
 **Restore previous content**. **Tablet colours** instead shows each tablet's
 assigned diagnostic colour. Check the restored asset, fit, background, and
 current paint. This restores content, not a database.

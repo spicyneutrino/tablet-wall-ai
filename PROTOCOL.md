@@ -284,6 +284,8 @@ path identity returns `404` before the ETag check. For a known new identity,
 missing `If-Match` returns `428`, and a stale value returns `412` before
 lifecycle validation. Old-identity and live-connection conflicts are evaluated
 after that guard. Do not infer `409` precedence from an old device being live.
+A live owned socket for the old identity returns `409 old_connected`; rebind
+does not forcibly close that socket.
 The workspace v3 preview supports explicit hardware choice and saved-layout
 selection. This legacy request does not have those fields.
 
