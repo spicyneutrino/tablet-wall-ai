@@ -56,9 +56,9 @@ window.PhysicalStage = {
                 labelFor: id => numberedLabel(id, latestProfile(id)),
                 statusFor: id => state.rosterError ? { status: "stale", text: "Status stale · refresh the operator connection" } : window.OperatorState.tabletState(config, id, performance.now()),
                 powerFor,
-                fleet: window.OperatorStage.fleetPower(state.rosterError ? [] : Object.entries(window.OperatorState.entries(layout))
+                fleet: presentation === "images" ? window.OperatorStage.fleetPower(state.rosterError ? [] : Object.entries(window.OperatorState.entries(state.base))
                     .filter(([, slot]) => slot.participating !== false)
-                    .map(([id]) => ({ id, online: !!state.roster[id] && state.roster[id].online === true, power: powerFor(id) }))),
+                    .map(([id]) => ({ id, online: !!state.roster[id] && state.roster[id].online === true, power: powerFor(id) }))) : null,
                 selectedId: state.selectedId, runtime: config.runtime, preview, editable,
                 resolutionNode: document.getElementById("stage-resolution") });
             const stageKey = document.getElementById("stage-key");
