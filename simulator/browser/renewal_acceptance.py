@@ -64,6 +64,7 @@ from restoration_acceptance import (  # noqa: E402
     resolve_source_root,
     restoration_environment,
     scenario_pass,
+    stop_owned_server,
     wait_ready,
     wait_until,
     Rig,
@@ -115,6 +116,22 @@ TASK_PANELS = {
 }
 VIEWPORTS = ((1440, 900), (1280, 800), (390, 844), (320, 740), (844, 390))
 FRACTIONAL_WIDTHS = (719.5, 767.5, 768.5, 1100.5, 1360.5)
+# Control ids that must be visible in each task before a height sweep means
+# anything. Tablets rows carry no ids, so their pick button is matched by class.
+TOUCH_EXPECTED = {
+    "Images": {
+        "ids": (
+            "view-zoom-fit", "view-zoom-2x", "image-search", "add-image",
+            "refresh-images", "image-chooser-summary", "show-colours",
+            "show-calibration", "pattern-grid", "pattern-black",
+        ),
+        "classes": (),
+    },
+    "Tablets": {
+        "ids": ("btn-roster-refresh", "issues-title"),
+        "classes": ("dev-pick",),
+    },
+}
 
 LIMITATIONS = [
     "Software browser evidence only. No physical tablet, optical seam, sleep/wake, "
@@ -124,9 +141,12 @@ LIMITATIONS = [
     "CSS text at 200% is applied as an injected html{font-size:200%} style and is labelled "
     "as an emulation, not a user's browser setting.",
     "Fractional CSS viewport widths are not accepted by Playwright or by Chromium's "
-    "device-metrics protocol. Each requested fractional width is measured at the integer "
-    "CSS width the engine resolves for it; both values are recorded. Chromium resolves "
-    "719.5 to 720 and 768.5 to 769.",
+    "device-metrics protocol. Exact fractional coverage of C-LAYOUT is therefore "
+    "unproven and reported incomplete: each requested fractional width is measured at "
+    "the integer CSS width the engine resolves for it, and those integer measurements "
+    "are additional coverage only. Chromium resolves 719.5 to 720 and 768.5 to 769. "
+    "The shipped page sends 'frame-ancestors \\'none\\'' and X-Frame-Options DENY, so a "
+    "same-origin fractional iframe cannot prove it without weakening that policy.",
     "A gallery tile's accessible name is read from its aria-label, which is the name "
     "Chromium computes for a button without aria-labelledby.",
 ]
@@ -234,6 +254,7 @@ class RenewalRig(Rig):
         fatal: bool = False,
         classification: str | None = None,
         known_baseline_failure: str | None = None,
+        incomplete_reason: str | None = None,
     ) -> bool:
         super().check(
             name,
@@ -244,7 +265,12 @@ class RenewalRig(Rig):
             classification=classification,
             known_baseline_failure=known_baseline_failure,
         )
-        self.results[-1]["obligation"] = obligation
+        row = self.results[-1]
+        row["obligation"] = obligation
+        if incomplete_reason:
+            row["incomplete"] = incomplete_reason
+            if not ok:
+                row["classification"] = classification or "unproven_known_platform_limitation"
         if not ok and fatal:
             raise AssertionError(name)
         return bool(ok)
@@ -323,7 +349,7 @@ LAYOUT_MEASURE = """() => {
 
 CONTROL_SWEEP = """() => {
     const panel = document.querySelector('.task-panel:not([hidden])');
-    if (!panel) return {panel: null, controls: 0, short: []};
+    if (!panel) return {panel: null, controls: [], count: 0, short: [], coarse: false};
     const selector = 'button, select, textarea, summary, .check-label, .check,'
         + ' input:not([type="hidden"]):not([type="checkbox"]):not([type="radio"])';
     const controls = [...panel.querySelectorAll(selector)].filter(el => {
@@ -334,7 +360,7 @@ CONTROL_SWEEP = """() => {
                 && !el.checkVisibility({checkOpacity: true, checkVisibilityCSS: true})) return false;
         return el.getClientRects().length > 0;
     });
-    const short = controls.map(el => {
+    const rows = controls.map(el => {
         const rect = el.getBoundingClientRect();
         return {
             tag: el.tagName,
@@ -343,10 +369,32 @@ CONTROL_SWEEP = """() => {
             label: (el.getAttribute('aria-label') || el.textContent || '').trim().slice(0, 40),
             height: Math.round(rect.height * 100) / 100,
         };
-    }).filter(row => row.height < 44);
-    return {panel: panel.id, controls: controls.length, short};
+    });
+    return {
+        panel: panel.id,
+        controls: rows,
+        count: rows.length,
+        short: rows.filter(row => row.height < 44),
+        coarse: matchMedia('(pointer: coarse)').matches,
+    };
 }"""
 
+
+def touch_coverage(sweep: dict[str, Any], task: str) -> dict[str, Any]:
+    """Which required controls the sweep actually saw, independent of counts."""
+    rows = sweep["controls"]
+    ids = {row["id"] for row in rows if row["id"]}
+    classes = {token for row in rows for token in row["cls"].split()}
+    expected = TOUCH_EXPECTED[task]
+    missing_ids = [item for item in expected["ids"] if item not in ids]
+    missing_classes = [item for item in expected["classes"] if item not in classes]
+    return {
+        "ok": bool(rows) and not missing_ids and not missing_classes,
+        "controls": len(rows),
+        "ids": sorted(ids),
+        "missing_ids": missing_ids,
+        "missing_classes": missing_classes,
+    }
 
 
 def _device_rows(page: Any) -> list[dict[str, Any]]:
@@ -710,6 +758,108 @@ def status_truth(rig: RenewalRig) -> None:
         {"before": focused_before, "after": focused, "reordered": reordered},
         {"before": focus_id, "after": focus_id, "body": False, "reordered": True},
         obligation="C-FOCUS-ROSTER",
+    )
+
+    # Stale roster is a different state from an offline client. One client is
+    # already offline above while the roster itself is still current; stopping
+    # the server makes the controller's roster read fail with no injected JS.
+    current_before = page.evaluate(
+        """() => {
+            const summary = document.getElementById('wall-power-summary');
+            return {
+                connection: document.body.dataset.connection,
+                health: document.getElementById('wall-health').textContent,
+                offlineRows: [...new Set([...document.querySelectorAll(
+                    '#device-list .dev-row[data-status="offline"], #stage-svg .slot[data-status="offline"]'
+                )])].map(row => row.dataset.deviceId),
+                fleet: summary
+                    ? {present: true, visible: summary.getClientRects().length > 0, hidden: summary.hidden}
+                    : {present: false},
+            };
+        }"""
+    )
+    stopped = stop_owned_server(rig.server)
+    _write_json(
+        rig.out / "server_stop.json",
+        {
+            "reason": "drive a stale controller roster independently of offline paint",
+            "restarted": False,
+            "restart_note": "The scenario ends after this assertion set; rig cleanup records the "
+                            "deliberate stop instead of pretending the server is alive.",
+            "server": stopped,
+        },
+    )
+    became_stale = _soft_wait(
+        page, "() => document.body.dataset.connection === 'stale'", timeout=15
+    )
+    stale = page.evaluate(
+        """() => {
+            const health = document.getElementById('wall-health');
+            const summary = document.getElementById('wall-power-summary');
+            const roster = document.getElementById('roster-status');
+            return {
+                connection: document.body.dataset.connection,
+                health: health.textContent,
+                healthLabel: document.getElementById('btn-wall-health').getAttribute('aria-label'),
+                counting: /\\d+ of \\d+ showing the current/.test(health.textContent),
+                fleet: summary
+                    ? {present: true, visible: summary.getClientRects().length > 0,
+                        hidden: summary.hidden, text: summary.textContent}
+                    : {present: false},
+                roster: roster
+                    ? {present: true, hidden: roster.hidden, text: roster.textContent}
+                    : {present: false},
+                rowStatuses: [...document.querySelectorAll('#device-list .dev-row')]
+                    .map(row => row.dataset.status),
+            };
+        }"""
+    )
+    rig.check(
+        "A stopped server makes the connection stale instead of reusing offline paint",
+        became_stale
+        and current_before["connection"] == "current"
+        and bool(current_before["offlineRows"])
+        and stale["connection"] == "stale",
+        {"before": current_before, "after": stale["connection"], "server_stop": stopped},
+        {"before": {"connection": "current", "offlineRows": ">= 1"},
+         "after": {"connection": "stale"}},
+        obligation="C-POWER",
+    )
+    rig.check(
+        "A stale roster reports that current image evidence is unavailable",
+        became_stale
+        and "Status stale" in stale["health"]
+        and "Current image evidence unavailable" in stale["health"]
+        and not stale["counting"]
+        and (stale["healthLabel"] or "").startswith("Status stale."),
+        {"health": stale["health"], "label": stale["healthLabel"],
+         "counting": stale["counting"]},
+        {"health": "Status stale · Current image evidence unavailable",
+         "counting": False, "label": "starts with Status stale."},
+        obligation="C-POWER",
+    )
+    rig.check(
+        "A stale roster marks every Tablets row stale instead of offline",
+        became_stale
+        and bool(stale["rowStatuses"])
+        and all(status == "stale" for status in stale["rowStatuses"])
+        and stale["roster"]["present"]
+        and not stale["roster"]["hidden"]
+        and "Status stale" in stale["roster"]["text"],
+        {"statuses": stale["rowStatuses"], "roster": stale["roster"],
+         "offline_before_stop": current_before["offlineRows"]},
+        {"statuses": ["stale", "…"], "roster": {"hidden": False, "text": "Status stale. …"}},
+        obligation="D2",
+    )
+    rig.check(
+        "A stale roster hides the fleet power line",
+        became_stale
+        and stale["fleet"]["present"]
+        and stale["fleet"]["hidden"]
+        and not stale["fleet"]["visible"],
+        stale["fleet"],
+        {"present": True, "hidden": True, "visible": False},
+        obligation="D2",
     )
 
 
@@ -1158,15 +1308,45 @@ def layout_foundation(rig: RenewalRig) -> None:
                 obligation="C-NAV",
             )
 
+    # Exact fractional coverage is attempted first, then reported unproven if
+    # the engine refuses. Integer measurements are additional coverage only.
     for requested in FRACTIONAL_WIDTHS:
         width = resolved_width(requested)
+        attempt: dict[str, Any] = {"requested": requested, "resolved_width": width}
+        exact = False
         try:
             page.set_viewport_size({"width": requested, "height": 900})  # type: ignore[arg-type]
-            measured_label = f"{requested}px"
-        except Exception:
-            width = resolved_width(requested)
-            measured_label = f"{requested}px (engine width {width})"
-        measure_viewport(measured_label, width, 900)
+            page.wait_for_timeout(120)
+            measured_visual = page.evaluate(
+                "() => window.visualViewport ? window.visualViewport.width : innerWidth"
+            )
+            attempt["measured_visual_width"] = measured_visual
+            exact = measured_visual == requested
+        except Exception as error:
+            attempt["error"] = repr(error)
+        if exact:
+            for task in TASK_NAMES:
+                _task(rig, task)
+                _layout_check(rig, task, f"{requested}px", page.evaluate(LAYOUT_MEASURE))
+            continue
+        measure_viewport(
+            f"additional coverage at engine width {width}px for requested {requested}px",
+            width,
+            900,
+        )
+        rig.check(
+            f"Exact fractional CSS width {requested}px is unproven "
+            f"(Chromium measured {width}px instead)",
+            False,
+            attempt,
+            {"requested": requested, "measured_visual_width": requested},
+            obligation="C-LAYOUT",
+            incomplete_reason=(
+                f"C-LAYOUT exact fractional width {requested}px was not measured. "
+                f"Chromium device metrics accept only integer CSS widths, so the "
+                f"{width}px layout is additional coverage, not proof of {requested}px."
+            ),
+        )
 
     coarse = rig.browser.new_context(
         viewport={"width": 390, "height": 844},
@@ -1188,15 +1368,48 @@ def layout_foundation(rig: RenewalRig) -> None:
         for task in ("Images", "Tablets"):
             _task(rig, task)
             sweep = coarse_page.evaluate(CONTROL_SWEEP)
+            coverage = touch_coverage(sweep, task)
+            rig.check(
+                f"Coarse pointer 390x844 {task}: the expected visible controls exist before sizing",
+                coverage["ok"],
+                coverage,
+                {"ids": list(TOUCH_EXPECTED[task]["ids"]),
+                 "classes": list(TOUCH_EXPECTED[task]["classes"]),
+                 "controls": ">= 1"},
+                obligation="C-TOUCH",
+            )
             rig.check(
                 f"Coarse pointer 390x844 {task}: every visible enabled control is at least 44px tall",
-                sweep["panel"] is not None and sweep["short"] == [],
-                {"panel": sweep["panel"], "controls": sweep["controls"], "short": sweep["short"]},
-                {"panel": "visible", "short": []},
+                sweep["coarse"] and sweep["count"] > 0 and sweep["short"] == [],
+                {"coarse": sweep["coarse"], "count": sweep["count"],
+                 "short": sweep["short"]},
+                {"coarse": True, "count": "> 0", "short": []},
                 obligation="C-TOUCH",
             )
     finally:
         rig.page = page
+
+    empty_context = rig.browser.new_context(
+        viewport={"width": 390, "height": 844}, has_touch=True, is_mobile=True
+    )
+    rig.contexts.append(empty_context)
+    empty_page = empty_context.new_page()
+    empty_page.set_content(
+        "<!doctype html><section class='task-panel' id='panel-content'></section>"
+    )
+    empty_sweep = empty_page.evaluate(CONTROL_SWEEP)
+    empty_verdict = touch_coverage(empty_sweep, "Images")
+    rig.check(
+        "The coarse-pointer predicate rejects a deliberately empty task panel",
+        empty_sweep["panel"] == "panel-content"
+        and empty_sweep["count"] == 0
+        and not empty_verdict["ok"]
+        and empty_verdict["missing_ids"] == list(TOUCH_EXPECTED["Images"]["ids"]),
+        {"panel": empty_sweep["panel"], "count": empty_sweep["count"],
+         "short": empty_sweep["short"], "verdict": empty_verdict},
+        {"panel": "panel-content", "count": 0, "verdict": {"ok": False}},
+        obligation="C-TOUCH",
+    )
 
     for width, height, label in ((1280, 800, "1280x800"), (390, 844, "390x844")):
         page.set_viewport_size({"width": width, "height": height})
@@ -1295,6 +1508,7 @@ def run_scenario(
         finally:
             cleanup = rig.close()
     passed = scenario_pass(rig.results, cleanup, interrupted)
+    incomplete = [row["incomplete"] for row in rig.results if row.get("incomplete")]
     report = {
         "scenario": name,
         "status": "pass" if passed else "fail",
@@ -1315,6 +1529,8 @@ def run_scenario(
         "cleanup": cleanup,
         "obligations": list(SCENARIOS[name]["obligations"]),
         "owner": SCENARIOS[name]["owner"],
+        "incomplete": incomplete,
+        "software_complete": passed and not incomplete,
         "limitations": LIMITATIONS,
     }
     _write_json(out / "scenario.json", report)
@@ -1367,6 +1583,7 @@ def main(argv: list[str] | None = None) -> int:
         application_before["application_sha256"] == application_after["application_sha256"]
     )
     passed = source_unchanged and bool(reports) and all(report["pass"] for report in reports)
+    incomplete = [item for report in reports for item in report.get("incomplete", [])]
     result = {
         "task": RENEWAL_TASK_ID,
         "generated_utc": datetime.now(timezone.utc).isoformat(),
@@ -1394,8 +1611,8 @@ def main(argv: list[str] | None = None) -> int:
         "reports": reports,
         "pass": passed,
         "acceptance_complete": False,
-        "software_complete": passed,
-        "incomplete": [],
+        "software_complete": passed and not incomplete,
+        "incomplete": incomplete,
         "limitations": LIMITATIONS,
     }
     _write_json(artifacts / "results.json", result)
