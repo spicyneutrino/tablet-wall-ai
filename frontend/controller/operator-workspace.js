@@ -296,7 +296,11 @@ window.OperatorWorkspace = {
             const config = state.operatorConfig;
             if (config) {
                 const ids = Object.keys(window.OperatorState.entries(config.layout));
-                const evidence = new Map(ids.map(id => [id, window.OperatorState.tabletState(config, id, performance.now())]));
+                const evidence = new Map(ids.map(id => {
+                    const item = window.OperatorState.tabletState(config, id, performance.now());
+                    return [id, state.rosterError && item.status !== "excluded"
+                        ? { status: "stale", showing: false, text: "Status stale · Current image evidence unavailable" } : item];
+                }));
                 for (const [id, row] of issues) if (!ids.includes(id)) { row.remove(); issues.delete(id); }
                 for (const id of ids) {
                     const item = evidence.get(id);
