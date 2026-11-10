@@ -1,0 +1,117 @@
+[
+  {
+    "raw": "Harbour dawn, fit",
+    "sent": "Harbour dawn, fit",
+    "expect": null
+  },
+  {
+    "raw": " Lobby ",
+    "sent": "Lobby",
+    "expect": "Lobby"
+  },
+  {
+    "raw": "lobby",
+    "sent": "lobby",
+    "expect": "lobby"
+  },
+  {
+    "raw": "Lobby",
+    "sent": "Lobby",
+    "expect": "Lobby"
+  },
+  {
+    "raw": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+    "sent": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+    "expect": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+  },
+  {
+    "raw": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+    "sent": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+    "expect": null
+  },
+  {
+    "raw": "-a",
+    "sent": "-a",
+    "expect": null
+  },
+  {
+    "raw": "\u00e9",
+    "sent": "\u00e9",
+    "expect": null
+  },
+  {
+    "raw": "",
+    "sent": "",
+    "expect": null
+  },
+  {
+    "raw": "   ",
+    "sent": "",
+    "expect": null
+  },
+  {
+    "raw": "a.b_c-d e",
+    "sent": "a.b_c-d e",
+    "expect": "a.b_c-d e"
+  },
+  {
+    "raw": "a\tb",
+    "sent": "a\tb",
+    "expect": null
+  },
+  {
+    "raw": "a/b",
+    "sent": "a/b",
+    "expect": null
+  },
+  {
+    "raw": "\ufeffa",
+    "sent": "a",
+    "expect": "a"
+  },
+  {
+    "raw": "\u001ca",
+    "sent": "\u001ca",
+    "expect": null
+  },
+  {
+    "raw": "\u0085a",
+    "sent": "\u0085a",
+    "expect": null
+  },
+  {
+    "raw": "\u001fa",
+    "sent": "\u001fa",
+    "expect": null
+  },
+  {
+    "raw": "a\u0085b",
+    "sent": "a\u0085b",
+    "expect": null
+  },
+  {
+    "raw": "  a  b  ",
+    "sent": "a  b",
+    "expect": "a  b"
+  },
+  {
+    "raw": "\u2028a",
+    "sent": "a",
+    "expect": "a"
+  },
+  {
+    "raw": "Line\n",
+    "sent": "Line",
+    "expect": "Line"
+  },
+  {
+    "raw": "A_b.c-d 9",
+    "sent": "A_b.c-d 9",
+    "expect": "A_b.c-d 9"
+  },
+  {
+    "raw": "0",
+    "sent": "0",
+    "expect": "0"
+  }
+]

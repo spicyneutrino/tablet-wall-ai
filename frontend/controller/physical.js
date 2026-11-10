@@ -15,6 +15,7 @@
     const MAX_DWELL_MS = 600000;
     const TAB_STORAGE_KEY = "tablet-wall-console-tab-v1";
     const TAB_NAMES = ["tablet", "show", "content", "saved", "system"];
+    const SNAPSHOT_NAME_RULE = "Use letters, numbers, spaces, dots, underscores or hyphens. Start with a letter or number. 64 characters at most.";
     const COMPACT_MEDIA = typeof window.matchMedia === "function"
         ? window.matchMedia("(max-width: 719px)") : null;
 
@@ -2351,8 +2352,12 @@
 
     async function saveLayout(event) {
         event.preventDefault();
-        const name = el.layoutName.value.trim();
-        if (!name) { setMsg(el.layoutMsg, "Enter an arrangement name.", "err"); el.layoutName.focus(); return; }
+        const name = tabletForms.snapshotName(el.layoutName.value);
+        if (name === null) {
+            setMsg(el.layoutMsg, el.layoutName.value.trim() ? SNAPSHOT_NAME_RULE : "Enter an arrangement name. " + SNAPSHOT_NAME_RULE, "err");
+            el.layoutName.focus();
+            return;
+        }
         if (state.busy || !await resolveOutput("Save the applied arrangement")) return;
         const existing = state.savedLayouts.find(item => item.name === name);
         if (existing && !window.confirm("Overwrite saved arrangement “" + name + "” with the applied geometry? The image is excluded.")) return;
@@ -2628,8 +2633,12 @@
         });
         document.getElementById("scene-save-form").addEventListener("submit", async event => {
             event.preventDefault();
-            const name = document.getElementById("scene-name").value.trim(), message = document.getElementById("scene-message");
-            if (!name) { setMsg(message, "Enter a content name.", "err"); document.getElementById("scene-name").focus(); return; }
+            const input = document.getElementById("scene-name"), message = document.getElementById("scene-message");
+            const name = tabletForms.snapshotName(input.value);
+            if (name === null) {
+                setMsg(message, input.value.trim() ? SNAPSHOT_NAME_RULE : "Enter a content name. " + SNAPSHOT_NAME_RULE, "err");
+                input.focus(); return;
+            }
             if (!await resolveOutput("Save the applied content")) return;
             const existing = savedScenes.find(entry => entry.name === name);
             if (existing && !window.confirm("Overwrite saved content “" + name + "” with the applied content? Geometry is excluded.")) return;

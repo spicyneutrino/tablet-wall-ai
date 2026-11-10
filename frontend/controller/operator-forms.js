@@ -1,11 +1,17 @@
 "use strict";
 (function (root) {
+    const SNAPSHOT_NAME = /^[A-Za-z0-9][A-Za-z0-9 ._-]{0,63}$/;
+    function snapshotName(raw) {
+        const name = raw == null ? "" : String(raw).trim();
+        return SNAPSHOT_NAME.test(name) ? name : null;
+    }
     function create() {
         const forms = new Map();
         const copy = value => JSON.parse(JSON.stringify(value));
         const same = (a, b) => JSON.stringify(a) === JSON.stringify(b);
         const key = (id, group) => JSON.stringify([id, group]);
         return {
+            snapshotName,
             observe(id, group, values, etag) {
                 const name = key(id, group), old = forms.get(name);
                 if (!old || !old.dirty) {
@@ -46,7 +52,7 @@
             clear() { forms.clear(); }
         };
     }
-    const api = { create };
+    const api = { create, snapshotName };
     if (typeof module !== "undefined" && module.exports) module.exports = api;
     else root.OperatorForms = api;
 }(typeof window !== "undefined" ? window : globalThis));

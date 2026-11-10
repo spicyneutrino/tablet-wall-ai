@@ -231,6 +231,9 @@ window.OperatorContent = {
             if (active && active !== body && active !== document.documentElement) return;
             trigger.focus({ preventScroll: true });
         }
+        function isTestPattern(image) {
+            return image.source === "curated" && image.name === "wall-pattern-" + image.id.slice(7) + ".png";
+        }
         function renderGallery() {
             const list = $("image-gallery");
             if (!list || typeof document.createElement !== "function") return;
@@ -240,8 +243,9 @@ window.OperatorContent = {
             const focusedWasGallery = focusedIndex >= 0;
             const search = $("image-search").value.toLocaleLowerCase();
             const matches = images.filter(image => image.name.toLocaleLowerCase().includes(search));
+            const ordered = images.filter(image => !isTestPattern(image)).concat(images.filter(isTestPattern));
             for (const [id, row] of gallery) if (!images.some(image => image.id === id)) { row.item.remove(); gallery.delete(id); }
-            images.forEach(image => {
+            ordered.forEach(image => {
                 let row = gallery.get(image.id);
                 if (!row) {
                     const item = document.createElement("li"); item.className = "image-choice"; item.dataset.assetId = image.id;
@@ -249,10 +253,11 @@ window.OperatorContent = {
                     const thumbnail = document.createElement("img"); thumbnail.alt = ""; thumbnail.loading = "lazy";
                     const name = document.createElement("span");
                     name.className = "image-choice-name";
+                    const patternTag = document.createElement("span"); patternTag.className = "image-choice-tag"; patternTag.textContent = "Test pattern";
                     const thumbnailNote = document.createElement("span"); thumbnailNote.className = "sr-only";
                     thumbnailNote.id = "image-thumbnail-note-" + (++noteSequence);
                     const appliedNote = document.createElement("span"); appliedNote.className = "sr-only";
-                    button.append(thumbnail, name, thumbnailNote); item.append(button, appliedNote); list.append(item);
+                    button.append(thumbnail, name, patternTag, thumbnailNote); item.append(button, appliedNote); list.append(item);
                     button.addEventListener("click", () => choose(image.id));
                     thumbnail.addEventListener("error", () => {
                         item.dataset.thumbnail = "unavailable"; thumbnail.hidden = true;
@@ -263,15 +268,17 @@ window.OperatorContent = {
                         delete item.dataset.thumbnail; thumbnail.hidden = false; thumbnailNote.textContent = "";
                         renderGallery();
                     });
-                    row = { item, button, thumbnail, name, thumbnailNote, appliedNote }; gallery.set(image.id, row);
+                    row = { item, button, thumbnail, name, patternTag, thumbnailNote, appliedNote }; gallery.set(image.id, row);
                 }
+                const pattern = isTestPattern(image);
                 row.item.hidden = !image.name.toLocaleLowerCase().includes(search);
+                row.patternTag.hidden = !pattern;
                 const inspected = selectionDirty && image.id === selected;
                 row.button.setAttribute("aria-pressed", String(inspected)); row.button.disabled = busy;
                 const applied = Boolean(state.scene && state.scene.content.type === "image" && state.scene.content.asset === image.id);
                 row.item.dataset.applied = String(applied);
                 const unavailableThumbnail = row.item.dataset.thumbnail === "unavailable";
-                row.button.setAttribute("aria-label", "Preview " + image.name + (unavailableThumbnail ? ", thumbnail unavailable" : ""));
+                row.button.setAttribute("aria-label", "Preview " + image.name + (pattern ? ", test pattern" : "") + (unavailableThumbnail ? ", thumbnail unavailable" : ""));
                 row.button.title = image.name + (unavailableThumbnail ? " — thumbnail unavailable" : "");
                 row.appliedNote.textContent = applied ? "Applied configuration. This image is the saved wall content; tablet reports are separate." : "";
                 const describedBy = [];
@@ -287,6 +294,17 @@ window.OperatorContent = {
                 row.thumbnail.width = Math.max(1, Math.round(image.width * thumbnailScale)); row.thumbnail.height = Math.max(1, Math.round(image.height * thumbnailScale));
                 row.name.textContent = image.name;
             });
+            let cursor = list.firstElementChild;
+            const currentOrder = Array.from(list.children).map(item => item.dataset.assetId);
+            const desiredOrder = ordered.map(image => image.id);
+            if (currentOrder.length === desiredOrder.length && currentOrder.some((id, index) => id !== desiredOrder[index])) {
+                for (const image of ordered) {
+                    const row = gallery.get(image.id);
+                    if (!row) continue;
+                    if (row.item === cursor) cursor = cursor.nextElementSibling;
+                    else list.insertBefore(row.item, cursor);
+                }
+            }
             const empty = $("image-search-empty");
             if (empty) {
                 const noAssets = inventoryReady && images.length === 0;
@@ -304,7 +322,10 @@ window.OperatorContent = {
             if (focusedWasGallery) {
                 const shown = buttons.includes(focusedBefore) && !focusedBefore.hidden
                     && !(focusedBefore.parentElement && focusedBefore.parentElement.hidden);
-                if (!shown) {
+                if (shown && document.activeElement !== focusedBefore) {
+                    focusedBefore.focus({ preventScroll: true });
+                    setGalleryTabStop(focusedBefore);
+                } else if (!shown) {
                     const next = closestVisibleButton(buttons, focusedIndex, orderBefore);
                     if (next) { focusTarget(next); setGalleryTabStop(next); }
                     else {
@@ -404,6 +425,7 @@ window.OperatorContent = {
         async function show(content, { guard = baseEtag || state.etag, scene = null, feedback = "image-message" } = {}) {
             const trigger = document.activeElement;
             const submitted = selectionVersion;
+            let failed = false;
             if (!content || busy || !await resolveOutput("Show this content", "image")) return;
             const before = state.scene && state.scene.content;
             busy = true; render();
@@ -424,16 +446,29 @@ window.OperatorContent = {
                 announce("Content applied.");
                 return true;
             } catch (error) {
-                if (error.status === 412) showConflict("The wall changed. Your image choice is retained with its original guard. Review current state before rebuilding this preview.");
-                message("Could not show this content. " + error.message.replace(/[.!?\s]+$/, "") + (error.status === 412 ? ". Use Refresh status, then rebuild the preview before Show." : ". Use Refresh images to retry."), false, "err", feedback);
+                failed = true;
+                if (error.status === 412) {
+                    showConflict("The wall changed. Your image choice is retained with its original guard. Review current state before rebuilding this preview.");
+                    message("Could not show this content. The wall changed after this preview was built, so nothing was shown. Use Refresh status, then Rebuild preview, then Show image.", false, "err", feedback);
+                } else {
+                    message("Could not show this content. " + error.message.replace(/[.!?\s]+$/, "") + ". Use Refresh images to retry.", false, "err", feedback);
+                }
                 return false;
             } finally {
                 busy = false; render(); renderStage();
                 const lost = trigger && (trigger.hidden || trigger.disabled || !trigger.isConnected
                     || (typeof trigger.getClientRects === "function" && !trigger.getClientRects().length));
                 if (lost) {
-                    const search = $("image-search");
-                    if (search && typeof search.focus === "function") search.focus({ preventScroll: true });
+                    if (!failed) {
+                        const search = $("image-search");
+                        if (search && typeof search.focus === "function") search.focus({ preventScroll: true });
+                    } else {
+                        const visible = node => Boolean(node) && !node.hidden && node.isConnected !== false
+                            && (typeof node.getClientRects !== "function" || node.getClientRects().length > 0);
+                        const rebuild = $("image-rebuild");
+                        const target = feedback === "image-message" && visible(rebuild) && !rebuild.disabled ? rebuild : $(feedback);
+                        if (visible(target) && typeof target.focus === "function") target.focus({ preventScroll: true });
+                    }
                 }
             }
         }
@@ -532,7 +567,7 @@ window.OperatorContent = {
         return { render, refresh, dirty: () => selectionDirty,
             stageNames: () => ({ applied: appliedName(), pending: pendingName(), unavailable: appliedUnavailable() }),
             imageFor: id => images.find(image => image.id === id),
-            showSelected: () => show(selectedContent(), { scene: savedScene, guard: baseEtag || state.etag }),
+            showSelected: ({ feedback } = {}) => show(selectedContent(), { scene: savedScene, guard: baseEtag || state.etag, feedback }),
             previewScene(entry, guard) {
                 savedScene = { ...entry }; selected = entry.content.asset || null; fit = entry.content.fit || "cover";
                 background = normalizedBackground(entry.content.background);

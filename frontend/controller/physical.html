@@ -416,6 +416,7 @@
     <div class="wall-status" id="wall-status" role="group" aria-label="Wall status and exceptions">
       <p class="wall-summary" id="wall-status-summary"></p>
       <ul class="exception-inline" id="exception-strip" aria-label="Positions that need attention"></ul>
+      <p class="wall-power" id="wall-power-summary" hidden></p>
     </div>
   </section>
 
@@ -440,7 +441,7 @@
         </div>
       </section>
     </div>
-    <p id="image-message" class="form-msg" role="status" aria-live="polite"></p>
+    <p id="image-message" class="form-msg" role="status" aria-live="polite" tabindex="-1"></p>
     <div class="commit-evidence">
       <section class="fit-feedback" id="fit-feedback" aria-labelledby="fit-feedback-title">
         <h3 class="sr-only" id="fit-feedback-title">Image fit and crop</h3>
@@ -987,7 +988,8 @@
             <form class="saved-form" id="layout-save-form" novalidate data-form="layout-save-form">
                 <div class="field">
                     <label class="label" for="layout-name">Arrangement name</label>
-                    <input class="inp" id="layout-name" type="text" maxlength="64" autocomplete="off" spellcheck="false" aria-describedby="layout-msg" data-field="layout-name">
+                    <input class="inp" id="layout-name" type="text" maxlength="64" autocomplete="off" spellcheck="false" aria-describedby="layout-name-rule layout-msg" data-field="layout-name">
+                    <p class="hint" id="layout-name-rule">Use letters, numbers, spaces, dots, underscores or hyphens. Start with a letter or number. 64 characters at most.</p>
                 </div>
                 <button type="submit" class="btn btn-primary" id="btn-layout-save" data-action="btn-layout-save">Save applied arrangement</button>
             </form>
@@ -1003,7 +1005,8 @@
             </div>
             <p class="hint">Preview changes this screen only. Show image on the wall remains a separate command.</p>
             <form id="scene-save-form" data-form="scene-save-form">
-                <label class="field" for="scene-name">Content name<input class="inp" id="scene-name" maxlength="64" autocomplete="off" aria-describedby="scene-message" data-field="scene-name"></label>
+                <label class="field" for="scene-name">Content name<input class="inp" id="scene-name" maxlength="64" autocomplete="off" aria-describedby="scene-name-rule scene-message" data-field="scene-name"></label>
+                <p class="hint" id="scene-name-rule">Use letters, numbers, spaces, dots, underscores or hyphens. Start with a letter or number. 64 characters at most.</p>
                 <button type="submit" class="btn btn-primary" id="scene-save" data-action="scene-save">Save applied content</button>
             </form>
             <p class="form-msg" id="scene-message" role="status" aria-live="polite" hidden></p>

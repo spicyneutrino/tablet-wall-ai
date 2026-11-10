@@ -420,3 +420,134 @@ const content = context.window.OperatorContent.create({ state, renderStage() {},
     assert.ok(bars.includes('id="crop-width"') && bars.includes('id="crop-height"'), "crop values belong to the decorative bars");
 }
 console.log("Fit feedback slots are unique, labelled, decorative and placed after Show");
+
+(async () => {
+    const nodes = new Map();
+    function localElement(tag, owner) {
+        return {
+            tagName: tag, dataset: {}, attrs: {}, children: [], listeners: {}, isConnected: true,
+            value: "", hidden: false, disabled: false, textContent: "", className: "", width: 0, height: 0, src: "",
+            getClientRects() { return this.hidden ? [] : [{ width: 10, height: 10 }]; },
+            addEventListener(type, fn) { this.listeners[type] = fn; this[type] = fn; },
+            focus() { owner.activeElement = this; },
+            replaceChildren(...items) { this.children = items; },
+            append(...items) { this.children.push(...items); },
+            remove() { this.removed = true; },
+            setAttribute(key, value) { this.attrs[key] = String(value); },
+            getAttribute(key) { return Object.prototype.hasOwnProperty.call(this.attrs, key) ? this.attrs[key] : null; },
+            removeAttribute(key) { delete this.attrs[key]; }
+        };
+    }
+    const doc = { activeElement: null, getElementById: id => { if (!nodes.has(id)) nodes.set(id, localElement(id, doc)); return nodes.get(id); },
+        createElement: tag => localElement(tag, doc) };
+    const node = id => doc.getElementById(id);
+    const state = { layoutKind: "logical", etag: "e", etagState: "current", capabilities: {}, scene: { content: { type: "color" } },
+        base: { kind: "logical", width: 1000, height: 500, placements: {} },
+        draft: { kind: "logical", width: 1000, height: 500, placements: {} } };
+    const images = ["a", "b"].map(id => ({ id, name: id + ".png", width: 100, height: 100,
+        source: "managed", url: "/" + id, thumbnail_url: "/" + id }));
+    const calls = [];
+    let conflictCount = 0, fail = null;
+    const context = vm.createContext({ window: { OperatorState: model }, document: doc, Option });
+    vm.runInContext(fs.readFileSync(require.resolve("../frontend/controller/operator-dom.js"), "utf8"), context);
+    vm.runInContext(fs.readFileSync(require.resolve("../frontend/controller/operator-content.js"), "utf8"), context);
+    const content = context.window.OperatorContent.create({ state, renderStage() {}, announce() {},
+        showConflict() { conflictCount += 1; },
+        ingestConfig(result) { state.scene = result.scene; },
+        async api(method, path, body) {
+            calls.push({ method, path, body });
+            if (path === "/api/v3/images") return { images };
+            if (path === "/api/v3/scene" || path.startsWith("/api/v3/scenes/")) return fail();
+            throw new Error("unexpected route " + path);
+        } });
+    const choose = id => node("image-gallery").children.find(item => item.dataset.assetId === id).children[0].click();
+    const exact412 = "Could not show this content. The wall changed after this preview was built, so nothing was shown. Use Refresh status, then Rebuild preview, then Show image.";
+    const fail412 = ({ changeEtag = false } = {}) => () => {
+        state.etagState = "stale";
+        if (changeEtag) state.etag = "changed";
+        const error = new Error("Server detail abc123 is not for operators.");
+        error.status = 412;
+        throw error;
+    };
+    await content.refresh();
+
+    node("show-image").focus();
+    fail = fail412({ changeEtag: true });
+    await choose("a");
+    const beforeFirst = calls.length;
+    assert.equal(await content.showSelected(), false, "a 412 fails the Show");
+    assert.equal(calls.length - beforeFirst, 1, "a 412 sends exactly one command and no retry");
+    assert.equal(calls.at(-1).method, "PUT");
+    assert.equal(conflictCount, 1, "the existing conflict panel call is kept");
+    assert.equal(node("image-message").textContent, exact412, "a 412 states the recovery path in plain words");
+    assert.equal(node("image-message").textContent.includes("Server detail"), false, "a 412 never prints the server detail");
+    assert.equal(doc.activeElement, node("image-rebuild"), "a stale preview focuses the visible Rebuild control first");
+    assert.notEqual(doc.activeElement, node("image-search"), "a failed Show never falls back to the search field");
+    assert.equal(node("image-rebuild").disabled, false);
+
+    state.etag = "e"; state.etagState = "current"; conflictCount = 0;
+    content.discard();
+    node("show-image").focus();
+    fail = fail412();
+    await choose("a");
+    await content.showSelected();
+    assert.equal(node("image-rebuild").hidden, true, "an unchanged base leaves Rebuild hidden");
+    assert.equal(doc.activeElement, node("image-message"), "a visible message receives focus when Rebuild is not the candidate");
+
+    state.etag = "e"; state.etagState = "current";
+    content.discard();
+    node("show-image").focus();
+    fail = () => { const error = new Error("Image store failed."); error.status = 500; throw error; };
+    await choose("a");
+    assert.equal(await content.showSelected(), false, "a non-412 failure still fails the Show");
+    assert.equal(node("image-message").textContent, "Could not show this content. Image store failed. Use Refresh images to retry.",
+        "a non-412 failure keeps today's text");
+    assert.equal(doc.activeElement, node("show-image"), "an enabled trigger keeps focus");
+
+    state.etag = "e"; state.etagState = "current";
+    content.discard();
+    content.previewScene({ name: "Amber", content: { type: "image", asset: "a", fit: "contain" } }, "e");
+    node("image-message").hidden = true;
+    node("image-search").hidden = true;
+    node("scene-message").hidden = false;
+    node("show-image").focus();
+    conflictCount = 0;
+    fail = fail412({ changeEtag: true });
+    const beforeRecall = calls.length;
+    assert.equal(await content.showSelected({ feedback: "scene-message" }), false, "a refused saved-content recall fails");
+    assert.equal(calls.length - beforeRecall, 1, "a saved-content recall sends one command and no retry");
+    assert.equal(calls.at(-1).method, "POST");
+    assert.equal(calls.at(-1).path, "/api/v3/scenes/Amber/recall");
+    assert.equal(node("scene-message").textContent, exact412, "the recall message states the same plain recovery path");
+    assert.equal(doc.activeElement, node("scene-message"), "with Images hidden, focus goes to the visible recall message");
+    assert.notEqual(doc.activeElement, node("image-search"), "the hidden Images field is never focused");
+    assert.notEqual(doc.activeElement.tagName, "body", "focus never lands on BODY");
+
+    node("scene-message").hidden = true;
+    node("show-image").focus();
+    state.etag = "e"; state.etagState = "current";
+    content.discard();
+    content.previewScene({ name: "Amber", content: { type: "image", asset: "a" } }, "e");
+    node("image-message").hidden = true; node("image-search").hidden = true;
+    fail = fail412({ changeEtag: true });
+    await content.showSelected({ feedback: "scene-message" });
+    assert.equal(doc.activeElement, node("show-image"), "with no visible candidate focus is left where it is");
+    assert.notEqual(doc.activeElement, node("image-search"));
+    console.log("Failed Show keeps one command, states the D5 message and moves focus only to visible candidates");
+})().catch(error => { console.error(error); process.exitCode = 1; });
+
+{
+    const html = fs.readFileSync(require.resolve("../frontend/controller/physical.html"), "utf8");
+    const status = html.slice(html.indexOf('id="wall-status"'), html.indexOf("</div>", html.indexOf('id="wall-status"')));
+    assert.ok(status.includes('<p class="wall-power" id="wall-power-summary" hidden></p>'),
+        "the fleet power summary is the last child of the wall status group");
+    assert.match(html, /id="image-message"[^>]*tabindex="-1"/, "the Images message is programmatically focusable");
+    for (const [input, hint, message] of [["layout-name", "layout-name-rule", "layout-msg"],
+        ["scene-name", "scene-name-rule", "scene-message"]]) {
+        assert.match(html, new RegExp('id="' + input + '"[^>]*aria-describedby="' + hint + " " + message + '"'),
+            "the " + input + " rule is described before its message");
+        assert.match(html, new RegExp('id="' + hint + '"[^>]*>Use letters, numbers, spaces, dots, underscores or hyphens\\. Start with a letter or number\\. 64 characters at most\\.'),
+            "the " + input + " rule sentence is stated once as a hint");
+    }
+}
+console.log("Wave-one HTML adds the power summary, both name-rule hints and a focusable Images message");
