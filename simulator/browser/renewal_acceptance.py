@@ -2154,7 +2154,7 @@ def images_workbench(rig: RenewalRig) -> None:
         {"reordered": reordered, "focusBefore": focus_before, "focus": focus,
          "scrollBefore": scroll_before, "expectedFocusedId": ids[0]},
         {"reordered": True, "focusInside": True, "inside": True,
-         "activeId": ids[0], "inside": True, "scrollY": scroll_before},
+         "activeId": ids[0], "scrollY": scroll_before},
         obligation="C-FOCUS-ROSTER",
     )
 
