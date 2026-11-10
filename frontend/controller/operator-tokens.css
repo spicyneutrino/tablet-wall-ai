@@ -45,4 +45,13 @@
     --panel-pad: 0.9rem;
     --page-pad: 0.9rem;
     --lead: 1.45;
+    --space-1: 4px;
+    --space-2: 8px;
+    --space-3: 12px;
+    --space-4: 16px;
+    --space-5: 24px;
+    --text-sm: 0.75rem;
+    --text-md: 0.8125rem;
+    --text-lg: 0.9375rem;
+    --text-xl: 1.0625rem;
 }
