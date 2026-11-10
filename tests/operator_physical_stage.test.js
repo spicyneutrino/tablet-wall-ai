@@ -688,6 +688,7 @@ function rosterSetup() {
     const nodes = new Map();
     const doc = { activeElement: null, body: { dataset: {} },
         createElement: tag => { const item = new FakeElement(tag); item.ownerDocument = doc; return item; },
+        createTextNode: text => ({ textContent: text }),
         getElementById: id => { if (!nodes.has(id)) nodes.set(id, new FakeElement(id)); return nodes.get(id); } };
     const now = performance.now();
     const token = { connection_id: "socket-1", generation: "g", revision: 8, render_seq: 4, mapping_revision: "mapping", asset: "image" };
@@ -704,8 +705,10 @@ function rosterSetup() {
                 render: { state: "displayed", current: true, expected_token: { ...token }, accepted_token: { ...token }, age_ms: 0, observed_mono: now } },
             b: { online: true, protocol: 3, caps: ["image", "render_ack"], mapping: { state: "ready" }, wake_lock: "held",
                 render: { state: "displayed", current: false, expected_token: { ...token }, accepted_token: { ...token }, age_ms: 0, observed_mono: now } },
-            c: { online: false },
+            c: { online: false, last_seen: "2026-11-01T12:00:00Z" },
             d: { online: true, protocol: 3, caps: ["image", "render_ack"], mapping: { state: "ready" }, wake_lock: "released",
+                render: { state: "displayed", current: true, expected_token: { ...token }, accepted_token: { ...token }, age_ms: 0, observed_mono: now } },
+            unplaced: { online: true, protocol: 3, caps: ["image", "render_ack"], mapping: { state: "ready" }, wake_lock: "held",
                 render: { state: "displayed", current: true, expected_token: { ...token }, accepted_token: { ...token }, age_ms: 0, observed_mono: now } }
         } }
     };
@@ -723,7 +726,8 @@ function rosterSetup() {
     const stage = context.window.PhysicalStage.create({
         DRAG_THRESHOLD_PX: 3, afterDraftChange() {}, announce() {}, bodyMetrics: () => null,
         calibrationFor: () => null, beginManual() {}, canManualEdit: () => true, clearMsg() {}, clone: value => value,
-        deviceEntries: () => Object.keys(config.layout.slots).map(id => ({ id, label: "Tablet " + id, slot: config.layout.slots[id] })),
+        deviceEntries: () => [...new Set([...Object.keys(config.runtime.devices), ...Object.keys(config.layout.slots)])]
+            .map(id => ({ id, label: "Tablet " + id, slot: config.layout.slots[id] || null })),
         deviceLabel: id => "Tablet " + id, deviceNumber: () => 1, deviceRows: new Map(), el,
         finiteOr: (value, fallback) => Number.isFinite(value) ? value : fallback, formatNumber: String,
         isOnline: id => !!(config.runtime.devices[id] && config.runtime.devices[id].online), latestProfile: () => null,
@@ -735,37 +739,130 @@ function rosterSetup() {
     const rowFor = id => el.deviceList.children.find(item => item.dataset.deviceId === id);
     const pickFor = id => rowFor(id).children[0];
     const metaFor = id => pickFor(id).children[1];
-    return { stage, state, config, el, rowFor, pickFor, metaFor };
+    const factFor = (id, fact) => metaFor(id).children.find(child => child.dataset && child.dataset.fact === fact);
+    return { stage, state, config, el, rowFor, pickFor, metaFor, factFor };
 }
 
 {
     const roster = rosterSetup();
     roster.stage.renderDeviceList();
-    assert.equal(roster.el.deviceList.children.length, 4, "every wall position has one roster row");
+    assert.equal(roster.el.deviceList.children.length, 5, "every wall position and unplaced online tablet has one roster row");
     assert.equal(roster.rowFor("a").dataset.status, "displayed");
     assert.equal(roster.rowFor("a").dataset.powerState, "denied");
     assert.equal(roster.rowFor("a").dataset.powerWarning, "true");
-    assert.equal(roster.metaFor("a").textContent, "Power denied");
-    assert.match(roster.pickFor("a").getAttribute("aria-label"), /Power: denied/);
+    assert.equal(roster.factFor("a", "connection").textContent, "Connected");
+    assert.equal(roster.factFor("a", "image").textContent, "Reports current image");
+    assert.equal(roster.factFor("a", "power").textContent, "Power denied");
+    assert.equal(roster.pickFor("a").getAttribute("aria-label"), "Tablet a, Connected, Reports current image. Power: denied");
     assert.equal(roster.rowFor("b").dataset.status, "stale");
     assert.equal(roster.rowFor("b").dataset.powerState, "held");
     assert.equal(roster.rowFor("b").dataset.powerWarning, "false");
-    assert.match(roster.metaFor("b").textContent, /Previous paint/);
-    assert.match(roster.metaFor("b").textContent, /Power held/);
-    assert.equal(roster.metaFor("b").textContent.includes("showing"), false, "held power never turns stale paint into displayed");
+    assert.equal(roster.factFor("b", "connection").textContent, "Connected");
+    assert.equal(roster.factFor("b", "image").textContent, "Previous paint · current image unconfirmed");
+    assert.equal(roster.factFor("b", "power").textContent, "Power held");
+    assert.equal(roster.factFor("b", "image").textContent.includes("showing"), false, "held power never turns stale paint into displayed");
+    const lastSeen = "Offline · last seen " + new Date("2026-11-01T12:00:00Z").toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
+    assert.equal(roster.factFor("c", "connection").textContent, lastSeen);
+    assert.equal(roster.factFor("c", "image").textContent, "Offline · spot reserved");
     assert.equal(roster.rowFor("c").dataset.powerState, "unknown");
-    assert.equal(roster.metaFor("c").textContent, "Offline · spot reserved · Last known power unknown");
+    assert.equal(roster.factFor("c", "power").textContent, "Last known power unknown");
     assert.equal(roster.rowFor("d").dataset.status, "excluded");
     assert.equal(roster.rowFor("d").dataset.powerState, "released");
+    assert.equal(roster.factFor("d", "connection").textContent, "Connected");
+    assert.equal(roster.factFor("d", "image").textContent, "Excluded from show");
+    assert.equal(roster.factFor("d", "power").textContent, "Power released");
+    assert.equal(roster.rowFor("unplaced").dataset.status, "unplaced");
+    assert.equal(roster.factFor("unplaced", "connection").textContent, "Connected");
+    assert.equal(roster.factFor("unplaced", "image").textContent, "Not on the wall");
+    assert.equal(roster.factFor("unplaced", "power").textContent, "Power held");
+    assert.equal(roster.pickFor("unplaced").getAttribute("aria-label"), "Tablet unplaced, Connected, No placement. Power: held");
+    assert.deepEqual(roster.metaFor("a").children.filter(child => child.dataset && child.dataset.fact).map(child => child.dataset.fact), ["connection", "image", "power"]);
+    assert.equal(roster.metaFor("a").children.map(child => child.textContent).join(""), "Connected · Reports current image · Power denied");
     assert.equal(roster.el.wallHealth.textContent, "1 of 3 showing the current image");
     assert.doesNotMatch(roster.el.wallHealth.textContent, /Power|wake-lock/i, "paint count stays separate from power readiness");
+    delete roster.state.roster.c.last_seen;
+    roster.stage.renderDeviceList();
+    assert.equal(roster.factFor("c", "connection").textContent, "Offline", "an offline tablet without a timestamp states only the connection fact");
     roster.state.rosterError = "503 unavailable";
     roster.stage.renderDeviceList();
     assert.equal(roster.rowFor("a").dataset.status, "stale", "a stale roster cannot claim current paint");
     assert.equal(roster.rowFor("a").dataset.powerStale, "true");
-    assert.match(roster.metaFor("a").textContent, /Status stale/);
-    assert.match(roster.metaFor("a").textContent, /Last known power denied/);
+    assert.equal(roster.factFor("a", "connection").textContent, "Status stale");
+    assert.equal(roster.factFor("a", "image").textContent, "Current image evidence unavailable");
+    assert.equal(roster.factFor("a", "power").textContent, "Last known power denied");
     assert.match(roster.el.wallHealth.textContent, /Status stale/);
     assert.doesNotMatch(roster.el.wallHealth.textContent, /Power|wake-lock/i);
     console.log("Mixed roster paint, held/denied power, unknown and stale freshness passed");
+}
+
+/* The fleet sentence is Images-only and reads the applied wall, not a local draft. */
+{
+    const nodes = new Map();
+    const make = (tagName = "div") => ({
+        tagName, textContent: "", hidden: false, dataset: {}, children: [], style: {}, ul: null,
+        append(...items) { this.children.push(...items); },
+        replaceChildren(...items) { this.children = items; },
+        querySelector(selector) { if (selector === "ul") this.ul ||= make("ul"); return this.ul; },
+        setAttribute() {}, removeAttribute() {}, addEventListener() {}, focus() {},
+        getClientRects() { return [{}]; }
+    });
+    const doc = { activeElement: null, body: { dataset: {} }, createElement: make,
+        getElementById: id => { if (!nodes.has(id)) nodes.set(id, make("div")); return nodes.get(id); } };
+    const token = { connection_id: "socket-1", generation: "g", revision: 8, render_seq: 4, mapping_revision: "mapping", asset: "image" };
+    const applied = { kind: "logical", width: 800, height: 200, placements: {
+        a: { x: 0, y: 0, w: 200, h: 100, bezel: {} },
+        b: { x: 200, y: 0, w: 200, h: 100, bezel: {} },
+        excluded: { x: 400, y: 0, w: 200, h: 100, bezel: {}, participating: false }
+    } };
+    const draftView = { kind: "logical", width: 1000, height: 200, placements: {
+        ...applied.placements,
+        draftOnly: { x: 800, y: 0, w: 200, h: 100, bezel: {} }
+    } };
+    const devices = {
+        a: { online: true, wake_lock: "denied" }, b: { online: true, wake_lock: "denied" },
+        excluded: { online: true, wake_lock: "denied" }, offline: { online: false, wake_lock: "denied" },
+        draftOnly: { online: true, wake_lock: "denied" }
+    };
+    const config = { layout: applied, scene: { content: { type: "image", asset: "image" } },
+        runtime: { devices }, revision: 8, generation: "g" };
+    const context = vm.createContext({ window: { OperatorState: require("../frontend/controller/operator-state.js"), addEventListener() {},
+        matchMedia: () => ({ matches: false }) }, document: doc, performance });
+    vm.runInContext(fs.readFileSync(require.resolve("../frontend/controller/operator-workspace.js"), "utf8"), context);
+    vm.runInContext(fs.readFileSync(require.resolve("../frontend/controller/physical-stage.js"), "utf8"), context);
+    let captured = null;
+    context.window.OperatorStage = Object.assign({}, stageModel, {
+        draw(options) { captured = options; return {}; },
+        panels: () => []
+    });
+    const state = { operatorConfig: config, roster: devices, rosterError: null, rosterCheckedAt: new Date().toISOString(),
+        base: applied, deviceLabels: {}, selectedId: null, tabName: "content", busy: false, etagState: "current" };
+    const el = { stageSvg: { querySelectorAll: () => [], style: {} }, stageScale: doc.getElementById("stage-scale") };
+    const stage = context.window.PhysicalStage.create({
+        DRAG_THRESHOLD_PX: 3, afterDraftChange() {}, announce() {}, bodyMetrics: () => null,
+        calibrationFor: () => null, beginManual() {}, canManualEdit: () => true, clearMsg() {}, clone: value => value,
+        deviceEntries: () => [], deviceLabel: id => id, deviceNumber: () => 1, deviceRows: new Map(), el,
+        finiteOr: (value, fallback) => Number.isFinite(value) ? value : fallback, formatNumber: String,
+        isOnline: id => !!devices[id] && devices[id].online === true, latestProfile: () => null,
+        mutateDraft: () => true, numberTag: () => "1", numberedLabel: id => id, populateDeviceCard() {},
+        profileFor: () => null, pushUndo() {}, roundTo: value => value, selectedSlot: () => null,
+        selectionChanged() {}, setInputValue() {}, showError() {}, showTab() {}, state, syncTabDots() {}, validPair: () => ({})
+    });
+    const view = { layout: draftView, content: { type: "image", asset: "image" }, preview: false, editable: true };
+    stage.renderStage(view);
+    assert.deepEqual(captured.fleet, { state: "denied", label: "denied", count: 2 },
+        "Images aggregates only current online applied-layout reports, never the local draft or excluded slots");
+    for (const tabName of ["tablet", "show"]) {
+        state.tabName = tabName;
+        stage.renderStage(view);
+        assert.equal(captured.fleet, null, tabName + " keeps per-tablet power text instead of the fleet sentence");
+    }
+    state.tabName = "content";
+    state.rosterError = "503 unavailable";
+    stage.renderStage(view);
+    assert.equal(captured.fleet, null, "a stale roster never states a fleet power sentence");
+    state.rosterError = null;
+    devices.b.wake_lock = "held";
+    stage.renderStage(view);
+    assert.equal(captured.fleet, null, "mixed power states keep per-tile text");
+    console.log("Fleet power text stays Images-only and reads the applied wall");
 }

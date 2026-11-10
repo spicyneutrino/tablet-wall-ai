@@ -2708,6 +2708,13 @@
         nudgeSelected(deltaX, deltaY);
     }
 
+    function openMeasurements(id) {
+        if (id && state.selectedId !== id) selectDevice(id);
+        showTab("system", { persist: true });
+        document.getElementById("measurement-details").open = true;
+        document.getElementById("tablet-model").focus();
+    }
+
     function bindEvents() {
         tabEntries().forEach(function (entry) {
             if (!entry.tab) return;
@@ -3083,7 +3090,9 @@
             modelBusy: () => confirmingModels,
             modelReview: () => modelBatchReview,
             identifyTablet: id => operatorDevices.identify(id),
-            canIdentify: id => !!operatorDevices && operatorDevices.canIdentify(id)
+            canIdentify: id => !!operatorDevices && operatorDevices.canIdentify(id),
+            discardDraft: cancelDraft,
+            openMeasurements: id => openMeasurements(id)
         });
         operatorDevices = window.OperatorDevices.create({
             state, api, labelFor, profileFor, calibrationFor,
@@ -3116,15 +3125,19 @@
         document.getElementById("refresh-command-status").addEventListener("click", () => session.refresh().catch(error => showError(error.message)));
         const refreshStatus = document.getElementById("refresh-status");
         if (refreshStatus) refreshStatus.addEventListener("click", async () => {
+            const restoreFocus = document.activeElement === refreshStatus;
             refreshStatus.disabled = true;
             try { await Promise.all([refreshRoster(), operatorReadiness.load()]); workspace.render(); }
             catch (error) { showError(error.message); }
-            finally { refreshStatus.disabled = false; }
+            finally {
+                refreshStatus.disabled = false;
+                if (restoreFocus && document.activeElement === document.body) refreshStatus.focus({ preventScroll: true });
+            }
         });
         window.addEventListener("beforeunload", event => {
             if (hasUnsavedEdits()) { event.preventDefault(); event.returnValue = ""; }
         });
-        document.getElementById("open-tablet-measurements").addEventListener("click", () => { showTab("system", { persist: true }); document.getElementById("measurement-details").open = true; document.getElementById("tablet-model").focus(); });
+        document.getElementById("open-tablet-measurements").addEventListener("click", () => openMeasurements(state.selectedId));
         const imageActions = document.querySelector(".image-actions");
         const workspaceNav = document.querySelector(".workspace-nav-landmark");
         const imageActionObserver = new ResizeObserver(() => {
