@@ -3003,6 +3003,8 @@ def measured_blockers(rig: RenewalRig) -> None:
         timeout=20,
     )
     page.select_option("#grid-kind", "physical")
+    page.fill("#grid-rows", "1")
+    page.fill("#grid-columns", "3")
     page.wait_for_timeout(250)
     labels = page.evaluate(
         """() => [...document.querySelectorAll('#grid-order .tablet-order-row')].map(row => {
@@ -3203,6 +3205,32 @@ def measured_blockers(rig: RenewalRig) -> None:
              "focus": "measurement control"},
             obligation="D12",
         )
+    _task(rig, "Tablets")
+    selected_id = device_rows[0]["id"]
+    page.locator(f'#device-list .dev-pick[data-device-id="{selected_id}"]').click()
+    standalone = page.locator("#open-tablet-measurements")
+    available = standalone.count() == 1 and standalone.is_visible() and standalone.is_enabled()
+    opened = False
+    if available:
+        standalone.click()
+        opened = _soft_wait(
+            page,
+            "(id) => { const details = document.getElementById('measurement-details');"
+            " const active = document.activeElement; const panel = document.getElementById('panel-system');"
+            " return !!panel && !panel.hidden && !!details && details.open"
+            " && document.getElementById('selected-id')?.textContent.trim() === id"
+            " && !!active && !active.disabled && active.getClientRects().length > 0"
+            " && (active.id === 'tablet-model' || details.contains(active)); }",
+            arg=selected_id,
+            timeout=10,
+        )
+    rig.check(
+        "The selected measured tablet standalone measurements action opens its own visible settings",
+        available and opened,
+        {"available": available, "opened": opened, "selected": selected_id},
+        {"available": True, "opened": True, "selected": selected_id},
+        obligation="D12",
+    )
     measurement_writes = _layout_write_rows(rig, measurements_start)
     rig.check(
         "The missing-measurements preview and its settings actions send no layout write",
