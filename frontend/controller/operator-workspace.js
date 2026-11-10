@@ -47,9 +47,12 @@ window.OperatorWorkspace = {
         function focusGallery() {
             setChooser(true, false);
             const gallery = $("image-gallery");
-            const target = gallery.querySelector("button[tabindex=\"0\"]") || gallery;
-            gallery.scrollIntoView({ block: "start" });
-            target.focus({ preventScroll: true });
+            const target = [gallery.querySelector("button[tabindex=\"0\"]"), $("image-search"), $("add-image")]
+                .find(node => node && !node.disabled && (typeof node.getClientRects !== "function" || node.getClientRects().length));
+            if (target) {
+                target.scrollIntoView({ block: "start" });
+                target.focus({ preventScroll: true });
+            }
         }
         if ($("jump-to-library")) $("jump-to-library").addEventListener("click", focusGallery);
         if ($("first-wall-join-action")) $("first-wall-join-action").addEventListener("click", () => {
@@ -247,6 +250,7 @@ window.OperatorWorkspace = {
                 $("first-wall-image").dataset.done = String(!!(state.scene && state.scene.content && state.scene.content.type === "image"));
             }
             const noTablets = !Object.keys(state.roster).length;
+            if ($("first-wall-arrange-action")) $("first-wall-arrange-action").disabled = noTablets;
             if (joiningHasTablets !== !noTablets) { $("tablet-joining").open = noTablets; joiningHasTablets = !noTablets; }
             $("image-details-disclosure").hidden = $("presentation-checks").hidden = $("stage-technical").hidden = arrangeTools.hidden = noTablets;
             if (stageTask !== state.tabName) {
