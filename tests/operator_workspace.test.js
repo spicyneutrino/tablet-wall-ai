@@ -205,3 +205,55 @@ function setupIssue(options = {}) {
     assert.deepEqual(raced.calls.filter(call => call.kind === "select").map(call => call.id), ["b"],
         "only the newest issue request reveals");
 })().catch(error => { console.error(error); process.exitCode = 1; });
+
+(async () => {
+const nodes = new Map();
+const document = { activeElement: null, body: { dataset: {} }, getElementById: node, querySelector: selector => node(selector === ".arrange-tools" ? "arrange-tools" : "shared-stage") };
+function node(id) {
+    if (!nodes.has(id)) nodes.set(id, { dataset: {}, hidden: true, textContent: "", listeners: {}, appends: [], scrollIntoView() {},
+        setAttribute(name, value) { (this.attrs ||= {})[name] = value; },
+        addEventListener(event, fn) { this.listeners[event] = fn; },
+        append(child) { this.appends.push(child); child.parent = this; },
+        contains(child) { return child === this || child === node(id + "-summary"); },
+        querySelector() { return node(id + "-summary"); }, focus() { document.activeElement = this; } });
+    return nodes.get(id);
+}
+const state = { tabName: "content", roster: { a: { online: true }, b: { online: false } }, configLoaded: true, base: { placements: { a: {} } }, draft: { placements: { a: {} } } };
+let dirty = false, applied = "a.png", unavailable = false;
+node("stage-mode").hidden = false;
+node("image-title").textContent = "a.png";
+const context = { window: { OperatorState: require("../frontend/controller/operator-state.js") }, document };
+vm.createContext(context);
+vm.runInContext(fs.readFileSync(require.resolve("../frontend/controller/operator-dom.js"), "utf8"), context);
+vm.runInNewContext(fs.readFileSync(require.resolve("../frontend/controller/operator-workspace.js"), "utf8"), context);
+const workspace = context.window.OperatorWorkspace.create({ state, arrangementDirty: () => false, arrangementPreview: () => false,
+    imageDirty: () => dirty, canCommit: () => true, stageNames: () => ({ applied, pending: "b.png", unavailable }), commitTask: name => { state.tabName = name; return true; } });
+
+state.base = { placements: {} };
+workspace.render();
+assert.equal(node("first-wall-steps").hidden, false);
+assert.equal(node("first-wall-join-status").textContent, "1 tablets online");
+assert.equal(node("first-wall-join").dataset.done, "true");
+assert.equal(node("first-wall-arrange-status").textContent, "Not arranged yet");
+assert.equal(node("first-wall-arrange").dataset.done, "false");
+assert.equal(node("first-wall-image-status").textContent, "No image shown yet");
+assert.equal(node("first-wall-image").dataset.done, "false");
+node("first-wall-join-action").listeners.click();
+assert.equal(document.activeElement, node("tablet-joining-summary"));
+await node("first-wall-arrange-action").listeners.click();
+assert.equal(state.tabName, "show");
+assert.equal(document.activeElement, node("grid-2x2"));
+await node("first-wall-image-action").listeners.click();
+assert.equal(state.tabName, "content");
+assert.equal(document.activeElement, node("image-gallery-summary"));
+state.roster = {}; workspace.render();
+assert.equal(node("first-wall-join-status").textContent, "No tablets yet");
+assert.equal(node("first-wall-arrange-action").disabled, true, "Arrange cannot target hidden controls before tablets join");
+node("image-gallery").querySelector = () => null;
+await node("first-wall-image-action").listeners.click();
+assert.equal(document.activeElement, node("image-search"), "an empty gallery focuses the visible search control");
+assert.equal(node("first-wall-join").dataset.done, "false");
+state.base = { placements: { a: {} } }; workspace.render();
+assert.equal(node("first-wall-steps").hidden, true);
+console.log("First-wall visibility, step text, completion attributes and all three destinations passed");
+})().catch(error => { console.error(error); process.exitCode = 1; });
