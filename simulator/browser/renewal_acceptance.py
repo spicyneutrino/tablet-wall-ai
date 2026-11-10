@@ -51,6 +51,7 @@ import time
 import traceback
 from datetime import datetime, timezone
 from typing import Any
+from urllib.parse import urlsplit
 
 from PIL import Image, ImageDraw
 
@@ -1580,16 +1581,53 @@ def layout_foundation(rig: RenewalRig) -> None:
 
 
 def _url_path(row: dict[str, Any]) -> str:
-    return row["url"].split("?")[0]
+    """The path of an absolute or relative request URL, without query or fragment."""
+    raw = str(row.get("url") or "")
+    return urlsplit(raw).path or raw.split("?", 1)[0]
 
 
-def _controller_write_rows(rig: RenewalRig, start: int) -> list[dict[str, Any]]:
-    """Non-GET requests issued by the operator page since ``start``."""
+def _layout_write_path(path: str) -> bool:
+    """Whether a URL path is a durable v3 arrangement write, not a preview."""
+    clean = path.rstrip("/") or "/"
+    if clean == "/api/v3/grid":
+        return True
+    if clean.startswith("/api/v3/grid/"):
+        return clean != "/api/v3/grid/preview"
+    if clean == "/api/v3/layout" or clean.startswith("/api/v3/layout/"):
+        return True
+    if clean == "/api/v3/logical-layout" or clean.startswith("/api/v3/logical-layout/"):
+        return True
+    return (
+        clean == "/api/v3/layouts"
+        or clean.startswith("/api/v3/layouts/")
+        or clean == "/api/v3/logical-layouts"
+        or clean.startswith("/api/v3/logical-layouts/")
+    )
+
+
+def _controller_write_rows(
+    rig: RenewalRig, start: int, end: int | None = None
+) -> list[dict[str, Any]]:
+    """Non-GET requests issued by the operator page in ``[start, end)``."""
     return [
         row
-        for row in rig.requests[start:]
+        for row in rig.requests[start:end]
         if row.get("page") == "controller" and row.get("method") not in ("GET", "HEAD")
     ]
+
+
+def _restart_interval_writes(
+    rig: RenewalRig,
+    *,
+    post_show: int,
+    before_restart: int,
+    after_restart: int,
+) -> dict[str, list[dict[str, Any]]]:
+    """Automatic writes in the contiguous interval from after the failed Show to readiness."""
+    return {
+        "after_show_before_restart": _controller_write_rows(rig, post_show, before_restart),
+        "during_restart_startup": _controller_write_rows(rig, before_restart, after_restart),
+    }
 
 
 def _layout_write_rows(rig: RenewalRig, start: int) -> list[dict[str, Any]]:
@@ -1598,14 +1636,7 @@ def _layout_write_rows(rig: RenewalRig, start: int) -> list[dict[str, Any]]:
     for row in rig.requests[start:]:
         if row.get("page") != "controller" or row.get("method") not in ("PUT", "POST", "DELETE"):
             continue
-        path = _url_path(row)
-        if (
-            path.endswith("/api/v3/grid")
-            or path.endswith("/api/v3/layout")
-            or path.endswith("/api/v3/logical-layout")
-            or path.startswith("/api/v3/layouts")
-            or path.startswith("/api/v3/logical-layouts")
-        ):
+        if _layout_write_path(_url_path(row)):
             rows.append(row)
     return rows
 
@@ -1677,6 +1708,10 @@ def _gallery_metrics(page: Any, *, reset_scroll: bool = True) -> dict[str, Any]:
                         height: imageRect.height,
                         objectFit: getComputedStyle(img).objectFit,
                         hidden: img.hidden,
+                        complete: img.complete,
+                        naturalWidth: img.naturalWidth,
+                        naturalHeight: img.naturalHeight,
+                        currentSrc: img.currentSrc,
                     } : null,
                     insideGallery: rect.top >= g.top - 1 && rect.bottom <= g.bottom + 1
                         && rect.left >= g.left - 1 && rect.right <= g.right + 1,
@@ -1701,6 +1736,26 @@ def _gallery_metrics(page: Any, *, reset_scroll: bool = True) -> dict[str, Any]:
         }""",
         reset_scroll,
     )
+
+
+def _whole_image_ok(
+    tile: dict[str, Any] | None, expected_width: int, expected_height: int
+) -> bool:
+    """Whole-image proof: decoded expected pixels, contain fit, and aspect target."""
+    if not tile or not tile.get("img"):
+        return False
+    img = tile["img"]
+    if img.get("complete") is not True:
+        return False
+    if img.get("naturalWidth") != expected_width or img.get("naturalHeight") != expected_height:
+        return False
+    if img.get("hidden") or img.get("objectFit") != "contain":
+        return False
+    if not img.get("width") or not img.get("height"):
+        return False
+    aspect = img["width"] / img["height"]
+    expected = expected_width / expected_height
+    return abs(aspect / expected - 1) <= 0.02
 
 
 def _drawing_metrics(page: Any) -> dict[str, Any]:
@@ -1828,6 +1883,32 @@ def _roster_focus_metrics(page: Any) -> dict[str, Any]:
     )
 
 
+def _roster_focus_ok(
+    reordered: bool,
+    before: dict[str, Any],
+    after: dict[str, Any],
+    focused_id: str,
+    scroll_before: float,
+) -> bool:
+    """The originally focused roster row keeps focus, bounds and page scroll."""
+    if not reordered or not before.get("focusInside") or not after.get("focusInside"):
+        return False
+    if not after.get("inside") or after.get("activeId") != focused_id:
+        return False
+    if after.get("scrollY") != scroll_before:
+        return False
+    before_box = before.get("containerRect")
+    after_box = after.get("containerRect")
+    if not before_box or not after_box:
+        return False
+    for edge in ("top", "bottom", "left", "right"):
+        if edge not in before_box or edge not in after_box:
+            return False
+        if abs(float(after_box[edge]) - float(before_box[edge])) > 0.5:
+            return False
+    return True
+
+
 def _tablet_rows(page: Any) -> list[dict[str, Any]]:
     return page.evaluate(
         """() => [...document.querySelectorAll('#device-list .dev-row')].map(row => {
@@ -1853,6 +1934,27 @@ def _fact(row: dict[str, Any], name: str) -> str | None:
         if fact["fact"] == name:
             return fact["text"]
     return None
+
+
+def _show_refusal_ok(
+    *,
+    present: bool,
+    visible: bool,
+    disabled: bool | None,
+    attempted: bool,
+    message_ok: bool,
+    message_changed: bool,
+    intended_writes: list[dict[str, Any]],
+    success: bool,
+) -> bool:
+    """C-OFFLINE: an attempted Show is refused or uncertain; a disabled one writes nothing."""
+    if success or not present or not visible:
+        return False
+    if attempted:
+        return message_ok and message_changed
+    if disabled is True:
+        return not intended_writes
+    return False
 
 
 def _restart_server(rig: RenewalRig) -> dict[str, Any]:
@@ -1926,6 +2028,17 @@ def images_workbench(rig: RenewalRig) -> None:
 
     # 1440x900: drawing width, gallery whole thumbnails, sticky bar, phone gate.
     viewport(1440, 900)
+    shape_names = [name for name, _, _ in WORKBENCH_SHAPES]
+    _soft_wait(
+        page,
+        "(names) => names.every(name => {"
+        " const li = [...document.querySelectorAll('#image-gallery > li')]"
+        "   .find(item => item.querySelector('.image-choice-name')?.textContent === name);"
+        " const img = li?.querySelector('img');"
+        " return !!img && img.complete && img.naturalWidth > 0 && img.naturalHeight > 0; })",
+        arg=shape_names,
+        timeout=20,
+    )
     gallery = _gallery_metrics(page)
     whole = [
         tile for tile in gallery["tiles"] if tile["insideGallery"] and tile["insideViewport"]
@@ -1963,19 +2076,15 @@ def images_workbench(rig: RenewalRig) -> None:
             else None
         )
         expected = width / height
-        ok = bool(
-            tile
-            and tile["img"]
-            and not tile["img"]["hidden"]
-            and tile["img"]["objectFit"] == "contain"
-            and aspect is not None
-            and abs(aspect / expected - 1) <= 0.02
-        )
+        ok = _whole_image_ok(tile, width, height)
         rig.check(
-            f"1440x900: {name} is shown whole with object-fit contain and its own aspect",
+            f"1440x900: {name} is shown whole with decoded expected pixels, "
+            "object-fit contain and its own aspect",
             ok,
-            {"tile": tile, "expectedAspect": expected, "actualAspect": aspect},
-            {"objectFit": "contain", "aspectWithin": "2%"},
+            {"tile": tile, "expectedIntrinsic": [width, height],
+             "expectedAspect": expected, "actualAspect": aspect},
+            {"decoded": True, "intrinsic": [width, height],
+             "objectFit": "contain", "aspectWithin": "2%"},
             obligation="C-WORKBENCH",
         )
     rig.check(
@@ -2035,7 +2144,10 @@ def images_workbench(rig: RenewalRig) -> None:
     roster_row = page.locator(f'#exception-roster li[data-device-id="{ids[0]}"] .exception-review')
     if roster_row.count():
         roster_row.focus()
-    scroll_before = page.evaluate("() => window.scrollY")
+    focus_before = _roster_focus_metrics(page)
+    scroll_before = focus_before.get("scrollY")
+    if scroll_before is None:
+        scroll_before = page.evaluate("() => window.scrollY")
     _close_client(rig, clients[-1][0], ids[-1])
     reordered = _soft_wait(
         page,
@@ -2045,13 +2157,13 @@ def images_workbench(rig: RenewalRig) -> None:
     )
     focus = _roster_focus_metrics(page)
     rig.check(
-        "After a status-driven reorder the focused roster row stays inside the roster box "
-        "and the page does not scroll",
-        reordered and focus["focusInside"] and focus["inside"]
-        and focus["scrollY"] == scroll_before,
-        {"reordered": reordered, "focus": focus, "scrollBefore": scroll_before},
+        "After a status-driven reorder the originally focused roster row keeps focus inside "
+        "the roster box and the page does not scroll",
+        _roster_focus_ok(reordered, focus_before, focus, ids[0], scroll_before),
+        {"reordered": reordered, "focusBefore": focus_before, "focus": focus,
+         "scrollBefore": scroll_before, "expectedFocusedId": ids[0]},
         {"reordered": True, "focusInside": True, "inside": True,
-         "scrollY": scroll_before},
+         "activeId": ids[0], "containerRect": "unchanged", "scrollY": scroll_before},
         obligation="C-FOCUS-ROSTER",
     )
 
@@ -2969,6 +3081,137 @@ def measured_blockers(rig: RenewalRig) -> None:
         obligation="C-GEOMETRY",
     )
 
+    # After valid mounting declarations, a second preview must expose the
+    # missing pinned measurements and their per-tablet Settings action.
+    device_rows = page.evaluate(
+        """() => [...document.querySelectorAll('#grid-order .tablet-order-row')].map(row => {
+            const select = row.querySelector('select[aria-label^="Mount angle for "]');
+            return {
+                id: row.dataset.deviceId,
+                label: select ? select.getAttribute('aria-label').replace('Mount angle for ', '') : null,
+            };
+        }).filter(row => row.id && row.label)"""
+    )
+    for row in device_rows:
+        page.select_option(
+            f'#grid-order .tablet-order-row[data-device-id="{row["id"]}"] select', "0"
+        )
+    declared_angles = page.evaluate(
+        """() => [...document.querySelectorAll('#grid-order .tablet-order-row')]
+            .map(row => row.querySelector('select[aria-label^="Mount angle for "]')?.value ?? null)"""
+    )
+    rig.check(
+        "Every selected measured tablet has a declared mount angle before the measurements preview",
+        bool(device_rows) and len(declared_angles) == len(device_rows)
+        and all(value not in (None, "") for value in declared_angles),
+        {"angles": declared_angles, "rows": device_rows},
+        {"count": len(device_rows), "angles": "all declared"},
+        obligation="D12",
+    )
+
+    measurements_start = len(rig.requests)
+    page.click("#grid-preview")
+    measurements_messaged = _soft_wait(
+        page,
+        "() => /Confirm a model or save measurements|Pinned physical measurements are unavailable|"
+        "missing measurement/i.test(document.getElementById('grid-message').textContent)",
+        timeout=15,
+    )
+    measurements_buttons = page.evaluate(
+        """() => [...document.querySelectorAll('#panel-show button')]
+            .filter(button => {
+                const name = (button.getAttribute('aria-label') || button.textContent || '').trim();
+                return /: open measurements$/.test(name)
+                    && button.getClientRects().length > 0 && !button.disabled;
+            })
+            .map(button => (button.getAttribute('aria-label') || button.textContent || '').trim())"""
+    )
+    expected_measurements = sorted(
+        f"{row['label']}: open measurements" for row in device_rows
+    )
+    rig.check(
+        "A measured preview with declared mounting but missing pinned measurements names every "
+        "tablet with one visible enabled measurements button",
+        measurements_messaged and bool(device_rows)
+        and sorted(measurements_buttons) == expected_measurements,
+        {"message": _inner_text(page, "#grid-message"), "buttons": measurements_buttons,
+         "rows": device_rows, "messaged": measurements_messaged},
+        {"buttons": expected_measurements},
+        obligation="D12",
+    )
+    for index, row in enumerate(device_rows):
+        if index:
+            _task(rig, "Arrange")
+        target = f"{row['label']}: open measurements"
+        action = page.get_by_role("button", name=target, exact=True)
+        if index and not (
+            action.count() >= 1 and action.first.is_visible() and not action.first.is_disabled()
+        ):
+            preview_button = page.locator("#grid-preview")
+            if (
+                preview_button.count()
+                and preview_button.is_visible()
+                and preview_button.is_enabled()
+            ):
+                preview_button.click()
+                _soft_wait(
+                    page,
+                    "() => /Confirm a model or save measurements|"
+                    "Pinned physical measurements are unavailable|missing measurement/i.test("
+                    "document.getElementById('grid-message').textContent)",
+                    timeout=15,
+                )
+            action = page.get_by_role("button", name=target, exact=True)
+        present = (
+            action.count() >= 1
+            and action.first.is_visible()
+            and not action.first.is_disabled()
+        )
+        clicked = False
+        opened = False
+        if present:
+            action.first.click()
+            clicked = True
+            opened = _soft_wait(
+                page,
+                "({id}) => { const panel = document.getElementById('panel-system');"
+                " const details = document.getElementById('measurement-details');"
+                " const selected = document.getElementById('selected-id');"
+                " const active = document.activeElement;"
+                " return !!panel && !panel.hidden && !!details && details.open"
+                " && !!selected && selected.textContent.trim() === id"
+                " && !!active && (active.id === 'tablet-model' || details.contains(active)); }",
+                arg={"id": row["id"]},
+                timeout=10,
+            )
+        action_state = page.evaluate(
+            "() => ({panels: [...document.querySelectorAll('.task-panel')]"
+            ".filter(panel => !panel.hidden && panel.getClientRects().length > 0)"
+            ".map(panel => panel.id),"
+            " detailsOpen: !!document.getElementById('measurement-details')?.open,"
+            " selected: (document.getElementById('selected-id') || {}).textContent,"
+            " active: document.activeElement ? {id: document.activeElement.id,"
+            " tag: document.activeElement.tagName} : null})"
+        )
+        rig.check(
+            f"The measurements blocker for {row['label']} selects that exact tablet and "
+            "opens its measurement settings",
+            present and clicked and opened,
+            {"present": present, "clicked": clicked, "opened": opened,
+             "state": action_state, "expectedSelected": row["id"]},
+            {"present": True, "selected": row["id"], "detailsOpen": True,
+             "focus": "measurement control"},
+            obligation="D12",
+        )
+    measurement_writes = _layout_write_rows(rig, measurements_start)
+    rig.check(
+        "The missing-measurements preview and its settings actions send no layout write",
+        not measurement_writes,
+        measurement_writes,
+        [],
+        obligation="C-GEOMETRY",
+    )
+
 
 # ---------------------------------------------------------------------------
 # server-stop (C-OFFLINE)
@@ -3096,7 +3339,9 @@ def server_stop(rig: RenewalRig) -> None:
          "counting": False, "label": "starts with Status stale."},
         obligation="C-OFFLINE",
     )
-    pre_show_writes = _controller_write_rows(rig, stop_index)
+    after_refresh_index = len(rig.requests)
+    pre_show_index = len(rig.requests)
+    pre_show_writes = _controller_write_rows(rig, stop_index, pre_show_index)
     rig.check(
         "No automatic operator write happens between the stop and the first operator command",
         not pre_show_writes,
@@ -3105,35 +3350,83 @@ def server_stop(rig: RenewalRig) -> None:
         obligation="C-OFFLINE",
     )
 
-    if page.locator("#show-image").count() and not page.locator("#show-image").is_disabled():
-        page.click("#show-image")
-    message_set = _soft_wait(
-        page,
-        "() => { const node = document.getElementById('image-message');"
-        " return !!node && /uncertain|may have completed|Could not show|Connection lost|Refresh status/i"
-        ".test(node.textContent); }",
-        timeout=20,
+    message_before = page.evaluate(
+        "() => (document.getElementById('image-message') || {}).textContent || ''"
     )
+    show_control = page.locator("#show-image")
+    show_present = show_control.count() == 1
+    show_visible = show_present and show_control.is_visible()
+    show_disabled = show_control.is_disabled() if show_present else None
+    show_attempted = False
+    message_set = False
+    if show_present and show_visible and not show_disabled:
+        show_control.click()
+        show_attempted = True
+        message_set = _soft_wait(
+            page,
+            "() => { const node = document.getElementById('image-message');"
+            " return !!node && /uncertain|may have completed|Could not show|Connection lost|Refresh status/i"
+            ".test(node.textContent); }",
+            timeout=20,
+        )
+    else:
+        page.wait_for_timeout(100)
+    post_show_index = len(rig.requests)
+    intended_show_writes = _controller_write_rows(rig, pre_show_index, post_show_index)
     show = _dom_snapshot(page)
-    success = "Content applied" in (show["imageMessage"] or "") \
+    message_now = show["imageMessage"] or ""
+    message_ok = bool(
+        re.search(
+            r"uncertain|may have completed|Could not show|Connection lost|Refresh status",
+            message_now,
+            re.IGNORECASE,
+        )
+    )
+    success = "Content applied" in message_now \
         or "Content applied" in (show["pageStatus"] or "")
+    show_branch = (
+        "disabled"
+        if show_present and show_visible and show_disabled is True and not show_attempted
+        else "attempted"
+        if show_attempted
+        else "missing_or_hidden"
+    )
     rig.check(
-        "Show on a draft is refused or raises uncertainty and never claims success",
-        message_set and not success
-        and bool(re.search(r"uncertain|may have completed|Could not show|Connection lost|Refresh status",
-                           show["imageMessage"] or "", re.IGNORECASE)),
-        {"message": show["imageMessage"], "pageStatus": show["pageStatus"],
-         "success": success},
-        {"message": "refused or uncertain", "success": False},
+        "The Show control is present and visible as an enabled attempt or an honest disabled control",
+        show_present and show_visible and show_disabled is not None,
+        {"present": show_present, "visible": show_visible, "disabled": show_disabled,
+         "attempted": show_attempted},
+        {"present": True, "visible": True, "disabled": "boolean"},
         obligation="C-OFFLINE",
     )
-    show_writes = _controller_write_rows(rig, stop_index)
+    rig.check(
+        "Show on a draft is disabled without a write or refused/uncertain, and never claims success",
+        _show_refusal_ok(
+            present=show_present,
+            visible=show_visible,
+            disabled=show_disabled,
+            attempted=show_attempted,
+            message_ok=message_ok,
+            message_changed=message_now != message_before,
+            intended_writes=intended_show_writes,
+            success=success,
+        ),
+        {"branch": show_branch, "message": message_now, "messageBefore": message_before,
+         "messageSet": message_set, "pageStatus": show["pageStatus"], "success": success,
+         "intendedWrites": intended_show_writes},
+        {"branch": "disabled with zero attempted writes, or attempted with refusal/uncertainty",
+         "success": False},
+        obligation="C-OFFLINE",
+    )
+    show_writes = _controller_write_rows(rig, stop_index, post_show_index)
     _write_json(
         rig.out / "server_stop_observations.json",
         {
             "after_stop": after_stop,
             "after_refresh": refreshed,
             "after_show": show,
+            "show_branch": show_branch,
+            "intended_show_writes": intended_show_writes,
             "writes_since_stop": show_writes,
         },
     )
@@ -3158,8 +3451,30 @@ def server_stop(rig: RenewalRig) -> None:
         obligation="C-OFFLINE",
     )
 
+    pre_restart_index = len(rig.requests)
     restart = _restart_server(rig)
     restart_index = len(rig.requests)
+    restart_writes = _restart_interval_writes(
+        rig,
+        post_show=post_show_index,
+        before_restart=pre_restart_index,
+        after_restart=restart_index,
+    )
+    rig.check(
+        "No automatic write is issued after the failed Show before the restart",
+        not restart_writes["after_show_before_restart"],
+        {"writes": restart_writes["after_show_before_restart"],
+         "intendedShowWrites": intended_show_writes},
+        [],
+        obligation="C-OFFLINE",
+    )
+    rig.check(
+        "No automatic write is issued during the restart and readiness interval",
+        not restart_writes["during_restart_startup"],
+        restart_writes["during_restart_startup"],
+        [],
+        obligation="C-OFFLINE",
+    )
     if page.locator("#refresh-status").count():
         page.click("#refresh-status")
     restored = _soft_wait(
@@ -3193,8 +3508,20 @@ def server_stop(rig: RenewalRig) -> None:
             "after_stop": after_stop,
             "after_refresh": refreshed,
             "after_show": show,
+            "show_branch": show_branch,
+            "intended_show_writes": intended_show_writes,
             "writes_since_stop": show_writes,
+            "request_boundaries": {
+                "stop": stop_index,
+                "after_refresh": after_refresh_index,
+                "pre_show": pre_show_index,
+                "after_show": post_show_index,
+                "before_restart": pre_restart_index,
+                "after_restart_ready": restart_index,
+            },
             "pre_operator_command_writes": pre_show_writes,
+            "post_show_before_restart_writes": restart_writes["after_show_before_restart"],
+            "restart_startup_writes": restart_writes["during_restart_startup"],
             "restart": restart,
             "after_restart_refresh": recovered,
             "post_restart_pre_command_writes": post_restart_writes,
