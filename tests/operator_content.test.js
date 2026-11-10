@@ -11,6 +11,23 @@ function element(tag, ownerDocument) {
         scrollLeft: 0, scrollTop: 0, clientWidth: 0, clientHeight: 0, scrollWidth: 0, scrollHeight: 0,
         addEventListener(type, fn) { this[type] = fn; },
         append(...items) { for (const item of items) { this.children.push(item); if (item) item.parentElement = this; } },
+        get firstElementChild() { return this.children[0] || null; },
+        get nextElementSibling() {
+            const siblings = this.parentElement && this.parentElement.children;
+            const index = siblings ? siblings.indexOf(this) : -1;
+            return index >= 0 ? siblings[index + 1] || null : null;
+        },
+        insertBefore(child, reference) {
+            const previous = child.parentElement;
+            if (previous && previous.children) {
+                const at = previous.children.indexOf(child);
+                if (at >= 0) previous.children.splice(at, 1);
+            }
+            const index = reference ? this.children.indexOf(reference) : -1;
+            if (index < 0) this.children.push(child); else this.children.splice(index, 0, child);
+            child.parentElement = this;
+            return child;
+        },
         replaceChildren(...items) { this.children = []; this.append(...items); },
         remove() { if (this.parentElement) { const index = this.parentElement.children.indexOf(this); if (index >= 0) this.parentElement.children.splice(index, 1); this.parentElement = null; } },
         focus(options) { owner.activeElement = this; this.focusOptions = options || {}; },
@@ -87,6 +104,7 @@ const content = context.window.OperatorContent.create({ state, renderStage() {},
     await galleryNavigation();
     await inventoryState();
     await closestFocus();
+    await patternGrouping();
     console.log("Generated pattern canonical DTO, publication/read ordering, scene application, row-aware gallery focus, inventory state and closest fallback passed");
 })().catch(error => { console.error(error); process.exitCode = 1; });
 
@@ -460,4 +478,72 @@ async function closestFocus() {
     assert.equal(doc.activeElement, buttons()[2], "a filtered inventory refresh keeps gallery focus");
     assert.equal(list.scrollTop, 120, "an inventory refresh does not reset gallery scroll");
     console.log("Closest visible gallery fallback, filtered row identity, focus and scroll passed");
+}
+
+async function patternGrouping() {
+    const nodes = new Map();
+    const doc = { activeElement: null, getElementById: null, createElement: tag => element(tag, doc) };
+    doc.getElementById = id => {
+        if (!nodes.has(id)) nodes.set(id, element(id, doc));
+        return nodes.get(id);
+    };
+    const state = { layoutKind: "logical", etag: "e", etagState: "current", capabilities: { uploads: false },
+        scene: { content: { type: "color" } },
+        base: { kind: "logical", width: 1000, height: 500, placements: {} },
+        draft: { kind: "logical", width: 1000, height: 500, placements: {} } };
+    const hashA = "a".repeat(64), hashB = "b".repeat(64), hashC = "c".repeat(64), hashD = "d".repeat(64), hashE = "e".repeat(64);
+    const asset = (hash, name, source) => ({ id: "sha256:" + hash, name, width: 100, height: 100,
+        source, url: "/" + hash, thumbnail_url: "/" + hash });
+    const patternB = asset(hashB, "wall-pattern-" + hashB + ".png", "curated");
+    const managed = asset(hashD, "wall-pattern-" + hashD + ".png", "managed");
+    const wrongId = asset(hashC, "wall-pattern-" + hashB + ".png", "curated");
+    const plain = asset(hashE, "zebra.png", "curated");
+    const patternA = asset(hashA, "wall-pattern-" + hashA + ".png", "curated");
+    const images = [patternB, managed, wrongId, plain, patternA];
+    const calls = [];
+    const context = vm.createContext({ window: { OperatorState: model }, document: doc, Option: function () {} });
+    vm.runInContext(fs.readFileSync(require.resolve("../frontend/controller/operator-dom.js"), "utf8"), context);
+    vm.runInContext(fs.readFileSync(require.resolve("../frontend/controller/operator-content.js"), "utf8"), context);
+    const content = context.window.OperatorContent.create({ state, renderStage() {}, announce() {}, showConflict() {},
+        ingestConfig(config) { state.scene = config.scene; },
+        async api(method, path, body) {
+            calls.push({ method, path, body });
+            if (path === "/api/v3/images") return { images };
+            throw new Error("unexpected route " + path);
+        } });
+    await content.refresh();
+    const list = doc.getElementById("image-gallery");
+    const rows = () => list.children;
+    const row = id => rows().find(item => item.dataset.assetId === id);
+    const button = id => row(id).children[0];
+    const tag = id => button(id).children.find(child => child.className === "image-choice-tag");
+    const order = () => rows().map(item => item.dataset.assetId);
+
+    assert.deepEqual(order(), [managed.id, wrongId.id, plain.id, patternB.id, patternA.id],
+        "curated hash-named files sort after other images and keep their own order");
+    assert.equal(tag(patternA.id).textContent, "Test pattern");
+    assert.equal(tag(patternA.id).hidden, false, "a pattern shows its visible tag");
+    assert.equal(tag(patternB.id).hidden, false);
+    assert.equal(tag(managed.id).hidden, true, "a managed upload shaped like a pattern is not labelled");
+    assert.equal(tag(wrongId.id).hidden, true, "a curated file whose name does not match its own id is not labelled");
+    assert.equal(tag(plain.id).hidden, true);
+    assert.equal(button(patternA.id).attrs["aria-label"], "Preview " + patternA.name + ", test pattern",
+        "a pattern tile says so in its accessible name");
+    assert.equal(button(patternB.id).attrs["aria-label"], "Preview " + patternB.name + ", test pattern");
+    assert.equal(button(managed.id).attrs["aria-label"], "Preview " + managed.name,
+        "a managed file with the same shape keeps the ordinary accessible name");
+    assert.equal(button(wrongId.id).attrs["aria-label"], "Preview " + wrongId.name);
+    assert.equal(button(plain.id).attrs["aria-label"], "Preview " + plain.name);
+    assert.equal(rows().filter(item => item.tagName === "li").length, rows().length, "there is one gallery list");
+    assert.equal(rows().filter(item => item.children[0].tabIndex === 0).length, 1, "the gallery keeps one Tab stop");
+
+    button(patternA.id).focus();
+    button(patternA.id).click();
+    await new Promise(resolve => setImmediate(resolve));
+    assert.equal(content.dirty(), true, "a pattern stays selectable");
+    assert.equal(state.previewContent.asset, patternA.id, "selecting a pattern previews it");
+    assert.equal(doc.activeElement, button(patternA.id), "selecting a pattern keeps gallery focus");
+    assert.equal(button(patternA.id).attrs["aria-pressed"], "true");
+    assert.deepEqual(calls.map(call => call.path), ["/api/v3/images"], "selection writes no scene");
+    console.log("Exact curated test patterns sort last, carry a visible tag and keep the single gallery tab stop");
 }
