@@ -47,7 +47,7 @@ input[type="color"] { border-radius: var(--radius); padding: .25rem; min-inline-
 .operator-workspace { padding: 0 0 2rem; max-inline-size: none; margin-inline: auto; }
 :where(.main, .task-workspace, .rail-panels, .task-panel) { min-inline-size: 0; }
 .main { position: static; }
-.task-panel { display: flex; flex-direction: column; gap: 1rem; }
+.task-panel { display: flex; flex-direction: column; gap: 1rem; padding-inline: max(12px, var(--page-pad)); }
 #panel-tablet, #panel-content { container-type: inline-size; }
 .task-title { font-size: 0.9375rem; }
 .task-section { display: grid; gap: .6rem; min-inline-size: 0; }
@@ -580,7 +580,7 @@ dialog.tablet-selection::backdrop { background: var(--backdrop); }
 
 #tablet-action-name:focus { outline: none; }
 
-#grid-title { font-size: .9375rem; margin: 0; }
+#grid-title { font-size: var(--text-md); margin: 0; }
 
 .geometry-group { display: grid; gap: .5rem; padding-block-start: .55rem; border-block-start: 1px solid var(--border); }
 .grid-sizing-choice + .geometry-group, #logical-title + .geometry-group { border-block-start: 0; padding-block-start: 0; }
@@ -631,7 +631,7 @@ body[data-image-actions-inline="true"][data-output-dirty="true"] .image-primary-
 :where([role="status"], [aria-live="polite"]):empty:not([hidden]) { position: absolute; inline-size: 1px; block-size: 1px; padding: 0; margin: -1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; border: 0; }
 #tablet-recovery:empty, .image-gallery:not(:has(> li:not([hidden]))) { display: none; }
 .form-msg[data-kind="info"] { padding: 0; border: 0; border-radius: 0; background: transparent; color: var(--muted); font-size: .875rem; }
-#saved-title { font-size: clamp(1.125rem, 5.5vw, 1.25rem); }
+#saved-title { font-size: var(--text-md); }
 
 .inp[type="search"]::-webkit-search-cancel-button { filter: grayscale(1); }
 
@@ -684,3 +684,22 @@ body[data-image-actions-inline="true"][data-output-dirty="true"] .image-primary-
 .arrange-controls .btn[aria-pressed="true"] { background: var(--selected); border-color: var(--accent); }
 
 .grid-warnings { display: block; margin-block-start: .5rem; }
+
+.task-panel h2:not(.sr-only),
+.task-panel #stage-title { font-size: var(--text-lg); }
+.task-panel h3:not(.sr-only) { font-size: var(--text-md); }
+#tablet-url { overflow-wrap: anywhere; }
+
+@media (pointer: coarse) {
+    .btn,
+    .inp,
+    select,
+    summary,
+    .check-label,
+    .check,
+    .image-chooser-summary,
+    .exception-review,
+    .stage-view-zoom .btn,
+    .exception-inline .exception-chip,
+    #exception-rail .image-utilities details summary { min-block-size: 44px; }
+}
