@@ -322,7 +322,10 @@ window.OperatorContent = {
             if (focusedWasGallery) {
                 const shown = buttons.includes(focusedBefore) && !focusedBefore.hidden
                     && !(focusedBefore.parentElement && focusedBefore.parentElement.hidden);
-                if (!shown) {
+                if (shown && document.activeElement !== focusedBefore) {
+                    focusedBefore.focus({ preventScroll: true });
+                    setGalleryTabStop(focusedBefore);
+                } else if (!shown) {
                     const next = closestVisibleButton(buttons, focusedIndex, orderBefore);
                     if (next) { focusTarget(next); setGalleryTabStop(next); }
                     else {

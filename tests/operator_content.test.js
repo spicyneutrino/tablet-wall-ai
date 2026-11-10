@@ -545,5 +545,18 @@ async function patternGrouping() {
     assert.equal(doc.activeElement, button(patternA.id), "selecting a pattern keeps gallery focus");
     assert.equal(button(patternA.id).attrs["aria-pressed"], "true");
     assert.deepEqual(calls.map(call => call.path), ["/api/v3/images"], "selection writes no scene");
+    const insert = list.insertBefore;
+    list.insertBefore = function (item, reference) {
+        if (item.children.includes(doc.activeElement)) doc.activeElement = null;
+        return insert.call(this, item, reference);
+    };
+    list.scrollTop = 120;
+    patternA.name = "aaa.png";
+    images.unshift(images.pop());
+    await content.refresh();
+    assert.equal(doc.activeElement === button(patternA.id), true, "refresh restores the same focused choice after moving its row");
+    assert.equal(button(patternA.id).focusOptions.preventScroll, true);
+    assert.equal(list.scrollTop, 120, "restoring reorder focus preserves gallery scroll");
+    assert.equal(rows().filter(item => item.children[0].tabIndex === 0).length, 1);
     console.log("Exact curated test patterns sort last, carry a visible tag and keep the single gallery tab stop");
 }
