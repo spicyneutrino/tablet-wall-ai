@@ -112,7 +112,7 @@ async function run() {
     evidence = { status: "displayed", text: "Reports current image", showing: true };
     const beforeAnnouncements = announcements.length;
     devices.render();
-    assert.equal(node("tablet-evidence").textContent, "Power: denied");
+    assert.equal(node("tablet-evidence").textContent, "Wake lock: denied");
     assert.equal(node("tablet-evidence").dataset.powerWarning, "true");
     assert.equal(node("tablet-recovery").hidden, false, "a painted tablet still warns denied power");
     assert.equal(node("tablet-recovery").children.length, 3, "recovery guidance is three readable parts");
@@ -120,7 +120,7 @@ async function run() {
     assert.equal(node("tablet-recovery").textContent, DENIED_RECOVERY, "the split keeps the exact pre-change words in order");
     assert.match(node("tablet-recovery").textContent, /denied/);
     assert.match(node("tablet-recovery").textContent, /cannot wake/);
-    assert.match(node("tablet-provenance").textContent, /Power readiness: Power: denied/);
+    assert.match(node("tablet-provenance").textContent, /Wake lock readiness: denied/);
     assert.match(node("tablet-retry-image").title, /does not wake/);
     assert.match(node("tablet-reconnect").title, /does not wake/);
     assert.notEqual(node("tablet-retry-image").title, node("tablet-reconnect").title, "Retry image and Reconnect describe different actions");
@@ -131,7 +131,7 @@ async function run() {
     evidence = { status: "stale", text: "Previous paint · current image unconfirmed", showing: false };
     devices.render();
     assert.match(node("tablet-evidence").textContent, /Previous paint/);
-    assert.match(node("tablet-evidence").textContent, /Power: held/);
+    assert.match(node("tablet-evidence").textContent, /Wake lock: held/);
     assert.equal(node("tablet-evidence").dataset.status, "stale");
     assert.equal(node("tablet-evidence").dataset.powerWarning, "false");
     assert.match(node("tablet-recovery").textContent, /does not confirm paint/);
@@ -150,7 +150,7 @@ async function run() {
     state.roster.a.last_seen = "2026-11-01T12:00:00Z";
     evidence = { status: "offline", text: "Offline · spot reserved", showing: false };
     devices.render();
-    assert.match(node("tablet-evidence").textContent, /Last known power held/);
+    assert.match(node("tablet-evidence").textContent, /Last known wake lock held/);
     assert.equal(node("tablet-evidence").dataset.powerStale, "true");
     assert.match(node("tablet-recovery").textContent, /Tablet is offline.*last known report/);
     assert.doesNotMatch(node("tablet-recovery").textContent, /browser reports the screen wake lock held/);
@@ -173,23 +173,23 @@ async function run() {
     delete state.roster.a.wake_lock;
     evidence = { status: "displayed", text: "Reports current image", showing: true };
     devices.render();
-    assert.equal(node("tablet-evidence").textContent, "Power: unknown");
+    assert.equal(node("tablet-evidence").textContent, "Wake lock: unknown");
     assert.equal(node("tablet-recovery").hidden, true, "unknown power alone does not fabricate a warning");
 
     state.rosterError = "503 unavailable";
     devices.render();
-    assert.match(node("tablet-evidence").textContent, /Last known power unknown/);
+    assert.match(node("tablet-evidence").textContent, /Last known wake lock unknown/);
     assert.match(node("tablet-evidence").textContent, /status stale/);
     assert.equal(node("tablet-evidence").dataset.powerStale, "true");
 
     state.rosterError = null;
     state.roster.a.wake_lock = "unsupported";
     devices.render();
-    assert.equal(node("tablet-evidence").textContent, "Power: unsupported");
+    assert.equal(node("tablet-evidence").textContent, "Wake lock: unsupported");
     assert.equal(node("tablet-recovery").hidden, true, "unsupported is reported without a false power warning");
     state.roster.a.wake_lock = "insecure";
     devices.render();
-    assert.equal(node("tablet-evidence").textContent, "Power: insecure origin");
+    assert.equal(node("tablet-evidence").textContent, "Wake lock: insecure origin");
     assert.equal(node("tablet-recovery").hidden, false);
     assert.match(node("tablet-recovery").textContent, /trusted HTTPS origin/);
     state.roster.a.wake_lock = "released";
@@ -298,6 +298,22 @@ async function run() {
     devices.render();
     assert.equal(node("open-tablet-measurements").hidden, false, "a blocked mapping keeps measurements reachable");
     evidence = { status: "displayed", text: "Reports current image", showing: true };
+    state.selectedId = "a";
+    state.roster.a.online = true;
+    state.rosterCheckedAt = "2026-11-01T12:00:00Z";
+    for (const [wake, label] of Object.entries({ held: "held", released: "released", denied: "denied", insecure: "insecure origin", unsupported: "unsupported", unknown: "unknown" })) {
+        state.roster.a.wake_lock = wake;
+        for (const stale of [false, true]) {
+            state.rosterError = stale ? "offline" : null;
+            devices.render();
+            const provenance = node("tablet-provenance").textContent;
+            const power = require("../frontend/controller/operator-stage.js").powerReadiness(state.roster.a, { stale, checkedAt: state.rosterCheckedAt });
+            assert.equal(provenance.slice(provenance.indexOf("Wake lock readiness:")),
+                "Wake lock readiness: " + (stale ? "last known " : "") + label + (stale ? " · status stale" : "") + ". " + power.guidance);
+            assert.equal(provenance.match(/Wake lock readiness:/g).length, 1);
+        }
+    }
+    state.rosterError = null;
     state.selectedId = null;
     devices.render();
     assert.equal(node("open-tablet-measurements").hidden, true, "no selected tablet hides measurements");

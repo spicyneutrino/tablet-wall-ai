@@ -733,7 +733,7 @@ def status_truth(rig: RenewalRig) -> None:
             const walker = document.createTreeWalker(root, NodeFilter.SHOW_TEXT);
             let node;
             while ((node = walker.nextNode())) {
-                if (!/power/i.test(node.nodeValue)) continue;
+                if (!/(?:Screen wake lock:|(?:Last known wake lock|Wake lock:?) (?:held|released|denied|insecure origin|unsupported|unknown)\b)/i.test(node.nodeValue)) continue;
                 const parent = node.parentElement;
                 if (!parent) continue;
                 if (typeof parent.checkVisibility === 'function'
@@ -745,7 +745,7 @@ def status_truth(rig: RenewalRig) -> None:
     )
     rig.check(
         "Uniform wake-lock warnings leave at most three visible power mentions in Images",
-        len(power_mentions) <= 3,
+        0 < len(power_mentions) <= 3,
         power_mentions,
         {"max": 3},
         obligation="D2",
@@ -763,9 +763,9 @@ def status_truth(rig: RenewalRig) -> None:
     attention = _inner_text(page, "#attention-heading")
     rig.check(
         "The attention heading counts the one offline position",
-        attention == "Needs attention (1)",
+        attention == "Needs review (1)",
         attention,
-        "Needs attention (1)",
+        "Needs review (1)",
         obligation="D1",
     )
 
@@ -2991,13 +2991,13 @@ def tablet_facts(rig: RenewalRig) -> None:
     rows = {row["id"]: row for row in _tablet_rows(page)}
     expected = {
         ids[0]: {"status": "displayed", "connection": "Connected",
-                 "image": "Reports current image", "power": "Power denied"},
+                 "image": "Reports current image", "power": "Wake lock denied"},
         ids[1]: {"status": "displayed", "connection": "Connected",
-                 "image": "Reports current image", "power": "Power denied"},
+                 "image": "Reports current image", "power": "Wake lock denied"},
         ids[2]: {"status": "unplaced", "connection": "Connected",
-                 "image": None, "power": "Power denied"},
+                 "image": None, "power": "Wake lock denied"},
         ids[3]: {"status": "offline", "connection": None,
-                 "image": None, "power": "Last known power denied"},
+                 "image": None, "power": "Last known wake lock denied"},
     }
     for device_id, want in expected.items():
         row = rows.get(device_id)

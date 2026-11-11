@@ -149,16 +149,14 @@ window.OperatorWorkspace = {
                 if (rowBox.top < box.top) roster.scrollTop -= box.top - rowBox.top;
                 else if (rowBox.bottom > box.bottom) roster.scrollTop += rowBox.bottom - box.bottom;
             }
-            if ($("exception-count")) $("exception-count").textContent = attention.length
-                ? attention.length + (attention.length === 1 ? " needs attention" : " need attention") : "No attention";
+            if ($("exception-count")) $("exception-count").textContent = "Content report issues: " + attention.length;
             if ($("position-count")) $("position-count").textContent = ids.length + (ids.length === 1 ? " position" : " positions");
             if ($("attention-heading")) {
                 $("attention-heading").hidden = !attention.length;
-                $("attention-heading").textContent = "Needs attention (" + attention.length + ")";
+                $("attention-heading").textContent = "Needs review (" + attention.length + ")";
             }
             if ($("exception-empty")) $("exception-empty").hidden = !!ids.length;
-            if ($("wall-status-summary")) setTextIfChanged($("wall-status-summary"), attention.length
-                ? attention.length + (attention.length === 1 ? " needs attention" : " need attention") : "No attention");
+            if ($("wall-status-summary")) setTextIfChanged($("wall-status-summary"), "Content report issues: " + attention.length);
             if ($("wall-power-summary")) {
                 setTextIfChanged($("wall-power-summary"), fleet
                     ? "Screen wake lock: all " + fleet.count + " online tablets report " + fleet.label + ". Browser report, not proof the screen is lit." : "");

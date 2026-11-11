@@ -23,7 +23,17 @@ assert.equal(rosterSummary({ layout: { kind: "logical", placements: {} } }, fals
 
 const stageModel = require("../frontend/controller/operator-stage.js");
 const wake = (value, options) => stageModel.powerReadiness({ wake_lock: value }, options);
-assert.equal(wake("held").label, "Power: held");
+for (const [state, label] of Object.entries({ held: "held", released: "released", denied: "denied", insecure: "insecure origin", unsupported: "unsupported", unknown: "unknown" })) {
+    const fresh = wake(state);
+    const stale = wake(state, { stale: true, checkedAt: "2026-11-01T12:00:00Z" });
+    assert.equal(fresh.label, "Wake lock: " + label);
+    assert.equal(fresh.short, "Wake lock " + label);
+    assert.equal(stale.label, "Last known wake lock " + label + " · status stale");
+    assert.equal(stale.short, "Last known wake lock " + label);
+    assert.equal(stale.checkedAt, "2026-11-01T12:00:00Z");
+    assert.match(stale.guidance, /Last checked/);
+}
+assert.equal(wake("held").label, "Wake lock: held");
 assert.equal(wake("held").warning, false);
 assert.match(wake("held").guidance, /not proof/);
 assert.match(wake("held").guidance, /Auto-Lock/);
@@ -38,11 +48,11 @@ assert.match(wake("unsupported").guidance, /Auto-Lock/);
 assert.equal(wake(undefined).state, "unknown");
 assert.equal(wake("bogus").state, "unknown", "an unreported or invalid wake value is unknown, never a guessed state");
 const staleWake = wake("held", { stale: true });
-assert.equal(staleWake.label, "Last known power held · status stale");
+assert.equal(staleWake.label, "Last known wake lock held · status stale");
 assert.equal(staleWake.stale, true);
 const offlineWake = stageModel.powerReadiness({ online: false, wake_lock: "held", last_seen: "2026-11-01T12:00:00Z" });
 assert.equal(offlineWake.stale, true);
-assert.equal(offlineWake.label, "Last known power held · status stale");
+assert.equal(offlineWake.label, "Last known wake lock held · status stale");
 assert.match(offlineWake.guidance, /Tablet is offline.*last known report/);
 assert.match(offlineWake.guidance, /Last checked/);
 assert.doesNotMatch(offlineWake.guidance, /browser reports the screen wake lock held/);
@@ -641,13 +651,13 @@ function descendants(node, predicate) {
     assert.equal(markers("healthy", "operator-slot-exception").length, 0);
     assert.equal(markers("healthy", "operator-slot-power").length, 0);
     assert.equal(slot("failed").dataset.powerState, "denied");
-    assert.equal(statusText("failed")[0].textContent, "Image failed · Power denied");
+    assert.equal(statusText("failed")[0].textContent, "Image failed · Wake lock denied");
     assert.match(slot("failed").getAttribute("aria-label"), /Image failed/);
-    assert.match(slot("failed").getAttribute("aria-label"), /Power: denied/);
+    assert.match(slot("failed").getAttribute("aria-label"), /Wake lock: denied/);
     assert.equal(markers("failed", "operator-slot-exception").length, 1);
     assert.equal(markers("failed", "operator-slot-power").length, 1);
     assert.equal(slot("denied").dataset.status, "displayed");
-    assert.equal(statusText("denied")[0].textContent, "Power denied", "a painted tablet still carries an independent power warning");
+    assert.equal(statusText("denied")[0].textContent, "Wake lock denied", "a painted tablet still carries an independent power warning");
     assert.equal(markers("denied", "operator-slot-exception").length, 0);
     assert.equal(markers("denied", "operator-slot-power").length, 1);
     assert.equal(statusText("tiny").length, 0, "a tiny slot leaves its label to the external roster");
@@ -676,10 +686,10 @@ function descendants(node, predicate) {
         assert.equal(slot(id).dataset.powerState, "denied");
         assert.equal(slot(id).dataset.powerWarning, "true");
         assert.equal(slot(id).dataset.powerStale, "false");
-        assert.equal(slot(id).getAttribute("aria-label"), id + ", Reports current image, Power: denied");
+        assert.equal(slot(id).getAttribute("aria-label"), id + ", Reports current image, Wake lock: denied");
     }
     assert.equal(descendants(slot("offline"), node => node.getAttribute("class") === "operator-slot-status")[0].textContent,
-        "Offline · Last known power denied");
+        "Offline · Last known wake lock denied");
     delete global.document;
     console.log("Fleet stage text is stated once while offline text, power marks and accessible evidence remain");
 }
@@ -752,34 +762,34 @@ function rosterSetup() {
     assert.equal(roster.rowFor("a").dataset.powerWarning, "true");
     assert.equal(roster.factFor("a", "connection").textContent, "Connected");
     assert.equal(roster.factFor("a", "image").textContent, "Reports current image");
-    assert.equal(roster.factFor("a", "power").textContent, "Power denied");
-    assert.equal(roster.pickFor("a").getAttribute("aria-label"), "Tablet a, Connected, Reports current image. Power: denied");
+    assert.equal(roster.factFor("a", "power").textContent, "Wake lock denied");
+    assert.equal(roster.pickFor("a").getAttribute("aria-label"), "Tablet a, Connected, Reports current image. Wake lock: denied");
     assert.equal(roster.rowFor("b").dataset.status, "stale");
     assert.equal(roster.rowFor("b").dataset.powerState, "held");
     assert.equal(roster.rowFor("b").dataset.powerWarning, "false");
     assert.equal(roster.factFor("b", "connection").textContent, "Connected");
     assert.equal(roster.factFor("b", "image").textContent, "Previous paint · current image unconfirmed");
-    assert.equal(roster.factFor("b", "power").textContent, "Power held");
+    assert.equal(roster.factFor("b", "power").textContent, "Wake lock held");
     assert.equal(roster.factFor("b", "image").textContent.includes("showing"), false, "held power never turns stale paint into displayed");
     const lastSeen = "Offline · last seen " + new Date("2026-11-01T12:00:00Z").toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
     assert.equal(roster.factFor("c", "connection").textContent, lastSeen);
     assert.equal(roster.factFor("c", "image").textContent, "Offline · spot reserved");
     assert.equal(roster.rowFor("c").dataset.powerState, "unknown");
-    assert.equal(roster.factFor("c", "power").textContent, "Last known power unknown");
+    assert.equal(roster.factFor("c", "power").textContent, "Last known wake lock unknown");
     assert.equal(roster.rowFor("d").dataset.status, "excluded");
     assert.equal(roster.rowFor("d").dataset.powerState, "released");
     assert.equal(roster.factFor("d", "connection").textContent, "Connected");
     assert.equal(roster.factFor("d", "image").textContent, "Excluded from show");
-    assert.equal(roster.factFor("d", "power").textContent, "Power released");
+    assert.equal(roster.factFor("d", "power").textContent, "Wake lock released");
     assert.equal(roster.rowFor("unplaced").dataset.status, "unplaced");
     assert.equal(roster.factFor("unplaced", "connection").textContent, "Connected");
     assert.equal(roster.factFor("unplaced", "image").textContent, "Not on the wall");
-    assert.equal(roster.factFor("unplaced", "power").textContent, "Power held");
-    assert.equal(roster.pickFor("unplaced").getAttribute("aria-label"), "Tablet unplaced, Connected, No placement. Power: held");
+    assert.equal(roster.factFor("unplaced", "power").textContent, "Wake lock held");
+    assert.equal(roster.pickFor("unplaced").getAttribute("aria-label"), "Tablet unplaced, Connected, No placement. Wake lock: held");
     assert.deepEqual(roster.metaFor("a").children.filter(child => child.dataset && child.dataset.fact).map(child => child.dataset.fact), ["connection", "image", "power"]);
-    assert.equal(roster.metaFor("a").children.map(child => child.textContent).join(""), "Connected · Reports current image · Power denied");
+    assert.equal(roster.metaFor("a").children.map(child => child.textContent).join(""), "Connected · Reports current image · Wake lock denied");
     assert.equal(roster.el.wallHealth.textContent, "1 of 3 showing the current image");
-    assert.doesNotMatch(roster.el.wallHealth.textContent, /Power|wake-lock/i, "paint count stays separate from power readiness");
+    assert.doesNotMatch(roster.el.wallHealth.textContent, /Power|wake[ -]lock/i, "paint count stays separate from power readiness");
     delete roster.state.roster.c.last_seen;
     roster.stage.renderDeviceList();
     assert.equal(roster.factFor("c", "connection").textContent, "Offline", "an offline tablet without a timestamp states only the connection fact");
@@ -789,9 +799,9 @@ function rosterSetup() {
     assert.equal(roster.rowFor("a").dataset.powerStale, "true");
     assert.equal(roster.factFor("a", "connection").textContent, "Status stale");
     assert.equal(roster.factFor("a", "image").textContent, "Current image evidence unavailable");
-    assert.equal(roster.factFor("a", "power").textContent, "Last known power denied");
+    assert.equal(roster.factFor("a", "power").textContent, "Last known wake lock denied");
     assert.match(roster.el.wallHealth.textContent, /Status stale/);
-    assert.doesNotMatch(roster.el.wallHealth.textContent, /Power|wake-lock/i);
+    assert.doesNotMatch(roster.el.wallHealth.textContent, /Power|wake[ -]lock/i);
     console.log("Mixed roster paint, held/denied power, unknown and stale freshness passed");
 }
 

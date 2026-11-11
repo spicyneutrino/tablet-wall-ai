@@ -127,7 +127,7 @@
                 : ["unsupported_client", "unsupported_content", "unsupported"].includes(evidence.status) ? "Reopen the current tablet page in its existing browser and check browser support. The operator cannot remotely install or wake the tablet."
                 : evidence.status === "failed" ? "The tablet reported a failed image. Check the image availability, then retry it."
                 : mappingStale ? "Active mapping revisions differ from this placement. Review its measurements and pinned profile or calibration before relying on the wall."
-                : evidence.status === "stale" ? "The tablet's previous paint no longer matches the current content. Keep the page visible, check its connection, then retry the image. Power readiness does not confirm paint."
+                : evidence.status === "stale" ? "The tablet's previous paint no longer matches the current content. Keep the page visible, check its connection, then retry the image. Wake lock readiness does not confirm paint."
                 : ["blocked", "invalid", "stale_calibration", "needs_calibration", "needs_profile", "viewport_mismatch", "zoom_changed", "missing_profile", "missing_calibration", "invalid_mapping"].includes(evidence.status) ? "Return the tablet to its calibrated rotation, 100% zoom and launch mode, or review its measurements."
                 : "Current matching reports are separate from connection status. Reconnect keeps this browser identity.";
             const powerGuidance = power && (power.warning || power.stale || !evidence || !evidence.showing) ? power.guidance : "";
@@ -195,7 +195,7 @@
             } else if (slot) details.push("Pinned calibration health is unavailable. Reload before relying on the mapping.");
             if (mapping.reason) details.push(mapping.reason + ". Return to the calibrated rotation, zoom and launch mode, or recalibrate.");
             if (device && device.viewport) details.push("Live viewport " + device.viewport.width + " × " + device.viewport.height + ", " + device.viewport.orientation + "°, " + device.viewport.mode + ", zoom " + (device.viewport.visual_scale === undefined ? "not reported" : device.viewport.visual_scale) + ".");
-            if (power) details.push("Power readiness: " + power.label + ". " + power.guidance);
+            if (power) details.push("Wake lock readiness: " + power.label.replace(/^Wake lock: |^Last known wake lock /, power.stale ? "last known " : "") + ". " + power.guidance);
             $("tablet-provenance").textContent = details.join(" ");
             for (const action of ["tablet-label-save", "tablet-remove", "tablet-forget-preview", "replace-preview"]) $(action).disabled = !id || busy || state.etagState !== "current";
             for (const action of ["identify", "retry-image", "reconnect"]) {

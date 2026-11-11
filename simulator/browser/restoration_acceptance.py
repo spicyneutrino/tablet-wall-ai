@@ -2522,7 +2522,7 @@ def fleet_power(rig: Rig) -> None:
     wait_until(page, "() => document.getElementById('device-sheet')?.open === true")
     rig.check(
         "Painted but denied power still renders an independent warning",
-        "Power: denied" in page.locator("#tablet-evidence").inner_text()
+        "Wake lock: denied" in page.locator("#tablet-evidence").inner_text()
         and page.locator("#tablet-evidence").get_attribute("data-power-warning") == "true"
         and page.locator("#tablet-recovery").is_visible()
         and "denied" in page.locator("#tablet-recovery").inner_text().lower()
@@ -2532,7 +2532,7 @@ def fleet_power(rig: Rig) -> None:
             "warning": page.locator("#tablet-evidence").get_attribute("data-power-warning"),
             "recovery": page.locator("#tablet-recovery").inner_text(),
         },
-        {"evidence": "Power: denied", "warning": "true", "recovery": "cannot wake"},
+        {"evidence": "Wake lock: denied", "warning": "true", "recovery": "cannot wake"},
     )
     retry_title = page.locator("#tablet-retry-image").get_attribute("title")
     reconnect_title = page.locator("#tablet-reconnect").get_attribute("title")

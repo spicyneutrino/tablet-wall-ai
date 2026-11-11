@@ -32,9 +32,9 @@
         const checked = checkedAt ? Date.parse(checkedAt) : NaN;
         const stamp = stale && Number.isFinite(checked)
             ? " Last checked " + new Date(checked).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }) + "." : "";
-        const label = stale ? "Last known power " + entry.label + " · status stale" : "Power: " + entry.label;
+        const label = stale ? "Last known wake lock " + entry.label + " · status stale" : "Wake lock: " + entry.label;
         return { state, stale, warning: entry.warning, label,
-            short: stale ? "Last known power " + entry.label : "Power " + entry.label,
+            short: stale ? "Last known wake lock " + entry.label : "Wake lock " + entry.label,
             fact: stale ? "Last known browser wake-lock state: " + entry.label + "." : entry.guidance,
             guidance: stale ? (offline ? "Tablet is offline; this is the last known report." : "Status is stale; this is the last known report.")
                 + stamp + " Last known browser wake-lock state: " + entry.label + ". " + powerHelp : entry.guidance,
