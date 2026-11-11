@@ -115,12 +115,12 @@ details > :not(summary, [hidden], :is(div, p, ul, ol, dl, pre):empty) { margin-b
 .tablet-row { display: flex; align-items: stretch; min-inline-size: 0; border: 1px solid var(--control); border-radius: var(--radius); overflow-wrap: anywhere; }
 .tablet-row[data-selected="true"] { border: 2px solid var(--accent); background: var(--selected); }
 .tablet-row[data-status="offline"] { border-style: dashed; }
-.dev-pick { flex: 1; min-inline-size: 0; border: 0; border-radius: var(--radius); background: transparent; text-align: start; padding: .75rem; display: grid; gap: .5rem; }
-.dev-identity { display: flex; flex-wrap: wrap; align-items: center; gap: .5rem; }
-.dev-number { display: inline-grid; place-content: center; min-inline-size: 2rem; min-block-size: 2rem; background: var(--text); color: var(--bg); border-radius: 3px; font-weight: 600; }
-.dev-label { font-weight: 600; min-inline-size: 0; }
-.dev-meta { display: block; }
-.dev-action { align-self: center; margin: .5rem; }
+.dev-pick { flex: 1; min-inline-size: 0; min-block-size: 64px; align-self: stretch; border: 0; border-radius: var(--radius); background: transparent; text-align: start; padding: .75rem; display: grid; align-content: center; gap: 0; }
+.dev-identity { display: flex; align-items: baseline; gap: .5rem; }
+.dev-number { display: inline-block; flex: none; min-inline-size: 1.5rem; color: var(--muted); font-size: .75rem; line-height: 1.416667; font-weight: 500; }
+.dev-label { flex: 1; font-size: .875rem; line-height: 1.428571; font-weight: 600; min-inline-size: 0; }
+.dev-meta { display: block; font-size: .875rem; line-height: 1.428571; }
+.dev-action { align-self: center; min-block-size: var(--control-form); margin: .5rem; }
 .roster-status-row { display: flex; align-items: center; flex-wrap: wrap; gap: .75rem; }
 .roster-status-row p { flex: 1 1 12rem; }
 .insp-name, .saved-info { min-inline-size: 0; }
@@ -371,10 +371,9 @@ dialog.tablet-selection::backdrop { background: var(--backdrop); }
 .tablets-workspace { display: grid; grid-template-columns: minmax(0, 1fr) minmax(18rem, 24rem); gap: 2rem; align-items: start; }
 .roster-workspace { display: grid; gap: 1rem; }
 .tablet-selection { min-inline-size: 0; display: grid; gap: 1.5rem; border-inline-start: 1px solid var(--border); padding-inline-start: 2rem; }
-.tablet-row { border: 0; border-inline-start: 3px solid transparent; border-block-end: 1px solid var(--border); border-radius: 0; align-items: center; }
+.tablet-row { min-block-size: 64px; border: 0; border-inline-start: 3px solid transparent; border-block-end: 1px solid var(--border); border-radius: 0; align-items: center; }
 .tablet-row[data-selected="true"] { border: 0; border-inline-start: 3px solid var(--accent); border-block-end: 1px solid var(--border); }
 .dev-list { gap: 0; }
-.dev-number { min-inline-size: 2.5rem; min-block-size: 2.75rem; }
 #operator-wall { display: grid; gap: 1.5rem; }
 #operator-wall > .task-section { gap: .75rem; }
 .grid-sizing-choice { display: flex; flex-wrap: wrap; align-items: center; gap: .5rem; }
@@ -488,6 +487,7 @@ dialog.tablet-selection::backdrop { background: var(--backdrop); }
     .saved-actions { grid-column: 1 / -1; }
     .saved-actions > .btn { flex: 1 1 8rem; }
     .tablet-row { flex-wrap: wrap; }
+    .dev-pick { flex-basis: 100%; }
     .dev-action { margin-block-start: 0; }
     .skip-nav { display: none; }
     .skip-controls { display: inline; inset-inline-start: 1rem; }
