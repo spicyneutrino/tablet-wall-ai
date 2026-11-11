@@ -71,6 +71,7 @@ function setupIssue(options = {}) {
     keyboard.draft.arrangement = false;
     const resolution = keyboard.workspace.resolve("Open Arrange");
     const dialog = keyboard.element("draft-resolution");
+    assert.equal(keyboard.document.activeElement, keyboard.element("resolve-stay"), "every opening starts on Stay");
     function tab(from, shiftKey = false) {
         from.focus();
         const event = { key: "Tab", shiftKey, currentTarget: dialog, defaultPrevented: false,
@@ -128,14 +129,16 @@ function setupIssue(options = {}) {
     assert.equal(nativeClose.document.activeElement, nativeClose.element("trigger"), "native close restores the exact visible trigger");
     assert.deepEqual(nativeClose.draft.applied, []);
     console.log("Modal draft boundaries skip unavailable actions and close without writing");
-    const { workspace, draft, element, choose } = setup();
+    const { workspace, draft, element, choose, document } = setup();
     const result = workspace.resolve("Save tablet name");
+    assert.equal(document.activeElement, element("resolve-stay"));
     assert.equal(element("resolve-commit").textContent, "Apply arrangement");
     assert.equal(await workspace.resolve("Another action"), false, "one resolution owns the dialog");
     choose("discard");
     await new Promise(setImmediate);
     assert.equal(element("draft-resolution").open, true, "the remaining image must be reviewed before continuing");
     assert.equal(element("resolve-commit").textContent, "Show image");
+    assert.equal(document.activeElement, element("resolve-stay"), "the second combined review also starts on Stay");
     choose("stay");
     assert.equal(await result, false, "Stay on the second draft cancels the original immediate action");
     assert.equal(draft.arrangement, false);
@@ -146,6 +149,7 @@ function setupIssue(options = {}) {
     const committed = second.workspace.resolve("Save tablet name");
     second.choose("commit");
     await new Promise(setImmediate);
+    assert.equal(second.document.activeElement, second.element("resolve-stay"), "a successful first commit cannot become the next default");
     assert.deepEqual(second.draft.applied, ["arrangement"], "committing geometry does not commit content");
     second.choose("commit");
     assert.equal(await committed, true);

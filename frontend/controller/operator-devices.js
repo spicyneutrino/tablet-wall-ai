@@ -96,6 +96,7 @@
                 const form = tabletForms.observe(id, "name", { name: (state.deviceLabels || {})[id] || device && device.label || "" }, state.etag);
                 if (document.activeElement !== $("tablet-label")) $("tablet-label").value = form.values.name;
                 $("tablet-label-form").dataset.dirty = String(form.dirty);
+                $("tablet-label-save").classList.toggle("btn-primary", form.dirty && $("tablet-label-form").matches(":valid"));
                 $("tablet-label-form").dataset.deviceId = id;
                 $("tablet-label-review").hidden = !form.dirty;
                 $("tablet-label-discard").hidden = !form.dirty;
@@ -291,6 +292,7 @@
             nameReview = null; $("tablet-name-review").hidden = true;
             const form = tabletForms.edit(selectedId, "name", { name: $("tablet-label").value }, state.etag);
             $("tablet-label-form").dataset.dirty = String(form.dirty);
+            $("tablet-label-save").classList.toggle("btn-primary", form.dirty && $("tablet-label-form").matches(":valid"));
             $("tablet-label-review").hidden = !form.dirty;
             $("tablet-label-discard").hidden = !form.dirty;
         });

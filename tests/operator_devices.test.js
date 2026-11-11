@@ -3,9 +3,12 @@ const assert = require("node:assert/strict");
 const { create } = require("../frontend/controller/operator-devices.js");
 const nodes = new Map();
 function makeNode(tagName = "div") {
+    const classes = new Set();
     const item = {
         tagName: String(tagName).toUpperCase(), dataset: {}, value: "", options: [], listeners: {}, hidden: false,
         isConnected: true, parentElement: null, children: [], text: "",
+        classList: { toggle(name, enabled) { if (enabled) classes.add(name); else classes.delete(name); }, contains(name) { return classes.has(name); } },
+        matches(selector) { return selector === ":valid" && this.valid !== false; },
         addEventListener(event, handler) { this.listeners[event] = handler; },
         append(...items) { items.forEach(child => { child.parentElement = this; this.children.push(child); }); },
         replaceChildren(...items) { this.children = []; items.forEach(child => this.append(child)); },
@@ -58,6 +61,19 @@ async function run() {
     }
     state.etagState = "current";
     devices.render();
+    assert.equal(node("tablet-label-save").classList.contains("btn-primary"), false, "clean names have no primary emphasis");
+    node("tablet-label").value = "Desk tablet";
+    node("tablet-label").listeners.input();
+    assert.equal(node("tablet-label-save").classList.contains("btn-primary"), true, "a dirty valid name is primary");
+    node("tablet-label-form").valid = false;
+    node("tablet-label").listeners.input();
+    assert.equal(node("tablet-label-save").classList.contains("btn-primary"), false, "invalid names are not primary");
+    assert.equal(node("tablet-label-save").disabled, false, "emphasis does not change existing availability");
+    node("tablet-label-form").valid = true;
+    devices.render();
+    assert.equal(node("tablet-label-save").classList.contains("btn-primary"), true, "poll rendering preserves dirty valid emphasis");
+    node("tablet-label-discard").listeners.click();
+    assert.equal(node("tablet-label-save").classList.contains("btn-primary"), false, "discard restores the clean treatment");
     assert.equal(node("tablet-identify").disabled, false);
     assert.equal(node("tablet-recovery-actions").open, false, "healthy current reports collapse recovery");
     node("tablet-recovery-actions").open = true; devices.render();

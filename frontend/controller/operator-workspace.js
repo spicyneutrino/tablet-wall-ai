@@ -183,6 +183,7 @@ window.OperatorWorkspace = {
                     $("resolve-commit").textContent = kind === "arrangement" ? "Apply arrangement" : "Show image";
                     $("resolve-commit").disabled = !canCommit(kind);
                     dialog.showModal();
+                    $("resolve-stay").focus();
                     const choice = await new Promise(done => { pending = done; });
                     pending = null; dialog.close();
                     if (choice === "stay") return false;
