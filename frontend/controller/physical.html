@@ -548,7 +548,8 @@
 </div></section>
             <section class="rail-panel task-panel" id="panel-system" role="tabpanel" aria-labelledby="tab-system" tabindex="0" hidden data-task="settings"><h2 class="task-title sr-only" tabindex="-1" id="task-settings">Settings</h2>
         <div id="operator-readiness">
-            <section class="card task-section" aria-labelledby="readiness-title">
+            <section class="card task-section settings-row" aria-labelledby="readiness-title">
+                <div class="settings-label">
                 <div class="sec-head">
                     <h2 id="readiness-title">Joining and launch admission</h2>
                     <button class="btn btn-ghost" type="button" id="btn-readiness-refresh" aria-label="Refresh server checks" data-action="btn-readiness-refresh">Refresh</button>
@@ -558,14 +559,20 @@
             <p id="readiness-errors" role="alert" hidden></p>
 
             <p class="hint" id="readiness-refreshed" hidden></p>
+                </div>
+                <div class="settings-panel">
             <dl id="operator-readiness-facts" class="operator-facts"></dl>
+                </div>
             </section></div>
-        <section class="card task-section settings-evidence" id="settings-evidence" aria-labelledby="settings-evidence-title">
+        <section class="card task-section settings-evidence settings-row" id="settings-evidence" aria-labelledby="settings-evidence-title">
+            <div class="settings-label">
             <div class="sec-head">
                 <h2 id="settings-evidence-title">Diagnostics and current evidence</h2>
                 <span class="chip" id="diag-state" data-kind="info">loading</span>
             </div>
             <p class="hint">Current server evidence for this session. A failed refresh keeps the last known report labelled; it never becomes current wall evidence.</p>
+            </div>
+            <div class="settings-panel">
             <section class="task-section" aria-labelledby="settings-connection-title">
                 <h3 id="settings-connection-title">Server and connection</h3>
                 <dl id="operator-readiness-details" class="operator-facts"></dl>
@@ -598,9 +605,11 @@
                 </div>
                 <p id="diagnostic-colour-message" role="status"></p>
             </section>
+            </div>
         </section>
-        <details class="card settings-backup" id="backup-restore">
-            <summary>Backup and restore</summary>
+        <details class="card settings-backup settings-row" id="backup-restore">
+            <summary class="settings-label">Backup and restore</summary>
+            <div class="settings-panel">
             <section class="task-section" aria-labelledby="backup-title">
                 <h3 id="backup-title">Snapshot evidence</h3>
                 <p class="hint">Copy the database and referenced media from the paths below while the server is stopped. A manifest is a record on disk, not proof that this snapshot restores; rehearse a restore before relying on it.</p>
@@ -614,9 +623,11 @@
                 <h3>What this server cannot do</h3>
                 <ul id="operator-readiness-advice"></ul>
             </section>
+            </div>
         </details>
-        <details class="card" id="measurement-details">
-            <summary>Measurements and calibration</summary>
+        <details class="card settings-row" id="measurement-details">
+            <summary class="settings-label">Measurements and calibration</summary>
+            <div class="settings-panel">
             <section class="field-review" id="measurement-review" hidden>
                 <h3>Review changed saved fields</h3>
                 <pre class="form-comparison" id="measurement-comparison"></pre>
@@ -842,11 +853,15 @@
                 </form>
             </div>
         </section>
+        </div>
         </details>
 
-            <section class="card task-section settings-experimental" id="settings-experimental" aria-labelledby="settings-experimental-title">
+            <section class="card task-section settings-experimental settings-row" id="settings-experimental" aria-labelledby="settings-experimental-title">
+                <div class="settings-label">
                 <h2 id="settings-experimental-title">Experimental</h2>
                 <p>Software evidence only. Playback has not been validated on tablets. Nothing starts until you opt in here.</p>
+                </div>
+                <div class="settings-panel">
                 <label class="check-label"><input type="checkbox" id="experimental-opt-in" data-field="experimental-opt-in"> Enable experimental playlist and playback controls</label>
             <div id="experimental-controls" hidden>        <section class="playback-card task-section" id="playback-card" aria-labelledby="playback-title">
             <div class="playback-head">
@@ -980,11 +995,14 @@
             </details>
         </section>
 </div>
+                </div>
         </section>
-            <details class="destructive-area">
-                <summary>Destructive wall actions</summary>
+            <details class="destructive-area settings-row">
+                <summary class="settings-label">Destructive wall actions</summary>
+                <div class="settings-panel">
                 <p>Clear removes the applied arrangement. Review the confirmation before continuing.</p>
                 <button type="button" class="btn btn-danger" id="clear-wall" data-action="clear-wall">Clear wall</button>
+            </div>
             </details>
         </section>
         <section class="rail-panel task-panel" id="panel-saved" data-task="saved" role="tabpanel" aria-labelledby="tab-saved" hidden>
