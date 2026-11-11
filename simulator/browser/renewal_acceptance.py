@@ -1019,7 +1019,11 @@ def guarded_show_focus(rig: RenewalRig) -> None:
                                         if_match=rig.config()["etag"])
                 if status != 200:
                     raise RuntimeError(f"saved focus fixture failed: {status}")
+                wait_until(page, "etag => document.getElementById('etag-value').title === etag"
+                           " && document.getElementById('etag-state').textContent === 'current'",
+                           arg=rig.config()["etag"])
                 _task(rig, "Saved")
+                wait_until(page, "() => document.getElementById('scenes-status').textContent === ''")
                 page.get_by_role("button", name="Preview content “Renewal focus”", exact=True).click()
             else:
                 page.locator("#image-gallery > li .image-choice-button").first.click()
