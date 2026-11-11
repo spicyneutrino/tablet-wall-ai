@@ -1,7 +1,8 @@
 *, *::before, *::after { box-sizing: border-box; }
 [hidden] { display: none !important; }
 html { scroll-padding-block: 5rem 2rem; }
-body { margin: 0; min-block-size: 100dvh; background: var(--bg); color: var(--text); font: 0.875rem/var(--lead) var(--font); font-variant-numeric: tabular-nums; }
+body { margin: 0; min-block-size: 100dvh; background: var(--bg); color: var(--text); font: 0.875rem/var(--lead) var(--font); }
+.num, #grid-rows, #grid-columns, #logical-tile-rows, #logical-tile-columns, #wall-revision, #cal-profile-revision { font-variant-numeric: tabular-nums; }
 button, input, select, textarea { font: inherit; }
 button, input, select, textarea, summary { -webkit-tap-highlight-color: transparent; }
 button, select, summary { cursor: pointer; }
@@ -268,7 +269,6 @@ body[data-view-zoom="2x"] #workbench-stage .stage-svg { max-block-size: none; }
 .crop-bar-axis { font-weight: 600; }
 .crop-bar-track { position: relative; block-size: .45rem; background: var(--surface-raised); border: 1px solid var(--border); }
 .crop-bar-fill { position: absolute; inset-block: 0; inset-inline-start: 0; inline-size: var(--crop, 0%); background: var(--control); }
-.crop-bar-value { font-variant-numeric: tabular-nums; }
 .fit-bezel-note { margin: 0; }
 #fit-applied { margin: 0; }
 #crop-bars[hidden] { display: none; }
@@ -605,7 +605,7 @@ summary::before { content: "\25B8"; grid-column: 1; inline-size: auto; margin: 0
 details[open] > summary::before { content: "\25BE"; }
 #readiness-errors { border-inline-start: 3px solid var(--attention); padding-inline-start: .75rem; }
 
-::placeholder { color: var(--control); opacity: 1; }
+::placeholder { color: var(--muted); opacity: 1; }
 ::selection { color: var(--text); background: var(--selected); }
 input, textarea { caret-color: var(--accent); }
 
