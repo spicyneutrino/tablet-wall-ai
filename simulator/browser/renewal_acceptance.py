@@ -1008,6 +1008,84 @@ def status_truth(rig: RenewalRig) -> None:
 
 def guarded_show_focus(rig: RenewalRig) -> None:
     page = rig.page
+    clients = [rig.new_client(CLIENT_SPECS[i % 4], i) for i in range(6)]
+    _place_grid(rig, clients, 1800, 1000, 3)
+    for width, height in ((1440, 900), (1280, 800), (390, 844)):
+        page.set_viewport_size({"width": width, "height": height})
+        for kind in ("image", "unfocused", "saved"):
+            _task(rig, "Images")
+            if kind == "saved":
+                status, _ = rig.request("PUT", "/api/v3/scenes/Renewal%20focus?replace=true",
+                                        if_match=rig.config()["etag"])
+                if status != 200:
+                    raise RuntimeError(f"saved focus fixture failed: {status}")
+                _task(rig, "Saved")
+                page.get_by_role("button", name="Preview content “Renewal focus”", exact=True).click()
+            else:
+                page.locator("#image-gallery > li .image-choice-button").first.click()
+            wait_until(page, "() => !document.getElementById('show-image').disabled")
+            page.keyboard.press("Tab")
+            page.locator("#image-search" if kind == "unfocused" else "#show-image").focus()
+            page.evaluate("""() => {
+                window.renewalFocusCalls = [];
+                window.renewalFocus = HTMLElement.prototype.focus;
+                window.renewalScroll = Element.prototype.scrollIntoView;
+                HTMLElement.prototype.focus = function(...args) {
+                    window.renewalFocusCalls.push(['focus', this.id]);
+                    return window.renewalFocus.apply(this, args);
+                };
+                Element.prototype.scrollIntoView = function(...args) {
+                    window.renewalFocusCalls.push(['scroll', this.id]);
+                    return window.renewalScroll.apply(this, args);
+                };
+            }""")
+            start = len(rig.requests)
+            asset = rig.assets[1]
+            status, _ = rig.put_scene({"type": "image", "asset": "sha256:" + asset["sha256"],
+                                       "fit": "contain", "background": f"#{width + len(rig.requests):06x}"})
+            if status != 200:
+                raise RuntimeError(f"remote focus fixture write failed: {status}")
+            wait_until(page, "etag => document.getElementById('etag-value').title === etag"
+                       " && document.getElementById('etag-state').textContent === 'current'",
+                       arg=rig.config()["etag"])
+            page.wait_for_timeout(200)
+            actual = page.evaluate("""() => {
+                const active = document.activeElement, a = active.getBoundingClientRect();
+                const message = document.getElementById('image-message'), m = message.getBoundingClientRect();
+                const hit = document.elementFromPoint(a.left + a.width / 2, a.top + a.height / 2);
+                const inside = r => r.width > 0 && r.height > 0 && r.top >= 0 && r.left >= 0
+                    && r.bottom <= innerHeight && r.right <= innerWidth;
+                const result = {focus: active.id, inside: inside(a), hit: hit === active || active.contains(hit),
+                    ring: active.matches(':focus-visible'), message: message.textContent,
+                    messageInside: inside(m), role: message.getAttribute('role'),
+                    disabled: document.getElementById('show-image').disabled,
+                    dirty: document.body.dataset.outputDirty, calls: window.renewalFocusCalls};
+                HTMLElement.prototype.focus = window.renewalFocus;
+                Element.prototype.scrollIntoView = window.renewalScroll;
+                return result;
+            }""")
+            expected_message = (
+                "The wall changed after this preview was built. Show is off. Discard this preview, then open Saved and preview the content again."
+                if kind == "saved" else
+                "The wall changed after this preview was built. Show is off until the preview is rebuilt. Use Rebuild preview, then Show image."
+            )
+            expected_focus = "image-search" if kind == "unfocused" else (
+                "image-message" if kind == "saved" else "image-rebuild")
+            rig.check(
+                f"Remote {kind} preview change at {width}x{height} explains disabled Show and preserves visible focus ownership without writes",
+                actual["focus"] == expected_focus and actual["inside"] and actual["hit"]
+                and actual["ring"] and actual["message"] == expected_message
+                and actual["role"] == "status" and actual["disabled"] and actual["dirty"] == "true"
+                and (kind != "unfocused" or not actual["calls"])
+                and (kind == "unfocused" or width == 390 or actual["messageInside"])
+                and not _controller_write_rows(rig, start),
+                {**actual, "writes": _controller_write_rows(rig, start)},
+                {"focus": expected_focus, "message": expected_message, "writes": []},
+                obligation="D5",
+            )
+            rig.shot(f"remote-stale-{kind}-{width}")
+            page.locator("#image-discard").click()
+    page.set_viewport_size({"width": 1440, "height": 900})
     _task(rig, "Images")
     wait_until(page, "() => document.querySelectorAll('#image-gallery > li').length >= 8", timeout=20)
     page.locator("#image-gallery > li .image-choice-button").first.click()

@@ -12,7 +12,7 @@ window.OperatorContent = {
         const isVideoUpload = file => /^video\/(mp4|quicktime)$/i.test(file.type || "")
             || /\.(mp4|mov|qt)$/i.test(file.name || "");
         const gallery = new Map();
-        let retainMessage = false, noteSequence = 0, uploadedSelectionId = null;
+        let retainMessage = false, noteSequence = 0, uploadedSelectionId = null, previewStale = false;
         const shownRevisions = new Map();
         const message = (text, retain = false, kind = "info", target = "image-message") => { shownRevisions.delete(target); if (target === "image-message") retainMessage = retain; $(target).dataset.kind = kind; $(target).textContent = text; };
         function focusRecovery(target) {
@@ -369,6 +369,14 @@ window.OperatorContent = {
             return image ? image.name : savedScene ? savedScene.name || "Saved content" : selected ? "Unavailable image" : "Saved content";
         }
         function render() {
+            const stale = Boolean(selectionDirty && baseEtag && (baseEtag !== state.etag || state.etagState === "stale"));
+            const recoverFocus = stale && !busy && document.activeElement === $("show-image");
+            if (stale && !previewStale && !busy && !retainMessage && $("image-message").dataset.kind !== "err") {
+                message(savedScene
+                    ? "The wall changed after this preview was built. Show is off. Discard this preview, then open Saved and preview the content again."
+                    : "The wall changed after this preview was built. Show is off until the preview is rebuilt. Use Rebuild preview, then Show image.", false, "warn");
+            }
+            previewStale = stale;
             if (uploadedSelectionId && (!selectionDirty || selected !== uploadedSelectionId
                     || !state.previewContent || state.previewContent.asset !== uploadedSelectionId)) {
                 uploadedSelectionId = null;
@@ -387,7 +395,7 @@ window.OperatorContent = {
             $("show-calibration").disabled = state.layoutKind !== "logical" || busy;
             for (const id of ["show-colours", "pattern-grid", "pattern-black"]) $(id).disabled = busy;
             $("show-image").disabled = busy || loading || !selectionDirty || !selectedContent() || !state.etag || state.etagState !== "current" || baseEtag !== state.etag;
-            contextual("image-rebuild", selectionDirty && baseEtag !== state.etag); contextual("image-discard", selectionDirty);
+            contextual("image-rebuild", stale); contextual("image-discard", selectionDirty);
             contextual("restore-image", !!previous);
             $("image-rebuild").disabled = !selectionDirty || busy; $("image-discard").disabled = !selectionDirty || busy;
             $("show-image").textContent = state.viewLive ? "Show " + pendingName() : savedScene ? "Show saved content" : "Show image";
@@ -417,6 +425,7 @@ window.OperatorContent = {
             renderFitFeedback();
             renderGallery();
             renderShownStatus();
+            if (recoverFocus) focusRecovery($(savedScene ? "image-message" : "image-rebuild"));
         }
         async function refresh() {
             const version = ++inventoryVersion;

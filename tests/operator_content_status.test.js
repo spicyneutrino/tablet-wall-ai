@@ -465,7 +465,7 @@ console.log("Fit feedback slots are unique, labelled, decorative and placed afte
     const images = ["a", "b"].map(id => ({ id, name: id + ".png", width: 100, height: 100,
         source: "managed", url: "/" + id, thumbnail_url: "/" + id }));
     const calls = [];
-    let conflictCount = 0, fail = null;
+    let conflictCount = 0, fail = null, inventoryError = false;
     const context = vm.createContext({ window: { OperatorState: model }, document: doc, Option });
     vm.runInContext(fs.readFileSync(require.resolve("../frontend/controller/operator-dom.js"), "utf8"), context);
     vm.runInContext(fs.readFileSync(require.resolve("../frontend/controller/operator-content.js"), "utf8"), context);
@@ -474,7 +474,7 @@ console.log("Fit feedback slots are unique, labelled, decorative and placed afte
         ingestConfig(result) { state.scene = result.scene; },
         async api(method, path, body, options) {
             calls.push({ method, path, body, options });
-            if (path === "/api/v3/images") return { images };
+            if (path === "/api/v3/images") { if (inventoryError) throw new Error("Inventory unavailable"); return { images }; }
             if (path === "/api/v3/scene" || path.startsWith("/api/v3/scenes/")) return fail();
             throw new Error("unexpected route " + path);
         } });
@@ -487,6 +487,54 @@ console.log("Fit feedback slots are unique, labelled, decorative and placed afte
         error.status = 412;
         throw error;
     };
+    await content.refresh();
+
+    const staleImage = "The wall changed after this preview was built. Show is off until the preview is rebuilt. Use Rebuild preview, then Show image.";
+    const staleSaved = "The wall changed after this preview was built. Show is off. Discard this preview, then open Saved and preview the content again.";
+    let messageWrites = 0, messageText = node("image-message").textContent;
+    Object.defineProperty(node("image-message"), "textContent", {
+        get() { return messageText; },
+        set(value) { messageText = value; messageWrites += 1; }
+    });
+    await choose("a");
+    node("show-image").focus();
+    const beforeStale = calls.length;
+    state.etagState = "stale";
+    content.render();
+    assert.equal(doc.activeElement, node("image-rebuild"), "remote invalidation hands focused Show to Rebuild before the new guard arrives");
+    assert.equal(node("image-rebuild").hidden, false);
+    assert.equal(node("show-image").disabled, true);
+    assert.equal(node("image-message").textContent, staleImage);
+    assert.equal(node("image-message").dataset.kind, "warn");
+    const once = messageWrites;
+    state.etag = "remote"; state.etagState = "current";
+    content.render(); content.render();
+    assert.equal(messageWrites, once, "one stale transition announces only once across invalidation and reconciliation");
+    assert.equal(calls.length, beforeStale, "passive recovery sends no request or automatic rebase");
+    assert.equal(await content.showSelected(), false);
+    content.discard(); state.etag = "e";
+    await choose("a");
+    node("image-search").focus();
+    state.etag = "remote";
+    content.render();
+    assert.equal(doc.activeElement, node("image-search"), "remote staleness does not touch another control's focus");
+    content.discard(); state.etag = "e";
+    content.previewScene({ name: "Amber", content: { type: "color" } }, "e");
+    node("show-image").focus();
+    state.etag = "remote";
+    content.render();
+    assert.equal(node("image-message").textContent, staleSaved);
+    assert.equal(doc.activeElement, node("image-message"), "saved previews focus the safe re-preview instruction");
+    content.discard(); state.etag = "e";
+    await choose("a");
+    inventoryError = true;
+    await content.refresh();
+    const retainedError = node("image-message").textContent;
+    state.etag = "remote";
+    content.render();
+    assert.equal(node("image-message").textContent, retainedError, "staleness never overwrites a retained inventory error");
+    inventoryError = false;
+    content.discard(); state.etag = "e";
     await content.refresh();
 
     node("show-image").focus();
@@ -525,8 +573,9 @@ console.log("Fit feedback slots are unique, labelled, decorative and placed afte
     fail = fail412();
     await choose("a");
     await content.showSelected();
-    assert.equal(node("image-rebuild").hidden, true, "an unchanged base leaves Rebuild hidden");
-    assert.equal(doc.activeElement, node("image-message"), "a visible message receives focus when Rebuild is not the candidate");
+    assert.equal(node("image-rebuild").hidden, false, "an invalidated guard exposes explicit recovery before reconciliation returns");
+    assert.equal(doc.activeElement, node("image-rebuild"), "an invalidated guard focuses its visible recovery action");
+    assert.equal(node("image-message").textContent, exact412, "passive stale guidance never overwrites a real 412 failure");
 
     state.etag = "e"; state.etagState = "current";
     content.discard();
