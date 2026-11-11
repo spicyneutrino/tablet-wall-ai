@@ -1,15 +1,15 @@
 .wall-stage { display: grid; gap: .75rem; }
 .wall-head { min-block-size: var(--control-min); display: flex; flex-wrap: wrap; align-items: center; gap: .25rem .75rem; }
 .wall-head .stage-title { min-inline-size: 0; display: flex; flex-wrap: wrap; align-items: baseline; gap: 0 .5rem; flex: 0 1 auto; }
-.wall-head h2 { flex: 0 1 auto; font-size: .9375rem; letter-spacing: -.004em; white-space: nowrap; }
-.stage-sub { margin: 0; color: var(--muted); font-size: .6875rem; line-height: 1.25; }
-.stage-mode { position: relative; flex: 1 1 auto; contain: inline-size; margin: 0; min-inline-size: 8em; overflow: visible; overflow-wrap: normal; word-break: keep-all; text-overflow: clip; white-space: normal; color: var(--text); font-size: .75rem; font-weight: 600; }
+.wall-head h2 { flex: 0 1 auto; font-size: 1rem; line-height: 1.375; letter-spacing: 0; white-space: nowrap; }
+.stage-sub { margin: 0; color: var(--muted); font-size: .75rem; line-height: 1.416667; }
+.stage-mode { position: relative; flex: 1 1 auto; contain: inline-size; margin: 0; min-inline-size: 8em; overflow: visible; overflow-wrap: normal; word-break: keep-all; text-overflow: clip; white-space: normal; color: var(--text); font-size: .75rem; line-height: 1.416667; font-weight: 600; }
 body[data-task="images"][data-stage-identity="chips"] #stage-mode { position: absolute; inline-size: 1px; block-size: 1px; margin: -1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; border: 0; }
 .stage-tools { display: flex; flex-wrap: wrap; align-items: center; gap: .3rem; margin-inline-start: auto; }
-.stage-chip { display: inline-block; max-inline-size: 100%; padding: .05rem .35rem; border: 1px solid var(--control); border-radius: var(--radius); background: var(--surface); color: var(--text); font-size: .6875rem; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.stage-chip { display: inline-block; max-inline-size: 100%; padding: .05rem .35rem; border: 1px solid var(--control); border-radius: var(--radius); background: var(--surface); color: var(--text); font-size: .8125rem; line-height: 1.384615; font-weight: 500; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .stage-chip-draft { border-color: var(--accent); color: var(--accent); }
 .stage-view-actions { display: flex; align-items: center; }
-.stage-view-actions .btn { font-size: .75rem; }
+.stage-view-actions .btn { min-block-size: var(--control-min); padding-block: .1rem; font-size: .8125rem; line-height: 1.384615; }
 body:not([data-task="images"]) .stage-chip { display: none !important; }
 .wall-head > .technical-details { flex-basis: 100%; }
 .physical-meta { display: flex; flex-wrap: wrap; gap: .5rem 1rem; }
@@ -37,13 +37,14 @@ body[data-stage-mode="live"] .wall-stage:has(.wall-empty:not([hidden])) :is(.sta
 .logical-resize { fill: var(--stage-text); stroke: var(--stage); vector-effect: non-scaling-stroke; stroke-width: 1px; cursor: nwse-resize; }
 .stage-foot { display: grid; gap: .4rem; }
 .stage-dimensions { color: var(--muted); font-size: .75rem; }
-.stage-legend { display: flex; flex-wrap: wrap; gap: .35rem .75rem; padding: 0; list-style: none; color: var(--muted); font-size: .6875rem; }
+.stage-legend { display: flex; flex-wrap: wrap; gap: .35rem .75rem; padding: 0; list-style: none; color: var(--muted); font-size: .75rem; line-height: 1.416667; }
 .lg { display: flex; gap: .35rem; align-items: center; }
 .lg > span { display: inline-block; inline-size: .8rem; block-size: .6rem; border: 1px solid var(--control); background: var(--stage); }
 .lg > .lg-active { border: 3px double var(--control); background: var(--surface); }
 .lg > .lg-sel { border: 2px solid var(--accent); background: var(--selected); }
 .lg > .lg-grid { background: var(--surface); border-style: dashed; }
 .stage-details { border-block-start: 1px solid var(--border); }
+.stage-details > summary { padding-block: .125rem; }
 .wall-empty { padding-block: .75rem; border-block-start: 1px solid var(--border); }
 .wall-empty .btn { justify-self: start; }
 body:not([data-stage-mode="live"]) .stage-mode { color: var(--accent); }
@@ -53,7 +54,7 @@ body[data-connection="stale"] .wall-health { border-style: dashed; border-color:
 
 .operator-slot[data-status="offline"] .operator-body-outline { stroke-dasharray: 4 3; }
 .lg > .lg-offline { border-style: dashed; background: transparent; }
-.stage-key { color: var(--muted); font-size: .6875rem; }
+.stage-key { color: var(--muted); font-size: .75rem; line-height: 1.416667; }
 
 /* Stage annotations. Fill is the shape cue against the matte (attention/error surfaces are
    14:1 or better); the dark stroke keeps the same shape readable over light imagery. */

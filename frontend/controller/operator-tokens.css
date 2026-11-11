@@ -39,19 +39,21 @@
     --rail-w: 328px;
     --stage-budget: clamp(500px, 56vh, 660px);
     --control-primary: 32px;
+    --control-compact: 28px;
+    --control-form: 32px;
     --control-min: 24px;
     --radius: 2px;
     --panel-radius: 3px;
     --panel-pad: 0.9rem;
     --page-pad: 0.9rem;
-    --lead: 1.45;
+    --lead: 1.428571;
     --space-1: 4px;
     --space-2: 8px;
     --space-3: 12px;
     --space-4: 16px;
     --space-5: 24px;
     --text-sm: 0.75rem;
-    --text-md: 0.8125rem;
-    --text-lg: 0.9375rem;
-    --text-xl: 1.0625rem;
+    --text-md: 0.875rem;
+    --text-lg: 1rem;
+    --text-xl: 1.25rem;
 }
