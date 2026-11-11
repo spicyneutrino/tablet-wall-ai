@@ -62,6 +62,8 @@ const content = context.window.OperatorContent.create({ state, renderStage() {},
 (async () => {
     const refresh = content.refresh();
     await node("pattern-black").click();
+    assert.equal(node("library-status").textContent, "", "pattern publication invalidates obsolete inventory loading text");
+    assert.equal(node("refresh-images").disabled, false, "a pattern invalidation releases inventory busy state");
     assert.deepEqual(calls.map(call => call.path), ["/api/v3/images", "/api/v3/test-pattern", "/api/v3/scene"]);
     assert.equal(calls[2].body.content.asset, image.id, "the generated flat image DTO is shown without fixture-only aliases");
     assert.equal(calls[2].body.content.fit, "contain");
@@ -362,15 +364,15 @@ async function inventoryState() {
     const request = pending.shift();
     assert.equal(node("refresh-images").disabled, true, "a pending inventory read disables its trigger");
     assert.equal(doc.activeElement, doc.body, "disabling the focused refresh control moves focus to BODY in the browser model");
-    assert.match(node("image-message").textContent, /Refreshing the image library/);
-    assert.match(node("image-message").textContent, /last known library state/);
+    assert.match(node("library-status").textContent, /Refreshing the image library/);
+    assert.match(node("library-status").textContent, /last known library state/);
     request.resolve({ images: [a, b, c, d] });
     await read;
     assert.equal(doc.activeElement, node("refresh-images"), "the settled refresh restores its invoking focus");
     assert.equal(node("refresh-images").disabled, false);
     assert.equal(rows().length, 4, "new inventory rows appear after the read settles");
     assert.equal(rows().find(row => row.dataset.assetId === "a"), before.get("a"), "an inventory refresh reuses existing row nodes");
-    assert.equal(node("image-message").textContent, "", "routine inventory success clears the refreshing label");
+    assert.equal(node("library-status").textContent, "", "routine inventory success clears the refreshing label");
 
     node("refresh-images").focus();
     const failed = content.refresh();
@@ -378,8 +380,8 @@ async function inventoryState() {
     await failed;
     assert.equal(doc.activeElement, node("refresh-images"), "a failed refresh also restores its invoking focus");
     assert.equal(rows().length, 4, "a failed refresh keeps the last known inventory");
-    assert.match(node("image-message").textContent, /library unavailable/);
-    assert.match(node("image-message").textContent, /last known library state is still shown/);
+    assert.match(node("library-status").textContent, /library unavailable/);
+    assert.match(node("library-status").textContent, /last known library state is still shown/);
     assert.equal(node("refresh-images").disabled, false);
 
     const slow = content.refresh();
@@ -393,6 +395,23 @@ async function inventoryState() {
     assert.equal(rows().length, 1, "a stale inventory read cannot replace a newer result");
     assert.equal(rows()[0].dataset.assetId, "a");
 
+    const obsolete = content.refresh();
+    const obsoleteRequest = pending.shift();
+    const current = content.refresh();
+    const currentRequest = pending.shift();
+    node("image-search").focus();
+    const refreshing = node("library-status").textContent;
+    obsoleteRequest.reject(new Error("old failure"));
+    await obsolete;
+    assert.equal(node("library-status").textContent, refreshing, "an older failure cannot change the newer request's status");
+    assert.equal(node("refresh-images").disabled, true, "an older finalizer cannot clear the newer request's busy state");
+    assert.equal(doc.activeElement, node("image-search"), "an older finalizer cannot take focus");
+    assert.equal(rows().length, 1);
+    currentRequest.resolve({ images: [a, b] });
+    await current;
+    assert.equal(node("library-status").textContent, "");
+    assert.equal(node("refresh-images").disabled, false);
+
     await refreshWith("abcdefgh".split("").map(asset));
     rows().find(row => row.dataset.assetId === "e").children[0].focus();
     await refreshWith([asset("d"), asset("g")]);
@@ -401,12 +420,13 @@ async function inventoryState() {
     node("image-search").value = ""; node("image-search").input();
     await refreshWith([]);
     const empty = node("image-search-empty");
-    assert.equal(empty.hidden, false, "a real empty inventory shows a message inside the library");
-    assert.equal(empty.textContent, "No images available.");
-    assert.equal(node("image-message").textContent, "No images available.");
+    assert.equal(empty.hidden, true, "a real empty inventory is announced only by the library status");
+    assert.equal(node("library-status").textContent, "No images available.");
+    assert.equal(node("image-message").textContent, "", "empty inventory does not announce in command feedback");
     assert.equal(rows().length, 0);
     node("image-search").value = "anything"; node("image-search").input();
-    assert.equal(empty.textContent, "No images available.", "a search cannot turn a real empty inventory into a filter miss");
+    assert.equal(node("library-status").textContent, "No images available.", "a search cannot turn a real empty inventory into a filter miss");
+    assert.equal(empty.hidden, true, "search remains silent for empty inventory");
 
     node("image-search").value = ""; node("image-search").input();
     await refreshWith([a, b]);
@@ -569,3 +589,58 @@ async function patternGrouping() {
     assert.equal(rows().filter(item => item.children[0].tabIndex === 0).length, 1);
     console.log("Exact curated test patterns sort last, carry a visible tag and keep the single gallery tab stop");
 }
+
+(async () => {
+    for (const outcome of ["uncertain", "success"]) {
+        const nodes = new Map(), pending = [], transports = [], writes = [];
+        const doc = { activeElement: null, getElementById: id => {
+            if (!nodes.has(id)) nodes.set(id, element(id, doc));
+            return nodes.get(id);
+        }, createElement: tag => element(tag, doc) };
+        const node = id => doc.getElementById(id);
+        class Request {
+            constructor() { this.upload = {}; transports.push(this); }
+            open() {} setRequestHeader() {} send() {}
+        }
+        const state = { layoutKind: "logical", etag: "e", etagState: "current", capabilities: { uploads: true }, scene: { content: { type: "color" } } };
+        const context = vm.createContext({ window: { OperatorState: model }, document: doc, Option: function () {}, XMLHttpRequest: Request });
+        for (const file of ["operator-dom.js", "operator-content.js"]) vm.runInContext(fs.readFileSync(require.resolve("../frontend/controller/" + file), "utf8"), context);
+        const content = context.window.OperatorContent.create({ state, renderStage() {}, announce() {}, ingestConfig() {}, showConflict() {},
+            refreshConnection: async () => { throw new Error("connection unavailable"); },
+            api(method, path) {
+                if (method === "GET" && path === "/api/v3/images") return new Promise((resolve, reject) => pending.push({ resolve, reject }));
+                writes.push({ method, path }); throw new Error("unexpected write");
+            } });
+        node("upload-file").files = [{ name: "new.png", type: "image/png" }];
+        const initial = content.refresh(); pending.shift().resolve({ images: [] }); await initial;
+        const old = content.refresh(), oldRequest = pending.shift();
+        node("upload-form").submit({ preventDefault() {} });
+        const request = transports[0];
+        let completion;
+        if (outcome === "uncertain") { request.onerror(); request.onloadend(); }
+        else {
+            request.status = 201; request.responseText = JSON.stringify({ asset: { id: "new" } });
+            completion = request.onload(); request.onloadend(); await new Promise(setImmediate);
+        }
+        const feedback = node("upload-message").textContent;
+        assert.doesNotMatch(node("library-status").textContent, /Reading/);
+        if (outcome === "uncertain") {
+            assert.equal(node("library-status").textContent, "", "upload uncertainty clears obsolete inventory loading");
+            assert.equal(node("refresh-images").disabled, false);
+        } else assert.equal(node("refresh-images").disabled, true, "the existing upload follow-up owns busy state");
+        oldRequest.resolve({ images: [] }); await old;
+        assert.equal(node("upload-message").textContent, feedback, "the invalidated read cannot resolve upload outcome");
+        assert.equal(node("upload-submit").disabled, outcome === "uncertain");
+        if (outcome === "success") {
+            assert.equal(node("refresh-images").disabled, true, "obsolete finalization cannot finish the upload follow-up");
+            pending.shift().resolve({ images: [{ id: "new", name: "new.png", width: 10, height: 10, url: "/new" }] });
+            await completion;
+            assert.equal(node("library-status").textContent, "");
+        }
+        assert.deepEqual(writes, [], "upload completion adds no Show or automatic retry");
+        await node("images-check-connection").click();
+        assert.equal(node("upload-message").textContent, "Could not check image-addition availability. connection unavailable. Use Check image-addition connection to retry.");
+        assert.equal(node("image-message").textContent, "", "capability feedback stays out of command feedback");
+    }
+    console.log("Upload invalidation clears obsolete loading and preserves uncertainty and follow-up ownership");
+})().catch(error => { console.error(error); process.exitCode = 1; });

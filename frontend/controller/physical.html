@@ -8,7 +8,7 @@
     <title>Tablet wall · tablet-wall-ai</title>
     <link rel="icon" href="favicon.svg" type="image/svg+xml">
     <link rel="stylesheet" href="operator-tokens.css?v=4">
-    <link rel="stylesheet" href="operator-workspace.css?v=20261111-a1">
+    <link rel="stylesheet" href="operator-workspace.css?v=20261111-a4">
     <link rel="stylesheet" href="operator-stage.css?v=7">
 </head>
 <body class="physical" data-view-zoom="fit">
@@ -444,6 +444,7 @@
           <label class="field" id="image-fit-field" for="image-fit">Scaling<select class="inp" id="image-fit" data-field="image-fit"><option value="cover">Fill</option><option value="contain">Fit</option></select></label>
           <div class="image-action-row image-primary-actions">
               <button class="btn" id="image-discard" type="button" aria-label="Discard image preview" data-action="image-discard">Discard</button>
+              <button class="btn" id="image-rebuild" type="button" hidden data-action="image-rebuild">Rebuild preview</button>
               <button class="btn btn-primary" id="show-image" type="button" disabled data-action="show-image">Show image</button>
           </div>
         </div>
@@ -473,7 +474,6 @@
         <p class="hint fit-bezel-note">Bezels and wall gaps reduce each tablet's visible area; they are separate from source crop.</p>
         <p class="hint" id="fit-applied">Applied: nothing on the wall.</p>
       </section>
-      <div class="image-action-row image-recovery"><button class="btn" id="image-rebuild" type="button" hidden data-action="image-rebuild">Rebuild preview</button></div>
     </div>
   </section>
 
@@ -509,6 +509,7 @@
             </details>
         </div>
       </div>
+      <p id="library-status" class="form-msg" role="status" aria-live="polite"></p>
       <button type="button" class="image-chooser-summary" id="image-chooser-summary" aria-expanded="true" aria-controls="image-chooser-body">Choose an image</button>
     </div>
 
@@ -1115,7 +1116,7 @@
 <script src="operator-state.js?v=4"></script>
 <script src="operator-forms.js?v=3"></script>
 <script src="operator-stage.js?v=20261111-a3"></script>
-<script src="operator-content.js?v=21"></script>
+<script src="operator-content.js?v=20261111-a4"></script>
 <script src="operator-grid.js?v=12"></script>
 <script src="operator-devices.js?v=20261111-a3"></script>
 <script src="operator-readiness.js?v=5"></script>

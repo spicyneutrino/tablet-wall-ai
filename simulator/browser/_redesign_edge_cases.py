@@ -889,7 +889,7 @@ def upload_ambiguous(rig, malformed=False):
                 times=1,
             )
             p.locator("#refresh-images").click()
-            expect(p.locator("#image-message")).to_contain_text("unavailable")
+            expect(p.locator("#library-status")).to_contain_text("unavailable")
             rig.check(
                 p.locator("#upload-submit").is_disabled(),
                 "Failed explicit inventory refresh cannot unlock uncertain upload",

@@ -302,7 +302,7 @@ def visual_states(rig):
     expect(
         p.get_by_role("button", name="Preview " + long_name, exact=True)
     ).to_have_count(1)
-    for width, height in ((1440, 900), (390, 844), (320, 640)):
+    for width, height in ((1440, 900), (1280, 800), (390, 844), (320, 640)):
         p.set_viewport_size({"width": width, "height": height})
         for name in ("Tablets", "Images"):
             task(p, name)
@@ -343,7 +343,7 @@ def visual_states(rig):
             ),
             p.wait_for_timeout,
         )
-        for width, height in ((1440, 900), (390, 844)):
+        for width, height in ((1440, 900), (1280, 800), (390, 844)):
             p.set_viewport_size({"width": width, "height": height})
             button = p.get_by_role("button", name="Preview " + long_name + ", thumbnail unavailable", exact=True)
             rig.check(
@@ -366,11 +366,11 @@ def visual_states(rig):
     )
     p.locator("#refresh-images").click()
     held.wait()
-    for width, height in ((1440, 900), (390, 844)):
+    for width, height in ((1440, 900), (1280, 800), (390, 844)):
         p.set_viewport_size({"width": width, "height": height})
         rig.check(
             "Refreshing the image library. Showing the last known library state."
-            in p.locator("#image-message").inner_text()
+            in p.locator("#library-status").inner_text()
             and p.locator("#show-image").is_disabled(),
             f"Canonical image loading state disables unsafe Show at {width}",
         )
@@ -388,12 +388,12 @@ def visual_states(rig):
             times=1,
         )
         p.locator("#refresh-images").click()
-        expect(p.locator("#image-message")).to_contain_text("Image library unavailable")
-        for width, height in ((1440, 900), (390, 844)):
+        expect(p.locator("#library-status")).to_contain_text("Image library unavailable")
+        for width, height in ((1440, 900), (1280, 800), (390, 844)):
             p.set_viewport_size({"width": width, "height": height})
             rig.check(
                 p.locator("#refresh-images").is_enabled()
-                and "retry" in p.locator("#image-message").inner_text(),
+                and "retry" in p.locator("#library-status").inner_text(),
                 f"Canonical image error state retains explicit Refresh recovery at {width}",
             )
             rig.shot(p, "inventory-error")
@@ -409,12 +409,12 @@ def visual_states(rig):
         }
     )
     p.locator("#refresh-images").click()
-    expect(p.locator("#image-message")).to_have_text("No images available.")
-    for width, height in ((1440, 900), (390, 844)):
+    expect(p.locator("#library-status")).to_have_text("No images available.")
+    for width, height in ((1440, 900), (1280, 800), (390, 844)):
         p.set_viewport_size({"width": width, "height": height})
         rig.check(
             p.locator("#image-gallery li").count() == 0
-            and "No images" in p.locator("#image-message").inner_text(),
+            and "No images" in p.locator("#library-status").inner_text(),
             f"Canonical empty image inventory retains admitted Add image and Arrange at {width}",
         )
         rig.shot(p, "inventory-empty")

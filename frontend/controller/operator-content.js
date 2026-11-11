@@ -16,13 +16,14 @@ window.OperatorContent = {
         const shownRevisions = new Map();
         const message = (text, retain = false, kind = "info", target = "image-message") => { shownRevisions.delete(target); if (target === "image-message") retainMessage = retain; $(target).dataset.kind = kind; $(target).textContent = text; };
         function focusRecovery(target) {
-            const rect = target.getBoundingClientRect?.();
-            const hit = rect && document.elementFromPoint?.(rect.left + rect.width / 2, rect.top + rect.height / 2);
+            const region = target.closest?.("#commit-bar") || target;
+            const rect = region.getBoundingClientRect?.(), control = target.getBoundingClientRect?.();
+            const hit = control && document.elementFromPoint?.(control.left + control.width / 2, control.top + control.height / 2);
             const inView = !rect || rect.top >= 4 && rect.bottom <= window.innerHeight - 4
                 && rect.left >= 4 && rect.right <= window.innerWidth - 4
                 && (!hit || hit === target || target.contains(hit));
             target.focus({ preventScroll: inView });
-            if (!inView) target.scrollIntoView({ block: "center", inline: "nearest" });
+            if (!inView) region.scrollIntoView({ block: "center", inline: "nearest" });
         }
         function renderShownStatus() {
             for (const [target, revision] of shownRevisions) {
@@ -39,7 +40,7 @@ window.OperatorContent = {
                     text = "";
                 }
                 $(target).dataset.kind = kind;
-                $(target).textContent = text;
+                setTextIfChanged($(target), text);
             }
         }
 
@@ -325,10 +326,9 @@ window.OperatorContent = {
             }
             const empty = $("image-search-empty");
             if (empty) {
-                const noAssets = inventoryReady && images.length === 0;
                 const noMatches = inventoryReady && images.length > 0 && Boolean(search) && matches.length === 0;
-                const text = noAssets ? "No images available." : "No images match your search.";
-                empty.hidden = !noAssets && !noMatches;
+                const text = "No images match your search.";
+                empty.hidden = !noMatches;
                 if (empty.textContent !== text) empty.textContent = text;
             }
             const focused = typeof document.activeElement !== "undefined" ? document.activeElement : null;
@@ -427,21 +427,26 @@ window.OperatorContent = {
             renderShownStatus();
             if (recoverFocus) focusRecovery($(savedScene ? "image-message" : "image-rebuild"));
         }
+        function invalidateInventory() {
+            inventoryVersion += 1;
+            if (loading) message("", false, "info", "library-status");
+            loading = false;
+        }
         async function refresh() {
             const version = ++inventoryVersion;
             const trigger = typeof document.activeElement !== "undefined" ? document.activeElement : null;
             loading = true;
-            message(inventoryReady ? "Refreshing the image library. Showing the last known library state." : "Reading the image library…");
+            message(inventoryReady ? "Refreshing the image library. Showing the last known library state." : "Reading the image library…", false, "info", "library-status");
             render();
             try {
                 const result = await api("GET", "/api/v3/images");
                 if (version !== inventoryVersion) return;
                 if (!Array.isArray(result.images)) throw new Error("Image inventory was not returned.");
                 images = result.images; inventoryReady = true; uploadUncertain = false;
-                message(images.length ? "" : "No images available.");
+                message(images.length ? "" : "No images available.", false, "info", "library-status");
             } catch (error) {
                 if (version === inventoryVersion) message("Image library unavailable. " + error.message.replace(/[.!?\s]+$/, "") + "."
-                    + (inventoryReady ? " The last known library state is still shown." : "") + " Use Refresh images to retry.", true, "err");
+                    + (inventoryReady ? " The last known library state is still shown." : "") + " Use Refresh images to retry.", false, "err", "library-status");
             } finally {
                 if (version === inventoryVersion) {
                     loading = false; render(); renderStage();
@@ -525,7 +530,7 @@ window.OperatorContent = {
             request.upload.onprogress = event => { if (event.lengthComputable) $("upload-progress").value = event.loaded / event.total * 100; };
             request.upload.onload = () => { $("upload-message").textContent = "Transfer complete. Checking and preparing the image…"; $("upload-progress").removeAttribute("value"); };
             const uncertain = () => {
-                inventoryVersion += 1; loading = false; uploadUncertain = true; $("upload-message").dataset.kind = "warn";
+                invalidateInventory(); uploadUncertain = true; $("upload-message").dataset.kind = "warn";
                 $("upload-message").textContent = "Upload completion is uncertain. Refresh images and check the library before retrying. Nothing was shown automatically.";
             };
             request.onload = async () => {
@@ -536,7 +541,7 @@ window.OperatorContent = {
                 if (request.status >= 500 || request.status === 0 || success && (typeof id !== "string" || !id)) {
                     uncertain();
                 } else if (success) {
-                    inventoryVersion += 1;
+                    invalidateInventory();
                     const selectedUpload = selectionVersion === selectionAtUpload && await choose(id);
                     uploadedSelectionId = selectedUpload ? id : null;
                     $("upload-message").textContent = selectedUpload ? "Image added and selected. Review Fit / Fill, then Show image. Nothing was shown automatically."
@@ -554,7 +559,7 @@ window.OperatorContent = {
         $("images-check-connection").addEventListener("click", async () => {
             $("images-check-connection").disabled = true;
             try { await refreshConnection(); await refresh(); }
-            catch (error) { message("Could not check image-addition availability. " + error.message.replace(/[.!?\s]+$/, "") + ". Use Check image-addition connection to retry.", true, "err"); }
+            catch (error) { message("Could not check image-addition availability. " + error.message.replace(/[.!?\s]+$/, "") + ". Use Check image-addition connection to retry.", false, "err", "upload-message"); }
             finally { $("images-check-connection").disabled = false; render(); }
         });
         $("image-fit").addEventListener("change", event => {
@@ -597,7 +602,7 @@ window.OperatorContent = {
             try {
                 const image = await api("POST", "/api/v3/test-pattern", { pattern }, { etag: true });
                 if (!image || !image.id) throw new Error("Pattern metadata was not returned.");
-                inventoryVersion += 1; loading = false;
+                invalidateInventory();
                 images = images.filter(item => item.id !== image.id).concat(image); inventoryReady = true;
                 await show({ type: "image", asset: image.id, fit: "contain" }, { guard: state.etag, feedback: "pattern-message" });
             } catch (error) { message("Pattern unavailable. " + error.message.replace(/[.!?\s]+$/, "") + ". Choose a prepared grid or black image from the library.", true, "err", "pattern-message"); }
@@ -613,7 +618,7 @@ window.OperatorContent = {
                 baseEtag = guard; selectionDirty = true; selectionVersion += 1; state.viewLive = false; render(); renderStage();
             },
             viewChanged: render,
-            discard() { selectionDirty = false; selected = null; savedScene = null; baseEtag = null; state.previewContent = null; if (!retainMessage) message(images.length ? "" : "No images available."); render(); renderStage(); },
+            discard() { selectionDirty = false; selected = null; savedScene = null; baseEtag = null; state.previewContent = null; if (!retainMessage) message(""); render(); renderStage(); },
             rebuild(confirm = () => true) {
                 if (savedScene) {
                     message("Saved content cannot be rebuilt. Your preview is retained. Discard it, then open Saved and preview the content again before Show.", false, "warn");

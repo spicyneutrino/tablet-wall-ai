@@ -253,7 +253,7 @@ body[data-view-zoom="2x"] #workbench-stage .stage-svg { max-block-size: none; }
 .image-primary-actions { margin-inline-start: 0; }
 .image-primary-actions .btn-primary { min-block-size: var(--control-primary); }
 .image-action-row { display: flex; flex-wrap: wrap; gap: .4rem; align-items: center; }
-.image-recovery:not(:has(> :not([hidden]))), #image-details:empty { display: none; }
+#image-details:empty { display: none; }
 .image-adjust-row:not(:has(> :not([hidden]))) { display: none; }
 .stage-view-actions:not(:has(> :not([hidden]))) { display: none; }
 .stage-view-zoom { display: flex; flex-wrap: nowrap; align-items: center; gap: .2rem; }

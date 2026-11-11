@@ -158,6 +158,11 @@ const content = context.window.OperatorContent.create({ state, renderStage() {},
     config.generation = "g"; content.render(); assert.equal(node("image-message").textContent, "");
     config.revision = 2; content.render();
     assert.equal(node("image-message").textContent, confirm);
+    await content.refresh();
+    config.generation = "after-read"; content.render();
+    assert.match(node("image-message").textContent, warning, "inventory success preserves the command receipt for later drift detection");
+    config.generation = "g"; content.render();
+    assert.equal(node("image-message").textContent, confirm);
 
     state.etagState = "stale"; content.render();
     assert.match(node("image-message").textContent, /^Image applied\. Tablet reports may be stale/);
@@ -167,9 +172,9 @@ const content = context.window.OperatorContent.create({ state, renderStage() {},
     state.rosterError = null; content.render();
     assert.equal(node("image-message").textContent, confirm);
 
-    failInventory = true; await content.refresh(); content.render(); assert.match(node("image-message").textContent, /library unavailable/);
+    failInventory = true; await content.refresh(); content.render(); assert.match(node("library-status").textContent, /library unavailable/);
     await buttonA.click(); await content.showSelected(); content.render();
-    assert.match(node("image-message").textContent, /library unavailable/, "a retained library error survives a later command");
+    assert.match(node("library-status").textContent, /library unavailable/, "a retained library error survives a later command");
     failInventory = false; await content.refresh();
     await buttonA.click(); release = {};
     const pending = content.showSelected(); await new Promise(resolve => setImmediate(resolve));
@@ -465,7 +470,7 @@ console.log("Fit feedback slots are unique, labelled, decorative and placed afte
     const images = ["a", "b"].map(id => ({ id, name: id + ".png", width: 100, height: 100,
         source: "managed", url: "/" + id, thumbnail_url: "/" + id }));
     const calls = [];
-    let conflictCount = 0, fail = null, inventoryError = false;
+    let conflictCount = 0, fail = null, inventoryError = false, inventoryPending = null;
     const context = vm.createContext({ window: { OperatorState: model }, document: doc, Option });
     vm.runInContext(fs.readFileSync(require.resolve("../frontend/controller/operator-dom.js"), "utf8"), context);
     vm.runInContext(fs.readFileSync(require.resolve("../frontend/controller/operator-content.js"), "utf8"), context);
@@ -474,7 +479,7 @@ console.log("Fit feedback slots are unique, labelled, decorative and placed afte
         ingestConfig(result) { state.scene = result.scene; },
         async api(method, path, body, options) {
             calls.push({ method, path, body, options });
-            if (path === "/api/v3/images") { if (inventoryError) throw new Error("Inventory unavailable"); return { images }; }
+            if (path === "/api/v3/images") { if (inventoryPending) return inventoryPending.promise; if (inventoryError) throw new Error("Inventory unavailable"); return { images }; }
             if (path === "/api/v3/scene" || path.startsWith("/api/v3/scenes/")) return fail();
             throw new Error("unexpected route " + path);
         } });
@@ -489,6 +494,28 @@ console.log("Fit feedback slots are unique, labelled, decorative and placed afte
     };
     await content.refresh();
 
+    const deferred = () => {
+        const value = {};
+        value.promise = new Promise((resolve, reject) => { value.resolve = resolve; value.reject = reject; });
+        return value;
+    };
+    await choose("a");
+    const command = deferred();
+    fail = () => command.promise;
+    const showing = content.showSelected();
+    await new Promise(setImmediate);
+    inventoryPending = deferred();
+    const overlappingRead = content.refresh();
+    command.reject(Object.assign(new Error("guard conflict"), { status: 412 }));
+    await showing;
+    assert.equal(node("image-message").textContent, exact412);
+    inventoryPending.resolve({ images });
+    await overlappingRead;
+    assert.equal(node("image-message").textContent, exact412, "a delayed inventory success cannot clear the 412 command error");
+    inventoryPending = null;
+    content.discard();
+    conflictCount = 0;
+
     const staleImage = "The wall changed after this preview was built. Show is off until the preview is rebuilt. Use Rebuild preview, then Show image.";
     const staleSaved = "The wall changed after this preview was built. Show is off. Discard this preview, then open Saved and preview the content again.";
     let messageWrites = 0, messageText = node("image-message").textContent;
@@ -496,6 +523,41 @@ console.log("Fit feedback slots are unique, labelled, decorative and placed afte
         get() { return messageText; },
         set(value) { messageText = value; messageWrites += 1; }
     });
+    for (const event of ["stale", "412"]) for (const outcome of ["success", "failure"]) {
+        content.discard(); state.etag = "e"; state.etagState = "current";
+        await choose("a");
+        let showing;
+        const command = deferred();
+        if (event === "412") {
+            fail = () => command.promise;
+            showing = content.showSelected();
+            await new Promise(setImmediate);
+        }
+        inventoryPending = deferred();
+        const reading = content.refresh();
+        if (event === "412") {
+            command.reject(Object.assign(new Error("guard conflict"), { status: 412 }));
+            await showing;
+        } else { state.etag = "remote"; content.render(); }
+        const expected = event === "412" ? exact412 : staleImage;
+        assert.equal(node("image-message").textContent, expected);
+        const before = messageWrites;
+        const draft = JSON.stringify(state.previewContent);
+        const writes = calls.filter(call => call.method !== "GET").length;
+        node("image-search").focus();
+        if (outcome === "success") inventoryPending.resolve({ images });
+        else inventoryPending.reject(new Error("Inventory unavailable"));
+        await reading;
+        assert.equal(node("image-message").textContent, expected, event + " survives a delayed inventory " + outcome);
+        assert.equal(messageWrites, before, "inventory completion adds no command announcement");
+        assert.equal(JSON.stringify(state.previewContent), draft);
+        assert.equal(doc.activeElement, node("image-search"));
+        assert.equal(calls.filter(call => call.method !== "GET").length, writes, "inventory completion sends no write");
+        assert.equal(node("library-status").textContent, outcome === "success" ? ""
+            : "Image library unavailable. Inventory unavailable. The last known library state is still shown. Use Refresh images to retry.");
+        inventoryPending = null;
+    }
+    content.discard(); state.etag = "e"; state.etagState = "current"; conflictCount = 0;
     await choose("a");
     node("show-image").focus();
     const beforeStale = calls.length;
@@ -529,10 +591,11 @@ console.log("Fit feedback slots are unique, labelled, decorative and placed afte
     await choose("a");
     inventoryError = true;
     await content.refresh();
-    const retainedError = node("image-message").textContent;
+    const retainedError = node("library-status").textContent;
     state.etag = "remote";
     content.render();
-    assert.equal(node("image-message").textContent, retainedError, "staleness never overwrites a retained inventory error");
+    assert.equal(node("library-status").textContent, retainedError, "staleness never overwrites a retained inventory error");
+    assert.equal(node("image-message").textContent, staleImage, "a library error cannot suppress stale preview guidance");
     inventoryError = false;
     content.discard(); state.etag = "e";
     await content.refresh();

@@ -1059,11 +1059,16 @@ def guarded_show_focus(rig: RenewalRig) -> None:
                 const hit = document.elementFromPoint(a.left + a.width / 2, a.top + a.height / 2);
                 const inside = r => r.width > 0 && r.height > 0 && r.top >= 0 && r.left >= 0
                     && r.bottom <= innerHeight && r.right <= innerWidth;
+                const actions = ['image-rebuild', 'show-image'].map(id => {
+                    const node = document.getElementById(id), r = node.getBoundingClientRect();
+                    const hit = document.elementFromPoint(r.left + r.width / 2, r.top + r.height / 2);
+                    return {id, inside: inside(r), hit: hit === node || node.contains(hit)};
+                });
                 const result = {focus: active.id, inside: inside(a), hit: hit === active || active.contains(hit),
                     ring: active.matches(':focus-visible'), message: message.textContent,
                     messageInside: inside(m), role: message.getAttribute('role'),
                     disabled: document.getElementById('show-image').disabled,
-                    dirty: document.body.dataset.outputDirty, calls: window.renewalFocusCalls};
+                    dirty: document.body.dataset.outputDirty, calls: window.renewalFocusCalls, actions};
                 HTMLElement.prototype.focus = window.renewalFocus;
                 Element.prototype.scrollIntoView = window.renewalScroll;
                 return result;
@@ -1081,6 +1086,7 @@ def guarded_show_focus(rig: RenewalRig) -> None:
                 and actual["ring"] and actual["message"] == expected_message
                 and actual["role"] == "status" and actual["disabled"] and actual["dirty"] == "true"
                 and (kind != "unfocused" or not actual["calls"])
+                and (kind != "image" or all(action["inside"] and action["hit"] for action in actual["actions"]))
                 and (kind == "unfocused" or width == 390 or actual["messageInside"])
                 and not _controller_write_rows(rig, start),
                 {**actual, "writes": _controller_write_rows(rig, start)},
