@@ -447,6 +447,8 @@ LAYOUT_MEASURE = """() => {
         panel: panel ? panel.id : null,
         paddings: panels.map(item => [item.id, parseFloat(getComputedStyle(item).paddingInlineStart)]),
         headings: {},
+        headingRoles: {},
+        rootFontSize: parseFloat(getComputedStyle(document.documentElement).fontSize),
         textOffenders: [],
         textCount: 0,
     };
@@ -457,6 +459,13 @@ LAYOUT_MEASURE = """() => {
             if (heading.closest('.sr-only') || !visible(heading)) return;
             const size = getComputedStyle(heading).fontSize;
             if (!sizes.has(size)) sizes.set(size, heading.id || heading.textContent.trim().slice(0, 24));
+            const role = heading.matches('#image-title') ? 'image-section'
+                : heading.matches('.exceptions h2, .presentation-checks h2, .library-head h3')
+                    ? 'rail-title' : level;
+            const group = result.headingRoles[role] ||= [];
+            if (!group.some(item => item.size === size)) {
+                group.push({size, sample: heading.id || heading.textContent.trim().slice(0, 24)});
+            }
         });
         result.headings[level] = [...sizes.entries()].map(([size, sample]) => ({size, sample}));
     }
@@ -1486,7 +1495,13 @@ def pattern_grouping(rig: RenewalRig) -> None:
 def _layout_check(rig: RenewalRig, task: str, label: str, measured: dict[str, Any]) -> None:
     paddings = measured["paddings"]
     gutter_ok = bool(paddings) and all(value >= 12 for _, value in paddings)
-    headings_ok = all(len(measured["headings"].get(level, [])) <= 1 for level in ("h2", "h3"))
+    heading_roles = measured["headingRoles"]
+    headings_ok = all(len(sizes) <= 1 for sizes in heading_roles.values())
+    for role, rem in (("image-section", 1), ("rail-title", 0.875)):
+        headings_ok = headings_ok and all(
+            abs(float(item["size"].removesuffix("px")) - measured["rootFontSize"] * rem) < 0.02
+            for item in heading_roles.get(role, [])
+        )
     heading_levels = {level: measured["headings"].get(level, []) for level in ("h2", "h3")}
     text_checked = task in ("Saved", "Settings", "Tablets")
     text_ok = (not text_checked) or (
@@ -1497,7 +1512,7 @@ def _layout_check(rig: RenewalRig, task: str, label: str, measured: dict[str, An
           and gutter_ok and headings_ok and text_ok)
     scope = ", text inside the gutter" if text_checked else ""
     rig.check(
-        f"{label} {task}: no horizontal overflow, 12px gutter, one heading size{scope}",
+        f"{label} {task}: no horizontal overflow, 12px gutter, consistent heading roles{scope}",
         ok,
         {
             "panel": measured["panel"],
@@ -1505,6 +1520,8 @@ def _layout_check(rig: RenewalRig, task: str, label: str, measured: dict[str, An
             "innerWidth": measured["innerWidth"],
             "paddings": paddings,
             "headings": heading_levels,
+            "headingRoles": heading_roles,
+            "rootFontSize": measured["rootFontSize"],
             "textCount": measured["textCount"],
             "textOffenders": measured["textOffenders"][:6],
         },
@@ -1512,7 +1529,7 @@ def _layout_check(rig: RenewalRig, task: str, label: str, measured: dict[str, An
             "panel": "visible",
             "scrollWidth": "<= innerWidth",
             "paddingInlineStart": ">= 12",
-            "headingSizesPerLevel": "<= 1",
+            "headingSizesPerRole": "<= 1; image section 1rem; rail title 0.875rem",
             "text": "left >= 12 and right <= innerWidth - 12" if text_checked else "not checked for this task",
         },
         obligation="C-LAYOUT",
