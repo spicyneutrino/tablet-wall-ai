@@ -2619,8 +2619,9 @@
         });
         document.getElementById("image-rebuild").addEventListener("click", async () => {
             await session.refresh();
-            if (!window.confirm("Keep this image choice and rebuild its preview against the current applied arrangement? Review it before Show image.")) return;
-            operatorContent.rebuild(); hideConflict(); renderStage();
+            if (operatorContent.rebuild(() => window.confirm("Keep this image choice and rebuild its preview against the current applied arrangement? Review it before Show image."))) {
+                hideConflict(); renderStage();
+            }
         });
         document.getElementById("image-discard").addEventListener("click", () => { operatorContent.discard(); state.draftConflict = false; hideConflict(); renderStage(); });
     }

@@ -1985,7 +1985,7 @@ def _show_refusal_ok(
     return False
 
 
-def _restart_server(rig: RenewalRig) -> dict[str, Any]:
+def _restart_server(rig: RenewalRig, suffix: str = "") -> dict[str, Any]:
     """Restart the private server on the same port and data roots."""
     listener = None
     for _ in range(50):
@@ -2006,7 +2006,7 @@ def _restart_server(rig: RenewalRig) -> dict[str, Any]:
             rig.server_log.close()
         except OSError:
             pass
-    log_path = rig.out / "server-restart.log"
+    log_path = rig.out / ("server-restart" + suffix + ".log")
     server, log, argv = launch_server(rig.source_root, rig.env, log_path, listener)
     listener.close()
     wait_ready(rig.base, server, log_path)
@@ -3429,9 +3429,18 @@ def _dom_snapshot(page: Any) -> dict[str, Any]:
 
 
 def server_stop(rig: RenewalRig) -> None:
+    clients = [rig.new_client(CLIENT_SPECS[index % len(CLIENT_SPECS)], index) for index in range(6)]
+    for width, height in ((1440, 900), (1280, 800)):
+        rig.page.set_viewport_size({"width": width, "height": height})
+        if rig.page.locator("#image-discard").is_visible():
+            rig.page.locator("#image-discard").click()
+        _server_stop_at_viewport(rig, clients, width, height)
+
+
+def _server_stop_at_viewport(rig: RenewalRig, clients: list, width: int, height: int) -> None:
     page = rig.page
-    clients = [rig.new_client(CLIENT_SPECS[index], index) for index in range(2)]
-    _place_grid(rig, clients, 1600, 800, 2)
+    suffix = f"-{width}x{height}"
+    _place_grid(rig, clients, 1800, 1000, 3)
     asset = rig.assets[0]
     status, _ = rig.put_scene(
         {"type": "image", "asset": "sha256:" + asset["sha256"], "fit": "cover"}
@@ -3440,7 +3449,7 @@ def server_stop(rig: RenewalRig) -> None:
         raise RuntimeError(f"scene write failed: {status}")
     current = _soft_wait(
         page,
-        "() => /2 of 2 showing the current image/.test("
+        "() => /6 of 6 showing the current image/.test("
         "document.getElementById('wall-health').textContent)",
         timeout=35,
     )
@@ -3466,7 +3475,7 @@ def server_stop(rig: RenewalRig) -> None:
     stop_index = len(rig.requests)
     stopped = stop_owned_server(rig.server)
     _write_json(
-        rig.out / "server_stop.json",
+        rig.out / ("server_stop" + suffix + ".json"),
         {"reason": "real server stop for C-OFFLINE", "server": stopped,
          "stop_request_index": stop_index},
     )
@@ -3482,7 +3491,7 @@ def server_stop(rig: RenewalRig) -> None:
         {"connection": "!= current"},
         obligation="C-OFFLINE",
     )
-    _write_json(rig.out / "server_stop_observations.json", {"after_stop": after_stop})
+    _write_json(rig.out / ("server_stop_observations" + suffix + ".json"), {"after_stop": after_stop})
 
     if page.locator("#refresh-status").count():
         page.click("#refresh-status")
@@ -3530,6 +3539,7 @@ def server_stop(rig: RenewalRig) -> None:
     message_set = False
     if show_present and show_visible and not show_disabled:
         show_control.focus()
+        page.evaluate("() => scrollTo(0, 0)")
         page.keyboard.press("Enter")
         show_attempted = True
         message_set = _soft_wait(
@@ -3543,19 +3553,28 @@ def server_stop(rig: RenewalRig) -> None:
         page.wait_for_timeout(100)
     if show_attempted:
         page.wait_for_timeout(150)
-        focus = page.evaluate("() => ({id: document.activeElement.id || document.activeElement.tagName,"
-                              " visible: !!document.activeElement.getClientRects().length,"
-                              " ring: getComputedStyle(document.activeElement).outlineWidth})")
+        focus = page.evaluate("""() => {
+            const e = document.activeElement, r = e.getBoundingClientRect();
+            const hit = document.elementFromPoint(r.left + r.width / 2, r.top + r.height / 2);
+            return {id: e.id || e.tagName, visible: !!e.getClientRects().length,
+                ring: getComputedStyle(e).outlineWidth, focusVisible: e.matches(':focus-visible'),
+                viewport: [innerWidth, innerHeight], rect: {top:r.top,bottom:r.bottom,left:r.left,right:r.right},
+                inside: r.top >= 0 && r.bottom <= innerHeight && r.left >= 0 && r.right <= innerWidth,
+                unobscured: !!hit && (e === hit || e.contains(hit)),
+                uncertainty: !!document.getElementById('refresh-command-status').getClientRects().length};
+        }""")
         expected_focus = "show-image" if not show_control.is_disabled() else (
             "image-rebuild" if page.locator("#image-rebuild").is_visible() else "image-message")
         rig.check(
-            "A real connection-lost keyboard Show retains visible focus on its enabled trigger or recovery",
-            focus["id"] == expected_focus and focus["visible"] and focus["ring"] != "0px",
+            f"A real connection-lost keyboard Show retains visible focus on its enabled trigger or recovery at {width}x{height}",
+            focus["id"] == expected_focus and focus["visible"] and focus["ring"] != "0px"
+            and focus["focusVisible"] and focus["inside"] and focus["unobscured"] and focus["uncertainty"],
             focus,
-            {"id": expected_focus, "visible": True, "ring": "> 0px"},
+            {"id": expected_focus, "visible": True, "ring": "> 0px", "inside": True,
+             "unobscured": True, "uncertainty": True, "viewport": [width, height]},
             obligation="C-GUARD",
         )
-        rig.shot("connection-lost-show-focus")
+        rig.shot("connection-lost-show-focus" + suffix)
     post_show_index = len(rig.requests)
     intended_show_writes = _controller_write_rows(rig, pre_show_index, post_show_index)
     show = _dom_snapshot(page)
@@ -3605,7 +3624,7 @@ def server_stop(rig: RenewalRig) -> None:
     )
     show_writes = _controller_write_rows(rig, stop_index, post_show_index)
     _write_json(
-        rig.out / "server_stop_observations.json",
+        rig.out / ("server_stop_observations" + suffix + ".json"),
         {
             "after_stop": after_stop,
             "after_refresh": refreshed,
@@ -3637,7 +3656,7 @@ def server_stop(rig: RenewalRig) -> None:
     )
 
     pre_restart_index = len(rig.requests)
-    restart = _restart_server(rig)
+    restart = _restart_server(rig, suffix)
     restart_index = len(rig.requests)
     restart_writes = _restart_interval_writes(
         rig,
@@ -3688,7 +3707,7 @@ def server_stop(rig: RenewalRig) -> None:
         obligation="C-OFFLINE",
     )
     _write_json(
-        rig.out / "server_stop_observations.json",
+        rig.out / ("server_stop_observations" + suffix + ".json"),
         {
             "after_stop": after_stop,
             "after_refresh": refreshed,

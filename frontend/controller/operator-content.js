@@ -15,6 +15,15 @@ window.OperatorContent = {
         let retainMessage = false, noteSequence = 0, uploadedSelectionId = null;
         const shownRevisions = new Map();
         const message = (text, retain = false, kind = "info", target = "image-message") => { shownRevisions.delete(target); if (target === "image-message") retainMessage = retain; $(target).dataset.kind = kind; $(target).textContent = text; };
+        function focusRecovery(target) {
+            const rect = target.getBoundingClientRect?.();
+            const hit = rect && document.elementFromPoint?.(rect.left + rect.width / 2, rect.top + rect.height / 2);
+            const inView = !rect || rect.top >= 4 && rect.bottom <= window.innerHeight - 4
+                && rect.left >= 4 && rect.right <= window.innerWidth - 4
+                && (!hit || hit === target || target.contains(hit));
+            target.focus({ preventScroll: inView });
+            if (!inView) target.scrollIntoView({ block: "center", inline: "nearest" });
+        }
         function renderShownStatus() {
             for (const [target, revision] of shownRevisions) {
                 const config = state.operatorConfig, label = revision.image ? "Image" : "Content";
@@ -462,7 +471,9 @@ window.OperatorContent = {
                 failed = true;
                 if (error.status === 412) {
                     showConflict("The wall changed. Your image choice is retained with its original guard. Review current state before rebuilding this preview.");
-                    message("Could not show this content. The wall changed after this preview was built, so nothing was shown. Use Refresh status, then Rebuild preview, then Show image.", false, "err", feedback);
+                    message("Could not show this content. The wall changed after this preview was built, so nothing was shown. "
+                        + (scene ? "Use Refresh status, discard this preview, then open Saved and preview the content again."
+                            : "Use Refresh status, then Rebuild preview, then Show image."), false, "err", feedback);
                 } else {
                     message("Could not show this content. " + error.message.replace(/[.!?\s]+$/, "") + ". Use Refresh images to retry.", false, "err", feedback);
                 }
@@ -485,7 +496,7 @@ window.OperatorContent = {
                         const rebuild = $("image-rebuild");
                         const target = visible(trigger) && !trigger.disabled ? trigger
                             : feedback === "image-message" && visible(rebuild) && !rebuild.disabled ? rebuild : $(feedback);
-                        if (visible(target) && typeof target.focus === "function") target.focus({ preventScroll: true });
+                        if (visible(target) && typeof target.focus === "function") focusRecovery(target);
                     }
                 }
             }
@@ -594,7 +605,16 @@ window.OperatorContent = {
             },
             viewChanged: render,
             discard() { selectionDirty = false; selected = null; savedScene = null; baseEtag = null; state.previewContent = null; if (!retainMessage) message(images.length ? "" : "No images available."); render(); renderStage(); },
-            rebuild() { baseEtag = state.etag; state.draftConflict = false; message(""); render(); },
+            rebuild(confirm = () => true) {
+                if (savedScene) {
+                    message("Saved content cannot be rebuilt. Your preview is retained. Discard it, then open Saved and preview the content again before Show.", false, "warn");
+                    focusRecovery($("image-message"));
+                    return false;
+                }
+                if (!confirm()) return false;
+                baseEtag = state.etag; state.draftConflict = false; message(""); render();
+                return true;
+            },
             destroy() { if (xhr) xhr.abort(); } };
     }
 };

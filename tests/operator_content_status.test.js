@@ -257,6 +257,19 @@ const content = context.window.OperatorContent.create({ state, renderStage() {},
     state.scene = { content: { type: "image", asset: "a", fit: "contain", background: "#123456" } };
     content.render();
     content.previewScene({ name: "Amber", content: { type: "image", asset: "a", fit: "contain", background: "#abcdef" } }, "e");
+    const savedDraft = JSON.stringify(state.previewContent);
+    const beforeRebuild = requests.length;
+    state.etag = "saved-entry-replaced"; content.render();
+    assert.equal(content.rebuild(), false, "saved previews refuse Rebuild instead of rebasing name recall");
+    assert.equal(content.dirty(), true, "refused Rebuild retains the draft");
+    assert.equal(JSON.stringify(state.previewContent), savedDraft, "refused Rebuild never substitutes saved content");
+    assert.equal(node("show-image").disabled, true);
+    assert.match(node("image-message").textContent, /Discard.*Saved.*preview.*again/);
+    assert.equal(document.activeElement, node("image-message"), "saved recovery instruction receives focus");
+    assert.equal(await content.showSelected(), false);
+    assert.equal(requests.length, beforeRebuild, "refused saved Rebuild and Show send no requests");
+    content.discard(); state.etag = "e";
+    content.previewScene({ name: "Amber", content: { type: "image", asset: "a", fit: "contain", background: "#abcdef" } }, "e");
     assert.equal(await content.showSelected(), true);
     const recalled = requests.at(-1);
     assert.equal(recalled.method, "POST");
@@ -496,6 +509,9 @@ console.log("Fit feedback slots are unique, labelled, decorative and placed afte
     assert.equal(await content.showSelected(), false, "the public action also refuses a preview requiring rebuild");
     assert.equal(calls.length, beforeBlocked, "Show sends nothing until explicit rebuild");
     assert.equal(originalGuard, "e", "the failed command used the original preview guard");
+    assert.equal(content.rebuild(() => false), false, "cancelled image Rebuild never rebases the preview");
+    assert.equal(node("show-image").disabled, true);
+    assert.equal(node("image-message").textContent, exact412);
     content.rebuild();
     assert.equal(node("image-message").textContent, "", "explicit rebuild clears the obsolete Show failure");
     assert.equal(node("show-image").disabled, false);
@@ -557,7 +573,9 @@ console.log("Fit feedback slots are unique, labelled, decorative and placed afte
     assert.equal(calls.length - beforeRecall, 1, "a saved-content recall sends one command and no retry");
     assert.equal(calls.at(-1).method, "POST");
     assert.equal(calls.at(-1).path, "/api/v3/scenes/Amber/recall");
-    assert.equal(node("scene-message").textContent, exact412, "the recall message states the same plain recovery path");
+    assert.equal(node("scene-message").textContent,
+        "Could not show this content. The wall changed after this preview was built, so nothing was shown. Use Refresh status, discard this preview, then open Saved and preview the content again.",
+        "a saved recall failure gives its safe explicit re-preview path");
     assert.equal(doc.activeElement, node("scene-message"), "with Images hidden, focus goes to the visible recall message");
     assert.notEqual(doc.activeElement, node("image-search"), "the hidden Images field is never focused");
     assert.notEqual(doc.activeElement.tagName, "body", "focus never lands on BODY");
