@@ -217,6 +217,13 @@ details > :not(summary, [hidden], :is(div, p, ul, ol, dl, pre):empty) { margin-b
 #workbench-stage .wall-head { flex: 0 0 auto; }
 #workbench-stage .stage-scroll { flex: 0 0 auto; width: auto; max-width: 100%; max-height: 100%; margin: auto; overflow: visible; background: var(--stage); border: 1px solid var(--control); border-radius: 0; }
 #workbench-stage .stage-svg { max-height: 100%; }
+@media (min-width: 48.01rem) and (min-height: 32.01rem) {
+    body[data-task="images"]:not([data-view-zoom="2x"]) #workbench-stage .stage-scroll { flex-shrink: 1; min-block-size: 0; }
+    body[data-task="images"]:not([data-view-zoom="2x"]) #workbench-stage .wall-stage > :not(.stage-scroll) { flex-shrink: 0; }
+}
+@media (min-width: 48.01rem) and (min-height: 56.25rem) {
+    body[data-task="images"]:not([data-view-zoom="2x"]) .stage-figure { height: calc(var(--stage-budget) + 140px); }
+}
 body[data-view-zoom="2x"] #workbench-stage .stage-scroll { overflow: auto; max-block-size: 100%; overscroll-behavior: contain; }
 body[data-view-zoom="2x"] #workbench-stage .stage-svg { max-block-size: none; }
 .wall-status { display: flex; flex-wrap: wrap; align-items: center; gap: .3rem .6rem; min-block-size: var(--control-min); font-size: .75rem; }
@@ -708,6 +715,10 @@ body[data-image-actions-inline="true"][data-output-dirty="true"] .image-primary-
 #commit-bar { background: var(--surface); border-block-start: 1px solid var(--control); padding-block: .4rem; z-index: 10; }
 .commit-names { display: flex; flex-wrap: wrap; gap: .3rem 1rem; font-size: .75rem; }
 .image-size { display: block; padding-inline: .2rem; color: var(--muted); font-size: .6875rem; }
+.image-choice:has(.image-choice-button[aria-pressed="true"]) { outline: 2px solid var(--accent); outline-offset: -2px; }
+#exception-rail .image-choice-button[aria-pressed="true"] { border-color: transparent; }
+#operator-readiness-paths { min-inline-size: 0; }
+#operator-readiness-paths dd { min-inline-size: 0; overflow-wrap: anywhere; }
 #exception-roster { max-block-size: 8rem; overflow-y: auto; overscroll-behavior: contain; }
 #image-chooser { container-type: inline-size; }
 @container (min-width: 300px) { #exception-rail .image-gallery { grid-template-columns: repeat(3, minmax(0, 1fr)); } }

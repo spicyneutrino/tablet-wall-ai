@@ -123,7 +123,7 @@ nodes.get("grid-preview").listeners.click().then(async () => {
             getElementById(id) { if (!map.has(id)) map.set(id, new Node("div")); return map.get(id); },
             createElement: tag => new Node(tag), createTextNode: text => ({ textContent: text }) };
     };
-    let dirty = { value: false }, discarded = { calls: 0 }, measured = [];
+    let dirty = { value: false }, discarded = { calls: 0 }, measured = [], allowDiscard = false;
     const setup = { doc: makeDocument(), requests: [] };
     global.document = setup.doc;
     const openState = { base: { kind: "physical", slots: {} }, layoutKind: "physical", etag: "one", etagState: "current", busy: false,
@@ -131,7 +131,7 @@ nodes.get("grid-preview").listeners.click().then(async () => {
     const openOwner = grid.create({ state: openState, api: async (...args) => { setup.requests.push(args); throw new Error("blocked previews send no request"); },
         labelFor: id => id, validPair: () => null, profileFor: () => null, calibrationFor: () => null,
         ingestConfig() {}, renderStage() {}, syncDraftUi() {}, isDirty: () => dirty.value, announce() {}, showConflict() {},
-        discardDraft: () => { discarded.calls += 1; dirty.value = false; openOwner.render(); },
+        discardDraft: () => { discarded.calls += 1; if (allowDiscard) dirty.value = false; openOwner.render(); },
         openMeasurements: id => measured.push(id) });
     openOwner.render();
     const node = id => setup.doc.getElementById(id);
@@ -144,10 +144,17 @@ nodes.get("grid-preview").listeners.click().then(async () => {
         "Wall shapes are paused while your placement draft is open. Apply it, or discard it to use a wall shape.");
     assert.equal(node("grid-lock-note").children[1].textContent, "Discard");
     assert.equal(node("grid-lock-note").children[1].className, "btn btn-sm");
-    node("grid-lock-note").children[1].listeners.click();
-    assert.equal(discarded.calls, 1, "the note's Discard runs the existing arrangement discard");
+    const lockDiscard = node("grid-lock-note").children[1];
+    lockDiscard.focus(); lockDiscard.listeners.click();
+    assert.equal(node("grid-lock-note").hidden, false, "a retained draft keeps the note and its focus owner");
+    assert.equal(setup.doc.activeElement, lockDiscard, "a refused discard does not focus a disabled preset");
+    allowDiscard = true;
+    lockDiscard.listeners.click();
+    assert.equal(discarded.calls, 2, "the note's Discard runs the existing arrangement discard");
     assert.equal(node("grid-lock-note").hidden, true, "discarding the draft hides the place lock note");
     assert.equal(node("grid-2x2").disabled, false, "discarding the draft re-enables the grid presets");
+    assert.equal(setup.doc.activeElement, node("grid-2x2"), "discarding the lock restores focus to the enabled preset");
+    assert.equal(setup.requests.length, 0, "Discard sends no geometry request");
 
     dirty.value = false;
     node("grid-rows").value = "1"; node("grid-columns").value = "2";

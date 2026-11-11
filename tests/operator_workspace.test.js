@@ -232,7 +232,7 @@ const workspace = context.window.OperatorWorkspace.create({ state, arrangementDi
 state.base = { placements: {} };
 workspace.render();
 assert.equal(node("first-wall-steps").hidden, false);
-assert.equal(node("first-wall-join-status").textContent, "1 tablets online");
+assert.equal(node("first-wall-join-status").textContent, "1 tablet online");
 assert.equal(node("first-wall-join").dataset.done, "true");
 assert.equal(node("first-wall-arrange-status").textContent, "Not arranged yet");
 assert.equal(node("first-wall-arrange").dataset.done, "false");

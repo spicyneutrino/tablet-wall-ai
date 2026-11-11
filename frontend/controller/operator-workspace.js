@@ -242,7 +242,7 @@ window.OperatorWorkspace = {
             if ($("first-wall-steps")) {
                 $("first-wall-steps").hidden = !wallEmpty;
                 const online = state.rosterError ? 0 : Object.values(state.roster).filter(device => device.online).length;
-                setTextIfChanged($("first-wall-join-status"), online ? online + " tablets online" : "No tablets yet");
+                setTextIfChanged($("first-wall-join-status"), online ? online + (online === 1 ? " tablet online" : " tablets online") : "No tablets yet");
                 setTextIfChanged($("first-wall-arrange-status"), "Not arranged yet");
                 setTextIfChanged($("first-wall-image-status"), "No image shown yet");
                 $("first-wall-join").dataset.done = String(online > 0);

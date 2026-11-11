@@ -377,7 +377,7 @@ window.OperatorContent = {
             $("image-fit-field").hidden = selectionDirty && !selected;
             $("show-calibration").disabled = state.layoutKind !== "logical" || busy;
             for (const id of ["show-colours", "pattern-grid", "pattern-black"]) $(id).disabled = busy;
-            $("show-image").disabled = busy || loading || !selectionDirty || !selectedContent() || !state.etag || state.etagState !== "current";
+            $("show-image").disabled = busy || loading || !selectionDirty || !selectedContent() || !state.etag || state.etagState !== "current" || baseEtag !== state.etag;
             contextual("image-rebuild", selectionDirty && baseEtag !== state.etag); contextual("image-discard", selectionDirty);
             contextual("restore-image", !!previous);
             $("image-rebuild").disabled = !selectionDirty || busy; $("image-discard").disabled = !selectionDirty || busy;
@@ -437,6 +437,10 @@ window.OperatorContent = {
             let failed = false;
             if (!content || busy || !await resolveOutput("Show this content", "image")) return;
             const before = state.scene && state.scene.content;
+            const task = state.tabName;
+            let focusMoved = false;
+            const trackFocus = event => { if (event.target !== trigger) focusMoved = true; };
+            document.addEventListener?.("focusin", trackFocus);
             busy = true; render();
             try {
                 const result = scene
@@ -464,10 +468,14 @@ window.OperatorContent = {
                 }
                 return false;
             } finally {
+                document.removeEventListener?.("focusin", trackFocus);
                 busy = false; render(); renderStage();
+                const active = document.activeElement;
+                const ownsFocus = !focusMoved && state.tabName === task
+                    && (!active || active === trigger || active === document.body || active === document.documentElement);
                 const lost = trigger && (trigger.hidden || trigger.disabled || !trigger.isConnected
                     || (typeof trigger.getClientRects === "function" && !trigger.getClientRects().length));
-                if (lost) {
+                if (ownsFocus && (lost || failed && active !== trigger)) {
                     if (!failed) {
                         const search = $("image-search");
                         if (search && typeof search.focus === "function") search.focus({ preventScroll: true });
@@ -475,7 +483,8 @@ window.OperatorContent = {
                         const visible = node => Boolean(node) && !node.hidden && node.isConnected !== false
                             && (typeof node.getClientRects !== "function" || node.getClientRects().length > 0);
                         const rebuild = $("image-rebuild");
-                        const target = feedback === "image-message" && visible(rebuild) && !rebuild.disabled ? rebuild : $(feedback);
+                        const target = visible(trigger) && !trigger.disabled ? trigger
+                            : feedback === "image-message" && visible(rebuild) && !rebuild.disabled ? rebuild : $(feedback);
                         if (visible(target) && typeof target.focus === "function") target.focus({ preventScroll: true });
                     }
                 }
@@ -576,7 +585,8 @@ window.OperatorContent = {
         return { render, refresh, dirty: () => selectionDirty,
             stageNames: () => ({ applied: appliedName(), pending: pendingName(), unavailable: appliedUnavailable() }),
             imageFor: id => images.find(image => image.id === id),
-            showSelected: ({ feedback } = {}) => show(selectedContent(), { scene: savedScene, guard: baseEtag || state.etag, feedback }),
+            showSelected: ({ feedback } = {}) => baseEtag !== state.etag ? false
+                : show(selectedContent(), { scene: savedScene, guard: baseEtag || state.etag, feedback }),
             previewScene(entry, guard) {
                 savedScene = { ...entry }; selected = entry.content.asset || null; fit = entry.content.fit || "cover";
                 background = normalizedBackground(entry.content.background);
@@ -584,7 +594,7 @@ window.OperatorContent = {
             },
             viewChanged: render,
             discard() { selectionDirty = false; selected = null; savedScene = null; baseEtag = null; state.previewContent = null; if (!retainMessage) message(images.length ? "" : "No images available."); render(); renderStage(); },
-            rebuild() { baseEtag = state.etag; state.draftConflict = false; render(); },
+            rebuild() { baseEtag = state.etag; state.draftConflict = false; message(""); render(); },
             destroy() { if (xhr) xhr.abort(); } };
     }
 };

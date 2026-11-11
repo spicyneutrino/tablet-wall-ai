@@ -1021,28 +1021,22 @@ def guarded_show_focus(rig: RenewalRig) -> None:
         fatal=True,
     )
 
-    asset = rig.assets[1]
-    status, payload = rig.put_scene({"type": "image", "asset": "sha256:" + asset["sha256"], "fit": "contain"})
-    rig.check(
-        "A second guarded scene write is accepted before Show",
-        status == 200,
-        status,
-        200,
-        obligation="C-GUARD",
-        fatal=True,
-    )
-    new_etag = payload.get("etag") if isinstance(payload, dict) else None
-    if not new_etag:
-        new_etag = rig.config()["etag"]
-    wait_until(
-        page,
-        "(etag) => document.getElementById('etag-value')?.title === etag"
-        " && document.getElementById('etag-state')?.textContent === 'current'",
-        arg=new_etag,
-        timeout=20,
-    )
-    wait_until(page, "() => !document.getElementById('show-image').disabled", timeout=20)
+    original_guard = rig.config()["etag"]
 
+    def competing_write(route: Any) -> None:
+        asset = rig.assets[1]
+        status, _ = rig.put_scene({"type": "image", "asset": "sha256:" + asset["sha256"], "fit": "contain"})
+        rig.check(
+            "A second guarded scene write is accepted before Show",
+            status == 200,
+            status,
+            200,
+            obligation="C-GUARD",
+            fatal=True,
+        )
+        route.continue_()
+
+    page.route("**/api/v3/scene", competing_write, times=1)
     before = _scene_scene_puts(rig)
     page.click("#show-image")
     wait_until(
@@ -1054,7 +1048,7 @@ def guarded_show_focus(rig: RenewalRig) -> None:
     after = _scene_scene_puts(rig)
     rig.check(
         "A stale guard sends exactly one scene PUT and never retries",
-        after - before == 1,
+        after - before == 1 and _scene_write_rows(rig, 0)[-1]["if_match"] == original_guard,
         {"before": before, "after": after, "sends": rig.requests[-4:]},
         {"delta": 1},
         obligation="C-GUARD",
@@ -1094,6 +1088,49 @@ def guarded_show_focus(rig: RenewalRig) -> None:
         {"focus": focus, "rebuild_visible": rebuild.count() == 1 and rebuild.is_visible()},
         {"focus": expected_focus},
         obligation="D5",
+    )
+
+    before_recovery = _scene_scene_puts(rig)
+    page.locator("#refresh-status").focus()
+    page.keyboard.press("Enter")
+    wait_until(page, "() => document.getElementById('etag-state').textContent === 'current'")
+    page.wait_for_timeout(200)
+    rig.check(
+        "Refresh status leaves Show disabled until manual Rebuild preview and sends no scene PUT",
+        page.locator("#show-image").is_disabled()
+        and page.locator("#image-rebuild").is_visible()
+        and _scene_scene_puts(rig) == before_recovery,
+        {"showDisabled": page.locator("#show-image").is_disabled(),
+         "puts": _scene_scene_puts(rig) - before_recovery},
+        {"showDisabled": True, "puts": 0},
+        obligation="C-GUARD",
+    )
+    page.once("dialog", lambda dialog: dialog.accept())
+    page.locator("#image-rebuild").focus()
+    page.keyboard.press("Enter")
+    wait_until(page, "() => !document.getElementById('show-image').disabled")
+    rig.check(
+        "Explicit rebuild clears the obsolete failure without writing content",
+        not _inner_text(page, "#image-message")
+        and _scene_scene_puts(rig) == before_recovery,
+        {"message": _inner_text(page, "#image-message"),
+         "puts": _scene_scene_puts(rig) - before_recovery},
+        {"message": "", "puts": 0},
+        obligation="C-GUARD",
+    )
+    page.locator("#show-image").focus()
+    rebuilt_guard = rig.config()["etag"]
+    with page.expect_response(lambda response: response.request.method == "PUT"
+                              and _url_path({"url": response.url}).endswith("/api/v3/scene")) as response:
+        page.keyboard.press("Enter")
+    rig.check(
+        "Show after explicit rebuild uses the new guard and succeeds once",
+        response.value.status == 200 and _scene_scene_puts(rig) == before_recovery + 1
+        and _scene_write_rows(rig, 0)[-1]["if_match"] == rebuilt_guard
+        and rebuilt_guard != original_guard,
+        {"status": response.value.status, "puts": _scene_scene_puts(rig) - before_recovery},
+        {"status": 200, "puts": 1},
+        obligation="C-GUARD",
     )
 
 
@@ -2392,6 +2429,107 @@ def images_workbench(rig: RenewalRig) -> None:
         )
 
     page.set_viewport_size({"width": 1440, "height": 900})
+    _task(rig, "Images")
+    if page.locator("#image-discard").is_visible():
+        page.locator("#image-discard").click()
+    config = rig.config()
+    layout = config["layout"]
+    for placement in layout["placements"].values():
+        placement["bezel"] = {edge: 1 for edge in ("left", "right", "top", "bottom")}
+    status, payload = rig.request("PUT", "/api/v3/logical-layout",
+                                  {key: layout[key] for key in ("width", "height", "placements")},
+                                  if_match=config["etag"])
+    if status != 200:
+        raise RuntimeError(f"coverage fixture write failed: {status} {payload}")
+    wait_until(page, "() => !document.getElementById('stage-key').hidden")
+    for count in (6, 4):
+        if count == 4:
+            config = rig.config()
+            placements = {
+                device_id: {**config["layout"]["placements"][device_id],
+                            "x": 160 if index % 2 else 0, "y": 100 if index >= 2 else 0,
+                            "w": (160, 63, 160, 46)[index], "h": 100}
+                for index, device_id in enumerate(ids[:4])
+            }
+            status, payload = rig.request("PUT", "/api/v3/logical-layout",
+                                    {"width": 223, "height": 200, "placements": placements},
+                                    if_match=config["etag"])
+            if status != 200:
+                raise RuntimeError(f"near-square fixture write failed: {status} {payload}")
+            wait_until(page, "() => document.querySelectorAll('#stage-svg .slot').length === 4")
+        for width, height in ((1440, 900), (1280, 800)):
+            page.set_viewport_size({"width": width, "height": height})
+            for draft in (False, True):
+                if draft:
+                    _select_gallery_image(rig, 0)
+                page.locator("#view-zoom-fit").click()
+                page.evaluate("() => window.scrollTo(0, 0)")
+                page.wait_for_timeout(250)
+                fit = page.evaluate("""() => {
+                    const box = document.getElementById('wall-context-content');
+                    const rect = box.getBoundingClientRect();
+                    const inside = node => { const r = node.getBoundingClientRect();
+                        return r.width > 0 && r.height > 0 && r.top >= rect.top - .5
+                            && r.bottom <= rect.bottom + .5 && r.left >= rect.left - .5
+                            && r.right <= rect.right + .5; };
+                    const slots = [...document.querySelectorAll('#stage-svg .slot')];
+                    const drawn = slots.map(node => node.getBoundingClientRect());
+                    return {range: box.scrollHeight - box.clientHeight,
+                        slots: slots.map(inside),
+                        drawingWidth: Math.max(...drawn.map(r => r.right)) - Math.min(...drawn.map(r => r.left)),
+                        coverage: inside(document.getElementById('stage-key')),
+                        details: inside(document.querySelector('#stage-technical > summary')),
+                        horizontalOverflow: document.documentElement.scrollWidth - innerWidth};
+                }""")
+                rig.check(
+                    f"Fit {count} tablets {width}x{height} draft={draft}: tiles, coverage and Stage details fit without inner scrolling",
+                    fit["range"] == 0 and len(fit["slots"]) == count and all(fit["slots"])
+                    and fit["coverage"] and fit["details"] and fit["horizontalOverflow"] == 0,
+                    fit,
+                    {"range": 0, "slots": [True] * count, "coverage": True,
+                     "details": True, "horizontalOverflow": 0},
+                    obligation="C-WORKBENCH",
+                )
+                if count == 6 and width == 1440:
+                    drawing = _drawing_metrics(page)
+                    rig.check(
+                        f"Fit six tablets draft={draft}: drawing remains at least 900px wide",
+                        drawing["drawing"]["width"] >= 899.5 and fit["drawingWidth"] >= 899.5,
+                        {"svg": drawing, "tilesWidth": fit["drawingWidth"]},
+                        {"drawing.width": ">= 900"},
+                        obligation="D9",
+                    )
+                if draft:
+                    show = _box_in_viewport(page, "#show-image")
+                    rig.check(f"Fit {count} tablets {width}px: Show stays visible with a draft",
+                              show["inside"], show, {"inside": True}, obligation="D10")
+                rig.shot(f"fit-{count}-{width}-draft-{draft}")
+                if draft:
+                    page.locator("#image-discard").click()
+    page.locator("#view-zoom-2x").click()
+    pan = page.evaluate("() => {const n=document.getElementById('stage-scroll');"
+                        "return {x:n.scrollWidth-n.clientWidth,y:n.scrollHeight-n.clientHeight};}")
+    rig.check("2x retains intentional stage scrolling", pan["x"] > 0 or pan["y"] > 0,
+              pan, {"x or y": "> 0"}, obligation="C-WORKBENCH")
+    page.locator("#view-zoom-fit").click()
+    page.set_viewport_size({"width": 390, "height": 844})
+    page.add_style_tag(content="html {font-size:200%}")
+    _task(rig, "Settings")
+    page.locator("#backup-restore > summary").click()
+    paths = page.evaluate("""() => ({
+        open: document.getElementById('backup-restore').open,
+        width: innerWidth, documentWidth: document.documentElement.scrollWidth,
+        rows: [...document.querySelectorAll('#operator-readiness-paths dd')]
+            .map(node => ({width: node.clientWidth, content: node.scrollWidth}))
+    })""")
+    rig.check("Open Data paths at 390px CSS200 wraps every value without horizontal overflow",
+              paths["open"] and paths["documentWidth"] <= paths["width"]
+              and len(paths["rows"]) >= 4
+              and all(row["content"] <= row["width"] for row in paths["rows"]),
+              paths, {"open": True, "documentWidth": "<= width", "rows": "all fit"},
+              obligation="C-LAYOUT")
+    page.locator("#readiness-paths").scroll_into_view_if_needed()
+    rig.shot("open-data-paths-390-css200")
 
 
 # ---------------------------------------------------------------------------
@@ -2518,7 +2656,8 @@ def first_wall(rig: RenewalRig) -> None:
     )
     discard_index = discards[0]["index"] if discards else None
     if discard_index is not None:
-        page.locator("#panel-show button").nth(discard_index).click()
+        page.locator("#panel-show button").nth(discard_index).focus()
+        page.keyboard.press("Enter")
     else:
         page.locator("#btn-cancel").click()
     reenabled = _soft_wait(
@@ -2531,6 +2670,17 @@ def first_wall(rig: RenewalRig) -> None:
         {"discard": "visible in the note", "reenabled": True},
         obligation="D12",
     )
+    focus = page.evaluate("() => document.activeElement.id || document.activeElement.tagName")
+    rig.check(
+        "Keyboard Discard on the placement lock restores focus to a visible enabled grid action",
+        focus in ("grid-2x2", "grid-preview")
+        and page.locator("#" + focus).is_visible()
+        and not page.locator("#" + focus).is_disabled(),
+        focus,
+        ["grid-2x2", "grid-preview"],
+        obligation="D12",
+    )
+    rig.shot("place-lock-keyboard-discard-focus")
     place_writes = _layout_write_rows(rig, place_start)
     rig.check(
         "Placing and discarding a draft tablet sends no layout write",
@@ -3379,7 +3529,8 @@ def server_stop(rig: RenewalRig) -> None:
     show_attempted = False
     message_set = False
     if show_present and show_visible and not show_disabled:
-        show_control.click()
+        show_control.focus()
+        page.keyboard.press("Enter")
         show_attempted = True
         message_set = _soft_wait(
             page,
@@ -3390,6 +3541,21 @@ def server_stop(rig: RenewalRig) -> None:
         )
     else:
         page.wait_for_timeout(100)
+    if show_attempted:
+        page.wait_for_timeout(150)
+        focus = page.evaluate("() => ({id: document.activeElement.id || document.activeElement.tagName,"
+                              " visible: !!document.activeElement.getClientRects().length,"
+                              " ring: getComputedStyle(document.activeElement).outlineWidth})")
+        expected_focus = "show-image" if not show_control.is_disabled() else (
+            "image-rebuild" if page.locator("#image-rebuild").is_visible() else "image-message")
+        rig.check(
+            "A real connection-lost keyboard Show retains visible focus on its enabled trigger or recovery",
+            focus["id"] == expected_focus and focus["visible"] and focus["ring"] != "0px",
+            focus,
+            {"id": expected_focus, "visible": True, "ring": "> 0px"},
+            obligation="C-GUARD",
+        )
+        rig.shot("connection-lost-show-focus")
     post_show_index = len(rig.requests)
     intended_show_writes = _controller_write_rows(rig, pre_show_index, post_show_index)
     show = _dom_snapshot(page)

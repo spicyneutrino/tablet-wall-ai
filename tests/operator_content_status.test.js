@@ -426,10 +426,12 @@ console.log("Fit feedback slots are unique, labelled, decorative and placed afte
     function localElement(tag, owner) {
         return {
             tagName: tag, dataset: {}, attrs: {}, children: [], listeners: {}, isConnected: true,
-            value: "", hidden: false, disabled: false, textContent: "", className: "", width: 0, height: 0, src: "",
+            value: "", hidden: false, _disabled: false, textContent: "", className: "", width: 0, height: 0, src: "",
+            get disabled() { return this._disabled; },
+            set disabled(value) { this._disabled = value; if (value && owner.activeElement === this) owner.activeElement = owner.body; },
             getClientRects() { return this.hidden ? [] : [{ width: 10, height: 10 }]; },
             addEventListener(type, fn) { this.listeners[type] = fn; this[type] = fn; },
-            focus() { owner.activeElement = this; },
+            focus() { owner.activeElement = this; owner.focusListener?.({ target: this }); },
             replaceChildren(...items) { this.children = items; },
             append(...items) { this.children.push(...items); },
             remove() { this.removed = true; },
@@ -441,6 +443,9 @@ console.log("Fit feedback slots are unique, labelled, decorative and placed afte
     const doc = { activeElement: null, getElementById: id => { if (!nodes.has(id)) nodes.set(id, localElement(id, doc)); return nodes.get(id); },
         createElement: tag => localElement(tag, doc) };
     const node = id => doc.getElementById(id);
+    doc.body = localElement("body", doc);
+    doc.addEventListener = (type, listener) => { if (type === "focusin") doc.focusListener = listener; };
+    doc.removeEventListener = (type, listener) => { if (type === "focusin" && doc.focusListener === listener) doc.focusListener = null; };
     const state = { layoutKind: "logical", etag: "e", etagState: "current", capabilities: {}, scene: { content: { type: "color" } },
         base: { kind: "logical", width: 1000, height: 500, placements: {} },
         draft: { kind: "logical", width: 1000, height: 500, placements: {} } };
@@ -454,8 +459,8 @@ console.log("Fit feedback slots are unique, labelled, decorative and placed afte
     const content = context.window.OperatorContent.create({ state, renderStage() {}, announce() {},
         showConflict() { conflictCount += 1; },
         ingestConfig(result) { state.scene = result.scene; },
-        async api(method, path, body) {
-            calls.push({ method, path, body });
+        async api(method, path, body, options) {
+            calls.push({ method, path, body, options });
             if (path === "/api/v3/images") return { images };
             if (path === "/api/v3/scene" || path.startsWith("/api/v3/scenes/")) return fail();
             throw new Error("unexpected route " + path);
@@ -484,6 +489,19 @@ console.log("Fit feedback slots are unique, labelled, decorative and placed afte
     assert.equal(doc.activeElement, node("image-rebuild"), "a stale preview focuses the visible Rebuild control first");
     assert.notEqual(doc.activeElement, node("image-search"), "a failed Show never falls back to the search field");
     assert.equal(node("image-rebuild").disabled, false);
+    const originalGuard = calls.at(-1).options.ifMatch;
+    state.etagState = "current"; content.render();
+    assert.equal(node("show-image").disabled, true, "Refresh alone cannot authorize the original preview against a new wall");
+    const beforeBlocked = calls.length;
+    assert.equal(await content.showSelected(), false, "the public action also refuses a preview requiring rebuild");
+    assert.equal(calls.length, beforeBlocked, "Show sends nothing until explicit rebuild");
+    assert.equal(originalGuard, "e", "the failed command used the original preview guard");
+    content.rebuild();
+    assert.equal(node("image-message").textContent, "", "explicit rebuild clears the obsolete Show failure");
+    assert.equal(node("show-image").disabled, false);
+    fail = () => ({ scene: { content: { type: "image", asset: "a" } } });
+    assert.equal(await content.showSelected(), true);
+    assert.equal(calls.at(-1).options.ifMatch, "changed", "only explicit rebuild updates the submitted guard");
 
     state.etag = "e"; state.etagState = "current"; conflictCount = 0;
     content.discard();
@@ -503,6 +521,27 @@ console.log("Fit feedback slots are unique, labelled, decorative and placed afte
     assert.equal(node("image-message").textContent, "Could not show this content. Image store failed. Use Refresh images to retry.",
         "a non-412 failure keeps today's text");
     assert.equal(doc.activeElement, node("show-image"), "an enabled trigger keeps focus");
+
+    let rejectShow;
+    fail = () => new Promise((resolve, reject) => { rejectShow = reject; });
+    node("show-image").focus();
+    let pending = content.showSelected();
+    await new Promise(resolve => setImmediate(resolve));
+    assert.equal(doc.activeElement, doc.body, "a pending Show disables the trigger and Chromium drops its focus");
+    node("settings-control").focus();
+    doc.activeElement = doc.body;
+    rejectShow(new Error("Connection lost"));
+    await pending;
+    assert.equal(doc.activeElement, doc.body, "a user who moved focus while pending keeps ownership even if that control later disappears");
+
+    node("show-image").focus();
+    pending = content.showSelected();
+    await new Promise(resolve => setImmediate(resolve));
+    state.tabName = "system";
+    rejectShow(new Error("Connection lost"));
+    await pending;
+    assert.equal(doc.activeElement, doc.body, "intervening task navigation prevents late Show focus restoration");
+    state.tabName = "content";
 
     state.etag = "e"; state.etagState = "current";
     content.discard();
@@ -531,7 +570,7 @@ console.log("Fit feedback slots are unique, labelled, decorative and placed afte
     node("image-message").hidden = true; node("image-search").hidden = true;
     fail = fail412({ changeEtag: true });
     await content.showSelected({ feedback: "scene-message" });
-    assert.equal(doc.activeElement, node("show-image"), "with no visible candidate focus is left where it is");
+    assert.equal(doc.activeElement, doc.body, "with no visible candidate focus is left where disabling the trigger put it");
     assert.notEqual(doc.activeElement, node("image-search"));
     console.log("Failed Show keeps one command, states the D5 message and moves focus only to visible candidates");
 })().catch(error => { console.error(error); process.exitCode = 1; });

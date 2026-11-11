@@ -86,7 +86,16 @@
             }
             const copy = document.createElement("p"); copy.className = "hint"; copy.textContent = LOCK_TEXT;
             const discard = document.createElement("button"); discard.type = "button"; discard.className = "btn btn-sm"; discard.textContent = "Discard";
-            discard.addEventListener("click", () => { if (discardDraft) discardDraft(); });
+            discard.addEventListener("click", () => {
+                if (!discardDraft) return;
+                const restoreFocus = document.activeElement === discard;
+                discardDraft();
+                if (restoreFocus && lockNote.hidden) {
+                    const target = [$("grid-2x2"), $("grid-preview")].find(node => !node.disabled && !node.hidden
+                        && (typeof node.getClientRects !== "function" || node.getClientRects().length));
+                    if (target) target.focus({ preventScroll: true });
+                }
+            });
             lockNote.append(copy, discard);
             return lockNote;
         }
