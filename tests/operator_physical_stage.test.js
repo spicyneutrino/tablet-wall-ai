@@ -773,7 +773,7 @@ function rosterSetup() {
     assert.equal(roster.factFor("b", "image").textContent.includes("showing"), false, "held power never turns stale paint into displayed");
     const lastSeen = "Offline · last seen " + new Date("2026-11-01T12:00:00Z").toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
     assert.equal(roster.factFor("c", "connection").textContent, lastSeen);
-    assert.equal(roster.factFor("c", "image").textContent, "Offline · spot reserved");
+    assert.equal(roster.factFor("c", "image").textContent, "Offline");
     assert.equal(roster.rowFor("c").dataset.powerState, "unknown");
     assert.equal(roster.factFor("c", "power").textContent, "Last known wake lock unknown");
     assert.equal(roster.rowFor("d").dataset.status, "excluded");
@@ -798,7 +798,7 @@ function rosterSetup() {
     assert.equal(roster.rowFor("a").dataset.status, "stale", "a stale roster cannot claim current paint");
     assert.equal(roster.rowFor("a").dataset.powerStale, "true");
     assert.equal(roster.factFor("a", "connection").textContent, "Status stale");
-    assert.equal(roster.factFor("a", "image").textContent, "Current image evidence unavailable");
+    assert.equal(roster.factFor("a", "image").textContent, "Status stale");
     assert.equal(roster.factFor("a", "power").textContent, "Last known wake lock denied");
     assert.match(roster.el.wallHealth.textContent, /Status stale/);
     assert.doesNotMatch(roster.el.wallHealth.textContent, /Power|wake[ -]lock/i);

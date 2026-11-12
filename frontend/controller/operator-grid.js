@@ -200,9 +200,12 @@
                 return !pair || !slot && angles[id] === "" && $("grid-common-mount").value === ""
                     || slot && pair && (slot.profile_revision !== pair.profile.revision || slot.calibration_revision !== pair.calibration.revision);
             });
-            $("arrange-membership-summary").textContent = !ids.length ? "Order and mounting · choose tablets"
+            const summary = $("arrange-membership-summary");
+            (summary.querySelector && summary.querySelector("span") || summary).textContent = !ids.length ? "Order and mounting · choose tablets"
                 : "Order and mounting (" + ids.length + " tablet" + (ids.length === 1 ? "" : "s") + ")";
-            if (required) $("arrange-membership").open = true;
+            if (required) {
+                $("arrange-membership").open = true;
+            }
             $("arrange-membership").dataset.required = String(!!required);
         }
         function render() {
@@ -237,7 +240,10 @@
                 const mount = document.createElement("label"); mount.className = "field"; mount.textContent = "Explicit mount angle";
                 const angle = document.createElement("select"); angle.className = "inp"; angle.setAttribute("aria-label", "Mount angle for " + labelFor(id));
                 [["", "Use explicitly declared common mount"], ["0", "0°"], ["90", "90°"], ["180", "180°"], ["270", "270°"]].forEach(([value, name]) => angle.add(new Option(name, value)));
-                angle.value = angles[id]; angle.addEventListener("change", () => { angles[id] = angle.value; invalidate(); }); mount.append(angle); item.append(mount);
+                angle.value = angles[id]; angle.addEventListener("change", () => { angles[id] = angle.value; invalidate(); }); mount.append(angle);
+                const chevron = document.createElement("span"); chevron.className = "select-icon";
+                chevron.innerHTML = '<svg viewBox="0 0 16 16" width="16" height="16" fill="none" stroke="currentColor" stroke-width="1.5" aria-hidden="true"><path d="m4 6 4 4 4-4"/></svg>';
+                mount.append(chevron); item.append(mount);
                 const actions = document.createElement("div"); actions.className = "operator-actions";
                 const earlier = document.createElement("button"), later = document.createElement("button");
                 const include = document.createElement("button"); include.type = "button"; include.className = "btn btn-sm"; include.textContent = "Include";

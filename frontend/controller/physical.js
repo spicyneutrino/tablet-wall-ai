@@ -45,7 +45,6 @@
         btnRedo: document.getElementById("btn-redo"),
         btnApply: document.getElementById("btn-apply"),
         btnCancel: document.getElementById("btn-cancel"),
-        btnReload: document.getElementById("btn-reload"),
         errorText: document.getElementById("error-text"),
         conflictPanel: document.getElementById("conflict-panel"),
         conflictText: document.getElementById("conflict-text"),
@@ -736,6 +735,7 @@
         if (workspace) workspace.render();
         if (changed) renderStage();
         if (changed && name === "saved") { loadLayouts(); loadScenes(); }
+        if (changed && name === "system" && operatorReadiness) { operatorReadiness.load(); loadDiagnostics(false); }
         return true;
     }
 
@@ -996,7 +996,7 @@
         if (workspace) workspace.render();
         renderLogicalEditor();
         const colourSubject = document.getElementById("diagnostic-colour-subject");
-        if (colourSubject) colourSubject.textContent = state.selectedId ? "Selected · " + numberedLabel(state.selectedId) : "Select a tablet in Tablets.";
+        if (colourSubject) colourSubject.textContent = state.selectedId ? numberedLabel(state.selectedId) : "Select a tablet in Tablets.";
     }
 
     function syncMeta() {
@@ -1058,9 +1058,10 @@
         renderCalibrationHelper();
         if (!state.draft) {
             el.btnApply.disabled = true;
+            document.getElementById("arrange-status").textContent = "Nothing to apply.";
             el.btnCancel.disabled = true;
-            el.btnUndo.disabled = el.btnUndo.hidden = true;
-            el.btnRedo.disabled = el.btnRedo.hidden = true;
+            el.btnUndo.disabled = true; el.btnUndo.hidden = true;
+            el.btnRedo.disabled = true; el.btnRedo.hidden = true;
             el.boundsMode.disabled = true;
             el.boundsPadding.disabled = true;
             el.btnPackTablets.disabled = true;
@@ -1075,11 +1076,16 @@
         const emptyPhysical = state.draft.kind === "physical" && Object.keys(state.draft.slots).length === 0;
         el.btnApply.disabled = state.busy || !state.etag || state.etagState !== "current" || !!sizingError()
             || !!logicalError() || !dirty || (emptyPhysical && !state.gridPreview);
+        document.getElementById("arrange-status").textContent = !el.btnApply.disabled ? ""
+            : state.busy ? "Applying arrangement…"
+            : !state.etag || state.etagState !== "current" ? "Refresh status before applying this preview."
+            : sizingError() || logicalError() ? "Resolve the arrangement fields before applying."
+            : !dirty ? "Nothing to apply."
+            : "Add a tablet before applying this arrangement.";
         el.btnApply.title = emptyPhysical ? "This arrangement has no tablets. Use an explicit Remove action to clear a slot." : "Apply the entire previewed layout once";
         el.btnCancel.disabled = state.busy || !dirty && !inputDirty;
-        el.btnUndo.disabled = el.btnUndo.hidden = state.busy || state.undo.length === 0;
-        el.btnRedo.disabled = el.btnRedo.hidden = state.busy || state.redo.length === 0;
-        el.btnReload.disabled = state.busy;
+        el.btnUndo.disabled = state.busy || state.undo.length === 0; el.btnUndo.hidden = state.undo.length === 0;
+        el.btnRedo.disabled = state.busy || state.redo.length === 0; el.btnRedo.hidden = state.redo.length === 0;
         el.btnProfileSave.disabled = state.busy;
         el.btnCalibrationSave.disabled = state.busy || rulerSaveBlocked();
         el.btnLayoutSave.disabled = state.busy || !state.etag;
@@ -1389,7 +1395,7 @@
     let logicalResetPending = false;
     function bindLogicalEditor() {
         document.addEventListener("pointerdown", event => {
-            const button = event.target.closest && event.target.closest("#btn-reload, #btn-cancel");
+            const button = event.target.closest && event.target.closest("#btn-cancel");
             logicalResetPending = !!button && !button.disabled;
         }, true);
         for (const type of ["pointerup", "pointercancel"]) {
@@ -1399,7 +1405,7 @@
         for (const [field, name] of [["x", "X"], ["y", "Y"], ["w", "Width"], ["h", "Height"],
             ["bezel-top", "Top bezel"], ["bezel-right", "Right bezel"], ["bezel-bottom", "Bottom bezel"], ["bezel-left", "Left bezel"]]) {
             const label = document.createElement("label"); label.className = "field";
-            label.textContent = name + " (relative units)";
+            label.textContent = name;
             const input = document.createElement("input"); input.className = "inp"; input.type = "number"; input.step = "1";
             input.id = "logical-" + field; input.dataset.field = field; label.htmlFor = input.id;
             label.append(input); fields.append(label); logicalFields.set(field, input);
@@ -2059,10 +2065,8 @@
     function wakeLockSummary(counts) {
         const order = ["held", "released", "unsupported", "insecure", "denied"];
         const source = counts && typeof counts === "object" ? counts : {};
-        return order.map(function (key) {
-            const value = Number(source[key]);
-            return key + " " + (Number.isFinite(value) ? value : 0);
-        }).join(" · ");
+        return order.filter(key => Number(source[key]) > 0)
+            .map(key => Number(source[key]) + " " + key).join(", ") || "No reports";
     }
 
     function problemText(problem) {
@@ -2111,26 +2115,22 @@
             const db = data.db && typeof data.db === "object" ? data.db : {};
             const backup = data.backup && typeof data.backup === "object" ? data.backup : {};
             const clients = data.clients && typeof data.clients === "object" ? data.clients : {};
-            facts.push(["Report", (state.diagnosticsState === "ready" ? "Current" : "Last known")
-                + " · " + new Date(state.diagnosticsCapturedAt).toLocaleString()]);
-            facts.push(["Storage",
-                formatBytes(media.used_bytes) + " used of " + formatBytes(media.quota_bytes)
-                + " (" + formatPercent(media.used_bytes, media.quota_bytes) + ")"]);
-            facts.push(["Free / reserve",
-                formatBytes(media.free_bytes) + " free · " + formatBytes(media.reserve_bytes)
-                + " reserve"]);
-            facts.push(["Objects",
-                (media.objects ?? "—") + " objects · " + (media.assets ?? "—") + " assets · "
-                + (media.orphans ?? "—") + " orphans"]);
-            facts.push(["Database",
-                "schema " + (db.schema ?? "—") + " · " + formatBytes(db.bytes)]);
+            facts.push(["Report", state.diagnosticsState === "ready" ? "Current" : "Last known"]);
+            facts.push(["Captured", new Date(state.diagnosticsCapturedAt).toLocaleString()]);
+            facts.push(["Storage", formatBytes(media.used_bytes) + " of " + formatBytes(media.quota_bytes)]);
+            facts.push(["Free space", formatBytes(media.free_bytes)]);
+            facts.push(["Reserve", formatBytes(media.reserve_bytes)]);
+            facts.push(["Objects", String(media.objects ?? "—")]);
+            facts.push(["Assets", String(media.assets ?? "—")]);
+            facts.push(["Orphans", String(media.orphans ?? "—")]);
+            facts.push(["Database", formatBytes(db.bytes)]);
+            facts.push(["Schema", String(db.schema ?? "—")]);
             facts.push(["Backup",
                 backup.last_manifest_at
-                    ? formatTime(backup.last_manifest_at) + " · "
-                        + relativeAge(backup.last_manifest_at)
+                    ? formatTime(backup.last_manifest_at) + " (" + relativeAge(backup.last_manifest_at) + ")"
                     : "No backup manifest found"]);
             facts.push(["Clients",
-                (clients.online ?? "—") + " online · " + (clients.total ?? "—") + " registered"]);
+                (clients.online ?? "—") + " of " + (clients.total ?? "—") + " online"]);
             facts.push(["Wake lock", wakeLockSummary(clients.wake_lock)]);
         }
         const lastKnown = document.getElementById("diag-last-known");
@@ -2151,7 +2151,7 @@
     async function loadDiagnostics(verify) {
         if (state.diagnosticsLoading) return;
         state.diagnosticsLoading = true;
-        renderIntegrity(null);
+        if (verify) renderIntegrity(null);
         state.diagnosticsState = state.diagnostics ? "refreshing" : "loading";
         if (el.btnDiagRefresh) el.btnDiagRefresh.disabled = true;
         if (el.btnDiagVerify) el.btnDiagVerify.disabled = true;
@@ -2177,7 +2177,7 @@
             } else {
                 setMsg(el.diagMsg, "", null);
             }
-            await refreshRoster();
+            await refreshRoster().catch(() => {});
         } catch (error) {
             const forbidden = error && error.status === 403;
             state.diagnosticsState = forbidden ? "forbidden" : "error";
@@ -2331,7 +2331,7 @@
         const countNode = document.getElementById("layouts-count");
         if (countNode) {
             countNode.textContent = state.savedLayouts.length + (state.savedLayouts.length === 1 ? " arrangement" : " arrangements");
-            countNode.hidden = !layoutsLoaded;
+            countNode.hidden = !layoutsLoaded || !state.savedLayouts.length;
         }
         if (focusName && document.activeElement === document.body) {
             const row = Array.from(el.savedLayouts.children).find(item => item.dataset.snapshotName === focusName);
@@ -2462,8 +2462,8 @@
         if (empty) empty.hidden = !scenesLoaded || savedScenes.length > 0;
         const countNode = document.getElementById("scenes-count");
         if (countNode) {
-            countNode.textContent = savedScenes.length + (savedScenes.length === 1 ? " item" : " items");
-            countNode.hidden = !scenesLoaded;
+            countNode.textContent = savedScenes.length + (savedScenes.length === 1 ? " content item" : " content items");
+            countNode.hidden = !scenesLoaded || !savedScenes.length;
         }
         if (focusName && document.activeElement === document.body) {
             const row = Array.from(list.children).find(item => item.dataset.snapshotName === focusName);
@@ -2738,7 +2738,6 @@
         el.btnRedo.addEventListener("click", redoDraft);
         el.btnApply.addEventListener("click", applyLayout);
         el.btnCancel.addEventListener("click", cancelDraft);
-        el.btnReload.addEventListener("click", reloadConfigWithConfirm);
         el.btnConflictReload.addEventListener("click", reloadConfigWithConfirm);
 
         el.btnRotate.addEventListener("click", rotateSelected);

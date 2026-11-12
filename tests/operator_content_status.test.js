@@ -60,7 +60,7 @@ const content = context.window.OperatorContent.create({ state, renderStage() {},
     assert.equal(node("image-preview-controls").hidden, true, "an idle wall does not present an inactive edit form");
     assert.equal(node("edit-current-image").hidden, true, "test colours have no saved image to adjust");
     assert.equal(node("image-fit").disabled, true, "Fit needs a draft");
-    assert.equal(node("image-title").textContent, "Nothing shown", "diagnostic colours are never named as content");
+    assert.equal(node("image-title").textContent, "Tablet colours", "the stage names the test pattern currently on the wall");
     assert.equal(node("image-details").textContent, "", "idle state needs no instructional paragraph");
     state.scene = { content: { type: "image", asset: "sha256:missing" } };
     content.render();
@@ -102,7 +102,7 @@ const content = context.window.OperatorContent.create({ state, renderStage() {},
     content.discard();
     assert.equal(content.dirty(), false);
     assert.equal(buttonA.attrs["aria-pressed"], "false");
-    assert.equal(node("image-title").textContent, "Nothing shown");
+    assert.equal(node("image-title").textContent, "Tablet colours");
     assert.equal(node("image-details").textContent, "", "idle state needs no instructional paragraph");
     assert.equal(node("show-image").disabled, true);
     assert.equal(node("image-fit").disabled, true);
@@ -189,7 +189,7 @@ const content = context.window.OperatorContent.create({ state, renderStage() {},
     assert.equal(buttonB.attrs["aria-pressed"], "true", "a newer draft keeps its own rust outline");
     assert.equal(cardA.dataset.applied, "true", "Show moves the applied marker to the submitted image");
     state.viewLive = true; content.render();
-    assert.equal(node("image-title").textContent, "b", "comparison keeps the pending filename in the inspector");
+    assert.equal(node("image-title").textContent, "a", "the stage headline names the applied image during comparison");
     assert.equal(node("show-image").textContent, "Show b", "while the applied wall is visible, Show names what it will show");
     state.viewLive = false; content.render();
     node("image-discard").focus(); content.discard(); assert.equal(document.activeElement, node("image-search"));
@@ -708,8 +708,9 @@ console.log("Fit feedback slots are unique, labelled, decorative and placed afte
 {
     const html = fs.readFileSync(require.resolve("../frontend/controller/physical.html"), "utf8");
     const status = html.slice(html.indexOf('id="wall-status"'), html.indexOf("</div>", html.indexOf('id="wall-status"')));
-    assert.ok(status.includes('<p class="wall-power" id="wall-power-summary" hidden></p>'),
-        "the fleet power summary is the last child of the wall status group");
+    assert.ok(status.includes('id="wall-power-caution"'), "the wall status group exposes a short wake-lock caution");
+    const details = html.slice(html.indexOf('id="stage-technical"'));
+    assert.ok(details.includes('id="wall-power-summary"'), "the complete fleet evidence is reachable in Details");
     assert.match(html, /id="image-message"[^>]*tabindex="-1"/, "the Images message is programmatically focusable");
     for (const [input, hint, message] of [["layout-name", "layout-name-rule", "layout-msg"],
         ["scene-name", "scene-name-rule", "scene-message"]]) {

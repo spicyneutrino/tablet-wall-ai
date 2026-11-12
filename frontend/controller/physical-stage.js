@@ -456,10 +456,12 @@ window.PhysicalStage = {
                     ? (stale ? "Current " + noun + " evidence unavailable" : result.showing + " of " + result.total + " showing the current " + noun)
                     : empty;
                 el.wallHealth.textContent = (stale ? "Status stale · " : "") + paint;
-                el.btnWallHealth.dataset.kind = stale || result.states.some(item => !["displayed", "offline", "excluded"].includes(item.status)) ? "warn" : "info";
+                el.btnWallHealth.dataset.kind = !stale && result.states.some(item => ["failed", "blocked", "invalid_mapping"].includes(item.status)) ? "err" : stale || result.states.some(item => !["displayed", "offline", "excluded"].includes(item.status)) ? "warn"
+                    : result.total && result.showing === result.total ? "ok" : "info";
+                if (document.getElementById("wall-health-short")) document.getElementById("wall-health-short").textContent = (stale ? "Stale " : "") + (result.total ? result.showing + "/" + result.total : counts?.online ? counts.online + " online" : "No wall");
                 const compact = typeof window.matchMedia === "function" && window.matchMedia("(max-width: 36rem)").matches;
                 if (compact) el.wallHealth.textContent = (stale ? "Stale · " : "") + (result.total ? result.showing + "/" + result.total + " showing " + noun : counts && counts.online ? counts.online + " online · none on wall" : "No wall");
-                el.btnWallHealth.setAttribute("aria-label", (stale ? "Status stale. " : "") + (result.total ? result.showing + " of " + result.total + " tablets showing the current " + noun + ". Issues." : empty + ". Issues."));
+                el.btnWallHealth.setAttribute("aria-label", (stale ? "Status stale. " : "") + (result.total ? result.showing + "/" + result.total + ". " + result.showing + " of " + result.total + " tablets showing the current " + noun + ". Issues." : empty + ". Issues."));
                 el.deviceCount.textContent = rosterSummary(state.operatorConfig, stale);
                 el.rosterStatus.hidden = !stale;
                 el.rosterStatus.textContent = stale ? "Status stale. " + state.rosterError + ". Refresh status to retry." : "";
@@ -512,6 +514,22 @@ window.PhysicalStage = {
         function renderDeviceList() {
             const entries = deviceEntries(), ids = new Set(entries.map(entry => entry.id));
             for (const [id, row] of deviceRows) if (!ids.has(id)) { row.item.remove(); deviceRows.delete(id); }
+            const onlinePowers = entries.filter(entry => isOnline(entry.id)).map(entry => powerFor(entry.id));
+            const powerCounts = new Map();
+            if (!state.rosterError) for (const power of onlinePowers) {
+                if (power && !power.stale) powerCounts.set(power.state, (powerCounts.get(power.state) || 0) + 1);
+            }
+            const commonPower = [...powerCounts].find(([, count]) => count > onlinePowers.length / 2)?.[0] || null;
+            const fleetNote = document.getElementById("tablet-fleet-power");
+            if (fleetNote) {
+                fleetNote.hidden = !commonPower || commonPower === "held";
+                fleetNote.textContent = commonPower ? (powerCounts.get(commonPower) === onlinePowers.length ? "All online tablets report" : powerCounts.get(commonPower) + " of " + onlinePowers.length + " online tablets report") + " wake lock " + commonPower + "." : "";
+                fleetNote.dataset.state = commonPower || "";
+            }
+            const differentScreens = entries.some(entry => powerFor(entry.id)?.state !== commonPower || powerFor(entry.id)?.stale);
+            el.deviceList.dataset.screens = String(differentScreens);
+            const screenColumn = document.getElementById("screen-column");
+            if (screenColumn) screenColumn.hidden = !differentScreens;
             for (const [index, entry] of entries.entries()) {
                 let row = deviceRows.get(entry.id);
                 if (!row) {
@@ -524,7 +542,10 @@ window.PhysicalStage = {
                     const facts = {};
                     for (const fact of ["connection", "image", "power"]) {
                         const node = document.createElement("span"); node.className = "dev-fact"; node.dataset.fact = fact;
-                        if (Object.keys(facts).length) meta.append(document.createTextNode(" · "));
+                        if (Object.keys(facts).length) {
+                            const separator = document.createElement("span"); separator.className = "sr-only";
+                            separator.textContent = " · "; meta.append(separator);
+                        }
                         facts[fact] = node; meta.append(node);
                     }
                     identity.append(number, name); pick.append(identity, meta); item.append(pick);
@@ -556,8 +577,18 @@ window.PhysicalStage = {
                 row.number.textContent = numberTag(entry.id);
                 row.name.textContent = entry.label;
                 row.facts.connection.textContent = connection;
-                row.facts.image.textContent = image;
+                row.facts.connection.className = "dev-fact sr-only";
+                row.facts.image.textContent = state.rosterError ? "Status stale" : !online ? "Offline" : current?.showing ? "Reports current image" : image;
                 row.facts.power.textContent = power ? power.short : "";
+                if (typeof row.facts.power.replaceChildren === "function") {
+                    const powerPrefix = document.createElement("span"); powerPrefix.className = "sr-only";
+                    powerPrefix.textContent = power ? (power.short.match(/^(?:Last known wake lock|Wake lock) /) || [""])[0] : "";
+                    const powerValue = document.createElement("span");
+                    powerValue.textContent = power ? power.short.slice(powerPrefix.textContent.length) : "";
+                    row.facts.power.replaceChildren(powerPrefix, powerValue);
+                }
+                row.facts.power.title = power ? power.label : "";
+                row.facts.power.className = "dev-fact" + (commonPower && power?.state === commonPower && !power.stale ? " sr-only" : "");
                 row.item.dataset.status = state.rosterError ? "stale" : current ? current.status : online ? "online" : "offline";
                 row.item.dataset.powerState = power ? power.state : "unknown";
                 row.item.dataset.powerWarning = String(!!power && power.warning);
@@ -576,6 +607,7 @@ window.PhysicalStage = {
         function syncInspector() {
             const id = state.selectedId;
             if (!id) {
+                if (el.selectedTitle) el.selectedTitle.hidden = true;
                 el.inspectorEmpty.hidden = false;
                 el.inspectorBody.hidden = true;
                 el.inspectorMissing.hidden = true;
@@ -584,6 +616,7 @@ window.PhysicalStage = {
             }
 
             const profile = latestProfile(id);
+            if (el.selectedTitle) { el.selectedTitle.hidden = false; el.selectedTitle.textContent = numberedLabel(id, profile); }
             const label = deviceLabel(id, profile);
             el.inspectorEmpty.hidden = true;
             const slot = selectedSlot();

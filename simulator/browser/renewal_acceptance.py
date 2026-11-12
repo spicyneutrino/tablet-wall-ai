@@ -716,10 +716,11 @@ def status_truth(rig: RenewalRig) -> None:
 
     shown = _visible_text_matches(page, "showing the current")
     rig.check(
-        "The wall sentence appears once across the top bar and Images panel",
-        len(shown) == 1,
-        shown,
-        {"count": 1},
+        "The complete wall status remains accessible without repeated visible sentences",
+        len(shown) == 1 and page.locator("#wall-health").text_content().count("showing the current") == 1
+        and page.locator("#wall-health-short").inner_text() == "5/6",
+        {"visible": shown, "accessible": page.locator("#wall-health").text_content()},
+        {"compact": "5/6", "accessible_count": 1},
         obligation="D3",
     )
 
@@ -728,10 +729,10 @@ def status_truth(rig: RenewalRig) -> None:
     rig.check(
         "The wall health line keeps its exact count and Issues label",
         health_text == "5 of 6 showing the current image"
-        and health_label == "5 of 6 tablets showing the current image. Issues.",
+        and health_label == "5/6. 5 of 6 tablets showing the current image. Issues.",
         {"text": health_text, "label": health_label},
         {"text": "5 of 6 showing the current image",
-         "label": "5 of 6 tablets showing the current image. Issues."},
+         "label": "5/6. 5 of 6 tablets showing the current image. Issues."},
         obligation="C-STATUS",
     )
 
@@ -754,7 +755,7 @@ def status_truth(rig: RenewalRig) -> None:
     )
     rig.check(
         "Uniform wake-lock warnings leave at most three visible power mentions in Images",
-        0 < len(power_mentions) <= 3,
+        len(power_mentions) <= 3 and page.locator("#wall-power-caution").is_visible(),
         power_mentions,
         {"max": 3},
         obligation="D2",
@@ -769,7 +770,7 @@ def status_truth(rig: RenewalRig) -> None:
         obligation="D1",
     )
 
-    attention = _inner_text(page, "#attention-heading")
+    attention = page.locator("#attention-heading").text_content()
     rig.check(
         "The attention heading counts the one offline position",
         attention == "Needs review (1)",
@@ -779,10 +780,10 @@ def status_truth(rig: RenewalRig) -> None:
     )
 
     summary = page.locator("#wall-power-summary")
-    summary_visible = summary.count() == 1 and summary.is_visible()
-    summary_text = summary.inner_text() if summary.count() else ""
+    summary_visible = page.locator("#wall-power-caution").is_visible() and summary.count() == 1 and summary.locator("xpath=ancestor::details[@id='stage-technical']").count() == 1
+    summary_text = summary.text_content() if summary.count() else ""
     rig.check(
-        "The fleet power line is visible and names the five online reports",
+        "The fleet caution is visible and Details names the five online reports",
         summary_visible and "5" in summary_text and "denied" in summary_text.lower(),
         {"count": summary.count(), "visible": summary_visible, "text": summary_text},
         {"count": 1, "visible": True, "names": "5 ... denied"},
@@ -1169,8 +1170,9 @@ def guarded_show_focus(rig: RenewalRig) -> None:
     )
     draft = page.locator("#stage-draft-chip")
     rig.check(
-        "The draft chip survives the guarded failure",
-        draft.count() == 1 and draft.is_visible() and draft.inner_text().startswith("Draft:"),
+        "The draft identity and wall comparison remain available after guarded failure",
+        draft.count() == 1 and draft.text_content().startswith("Draft:")
+        and page.locator("#view-toggle").is_visible(),
         {"count": draft.count(), "visible": draft.is_visible() if draft.count() else None,
          "text": draft.inner_text() if draft.count() else ""},
         {"visible": True, "text": "Draft: …"},
@@ -1254,20 +1256,21 @@ def saved_name_rule(rig: RenewalRig) -> None:
         """() => {
             const read = id => {
                 const node = document.getElementById(id);
-                return node ? {present: true, visible: node.getClientRects().length > 0,
+                const field = document.getElementById(id === "layout-name-rule" ? "layout-name" : "scene-name");
+                return node ? {present: true, described: (field?.getAttribute("aria-describedby") || "").split(/\\s+/).includes(id),
                     text: node.textContent} : {present: false};
             };
             return {layout: read('layout-name-rule'), scene: read('scene-name-rule')};
         }"""
     )
     hints_ok = all(
-        item["present"] and item["visible"]
+        item["present"] and item["described"]
         and "Use letters, numbers, spaces, dots, underscores or hyphens." in item["text"]
         and "64 characters at most." in item["text"]
         for item in (before_any_submit["layout"], before_any_submit["scene"])
     )
     rig.check(
-        "Both name fields state the rule before any submit",
+        "Both name fields describe the full name rule before any submit",
         hints_ok,
         before_any_submit,
         {"layout-name-rule": rule + " … 64 characters at most.",
@@ -1538,7 +1541,7 @@ def _layout_check(rig: RenewalRig, task: str, label: str, measured: dict[str, An
 
 def layout_foundation(rig: RenewalRig) -> None:
     page = rig.page
-    _port_and_place(rig, 1)
+    clients = _port_and_place(rig, 1)
 
     def measure_viewport(label: str, width: int, height: int) -> None:
         page.set_viewport_size({"width": width, "height": height})
@@ -1628,6 +1631,7 @@ def layout_foundation(rig: RenewalRig) -> None:
             ),
         )
 
+    _close_client(rig, clients[0][0], clients[0][1])
     coarse = rig.browser.new_context(
         viewport={"width": 390, "height": 844},
         has_touch=True,
@@ -2912,10 +2916,10 @@ def first_wall(rig: RenewalRig) -> None:
     rig.check(
         "The wall health line says 4 of 4 showing the current image",
         health_text == "4 of 4 showing the current image"
-        and health_label == "4 of 4 tablets showing the current image. Issues.",
+        and health_label == "4/4. 4 of 4 tablets showing the current image. Issues.",
         {"text": health_text, "label": health_label},
         {"text": "4 of 4 showing the current image",
-         "label": "4 of 4 tablets showing the current image. Issues."},
+         "label": "4/4. 4 of 4 tablets showing the current image. Issues."},
         obligation="C-STATUS",
     )
 

@@ -1630,22 +1630,26 @@ def corrections(rig):
     (rig.out / "image-preview-ax.yml").write_text(tree)
 
     toggle = p.locator("#view-toggle")
-    expect(toggle).to_have_text("View applied")
+    expect(toggle).to_have_text("On wall")
+    expect(toggle).to_have_attribute("aria-label", "On wall")
     toggle.focus()
     toggle.press("Enter")
     expect(toggle).to_be_focused()
-    expect(toggle).to_have_text("View preview")
+    expect(toggle).to_have_text("Preview")
+    expect(toggle).to_have_attribute("aria-label", "Preview")
     rig.check(True, "View applied keeps focus and relabels the toggle View preview")
     rig.task("Tablets")
     with p.expect_response("**/api/v3/config"):
         rig.click("#btn-roster-refresh")
     rig.task("Images")
-    expect(toggle).to_have_text("View preview")
+    expect(toggle).to_have_text("Preview")
+    expect(toggle).to_have_attribute("aria-label", "Preview")
     rig.check(True, "Status refresh retains the applied comparison and pending image preview")
     toggle.focus()
     toggle.press("Enter")
     expect(toggle).to_be_focused()
-    expect(toggle).to_have_text("View applied")
+    expect(toggle).to_have_text("On wall")
+    expect(toggle).to_have_attribute("aria-label", "On wall")
     rig.check(True, "View preview keeps focus and relabels the toggle View applied")
 
     for width, height in ((320, 844), (390, 844), (667, 375), (844, 390)):
@@ -1790,7 +1794,7 @@ def corrections(rig):
     expect(p.locator("#layout-name")).to_be_focused()
     rig.shot(p, "saved-local-feedback")
     rig.check(
-        p.locator("#btn-layouts-refresh").inner_text() == "Refresh saved"
+        p.locator("#btn-layouts-refresh svg").count() == 1
         and p.locator("#btn-layouts-refresh").get_attribute("aria-label") == "Refresh saved arrangements and content"
         and p.locator("#scenes-refresh").count() == 0,
         "One task-level Refresh saved names both object inventories",

@@ -209,14 +209,19 @@
             const style = win.getComputedStyle(bar);
             if ((bar === navigation || style.position === "fixed") && rect.bottom / zoom > bottom / 2) bottom = Math.min(bottom, rect.top / zoom - (parseFloat(style.marginTop) || 0));
         }
+        const taskSelector = doc.getElementById("compact-task-select");
+        const reflow = taskSelector && taskSelector.getClientRects().length;
+        const commitShelf = doc.body.dataset.task === "images" && !compact && !reflow && doc.getElementById("commit-shelf");
+        if (commitShelf && commitShelf.getClientRects().length) {
+            const summary = doc.querySelector("#stage-technical > summary");
+            bottom -= (commitShelf.getBoundingClientRect().height + (summary?.getBoundingClientRect().height || 0) + 40) / zoom;
+        }
         const borderWidth = parseFloat(fieldStyle.borderLeftWidth) + parseFloat(fieldStyle.borderRightWidth);
         const borderHeight = parseFloat(fieldStyle.borderTopWidth) + parseFloat(fieldStyle.borderBottomWidth);
         const aspect = svg.viewBox.baseVal.width / svg.viewBox.baseVal.height;
         const width = Math.max(0, availableWidth - borderWidth);
         const availableHeight = bottom - fieldTop - 16 - borderHeight;
         // A short viewport keeps a usable field and falls back to page scrolling.
-        const taskSelector = doc.getElementById("compact-task-select");
-        const reflow = taskSelector && taskSelector.getClientRects().length;
         const topInset = navigation && win.getComputedStyle(navigation).position === "sticky" ? navigation.getBoundingClientRect().height / zoom : 0;
         const imagePortrait = compact && doc.body.dataset.task === "images" && win.matchMedia("(orientation: portrait)").matches;
         const height = imagePortrait ? width / aspect : reflow ? Math.min(width / aspect, Math.max(120 / zoom, bottom - topInset - 16))
@@ -273,7 +278,7 @@
         const image = opacity => node("image", { href: content.url, x: transform.x, y: transform.y,
             width: transform.width, height: transform.height, preserveAspectRatio: "none", opacity });
         world.append(rect(b, { fill: content && content.background || "var(--stage)", stroke: "var(--stage-line)", "stroke-width": 1 / scale }));
-        if ((presentation === "arrange" || presentation === "context") && transform && content.url && content.available !== false && content.availability !== "unavailable") world.append(image(0.22));
+        if ((presentation === "arrange" || presentation === "context") && transform && content.url && content.available !== false && content.availability !== "unavailable") world.append(image(0.035));
         const wall = node("g", { "clip-path": "url(#operator-wall-clip)" }); world.append(wall);
         wall.append(rect(b, { fill: "url(#operator-occlusion)" }));
         const visible = node("g", { "clip-path": "url(#operator-panel-clip)" }); wall.append(visible);
@@ -335,12 +340,19 @@
                 && runtime.devices[panel.id].online && power && power.state === fleet.state;
             const statusText = [exception, power && !fleetCovered && (power.warning || power.stale) ? power.short : ""].filter(Boolean).join(" · ");
             if (!panel.missing && statusText && panel.body.width * scale >= 40 && panel.body.height * scale >= 24) {
-                group.append(node("text", { x: panel.body.x + 6 / scale, y: panel.body.y + panel.body.height - 6 / scale,
+                const statusNode = node("text", { x: panel.body.x + 6 / scale, y: panel.body.y + panel.body.height - 6 / scale,
                     class: "operator-slot-status", "font-size": 10 / scale, "stroke-width": 2 / scale,
                     "paint-order": "stroke", fill: "var(--stage-text)", stroke: "var(--stage)",
                     "data-status": status.status, "data-power-state": power ? power.state : "",
-                    "data-label": statusText, "data-x": panel.body.x, "data-y": panel.body.y,
-                    "data-width": panel.body.width, "data-height": panel.body.height, "aria-hidden": "true" }, statusText));
+                    "data-label": exception, "data-x": panel.body.x, "data-y": panel.body.y,
+                    "data-width": panel.body.width, "data-height": panel.body.height, "aria-hidden": "true" }, statusText);
+                if (typeof document.createTextNode === "function") {
+                    statusNode.textContent = "";
+                    if (exception) statusNode.append(node("tspan", {}, exception));
+                    const powerLabel = statusText.slice(exception.length);
+                    if (powerLabel) statusNode.append(node("tspan", { class: "operator-slot-power-text" }, powerLabel));
+                }
+                group.append(statusNode);
             }
             if (layout.kind === "logical" && panel.id === selectedId && !panel.missing && editable) {
                 group.append(rect({ x: panel.body.x + panel.body.width - 10 / scale, y: panel.body.y + panel.body.height - 10 / scale, width: 10 / scale, height: 10 / scale },
@@ -348,6 +360,10 @@
             }
             world.append(group);
         });
+        if (presentation === "arrange" || presentation === "context") world.append(rect(b, {
+            class: "operator-wall-bounds", fill: "none", stroke: "var(--stage-text)",
+            "stroke-width": 1.5 / scale, "stroke-dasharray": 6 / scale + " " + 4 / scale, "pointer-events": "none"
+        }));
         syncChildren(svg, view);
         fit(svg, fits.get(svg) && fits.get(svg).options);
         if (resolutionNode) resolutionNode.textContent = estimates.join("; ");

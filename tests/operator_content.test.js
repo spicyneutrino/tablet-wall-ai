@@ -214,7 +214,7 @@ async function galleryNavigation() {
     assertTabStop(buttons()[8], "focus movement is the one roving tab entry");
     assert.equal(content.dirty(), false, "gallery focus never selects content");
     assert.equal(state.previewContent, null, "gallery focus never creates a preview");
-    assert.equal(galleryNode("image-title").textContent, "Nothing shown");
+    assert.equal(galleryNode("image-title").textContent, "Tablet colours");
     assert.equal(calls.filter(call => call.path === "/api/v3/scene").length, 0, "gallery focus never writes a scene");
     assert.equal(buttons().every(button => button.attrs["aria-pressed"] === "false"), true, "focus never marks a choice as selected");
 

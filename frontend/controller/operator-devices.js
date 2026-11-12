@@ -98,6 +98,8 @@
                 $("tablet-label-form").dataset.dirty = String(form.dirty);
                 $("tablet-label-save").classList.toggle("btn-primary", form.dirty && $("tablet-label-form").matches(":valid"));
                 $("tablet-label-form").dataset.deviceId = id;
+                $("tablet-label").placeholder = labelFor(id);
+                if ($("tablet-name-help")) $("tablet-name-help").textContent = "Current name: " + labelFor(id) + ". Leave empty to use the generated tablet name.";
                 $("tablet-label-review").hidden = !form.dirty;
                 $("tablet-label-discard").hidden = !form.dirty;
                 if (form.conflict) message("This tablet’s saved name changed elsewhere. Discard to use the current name, or review before saving.");
@@ -112,7 +114,7 @@
             const staleText = state.rosterError ? "Status stale" : "";
             const powerText = power ? power.label : "";
             $("tablet-evidence").hidden = !id || (!staleText && !paintText && !powerText);
-            $("tablet-evidence").textContent = !id ? "" : [staleText, paintText, powerText].filter(Boolean).join(" · ");
+            $("tablet-evidence").textContent = !id ? "" : [staleText, paintText, powerText].filter(Boolean).join("\n");
             $("tablet-evidence").dataset.status = state.rosterError ? "stale" : evidence ? evidence.status : "";
             $("tablet-evidence").dataset.powerState = power ? power.state : "";
             $("tablet-evidence").dataset.powerWarning = String(!!power && power.warning);
@@ -145,6 +147,9 @@
             const healthy = !!evidence?.showing && !state.rosterError && state.etagState === "current";
             if (id !== recovery.dataset.deviceId || String(healthy) !== recovery.dataset.healthy) recovery.open = !healthy;
             recovery.dataset.deviceId = id; recovery.dataset.healthy = String(healthy);
+            const statusDetails = $("tablet-status-details");
+            if (statusDetails && (id !== statusDetails.dataset.deviceId || String(healthy) !== statusDetails.dataset.healthy)) statusDetails.open = !healthy;
+            if (statusDetails) { statusDetails.dataset.deviceId = id; statusDetails.dataset.healthy = String(healthy); }
             const tabletOnline = !!device && device.online === true;
             recovery.hidden = !tabletOnline;
             recovery.dataset.powerState = power ? power.state : "";

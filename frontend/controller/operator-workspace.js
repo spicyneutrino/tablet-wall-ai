@@ -23,9 +23,22 @@ window.OperatorWorkspace = {
             return project && state.roster ? project(state.roster[id], { stale: !!state.rosterError, checkedAt: state.rosterCheckedAt }) : null;
         };
         const powerText = power => power && (power.warning || power.stale || power.state === "unknown") ? power.label : "";
+        const settingsIndex = document.querySelector(".settings-index");
+        if (settingsIndex) settingsIndex.addEventListener("click", event => {
+            const link = event.target.closest("a");
+            if (!link) return;
+            const target = document.getElementById(link.hash.slice(1));
+            if (target && target.tagName === "DETAILS") target.open = true;
+            for (const item of settingsIndex.querySelectorAll("a")) {
+                if (item === link) item.setAttribute("aria-current", "location"); else item.removeAttribute("aria-current");
+            }
+        });
         const chooserButton = $("image-chooser-summary"), chooserBody = $("image-chooser-body");
         const chooserQuery = typeof window.matchMedia === "function" ? window.matchMedia("(min-width: 48.01rem)") : null;
         let stageTask = null, joiningHasTablets = null, chooserHadFocus = false;
+        if ($("image-search")) $("image-search").addEventListener("focus", () => {
+            if (chooserQuery && !chooserQuery.matches) $("image-search").scrollIntoView({ block: "start" });
+        });
         function setChooser(open, moveFocus) {
             if (!chooserBody || !chooserButton) return;
             chooserBody.hidden = !open;
@@ -42,7 +55,7 @@ window.OperatorWorkspace = {
             setChooser(chooserQuery.matches || !chooserBody.hidden, false);
             chooserButton.addEventListener("focus", () => { chooserHadFocus = true; });
             chooserButton.addEventListener("blur", () => { if (!chooserQuery.matches) chooserHadFocus = false; });
-            chooserButton.addEventListener("click", () => setChooser(chooserBody.hidden, true));
+            chooserButton.addEventListener("click", () => { setChooser(true, true); $("image-search").scrollIntoView({ block: "start" }); });
         }
         function focusGallery() {
             setChooser(true, false);
@@ -118,7 +131,7 @@ window.OperatorWorkspace = {
                         row.button = document.createElement("button");
                         row.button.type = "button";
                         row.button.className = "exception-review";
-                        row.number = document.createElement("span"); row.number.className = "exception-number";
+                        row.number = document.createElement("span"); row.number.className = "exception-number sr-only";
                         row.name = document.createElement("span"); row.name.className = "exception-name";
                         row.state = document.createElement("span"); row.state.className = "exception-state";
                         row.power = document.createElement("span"); row.power.className = "exception-power";
@@ -149,6 +162,9 @@ window.OperatorWorkspace = {
                 if (rowBox.top < box.top) roster.scrollTop -= box.top - rowBox.top;
                 else if (rowBox.bottom > box.bottom) roster.scrollTop += rowBox.bottom - box.bottom;
             }
+            if ($("issue-count")) setTextIfChanged($("issue-count"), String(attention.length));
+            if ($("issues-description")) setTextIfChanged($("issues-description"), attention.length + " current content report issue" + (attention.length === 1 ? "" : "s"));
+            $("btn-wall-health").dataset.issues = String(attention.length);
             if ($("exception-count")) $("exception-count").textContent = "Content report issues: " + attention.length;
             if ($("position-count")) $("position-count").textContent = ids.length + (ids.length === 1 ? " position" : " positions");
             if ($("attention-heading")) {
@@ -161,6 +177,8 @@ window.OperatorWorkspace = {
                 setTextIfChanged($("wall-power-summary"), fleet
                     ? "Screen wake lock: all " + fleet.count + " online tablets report " + fleet.label + ". Browser report, not proof the screen is lit." : "");
                 $("wall-power-summary").hidden = !fleet;
+                if ($("wall-power-caution")) $("wall-power-caution").hidden = !fleet;
+                if ($("wall-power-caution")) $("wall-power-caution").dataset.state = fleet ? fleet.state : "";
             }
             return attention;
         }
@@ -255,6 +273,7 @@ window.OperatorWorkspace = {
             if (stageTask !== state.tabName) {
                 const host = $("wall-context-" + state.tabName) || $("wall-context-park");
                 host.append(stage);
+                if (stageTask !== null && typeof window.scrollTo === "function") window.scrollTo(0, 0);
                 stageTask = state.tabName;
             }
             const names = stageNames();
@@ -273,6 +292,7 @@ window.OperatorWorkspace = {
                 $("stage-draft-chip").textContent = image && names.pending ? "Draft: " + names.pending : "";
             }
             if ($("draft-state")) {
+                $("draft-state").hidden = !image;
                 $("draft-state").textContent = image ? "Draft · not on wall"
                     : state.scene && state.scene.content ? "Applied content" : "No image selected";
             }
@@ -284,11 +304,13 @@ window.OperatorWorkspace = {
                     ? "Checked " + new Date(checked).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }) : "";
             }
             if ($("stage-mode-label").textContent !== label) $("stage-mode-label").textContent = label;
+            $("stage-mode").title = label;
             $("stage-mode").hidden = state.tabName === "content" && mode === "live" && label === $("image-title").textContent;
             const description = { live: "", "arrangement-preview": "Arrangement preview, not applied", "image-preview": "Image preview, not shown" }[mode];
             if ($("stage-mode-description").textContent !== description) $("stage-mode-description").textContent = description;
             $("view-toggle").hidden = mode === "live" && (!state.viewLive || !hasPreview && !image);
-            $("view-toggle").textContent = state.viewLive ? "View preview" : "View applied";
+            $("view-toggle").textContent = state.viewLive ? "Preview" : "On wall";
+            $("view-toggle").setAttribute("aria-label", state.viewLive ? "Preview" : "On wall");
             $("btn-cancel").hidden = !arrangement;
             $("wall-empty").hidden = state.tabName !== "content" || !state.configLoaded || hasPreview || !wallEmpty;
             $("empty-add-tablets").textContent = anyOnline() ? "Arrange tablets" : "Add tablets";
@@ -318,6 +340,15 @@ window.OperatorWorkspace = {
                 }
                 renderExceptionRail(ids, evidence);
             }
+            if ($("wall-issues-panel")) {
+                const hasIssues = [...issues.values()].some(row => !row.hidden);
+                if (hasIssues !== ($("wall-issues-panel").dataset.hasIssues === "true")) {
+                    if (!hasIssues && $("wall-issues-panel").contains(document.activeElement)) $("issues-title").focus({ preventScroll: true });
+                    $("wall-issues-panel").open = hasIssues;
+                }
+                $("wall-issues-panel").dataset.hasIssues = String(hasIssues);
+                $("wall-issues-panel").hidden = !hasIssues;
+            }
             if ($("issues-empty")) {
                 const visibleIssues = [...issues.values()].filter(row => !row.hidden).length;
                 $("issues-empty").hidden = !!visibleIssues;
@@ -331,6 +362,12 @@ window.OperatorWorkspace = {
         $("compact-task-select").addEventListener("change", async event => {
             await open(event.target.value, { focus: false, persist: true });
             event.target.value = state.tabName;
+        });
+        if ($("settings-section-select")) $("settings-section-select").addEventListener("change", event => {
+            const target = $(event.target.value);
+            if (target && target.tagName === "DETAILS") target.open = true;
+            if (target) target.scrollIntoView({ block: "start" });
+            event.target.value = "";
         });
         $("view-toggle").addEventListener("click", () => {
             const toggle = $("view-toggle"), search = $("image-search"), restore = document.activeElement === toggle;

@@ -71,6 +71,7 @@ window.OperatorContent = {
         }
         function renderFitFeedback() {
             const summary = $("fit-summary"), applied = $("fit-applied");
+            if ($("fit-inline")) $("fit-inline").hidden = true;
             if (!summary || !applied) return;
             const committed = state.scene && state.scene.content || {};
             setTextIfChanged(applied, committed.type === "image"
@@ -78,6 +79,8 @@ window.OperatorContent = {
                 : committed.type === "color" ? "Applied: tablet colours · no image fit"
                     : committed.type === "calibration" ? "Applied: calibration pattern · no image fit"
                         : "Applied: nothing on the wall.");
+            if ($("applied-scaling")) setTextIfChanged($("applied-scaling"), committed.type === "image" ? fitLabel(committed.fit) : "Not an image");
+            if ($("applied-background")) setTextIfChanged($("applied-background"), committed.type === "image" ? normalizedBackground(committed.background) : "Not applicable");
             const prefix = selectionDirty ? "Preview" : "Applied";
             const content = withIntrinsic(selectionDirty ? selectedContent() : committed);
             if (!content) {
@@ -123,13 +126,21 @@ window.OperatorContent = {
                 + widthPercent + (contain ? " of the wall width" : " of the source width") + " and "
                 + heightPercent + (contain ? " of the wall height" : " of the source height")
                 + (contain ? " are uncovered." : " are cropped."));
+            const inline = $("fit-inline");
+            if (inline) {
+                inline.hidden = !selectionDirty || Math.max(widthFraction, heightFraction) === 0;
+                inline.textContent = percent(Math.max(widthFraction, heightFraction)) + (contain ? " uncovered" : " cropped");
+            }
             const bars = $("crop-bars");
             if (bars) bars.hidden = false;
             const rows = Array.from((bars && bars.children) || []);
             for (const [axis, value, text] of [["width", widthPercent, widthPercent + (contain ? " of wall width uncovered" : " of source width cropped")],
                 ["height", heightPercent, heightPercent + (contain ? " of wall height uncovered" : " of source height cropped")]]) {
                 const row = rows.find(item => item.dataset && item.dataset.axis === axis);
-                if (row) row.setAttribute("style", "--crop:" + value);
+                if (row) {
+                    row.setAttribute("style", "--crop:" + value);
+                    row.dataset.zero = String(value === "0%");
+                }
                 setTextIfChanged($("crop-" + axis), text);
             }
         }
@@ -297,7 +308,8 @@ window.OperatorContent = {
                 row.item.dataset.applied = String(applied);
                 const unavailableThumbnail = row.item.dataset.thumbnail === "unavailable";
                 row.button.setAttribute("aria-label", "Preview " + image.name + (pattern ? ", test pattern" : "") + (unavailableThumbnail ? ", thumbnail unavailable" : ""));
-                row.button.title = image.name + (unavailableThumbnail ? " — thumbnail unavailable" : "");
+                row.name.title = image.name;
+                row.button.title = image.name;
                 row.appliedNote.textContent = applied ? "Applied configuration. This image is the saved wall content; tablet reports are separate." : "";
                 const describedBy = [];
                 if (applied) {
@@ -389,10 +401,11 @@ window.OperatorContent = {
 
             const image = images.find(item => item.id === selected);
             $("selected-image-controls").dataset.assetId = selectionDirty ? selected || "" : "";
-            $("image-fit").value = fit;
+            $("image-fit").value = selectionDirty ? fit : content.fit || "cover";
             $("image-fit").disabled = busy || !selectionDirty || !selected;
             $("image-fit-field").hidden = selectionDirty && !selected;
             $("show-calibration").disabled = state.layoutKind !== "logical" || busy;
+            if ($("calibration-reason")) $("calibration-reason").hidden = state.layoutKind === "logical";
             for (const id of ["show-colours", "pattern-grid", "pattern-black"]) $(id).disabled = busy;
             $("show-image").disabled = busy || loading || !selectionDirty || !selectedContent() || !state.etag || state.etagState !== "current" || baseEtag !== state.etag;
             contextual("image-rebuild", stale); contextual("image-discard", selectionDirty);
@@ -401,14 +414,28 @@ window.OperatorContent = {
             $("show-image").textContent = state.viewLive ? "Show " + pendingName() : savedScene ? "Show saved content" : "Show image";
             $("restore-image").disabled = busy || !previous || state.etagState !== "current";
             $("refresh-images").disabled = loading;
+            const actionStatus = $("image-action-status");
+            if (actionStatus) actionStatus.textContent = busy ? "Showing image…" : loading ? "Loading the image library…"
+                : !selectionDirty ? ""
+                : !selectedContent() ? "Choose an available image to show."
+                : !state.etag || state.etagState !== "current" ? "Refresh status before showing this image."
+                : baseEtag !== state.etag ? "Rebuild this preview before showing it."
+                : "";
             const chosen = selectedContent();
-            $("image-title").textContent = selectionDirty ? pendingName()
-                : appliedUnavailable() ? "Unavailable image" : active ? active.name : content.type === "image" ? content.name || "Image" : "Nothing shown";
+            $("image-title").dataset.empty = String(!["image", "color", "calibration"].includes(content.type));
+            $("image-title").textContent = selectionDirty && !state.viewLive ? pendingName()
+                : appliedUnavailable() ? "Unavailable image" : active ? active.name : content.type === "image" ? content.name || "Image"
+                    : ({ color: "Tablet colours", calibration: "Calibration grid" }[content.type] || "Nothing shown");
             $("image-details").textContent = selectionDirty && selected && !image
                 ? "Selected image unavailable. Refresh images or choose a replacement." : "";
             $("image-preview-controls").hidden = !selectionDirty;
             $("edit-current-image").hidden = selectionDirty || !active;
+            $("edit-current-image").disabled = busy || !active;
             const source = selectionDirty ? image : active;
+            if ($("image-source-name")) {
+                $("image-source-name").textContent = source ? source.name : "";
+                $("image-source-name").hidden = !source;
+            }
             $("image-source-details").textContent = source ? source.width + " × " + source.height + " source px"
                 : !selectionDirty && content.type === "image" ? content.asset : "";
             const thumbnail = $("image-thumbnail"); thumbnail.hidden = !source;

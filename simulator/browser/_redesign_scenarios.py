@@ -69,7 +69,7 @@ def parity(rig):
 
     def showing(count=4):
         expect(page.locator("#btn-wall-health")).to_have_attribute(
-            "aria-label", f"{count} of {count} tablets showing the current image. Issues.", timeout=10000
+            "aria-label", f"{count}/{count}. {count} of {count} tablets showing the current image. Issues.", timeout=10000
         )
 
     def grid_preview():

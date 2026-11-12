@@ -180,7 +180,7 @@ console.log("Task commit draws the new task immediately after moving the origina
         assert.equal(count(id), 1, "Settings owns exactly one #" + id);
     }
     for (const heading of ["Joining and launch admission", "Diagnostics and current evidence", "Backup and restore", "Measurements and calibration", "Experimental"]) {
-        assert.ok(settings.includes(heading), "Settings groups " + heading);
+        assert.ok(settings.replace(/<[^>]+>/g, "").includes(heading), "Settings groups " + heading);
     }
     assert.equal((settings.match(/id="readiness-message"/g) || []).length, 0, "Copy feedback stays with the joining surface");
     assert.equal(count("readiness-message"), 1, "there is one Copy-only readiness message");
