@@ -33,8 +33,9 @@
         }
         return { status: "completed", completed, untouched: [], expectedEtag: expected };
     }
-    function create({ state, api, labelFor, profileFor, calibrationFor, ingestConfig, refreshRoster, showConflict, announce, tabletForms, resolveOutput = async () => true, removedFromWall = () => {}, selectTablet, openArrange, renderRoster = () => {} }) {
-        const { $ } = typeof module !== "undefined" && module.exports ? require("./operator-dom.js") : root.OperatorDom;
+    function create({ state, api, labelFor, profileFor, calibrationFor, ingestConfig, refreshRoster, showConflict, announce, tabletForms, resolveOutput = async () => true, removedFromWall = () => {}, selectTablet, openArrange, renderRoster = () => {}, lookup = null }) {
+        const dom = typeof module !== "undefined" && module.exports ? require("./operator-dom.js") : root.OperatorDom;
+        const $ = lookup || dom.$;
         const powerReadiness = root.OperatorStage && root.OperatorStage.powerReadiness
             ? root.OperatorStage.powerReadiness
             : typeof module !== "undefined" && module.exports ? require("./operator-stage.js").powerReadiness : null;

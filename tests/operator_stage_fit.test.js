@@ -1,6 +1,6 @@
 "use strict";
 const assert = require("node:assert/strict");
-const { fit, draw } = require("../frontend/controller/operator-stage.js");
+const { fit: fitMeasured, draw } = require("../frontend/controller/operator-stage.js");
 const stageModel = require("../frontend/controller/operator-state.js");
 
 class Element {
@@ -35,6 +35,8 @@ const win = {
     matchMedia: query => ({ matches: query === "(orientation: portrait)" ? win.innerWidth < win.innerHeight : win.innerWidth <= 768 || win.innerHeight <= 512 }),
     getComputedStyle: node => node.computed,
     addEventListener: (name, callback) => { events[name] = callback; },
+    removeEventListener: name => { delete events[name]; },
+    cancelAnimationFrame() {},
     requestAnimationFrame: callback => { frames.push(callback); return frames.length; },
     ResizeObserver: class {
         constructor(callback) { this.callback = callback; observers.push(this); }
@@ -56,6 +58,10 @@ const field = { parentElement: parent, style: {},
 let dragging = false;
 const svg = { classList: { contains: () => dragging }, ownerDocument: doc, viewBox: { baseVal: { width: 720, height: 370 } }, style: {},
     closest: () => field, querySelectorAll: () => labels };
+const { create, measureLegacyHost } = require("../frontend/controller/operator-stage-viewport.js");
+const viewport = create({ svg, field, measure: () => measureLegacyHost(svg, { field, actionBar: bar,
+    navigation, taskSelector: doc.getElementById("compact-task-select"), commitShelf: doc.getElementById("commit-shelf") }) });
+const fit = () => viewport.fit();
 const label = new Element("text");
 label.dataset = { width: "667", height: "354", x: "0", y: "0", label: "Screen 1" };
 let rotation = 0;
@@ -149,6 +155,13 @@ result = fit(svg);
 assert.equal(result.width, 366, "enlarged-text navigation keeps a full-width scrollable wall");
 assert.ok(Math.abs(result.height - result.width * 370 / 720) < 1e-10);
 doc.getElementById = () => null;
+
+const measured = fitMeasured(svg, { width: 640, height: 300 }, { field });
+assert.equal(measured.height, 300, "an explicit well rectangle needs no task chrome measurements");
+assert.equal(measured.width, 300 * (720 / 370));
+viewport.destroy();
+assert.equal(observers[0].node, null, "destroy stops observing the host");
+assert.equal(events.resize, undefined, "destroy removes the viewport listener");
 
 global.document = doc;
 for (const [width, height] of [[2000, 1000], [1000, 2000], [8000, 200]]) {

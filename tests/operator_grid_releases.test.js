@@ -1,4 +1,5 @@
 "use strict";
+function renderGrid(feature) { feature.update(); feature.render(); }
 const assert = require("node:assert/strict");
 const grid = require("../frontend/controller/operator-grid.js");
 class Node {
@@ -25,16 +26,16 @@ let previewResult;
 const requests = [];
 const owner = grid.create({ state, api: async (method, path, body) => { requests.push({ method, path, body }); if (previewResult) return previewResult; throw new Error("preview must not be sent"); }, labelFor: id => id, validPair: () => null,
     profileFor: () => null, calibrationFor: () => null, ingestConfig() {}, renderStage() {}, syncDraftUi() {}, isDirty: () => false, announce() {}, showConflict() {} });
-owner.render();
+renderGrid(owner);
 assert.deepEqual(owner.selectedIds(), ["a"]);
 assert.equal(nodes.get("grid-releases").children.length, 0);
 state.base = { kind: "logical", placements: { a: { x: 0, y: 0, w: 100, h: 100 }, b: { x: 100, y: 0, w: 100, h: 100 } } }; state.etag = "two";
-owner.render();
+renderGrid(owner);
 const releases = () => nodes.get("grid-releases").querySelectorAll("input");
 assert.deepEqual(releases().map(input => input.dataset.release), ["b"], "another operator's placement for a known unselected tablet needs an acknowledgement control");
 releases()[0].checked = true;
 state.etag = "three";
-owner.render();
+renderGrid(owner);
 assert.equal(releases()[0].checked, true, "a later authority render keeps the acknowledgement");
 nodes.get("grid-preview").listeners.click().then(async () => {
     assert.match(nodes.get("grid-message").textContent, /^Cannot preview arrangement\./, "the acknowledgement satisfies the release guard");
@@ -106,14 +107,14 @@ nodes.get("grid-preview").listeners.click().then(async () => {
         document.activeElement = input;
         input.value = typed;
         input.listeners.input?.({ target: input });
-        owner.render();
+        renderGrid(owner);
         assert.equal(input.value, typed, "a live render preserves a focused " + id + " edit before blur");
         assert.equal(oneRow["aria-pressed"], "false", "typing custom dimensions leaves the preset immediately");
         assert.equal(twoByTwo["aria-pressed"], "false");
         assert.equal(document.activeElement, input, "runtime rendering preserves the active field");
         assert.equal(requests.length, sent, "typing and rendering do not preview or apply geometry");
         input.listeners.change();
-        owner.render();
+        renderGrid(owner);
         assert.equal(input.value, typed, "committing the field does not restore the previous preset");
     }
     console.log("Grid release acknowledgements and preset labels follow authority updates");
@@ -131,13 +132,13 @@ nodes.get("grid-preview").listeners.click().then(async () => {
     const openOwner = grid.create({ state: openState, api: async (...args) => { setup.requests.push(args); throw new Error("blocked previews send no request"); },
         labelFor: id => id, validPair: () => null, profileFor: () => null, calibrationFor: () => null,
         ingestConfig() {}, renderStage() {}, syncDraftUi() {}, isDirty: () => dirty.value, announce() {}, showConflict() {},
-        discardDraft: () => { discarded.calls += 1; if (allowDiscard) dirty.value = false; openOwner.render(); },
+        discardDraft: () => { discarded.calls += 1; if (allowDiscard) dirty.value = false; renderGrid(openOwner); },
         openMeasurements: id => measured.push(id) });
-    openOwner.render();
+    renderGrid(openOwner);
     const node = id => setup.doc.getElementById(id);
     assert.equal(node("grid-lock-note").hidden, true, "the place lock note is hidden while no placement draft is open");
     dirty.value = true;
-    openOwner.render();
+    renderGrid(openOwner);
     assert.equal(node("grid-lock-note").hidden, false, "a manual placement draft shows the place lock note");
     assert.equal(node("grid-2x2").disabled, true, "the draft still disables the grid presets");
     assert.equal(node("grid-lock-note").children[0].textContent,
@@ -160,7 +161,7 @@ nodes.get("grid-preview").listeners.click().then(async () => {
     node("grid-rows").value = "1"; node("grid-columns").value = "2";
     node("grid-gap").value = "0"; node("grid-padding").value = "0";
     node("grid-sizing").value = "tablets"; node("grid-orientation").value = "preserve";
-    openOwner.render();
+    renderGrid(openOwner);
     assert.equal(node("arrange-membership-summary").textContent, "Order and mounting (2 tablets)");
     const row = id => node("grid-order").children.find(item => item.dataset.deviceId === id);
     await node("grid-preview").listeners.click();

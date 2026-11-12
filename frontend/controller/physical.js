@@ -191,6 +191,8 @@
         pageStatus: document.getElementById("page-status")
     };
 
+    const featureElements = window.OperatorDom.capture(document);
+
     const state = {
         readiness: {},
         gridPreview: null,
@@ -245,6 +247,7 @@
     };
 
     let confirmingModels = false, modelBatchReview = null, modelReviewVersion = 0;
+    let stageViewport = null;
     let operatorContent = null, operatorGrid = null, operatorDevices = null, operatorReadiness = null, workspace = null;
     const tabletForms = window.OperatorForms.create();
     const session = window.OperatorSession.create({ onConflict: showConflict, isDirty });
@@ -279,7 +282,10 @@
     delete state.selectedId;
     Object.defineProperty(state, "selectedId", {
         get: () => compositionState.selectedTablet,
-        set: id => { compositionState = window.OperatorComposition.reduce(compositionState, { type: "select-tablet", id }); }
+        set: id => {
+            if (id !== compositionState.selectedTablet && state.drag) endDrag(false, "subject");
+            compositionState = window.OperatorComposition.reduce(compositionState, { type: "select-tablet", id });
+        }
     });
     Object.defineProperty(state, "composition", { get: () => window.OperatorComposition.select(compositionState, {
         image: !!operatorContent && operatorContent.dirty(),
@@ -721,6 +727,7 @@
             deviceSheet.close();
         }
         const changed = state.tabName !== resolved;
+        if (changed && state.drag) endDrag(false, "view");
         if (changed && el.railPanels && state.tabName && !compactView()) {
             state.tabScroll[state.tabName] = el.railPanels.scrollTop;
         }
@@ -995,6 +1002,8 @@
     }
 
     function renderAll() {
+        if (operatorContent) operatorContent.update();
+        if (operatorGrid) operatorGrid.update();
         syncMeta();
         syncDraftUi();
         if (operatorContent) operatorContent.render();
@@ -1133,7 +1142,7 @@
         syncDraftUi();
         renderStage();
         renderLogicalEditor();
-        if (operatorGrid) operatorGrid.render();
+        if (operatorGrid) { operatorGrid.update(); operatorGrid.render(); }
         if (workspace) workspace.render();
         renderPlaybackPreflight(playbackPreflight());
     }
@@ -1241,6 +1250,7 @@
             profileCurrent: el.profileCurrent, profileForm: el.profileForm, profileLabel: el.profileLabel, profileMsg: el.profileMsg,
             profilePixelHeight: el.profilePixelHeight, profilePixelWidth: el.profilePixelWidth, profileProvenance: el.profileProvenance
         },
+        lookup: featureElements,
         physicalCalibration: window.PhysicalCalibration, refresh: () => session.refresh(),
         state, num, markInvalid, ValidationError, deviceLabel, formatNumber, setInputValue, setSelectValue, api, syncTabDots, setMsg, errorDetail, profileFor, latestProfile, latestCalibration, numberedLabel, calibrationStatus, bodyMetrics, tabletForms, clearMsg, clearError, announce, resolveOutput, setBusy, handleWriteError
     });
@@ -1256,7 +1266,9 @@
             if (operatorDevices) operatorDevices.render(); renderLogicalEditor();
             syncDraftUi();
         },
+        lookup: featureElements,
         navigateSelection: (id, options) => navigateSelection(id, options),
+        fitStage: () => stageViewport && stageViewport.fit(),
         DRAG_THRESHOLD_PX, afterDraftChange, announce, bodyMetrics, calibrationFor, beginManual, canManualEdit, clearMsg, clone, deviceEntries, deviceLabel, deviceNumber, deviceRows, el, finiteOr, formatNumber, isOnline, latestProfile, mutateDraft, numberTag, numberedLabel, populateDeviceCard, profileFor, pushUndo, roundTo, selectedSlot, setInputValue, showError, showTab, state, syncTabDots, validPair
     });
 
@@ -3101,12 +3113,25 @@
     }
 
     function init() {
+        const field = el.stageSvg.closest(".stage-scroll");
+        const stageElements = { field, actionBar: document.querySelector(".image-actions"),
+            navigation: document.querySelector(".workspace-nav-landmark"),
+            workspace: document.querySelector(".operator-workspace"),
+            taskSelector: document.getElementById("compact-task-select"),
+            commitShelf: document.getElementById("commit-shelf"),
+            summary: document.querySelector("#stage-technical > summary") };
+        stageViewport = window.OperatorStageViewport.create({ svg: el.stageSvg, field,
+            measure: () => window.OperatorStageViewport.measureLegacyHost(el.stageSvg, stageElements),
+            onResize: () => { state.stageTap = null; endDrag(false, "view"); }
+        });
         const labelFor = id => numberedLabel(id, latestProfile(id));
         operatorContent = window.OperatorContent.create({
+            lookup: featureElements,
             state, api, ingestConfig, renderStage, announce, showConflict, resolveOutput,
             refreshConnection: () => session.refresh()
         });
         operatorGrid = window.OperatorGrid.create({
+            lookup: featureElements,
             state, api, labelFor, validPair, profileFor, calibrationFor,
             ingestConfig, renderStage, syncDraftUi, isDirty, announce, showConflict,
             modelBusy: () => confirmingModels,
@@ -3117,11 +3142,12 @@
             openMeasurements: id => openMeasurements(id)
         });
         operatorDevices = window.OperatorDevices.create({
+            lookup: featureElements,
             state, api, labelFor, profileFor, calibrationFor,
             ingestConfig, refreshRoster, showConflict, announce, tabletForms, resolveOutput,
             renderRoster: () => {
                 renderDeviceList();
-                operatorGrid.render();
+                operatorGrid.update(); operatorGrid.render();
             },
             removedFromWall: id => operatorGrid.exclude(id),
             selectTablet: selectDevice,
@@ -3131,7 +3157,9 @@
         operatorReadiness = window.OperatorReadiness.create({ state, api, copyText });
         session.subscribe(observeSession);
         workspace = window.OperatorWorkspace.create({
+            lookup: featureElements,
             state, labelFor,
+            stageElement: document.querySelector(".wall-stage"), arrangeElement: document.querySelector(".arrange-tools"),
             arrangementDirty: () => isDirty() || operatorGrid.dirty(),
             arrangementPreview: isDirty,
             imageDirty: () => operatorContent.dirty(),
@@ -3166,7 +3194,7 @@
         const imageActionObserver = new ResizeObserver(() => {
             document.body.style.setProperty("--task-nav-height", workspaceNav.clientHeight - parseFloat(getComputedStyle(workspaceNav).paddingBottom) + "px");
             document.body.style.setProperty("--image-action-height", imageActions.offsetHeight + "px");
-            window.OperatorStage.fit(el.stageSvg);
+            stageViewport.resize();
         });
         for (const chrome of [imageActions, workspaceNav]) imageActionObserver.observe(chrome);
         state.onParticipation = (id, participating) => mutateDraft(draft => { draft.slots[id].participating = participating; });
@@ -3175,7 +3203,7 @@
             if (event.target.checked) { loadLibrary(true); loadPlaylist(); refreshPlayback(); }
         });
         window.addEventListener("resize", () => { renderDeviceHealth(); renderStage(); });
-        window.addEventListener("pagehide", () => { imageActionObserver.disconnect(); session.destroy(); operatorContent.destroy(); workspace.destroy(); clearInterval(state.playbackTimer); });
+        window.addEventListener("pagehide", () => { imageActionObserver.disconnect(); stageViewport.destroy(); session.destroy(); operatorContent.destroy(); workspace.destroy(); clearInterval(state.playbackTimer); });
         operatorReadiness.load();
         const storedTab = readStoredTab();
         if (storedTab) {

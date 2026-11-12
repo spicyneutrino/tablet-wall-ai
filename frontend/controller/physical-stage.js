@@ -24,9 +24,10 @@ window.PhysicalStage = {
     configureDeviceSheet: configureDeviceSheet,
     create: function (dependencies) {
         const {
-            DRAG_THRESHOLD_PX, afterDraftChange, announce, bodyMetrics, calibrationFor, beginManual, canManualEdit, clearMsg, clone, deviceEntries, deviceLabel, deviceNumber, deviceRows, el, finiteOr, formatNumber, isOnline, latestProfile, mutateDraft, numberTag, numberedLabel, populateDeviceCard, profileFor, pushUndo, roundTo, selectedSlot, selectionChanged, navigateSelection = () => {}, setInputValue, showError, showTab, state, syncTabDots, validPair
+            DRAG_THRESHOLD_PX, afterDraftChange, announce, bodyMetrics, calibrationFor, beginManual, canManualEdit, clearMsg, clone, deviceEntries, deviceLabel, deviceNumber, deviceRows, el, finiteOr, formatNumber, isOnline, latestProfile, mutateDraft, numberTag, numberedLabel, populateDeviceCard, profileFor, pushUndo, roundTo, selectedSlot, selectionChanged, navigateSelection = () => {}, fitStage = () => {}, lookup = null, setInputValue, showError, showTab, state, syncTabDots, validPair
         } = dependencies;
 
+        const $ = lookup || (id => typeof document !== "undefined" ? document.getElementById(id) : null);
         function stageEditable() { return window.OperatorState.stageEditable(state); }
 
         function powerFor(id) {
@@ -62,8 +63,8 @@ window.PhysicalStage = {
                     .filter(([, slot]) => slot.participating !== false)
                     .map(([id]) => ({ id, online: !!state.roster[id] && state.roster[id].online === true, power: powerFor(id) }))) : null,
                 selectedId: state.selectedId, runtime: config.runtime, preview, editable,
-                resolutionNode: document.getElementById("stage-resolution") });
-            const stageKey = document.getElementById("stage-key");
+                resolutionNode: $("stage-resolution") });
+            const stageKey = $("stage-key");
             if (stageKey) {
                 const bounds = window.OperatorState.bounds(layout);
                 const placed = window.OperatorStage.panels(layout, profileFor).filter(panel => !panel.missing && panel.slot.participating !== false);
@@ -72,7 +73,7 @@ window.PhysicalStage = {
                 stageKey.hidden = !(share > 0 && share < 100);
                 stageKey.textContent = placed.length + (placed.length === 1 ? " tablet covers " : " tablets cover ") + share + "% of the wall.";
             }
-            const summary = document.getElementById("stage-identities");
+            const summary = $("stage-identities");
             const identities = summary.querySelector("ul");
             const rows = window.OperatorStage.panels(layout, profileFor).map(panel => {
                 const status = preview ? "Local preview · not tablet output" : state.rosterError
@@ -85,6 +86,7 @@ window.PhysicalStage = {
                 identities.replaceChildren(...rows.map(text => { const item = document.createElement("li"); item.textContent = text; return item; }));
             }
             summary.hidden = !rows.length;
+            fitStage();
             const bounds = window.OperatorState.bounds(layout);
             el.stageScale.textContent = formatNumber(bounds.width, 1) + " × " + formatNumber(bounds.height, 1)
                 + (layout.kind === "physical" ? " mm" : " logical units");
@@ -99,12 +101,12 @@ window.PhysicalStage = {
         }
 
         function snapEnabled() {
-            const input = typeof document !== "undefined" ? document.getElementById("logical-snap-enabled") : null;
+            const input = typeof document !== "undefined" ? $("logical-snap-enabled") : null;
             return !input || input.checked !== false;
         }
 
         function snapStep() {
-            const input = typeof document !== "undefined" ? document.getElementById("logical-snap") : null;
+            const input = typeof document !== "undefined" ? $("logical-snap") : null;
             return Math.max(1, Math.round(Number(input && input.value) || 1));
         }
 
@@ -290,7 +292,7 @@ window.PhysicalStage = {
             } catch (error) { /* capture already gone */ }
 
             if (!drag.moved) {
-                revealInspector();
+                if (commit) revealInspector();
                 return;
             }
             if (!commit) {
@@ -328,9 +330,9 @@ window.PhysicalStage = {
          * Selection
          * ---------------------------------------------------------------- */
 
-        const deviceSheet = typeof document !== "undefined" ? document.getElementById("device-sheet") : null;
+        const deviceSheet = typeof document !== "undefined" ? $("device-sheet") : null;
         const containSheetFocus = event => {
-            if (!document.getElementById("draft-resolution").matches(":modal")) window.OperatorWorkspace.containModalFocus(event, deviceSheet);
+            if (!$("draft-resolution").matches(":modal")) window.OperatorWorkspace.containModalFocus(event, deviceSheet);
         };
         let deviceSheetCompactMode = null;
         function compactSheet() {
@@ -350,7 +352,7 @@ window.PhysicalStage = {
         }
         function focusSheetFallback() {
             for (const id of ["issues-title", "btn-wall-health", "tab-tablet"]) {
-                const node = document.getElementById(id);
+                const node = $(id);
                 if (node && focusNode(node)) return;
             }
         }
@@ -364,14 +366,14 @@ window.PhysicalStage = {
             state.sheetTrigger = trigger || document.activeElement;
             document.addEventListener("keydown", containSheetFocus);
             if (!deviceSheet.open) { deviceSheet.dataset.modal = "true"; deviceSheet.showModal(); }
-            const heading = document.getElementById("tablet-action-name");
+            const heading = $("tablet-action-name");
             if (focusNode(heading) && typeof heading.scrollIntoView === "function") heading.scrollIntoView({ block: "nearest" });
             return true;
         }
         function revealSheet(id, trigger) {
             if (state.selectedId !== id) return false;
             if (compactSheet()) return openDeviceSheet(trigger);
-            const heading = document.getElementById("tablet-action-name");
+            const heading = $("tablet-action-name");
             if (!focusNode(heading)) return false;
             if (typeof heading.scrollIntoView === "function") heading.scrollIntoView({ block: "nearest" });
             return true;
@@ -394,7 +396,7 @@ window.PhysicalStage = {
                 if (originVisible(trigger)) { trigger.focus({ preventScroll: true }); return; }
                 focusSheetFallback();
             });
-            document.getElementById("device-sheet-close")?.addEventListener("click", function () { deviceSheet.close(); });
+            $("device-sheet-close")?.addEventListener("click", function () { deviceSheet.close(); });
             window.addEventListener("resize", function () {
                 if (state.drag) endDrag(false, "view");
                 syncDeviceSheetMode();
@@ -450,7 +452,7 @@ window.PhysicalStage = {
                 el.wallHealth.textContent = (stale ? "Status stale · " : "") + paint;
                 el.btnWallHealth.dataset.kind = !stale && result.states.some(item => ["failed", "blocked", "invalid_mapping"].includes(item.status)) ? "err" : stale || result.states.some(item => !["displayed", "offline", "excluded"].includes(item.status)) ? "warn"
                     : result.total && result.showing === result.total ? "ok" : "info";
-                if (document.getElementById("wall-health-short")) document.getElementById("wall-health-short").textContent = (stale ? "Stale " : "") + (result.total ? result.showing + "/" + result.total : counts?.online ? counts.online + " online" : "No wall");
+                if ($("wall-health-short")) $("wall-health-short").textContent = (stale ? "Stale " : "") + (result.total ? result.showing + "/" + result.total : counts?.online ? counts.online + " online" : "No wall");
                 const compact = typeof window.matchMedia === "function" && window.matchMedia("(max-width: 36rem)").matches;
                 if (compact) el.wallHealth.textContent = (stale ? "Stale · " : "") + (result.total ? result.showing + "/" + result.total + " showing " + noun : counts && counts.online ? counts.online + " online · none on wall" : "No wall");
                 el.btnWallHealth.setAttribute("aria-label", (stale ? "Status stale. " : "") + (result.total ? result.showing + "/" + result.total + ". " + result.showing + " of " + result.total + " tablets showing the current " + noun + ". Issues." : empty + ". Issues."));
@@ -512,7 +514,7 @@ window.PhysicalStage = {
                 if (power && !power.stale) powerCounts.set(power.state, (powerCounts.get(power.state) || 0) + 1);
             }
             const commonPower = [...powerCounts].find(([, count]) => count > onlinePowers.length / 2)?.[0] || null;
-            const fleetNote = document.getElementById("tablet-fleet-power");
+            const fleetNote = $("tablet-fleet-power");
             if (fleetNote) {
                 fleetNote.hidden = !commonPower || commonPower === "held";
                 fleetNote.textContent = commonPower ? (powerCounts.get(commonPower) === onlinePowers.length ? "All online tablets report" : powerCounts.get(commonPower) + " of " + onlinePowers.length + " online tablets report") + " wake lock " + commonPower + "." : "";
@@ -520,7 +522,7 @@ window.PhysicalStage = {
             }
             const differentScreens = entries.some(entry => powerFor(entry.id)?.state !== commonPower || powerFor(entry.id)?.stale);
             el.deviceList.dataset.screens = String(differentScreens);
-            const screenColumn = document.getElementById("screen-column");
+            const screenColumn = $("screen-column");
             if (screenColumn) screenColumn.hidden = !differentScreens;
             for (const [index, entry] of entries.entries()) {
                 let row = deviceRows.get(entry.id);
@@ -753,7 +755,7 @@ window.PhysicalStage = {
             if (!state.draft || state.draft.kind !== "physical" || state.gridPreview) return;
             const position = window.PhysicalSizing.nextPosition(state.draft.slots, profileFor, pair.profile, state.draft.bounds);
             if (position.error) { showError(position.error); return; }
-            const mount = document.getElementById("grid-common-mount").value;
+            const mount = $("grid-common-mount").value;
             if (mount === "") { showError("Declare the mounted top edge in Arrange before adding a measured tablet. Browser rotation does not establish the mounting."); return; }
             const centerX = position.x, centerY = position.y;
 

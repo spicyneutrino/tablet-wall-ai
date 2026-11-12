@@ -370,6 +370,18 @@ function movedTo(deltaX, deltaY, extra = {}) {
     return pointerEvent(100 + deltaX, 100 + deltaY, extra);
 }
 
+for (const transition of ["subject", "resize"]) {
+    const undo = [];
+    const rig = dragSetup({ pushUndo: before => undo.push(before) });
+    rig.stage.onPointerDown(pointerEvent(100, 100));
+    rig.stage.onPointerMove(movedTo(10, 10));
+    assert.equal(rig.state.draft.placements.a.x, 110);
+    if (transition === "subject") rig.stage.selectDevice("b"); else rig.resize();
+    assert.equal(rig.state.drag, null, transition + " cancels the captured drag");
+    assert.equal(rig.state.draft.placements.a.x, 100, transition + " restores the pre-drag draft");
+    assert.equal(undo.length, 0, transition + " never commits partial geometry");
+}
+
 /* Fit, 2x and scrolled stage keep the same logical displacement. */
 for (const condition of [
     { name: "Fit", view: { scale: 1, offX: 0, offY: 0 }, dx: 5, dy: 5, expectX: 105, expectY: 105 },

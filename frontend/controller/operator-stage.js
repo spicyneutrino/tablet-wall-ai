@@ -163,79 +163,22 @@
             label.setAttribute("y", Number(label.dataset.y) + height / scale - 6 / scale);
         });
     }
-    const fits = new WeakMap();
-    // Call OperatorStage.fit(el.stageSvg) after renderStage and stage relocation.
-    // Optional { actionBar, navigation } elements override the workspace defaults.
-    function fit(svg, options = {}) {
+    function fit(svg, available, { field = svg.closest(".stage-scroll") } = {}) {
         if (svg.classList.contains("is-dragging")) return null;
-        const field = svg.closest(".stage-scroll");
-        if (!field || !field.parentElement || !svg.viewBox.baseVal.width) return null;
-        const win = svg.ownerDocument.defaultView, doc = svg.ownerDocument;
-        let state = fits.get(svg);
-        if (!state) {
-            state = { options, parent: null };
-            const schedule = () => {
-                if (state.frame) return;
-                state.frame = win.requestAnimationFrame(() => { state.frame = 0; fit(svg, state.options); });
-            };
-            state.observer = new win.ResizeObserver(schedule);
-            win.addEventListener("resize", schedule);
-            fits.set(svg, state);
-        }
-        state.options = options;
-        if (state.parent !== field.parentElement) {
-            state.observer.disconnect();
-            state.parent = field.parentElement;
-            state.observer.observe(state.parent);
-        }
-        const parentStyle = win.getComputedStyle(state.parent), fieldStyle = win.getComputedStyle(field);
-        const availableWidth = state.parent.clientWidth - parseFloat(parentStyle.paddingLeft) - parseFloat(parentStyle.paddingRight);
-        if (availableWidth <= 0 || !field.getClientRects().length) return null;
-        const compact = win.matchMedia("(max-width: 48rem), (max-height: 32rem) and (orientation: landscape)").matches;
-        const fieldRect = field.getBoundingClientRect();
-        const zoom = fieldRect.width / parseFloat(fieldStyle.width) || 1;
-        const fieldTop = (fieldRect.top + win.scrollY + (doc.querySelector(".operator-workspace")?.scrollTop || 0)) / zoom;
-        let bottom = win.innerHeight / zoom;
-        const navigation = options.navigation || doc.querySelector(".workspace-nav-landmark");
-        const actionBar = options.actionBar || doc.body.dataset.task !== "arrange" && doc.querySelector(".image-actions");
-        for (const bar of [navigation, doc.body.dataset.outputDirty === "true" && actionBar]) {
-            if (!bar || !bar.getClientRects().length) continue;
-            const rect = bar.getBoundingClientRect();
-            if (bar === actionBar) {
-                const inline = compact && bottom - fieldTop - rect.height / zoom - 16 < 120 / zoom;
-                doc.body.dataset.imageActionsInline = String(inline);
-                if (inline) continue;
-            }
-            const style = win.getComputedStyle(bar);
-            if ((bar === navigation || style.position === "fixed") && rect.bottom / zoom > bottom / 2) bottom = Math.min(bottom, rect.top / zoom - (parseFloat(style.marginTop) || 0));
-        }
-        const taskSelector = doc.getElementById("compact-task-select");
-        const reflow = taskSelector && taskSelector.getClientRects().length;
-        const commitShelf = doc.body.dataset.task === "images" && !compact && !reflow && doc.getElementById("commit-shelf");
-        if (commitShelf && commitShelf.getClientRects().length) {
-            const summary = doc.querySelector("#stage-technical > summary");
-            bottom -= (commitShelf.getBoundingClientRect().height + (summary?.getBoundingClientRect().height || 0) + 40) / zoom;
-        }
-        const borderWidth = parseFloat(fieldStyle.borderLeftWidth) + parseFloat(fieldStyle.borderRightWidth);
-        const borderHeight = parseFloat(fieldStyle.borderTopWidth) + parseFloat(fieldStyle.borderBottomWidth);
+        const { width, height: availableHeight, borderWidth = 0, borderHeight = 0 } = available;
         const aspect = svg.viewBox.baseVal.width / svg.viewBox.baseVal.height;
-        const width = Math.max(0, availableWidth - borderWidth);
-        const availableHeight = bottom - fieldTop - 16 - borderHeight;
-        // A short viewport keeps a usable field and falls back to page scrolling.
-        const topInset = navigation && win.getComputedStyle(navigation).position === "sticky" ? navigation.getBoundingClientRect().height / zoom : 0;
-        const imagePortrait = compact && doc.body.dataset.task === "images" && win.matchMedia("(orientation: portrait)").matches;
-        const height = imagePortrait ? width / aspect : reflow ? Math.min(width / aspect, Math.max(120 / zoom, bottom - topInset - 16))
-            : Math.min(width / aspect, Math.max(120 / zoom, availableHeight));
+        const height = Math.min(availableHeight, width / aspect);
         const fitWidth = Math.min(width, height * aspect);
         const size = viewSize(fitWidth, height, viewZoom(svg));
         field.style.inlineSize = fitWidth + borderWidth + "px";
         field.style.blockSize = size.fieldBlockSize === null ? ""
-            : Math.min(size.fieldBlockSize, Math.max(120 / zoom, availableHeight)) + borderHeight + "px";
+            : Math.min(size.fieldBlockSize, available.scrollHeight || availableHeight) + borderHeight + "px";
         field.style.overflow = size.overflow;
         svg.style.inlineSize = size.inlineSize + "px";
         svg.style.blockSize = size.blockSize + "px";
         fitLabels(svg);
-        return { width: fitWidth, height, availableWidth, availableHeight, zoom: size.zoom };
+        return { width: fitWidth, height, availableWidth: available.availableWidth ?? width,
+            availableHeight: available.availableHeight ?? availableHeight, zoom: size.zoom };
     }
     function draw({ svg, layout, content, profileFor, labelFor, statusFor, powerFor = null, fleet = null, selectedId, runtime, resolutionNode, preview = false, editable = true, presentation = "context", viewport = null, compareIds = null }) {
         const ns = "http://www.w3.org/2000/svg";
@@ -365,7 +308,6 @@
             "stroke-width": 1.5 / scale, "stroke-dasharray": 6 / scale + " " + 4 / scale, "pointer-events": "none"
         }));
         syncChildren(svg, view);
-        fit(svg, fits.get(svg) && fits.get(svg).options);
         if (resolutionNode) resolutionNode.textContent = estimates.join("; ");
         if (focusedId) {
             const target = Array.from(svg.querySelectorAll(".slot")).find(item => item.dataset.deviceId === focusedId);

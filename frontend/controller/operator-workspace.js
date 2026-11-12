@@ -13,11 +13,12 @@ window.OperatorWorkspace = {
         }
     },
     create({ state, labelFor, arrangementDirty, arrangementPreview, imageDirty, applyArrangement, showImage, discardArrangement, discardImage,
-        commitTask, renderStage, stageNames, onViewChange = () => {}, selectTablet, canCommit }) {
-        const { $, setTextIfChanged } = window.OperatorDom;
+        commitTask, renderStage, stageNames, onViewChange = () => {}, selectTablet, canCommit, lookup = window.OperatorDom.$, stageElement = null, arrangeElement = null }) {
+        const $ = lookup;
+        const { setTextIfChanged } = window.OperatorDom;
         let pending = null, resolving = false, issueRequest = 0;
         const issues = new Map(), rosterRows = new Map(), stripRows = new Map();
-        const stage = document.querySelector(".wall-stage"), arrangeTools = document.querySelector(".arrange-tools");
+        const stage = stageElement || document.querySelector(".wall-stage"), arrangeTools = arrangeElement || document.querySelector(".arrange-tools");
         const powerFor = id => {
             const project = window.OperatorStage && window.OperatorStage.powerReadiness;
             return project && state.roster ? project(state.roster[id], { stale: !!state.rosterError, checkedAt: state.rosterCheckedAt }) : null;

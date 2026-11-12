@@ -1,7 +1,8 @@
 "use strict";
 window.OperatorContent = {
-    create({ state, api, ingestConfig, renderStage, announce, showConflict, resolveOutput = async () => true, refreshConnection }) {
-        const { $, setTextIfChanged } = window.OperatorDom;
+    create({ state, api, ingestConfig, renderStage, announce, showConflict, resolveOutput = async () => true, refreshConnection, lookup = window.OperatorDom.$ }) {
+        const $ = lookup;
+        const { setTextIfChanged, readonly } = window.OperatorDom;
         let images = [], selected = null, fit = "cover", background = "#0b1120", selectionDirty = false, loading = false, busy = false, inventoryReady = false;
         let previous = null, xhr = null, inventoryVersion = 0, selectionVersion = 0, baseEtag = null, savedScene = null, uploadUncertain = false;
         const UPLOAD_TIMEOUT_MS = 120000;
@@ -164,12 +165,12 @@ window.OperatorContent = {
             }
             selected = id; fit = nextFit; background = normalizedBackground(nextBackground); savedScene = null;
             selectionDirty = true; selectionVersion += 1;
-            state.viewLive = false; if (!retainMessage) message(""); render(); renderStage();
+            state.viewLive = false; if (!retainMessage) message(""); updateAndRender(); renderStage();
         }
         async function choose(id, nextFit = fit) {
             if (!id) return false;
             const version = selectionVersion;
-            if (!await resolveOutput("Preview this image", "image") || version !== selectionVersion) { render(); return false; }
+            if (!await resolveOutput("Preview this image", "image") || version !== selectionVersion) { updateAndRender(); return false; }
             select(id, nextFit);
             if (typeof window.matchMedia === "function" && (window.matchMedia("(max-width: 48rem)").matches
                     || $("show-image").getBoundingClientRect().bottom > window.innerHeight)) {
@@ -380,9 +381,9 @@ window.OperatorContent = {
             const image = images.find(item => item.id === selected);
             return image ? image.name : savedScene ? savedScene.name || "Saved content" : selected ? "Unavailable image" : "Saved content";
         }
-        function render() {
+        function updateAndRender() { update(); render(); }
+        function update() {
             const stale = Boolean(selectionDirty && baseEtag && (baseEtag !== state.etag || state.etagState === "stale"));
-            const recoverFocus = stale && !busy && document.activeElement === $("show-image");
             if (stale && !previewStale && !busy && !retainMessage && $("image-message").dataset.kind !== "err") {
                 message(savedScene
                     ? "The wall changed after this preview was built. Show is off. Discard this preview, then open Saved and preview the content again."
@@ -398,6 +399,13 @@ window.OperatorContent = {
             const active = images.find(item => item.id === content.asset);
             state.activeImageUnavailableId = inventoryReady && content.type === "image" && !active ? content.asset : null;
 
+            state.previewContent = selectionDirty ? selectedContent() || { type: "image", asset: selected, available: false } : null;
+        }
+        function render() {
+            const stale = Boolean(selectionDirty && baseEtag && (baseEtag !== state.etag || state.etagState === "stale"));
+            const recoverFocus = stale && !busy && document.activeElement === $("show-image");
+            const content = state.scene && state.scene.content || {};
+            const active = images.find(item => item.id === content.asset);
 
             const image = images.find(item => item.id === selected);
             $("selected-image-controls").dataset.assetId = selectionDirty ? selected || "" : "";
@@ -421,7 +429,6 @@ window.OperatorContent = {
                 : !state.etag || state.etagState !== "current" ? "Refresh status before showing this image."
                 : baseEtag !== state.etag ? "Rebuild this preview before showing it."
                 : "";
-            const chosen = selectedContent();
             $("image-title").dataset.empty = String(!["image", "color", "calibration"].includes(content.type));
             $("image-title").textContent = selectionDirty && !state.viewLive ? pendingName()
                 : appliedUnavailable() ? "Unavailable image" : active ? active.name : content.type === "image" ? content.name || "Image"
@@ -448,7 +455,6 @@ window.OperatorContent = {
                 ? "Adding images is turned off for this launch. An operator can launch with --operator-uploads for uploads on this computer only. A PNG or JPEG in the configured image folder also appears after Refresh images."
                 : "Image-addition capability is unknown. Check the connection and Refresh status. No upload is enabled by the browser.";
             $("upload-submit").disabled = !!xhr || uploadUncertain;
-            state.previewContent = selectionDirty ? chosen || { type: "image", asset: selected, available: false } : null;
             renderFitFeedback();
             renderGallery();
             renderShownStatus();
@@ -464,7 +470,7 @@ window.OperatorContent = {
             const trigger = typeof document.activeElement !== "undefined" ? document.activeElement : null;
             loading = true;
             message(inventoryReady ? "Refreshing the image library. Showing the last known library state." : "Reading the image library…", false, "info", "library-status");
-            render();
+            updateAndRender();
             try {
                 const result = await api("GET", "/api/v3/images");
                 if (version !== inventoryVersion) return;
@@ -476,7 +482,7 @@ window.OperatorContent = {
                     + (inventoryReady ? " The last known library state is still shown." : "") + " Use Refresh images to retry.", false, "err", "library-status");
             } finally {
                 if (version === inventoryVersion) {
-                    loading = false; render(); renderStage();
+                    loading = false; updateAndRender(); renderStage();
                     restoreRefreshFocus(trigger);
                 }
             }
@@ -491,7 +497,7 @@ window.OperatorContent = {
             let focusMoved = false;
             const trackFocus = event => { if (event.target !== trigger) focusMoved = true; };
             document.addEventListener?.("focusin", trackFocus);
-            busy = true; render();
+            busy = true; updateAndRender();
             try {
                 const result = scene
                     ? await api("POST", "/api/v3/scenes/" + encodeURIComponent(scene.name) + "/recall", undefined, { ifMatch: guard })
@@ -521,7 +527,7 @@ window.OperatorContent = {
                 return false;
             } finally {
                 document.removeEventListener?.("focusin", trackFocus);
-                busy = false; render(); renderStage();
+                busy = false; updateAndRender(); renderStage();
                 const active = document.activeElement;
                 const ownsFocus = !focusMoved && state.tabName === task
                     && (!active || active === trigger || active === document.body || active === document.documentElement);
@@ -550,7 +556,7 @@ window.OperatorContent = {
             uploadedSelectionId = null;
             const request = xhr = new XMLHttpRequest();
             $("upload-progress").hidden = false; $("upload-progress").value = 0;
-            $("upload-message").dataset.kind = "info"; $("upload-message").textContent = "Uploading " + file.name + "…"; render();
+            $("upload-message").dataset.kind = "info"; $("upload-message").textContent = "Uploading " + file.name + "…"; updateAndRender();
             request.open("POST", "/uploads?name=" + encodeURIComponent(file.name));
             request.timeout = isVideoUpload(file) ? VIDEO_UPLOAD_TIMEOUT_MS : UPLOAD_TIMEOUT_MS;
             request.setRequestHeader("Content-Type", file.type || "application/octet-stream");
@@ -580,14 +586,14 @@ window.OperatorContent = {
                 } else $("upload-message").textContent = "Image addition refused. " + (result && (typeof result.detail === "string" ? result.detail : result.detail && result.detail.message) || "HTTP " + request.status) + ". Check the file or launch admission, then retry.";
             };
             request.onerror = uncertain; request.ontimeout = uncertain;
-            request.onloadend = () => { xhr = null; $("upload-progress").hidden = true; render(); };
+            request.onloadend = () => { xhr = null; $("upload-progress").hidden = true; updateAndRender(); };
             request.send(file);
         }
         $("images-check-connection").addEventListener("click", async () => {
             $("images-check-connection").disabled = true;
             try { await refreshConnection(); await refresh(); }
             catch (error) { message("Could not check image-addition availability. " + error.message.replace(/[.!?\s]+$/, "") + ". Use Check image-addition connection to retry.", false, "err", "upload-message"); }
-            finally { $("images-check-connection").disabled = false; render(); }
+            finally { $("images-check-connection").disabled = false; updateAndRender(); }
         });
         $("image-fit").addEventListener("change", event => {
             if (!selectionDirty || !selected) { event.target.value = fit; return; }
@@ -634,7 +640,9 @@ window.OperatorContent = {
                 await show({ type: "image", asset: image.id, fit: "contain" }, { guard: state.etag, feedback: "pattern-message" });
             } catch (error) { message("Pattern unavailable. " + error.message.replace(/[.!?\s]+$/, "") + ". Choose a prepared grid or black image from the library.", true, "err", "pattern-message"); }
         });
-        return { render, refresh, dirty: () => selectionDirty,
+        return { update, render, refresh,
+            view: () => Object.freeze({ dirty: selectionDirty, baseEtag, selectionVersion,
+                content: readonly(state.previewContent) }), dirty: () => selectionDirty,
             stageNames: () => ({ applied: appliedName(), pending: pendingName(), unavailable: appliedUnavailable() }),
             imageFor: id => images.find(image => image.id === id),
             showSelected: ({ feedback } = {}) => baseEtag !== state.etag ? false
@@ -642,10 +650,10 @@ window.OperatorContent = {
             previewScene(entry, guard) {
                 savedScene = { ...entry }; selected = entry.content.asset || null; fit = entry.content.fit || "cover";
                 background = normalizedBackground(entry.content.background);
-                baseEtag = guard; selectionDirty = true; selectionVersion += 1; state.viewLive = false; render(); renderStage();
+                baseEtag = guard; selectionDirty = true; selectionVersion += 1; state.viewLive = false; updateAndRender(); renderStage();
             },
-            viewChanged: render,
-            discard() { selectionDirty = false; selected = null; savedScene = null; baseEtag = null; state.previewContent = null; if (!retainMessage) message(""); render(); renderStage(); },
+            viewChanged: updateAndRender,
+            discard() { selectionDirty = false; selected = null; savedScene = null; baseEtag = null; state.previewContent = null; if (!retainMessage) message(""); updateAndRender(); renderStage(); },
             rebuild(confirm = () => true) {
                 if (savedScene) {
                     message("Saved content cannot be rebuilt. Your preview is retained. Discard it, then open Saved and preview the content again before Show.", false, "warn");
@@ -653,7 +661,7 @@ window.OperatorContent = {
                     return false;
                 }
                 if (!confirm()) return false;
-                baseEtag = state.etag; state.draftConflict = false; message(""); render();
+                baseEtag = state.etag; state.draftConflict = false; message(""); updateAndRender();
                 return true;
             },
             destroy() { if (xhr) xhr.abort(); } };

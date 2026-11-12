@@ -66,11 +66,12 @@
         }
         return result;
     }
-    function create({ state, api, labelFor, validPair, profileFor, calibrationFor, ingestConfig, renderStage, syncDraftUi, isDirty, announce, showConflict, modelBusy = () => false, modelReview = () => null, identifyTablet = () => {}, canIdentify = () => false, discardDraft = null, openMeasurements = null }) {
-        const { $ } = typeof module !== "undefined" && module.exports ? require("./operator-dom.js") : root.OperatorDom;
+    function create({ state, api, labelFor, validPair, profileFor, calibrationFor, ingestConfig, renderStage, syncDraftUi, isDirty, announce, showConflict, modelBusy = () => false, modelReview = () => null, identifyTablet = () => {}, canIdentify = () => false, discardDraft = null, openMeasurements = null, lookup = null }) {
+        const dom = typeof module !== "undefined" && module.exports ? require("./operator-dom.js") : root.OperatorDom;
+        const $ = lookup || dom.$;
         let order = [], selected = new Set(), sizes = {}, angles = {}, storedAngles = {}, rows = new Map(), busy = false, initialized = false;
         let previewCommand = null, inputVersion = 0, releaseRows = new Map(), selectedPreset = null;
-        let members = membership(), edited = false, baseEtag = null;
+        let members = membership(), edited = false, baseEtag = null, observedIds = [];
         let lockNote = null, blockerList = null;
         const LOCK_TEXT = "Wall shapes are paused while your placement draft is open. Apply it, or discard it to use a wall shape.";
         const named = value => order.reduce((line, id) => line.split(id).join(labelFor(id)), value);
@@ -130,7 +131,7 @@
             inputVersion += 1;
             state.gridPreview = null; previewCommand = null;
             text(""); renderBlockers([]);
-            syncDraftUi(); updateButtons(); renderStage();
+            updatePreset(); syncDraftUi(); updateButtons(); renderStage();
         }
         const presets = [["grid-2x2", true], ["grid-1x4", false]];
         function preset(twoRows) {
@@ -151,7 +152,7 @@
             (target.disabled ? alternate : target).focus();
             announce(labelFor(id) + " moved to position " + (next + 1) + ".");
         }
-        function updateButtons() {
+        function updatePreset() {
             if (selectedPreset) {
                 if (selected.size <= 1) selectedPreset = "grid-2x2";
                 const { r, c, holes } = preset(selectedPreset === "grid-2x2");
@@ -159,6 +160,8 @@
                 $("grid-columns").value = c;
                 $("grid-holes").checked = holes;
             }
+        }
+        function updateButtons() {
             const manualDirty = !state.gridPreview && isDirty();
             ensureLockNote().hidden = !manualDirty;
             for (const id of ["grid-kind", "grid-rows", "grid-columns", "grid-gap", "grid-padding", "grid-orientation", "grid-sizing", "grid-holes", "grid-2x2", "grid-1x4", "grid-common-mount", "group-confirm"]) if ($(id)) $(id).disabled = manualDirty || state.busy;
@@ -208,23 +211,41 @@
             }
             $("arrange-membership").dataset.required = String(!!required);
         }
-        function render() {
+        function updateAndRender() { update(); render(); }
+        function update() {
             if (!state.base) return;
             if (!initialized) { $("grid-kind").value = state.layoutKind; initialized = true; }
             const ids = new Set([...Object.keys(state.roster), ...Object.keys(model.entries(state.base))]);
+            observedIds = [...ids];
             members.observe(state.roster, state.base, { refreshSaved: !edited });
             const defaults = members.view();
-            const additions = [...ids].filter(id => !rows.has(id)).sort((a, b) => model.compareIds(state.roster, state.deviceLabels || {}, a, b));
-            additions.forEach(id => {
+            const additions = [...ids].filter(id => !order.includes(id)).sort((a, b) => model.compareIds(state.roster, state.deviceLabels || {}, a, b));
+            for (const id of additions) {
                 order.push(id);
-                if (defaults[id].included) selected.add(id);
+                angles[id] = "";
+                const slot = state.base.slots && state.base.slots[id];
+                storedAngles[id] = slot ? String(slot.mount_angle) : "";
+            }
+            for (const id of ids) {
+                if (defaults[id].included) selected.add(id); else selected.delete(id);
                 sizes[id] = defaults[id].size;
-                const slot = state.base.slots && state.base.slots[id]; angles[id] = ""; storedAngles[id] = slot ? String(slot.mount_angle) : "";
+                if (!edited) storedAngles[id] = state.base.slots?.[id] ? String(state.base.slots[id].mount_angle) : "";
+            }
+            for (const id of order) if (!ids.has(id)) selected.delete(id);
+            order = order.filter(id => ids.has(id));
+            if (additions.length && !edited) order.sort((a, b) => model.compareIds(state.roster, state.deviceLabels || {}, a, b));
+            updatePreset();
+        }
+        function render() {
+            if (!state.base) return;
+            const defaults = members.view(), ids = new Set(observedIds);
+            const additions = order.filter(id => !rows.has(id));
+            additions.forEach(id => {
                 const item = document.createElement("li");
                 const choice = document.createElement("label"); choice.className = "check-label";
                 const check = document.createElement("input"); check.type = "checkbox"; check.checked = selected.has(id);
                 const label = document.createElement("span"); choice.append(check, label); item.append(choice);
-                check.addEventListener("change", () => { members.include(id, check.checked); if (check.checked) selected.add(id); else selected.delete(id); invalidate(); render(); });
+                check.addEventListener("change", () => { members.include(id, check.checked); if (check.checked) selected.add(id); else selected.delete(id); invalidate(); updateAndRender(); });
                 const logical = document.createElement("details"); logical.className = "tablet-size-details";
                 const sizeSummary = document.createElement("summary"); logical.append(sizeSummary);
                 for (const [key, name] of [["w", "Width (relative units)"], ["h", "Height (relative units)"]]) {
@@ -248,7 +269,7 @@
                 const earlier = document.createElement("button"), later = document.createElement("button");
                 const include = document.createElement("button"); include.type = "button"; include.className = "btn btn-sm"; include.textContent = "Include";
                 include.setAttribute("aria-label", "Include " + labelFor(id));
-                include.addEventListener("click", () => { members.include(id, true); selected.add(id); invalidate(); render(); }); actions.append(include);
+                include.addEventListener("click", () => { members.include(id, true); selected.add(id); invalidate(); updateAndRender(); }); actions.append(include);
                 for (const [button, delta, name] of [[earlier, -1, "Move earlier"], [later, 1, "Move later"]]) {
                     button.type = "button"; button.className = "btn btn-sm"; button.textContent = name; button.setAttribute("aria-label", name + ", " + labelFor(id)); button.addEventListener("click", () => move(id, delta)); actions.append(button);
                 }
@@ -259,16 +280,13 @@
             });
             for (const id of ids) {
                 const row = rows.get(id), member = defaults[id];
-                if (member.included) selected.add(id); else selected.delete(id);
                 row.check.checked = member.included;
-                if (!edited) storedAngles[id] = state.base.slots?.[id] ? String(state.base.slots[id].mount_angle) : "";
                 if (row.angle.options) {
                     row.angle.options[0].textContent = storedAngles[id] === "" ? "Use common mount" : "Common mount, else " + storedAngles[id] + "°";
                     row.angle.options[0].title = "Keep the declared common mount when set; otherwise keep this tablet’s stored angle.";
                 }
                 row.sizeSummary.textContent = member.size.w + " × " + member.size.h + " relative units · " + member.sizeSource;
                 row.include.hidden = member.included || !(state.roster[id] || {}).online;
-                sizes[id] = member.size;
                 row.item.dataset.deviceId = id;
                 row.item.dataset.membershipSource = member.membershipSource;
                 row.item.dataset.sizeSource = member.sizeSource;
@@ -277,10 +295,8 @@
                     if (document.activeElement !== input) input.value = member.size[input.dataset.field];
                 }
             }
-            order.filter(id => !ids.has(id)).forEach(id => { rows.get(id).item.remove(); rows.delete(id); selected.delete(id); });
-            order = order.filter(id => ids.has(id));
+            for (const [id, row] of rows) if (!ids.has(id)) { row.item.remove(); rows.delete(id); }
             if (additions.length) {
-                if (!edited) order.sort((a, b) => model.compareIds(state.roster, state.deviceLabels || {}, a, b));
                 order.forEach(id => $("grid-order").append(rows.get(id).item));
             }
             const released = releases(), box = $("grid-releases");
@@ -411,7 +427,7 @@
             state.gridPreview = null; previewCommand = null; edited = false; baseEtag = null;
             rows.forEach(row => row.item.remove()); rows.clear(); releaseRows.clear(); order = []; selected.clear(); sizes = {}; angles = {}; storedAngles = {}; members = membership(); initialized = false;
             if ($("grid-common-mount")) $("grid-common-mount").value = "";
-            render(); syncDraftUi(); renderStage();
+            updateAndRender(); syncDraftUi(); renderStage();
         }
         if ($("grid-common-mount")) $("grid-common-mount").addEventListener("change", invalidate);
         if ($("grid-rebuild")) $("grid-rebuild").addEventListener("click", () => {
@@ -419,10 +435,13 @@
             state.draftConflict = false; baseEtag = state.etag; state.gridPreview = null;
             preview();
         });
-        return { render, apply, cancel: reset, reset, dirty: () => edited,
+        return { update, render, apply,
+            view: () => Object.freeze({ dirty: edited, baseEtag, inputVersion,
+                selectedIds: Object.freeze(order.filter(id => selected.has(id))),
+                preview: state.gridPreview && dom.readonly(state.gridPreview) }), cancel: reset, reset, dirty: () => edited,
             selectedIds: () => order.filter(id => selected.has(id)),
             freezeSelection: () => members.freeze(),
-            exclude(id) { if (members.view()[id]) { members.include(id, false); selected.delete(id); render(); } },
+            exclude(id) { if (members.view()[id]) { members.include(id, false); selected.delete(id); updateAndRender(); } },
             modelSetupComplete(expected) { if (!expected || state.etag !== expected) return false; baseEtag = expected; return true; } };
     }
     const api = { command, membership, create };
