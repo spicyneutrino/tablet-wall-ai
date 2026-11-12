@@ -1,5 +1,6 @@
 "use strict";
 (function (root) {
+    const composition = typeof module !== "undefined" && module.exports ? require("./operator-composition.js") : root.OperatorComposition;
     const clone = value => JSON.parse(JSON.stringify(value));
     const entries = layout => layout && (layout.kind === "physical" ? layout.slots : layout.placements) || {};
     function layoutSignature(layout) {
@@ -27,6 +28,9 @@
         });
     }
 
+    function stageEditable(state) {
+        return composition.stageEditable(state.composition || composition.legacyState(state.tabName, state.selectedId), state);
+    }
     function stageView(state) {
         const arrangement = !!state.gridPreview || !!state.base && !!state.draft && layoutSignature(state.draft) !== layoutSignature(state.base);
         const preview = !state.viewLive && (arrangement || !!state.previewContent);
@@ -35,7 +39,7 @@
         if (content && content.asset && content.asset === state.activeImageUnavailableId) content = { ...content, available: false };
         return { layout, content, preview,
             mode: preview ? arrangement ? "arrangement-preview" : "image-preview" : "live",
-            editable: state.tabName === "show" && !state.gridPreview && !state.viewLive && !state.previewContent };
+            editable: stageEditable(state) };
     }
     function registrationCounts(config) {
         const devices = config && config.runtime && config.runtime.devices;
@@ -191,7 +195,7 @@
         return { event() { epoch += 1; }, start() { return { epoch, sequence: ++issued }; }, current(ticket) { return ticket.epoch === epoch; },
             accept(ticket) { if (ticket.epoch !== epoch || ticket.sequence < accepted) return false; accepted = ticket.sequence; return true; } };
     }
-    const api = { stageView, layoutSignature, fitLogical, arrangeLogical, rotateLogical, clone, entries, registrationCounts, layoutDraft, bounds, fitTransform, compareIds, sameToken, observeDevice, observeConfig, tabletState, needsAttention, aggregate, readFence };
+    const api = { stageEditable, stageView, layoutSignature, fitLogical, arrangeLogical, rotateLogical, clone, entries, registrationCounts, layoutDraft, bounds, fitTransform, compareIds, sameToken, observeDevice, observeConfig, tabletState, needsAttention, aggregate, readFence };
     if (typeof module !== "undefined" && module.exports) module.exports = api;
     else root.OperatorState = api;
 }(typeof window !== "undefined" ? window : globalThis));

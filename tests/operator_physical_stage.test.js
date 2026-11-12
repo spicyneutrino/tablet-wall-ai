@@ -153,6 +153,7 @@ function stageSetup(overrides = {}) {
     vm.runInContext(fs.readFileSync(require.resolve("../frontend/controller/operator-workspace.js"), "utf8"), context);
     vm.runInContext(fs.readFileSync(require.resolve("../frontend/controller/physical-stage.js"), "utf8"), context);
     const heading = node("tablet-action-name");
+    let navigateSelection;
     const stage = context.window.PhysicalStage.create({
         DRAG_THRESHOLD_PX: 3, afterDraftChange: overrides.afterDraftChange || function () {},
         announce: overrides.announce || function () {}, bodyMetrics: () => null,
@@ -165,9 +166,18 @@ function stageSetup(overrides = {}) {
         populateDeviceCard() {}, profileFor: () => null, pushUndo: overrides.pushUndo || function () {},
         roundTo: value => value, selectedSlot: () => null,
         selectionChanged() { heading.textContent = state.selectedId || ""; },
+        navigateSelection: (id, options) => navigateSelection(id, options),
         setInputValue() {}, showError() {},
         showTab(name) { showTabCalls.push(name); state.tabName = name; return true; },
         state, syncTabDots() {}, validPair: () => ({})
+    });
+    const composition = require("../frontend/controller/operator-composition.js");
+    navigateSelection = composition.createSelectionNavigation({
+        composition: () => composition.legacyState(state.tabName, state.selectedId),
+        selectedId: () => state.selectedId,
+        openPanel(name) { showTabCalls.push(name); state.tabName = name; return true; },
+        revealTablet: (id, trigger) => stage.revealSheet(id, trigger || document.activeElement),
+        expandArrange() {}
     });
     return { stage, state, document, window, context, node, heading, sheet: node("device-sheet"), showTabCalls, el,
         resize() { resizeListeners.forEach(listener => listener()); },

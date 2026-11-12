@@ -24,8 +24,10 @@ window.PhysicalStage = {
     configureDeviceSheet: configureDeviceSheet,
     create: function (dependencies) {
         const {
-            DRAG_THRESHOLD_PX, afterDraftChange, announce, bodyMetrics, calibrationFor, beginManual, canManualEdit, clearMsg, clone, deviceEntries, deviceLabel, deviceNumber, deviceRows, el, finiteOr, formatNumber, isOnline, latestProfile, mutateDraft, numberTag, numberedLabel, populateDeviceCard, profileFor, pushUndo, roundTo, selectedSlot, selectionChanged, setInputValue, showError, showTab, state, syncTabDots, validPair
+            DRAG_THRESHOLD_PX, afterDraftChange, announce, bodyMetrics, calibrationFor, beginManual, canManualEdit, clearMsg, clone, deviceEntries, deviceLabel, deviceNumber, deviceRows, el, finiteOr, formatNumber, isOnline, latestProfile, mutateDraft, numberTag, numberedLabel, populateDeviceCard, profileFor, pushUndo, roundTo, selectedSlot, selectionChanged, navigateSelection = () => {}, setInputValue, showError, showTab, state, syncTabDots, validPair
         } = dependencies;
+
+        function stageEditable() { return window.OperatorState.stageEditable(state); }
 
         function powerFor(id) {
             return window.OperatorStage && window.OperatorStage.powerReadiness
@@ -144,7 +146,7 @@ window.PhysicalStage = {
             if (state.draft.kind !== "logical") {
                 return { available: false, measured: true, reason: "Measured mode keeps pinned profile and calibration revisions and the declared mounting. Match screen shape is available only in relative units; review measurements instead." };
             }
-            if (state.tabName !== "show" || state.viewLive || state.previewContent || state.gridPreview || state.busy) {
+            if (!stageEditable() || state.busy) {
                 return { available: false, reason: "Match screen shape is available while editing an editable arrangement draft." };
             }
             const id = state.selectedId;
@@ -192,7 +194,7 @@ window.PhysicalStage = {
             if (!window.OperatorState.entries(state.draft)[id]) return;
 
             selectDevice(id, { reveal: false });
-            if (state.tabName !== "show" || state.busy || state.gridPreview || state.viewLive || state.previewContent) {
+            if (!stageEditable() || state.busy) {
                 state.stageTap = { id: id, pointerId: event.pointerId, x: event.clientX, y: event.clientY };
                 return;
             }
@@ -374,18 +376,9 @@ window.PhysicalStage = {
             if (typeof heading.scrollIntoView === "function") heading.scrollIntoView({ block: "nearest" });
             return true;
         }
-        function revealAfterTask(id, trigger, taskOpened) {
-            if (!id) return Promise.resolve(false);
-            const opening = taskOpened ? Promise.resolve(true) : Promise.resolve(showTab("tablet", { persist: true }));
-            return opening.then(function (opened) {
-                if (!opened || state.tabName !== "tablet" || state.selectedId !== id) return false;
-                return revealSheet(id, trigger);
-            });
-        }
         function revealInspector() {
-            if (state.drag || state.tabName === "show") return;
-            const id = state.selectedId, trigger = document.activeElement;
-            revealAfterTask(id, trigger, state.tabName === "tablet");
+            if (state.drag) return;
+            navigateSelection(state.selectedId, { reveal: true, stageActivation: true, trigger: document.activeElement });
         }
         if (deviceSheet && deviceSheet.addEventListener) {
             deviceSheet.addEventListener("keydown", window.OperatorWorkspace.containModalFocus);
@@ -412,6 +405,8 @@ window.PhysicalStage = {
         function selectDevice(id, options) {
             if (!id) return;
             if (state.selectedId !== id) {
+                if (state.drag) endDrag(false, "subject");
+                state.stageTap = null;
                 state.selectedId = id;
                 clearMsg(el.profileMsg);
                 clearMsg(el.calibrationMsg);
@@ -425,10 +420,7 @@ window.PhysicalStage = {
                 syncInspector();
             }
             selectionChanged();
-            if (options && options.reveal) {
-                const trigger = options.trigger || (typeof document !== "undefined" ? document.activeElement : null);
-                revealAfterTask(id, trigger, options.taskOpened === true);
-            }
+            return navigateSelection(id, options);
         }
 
         function syncDeviceRows() {
@@ -693,7 +685,7 @@ window.PhysicalStage = {
         }
 
         function nudgeSelected(deltaX, deltaY) {
-            if (state.tabName !== "show" || state.viewLive || state.previewContent || state.gridPreview || state.busy) return;
+            if (!stageEditable() || state.busy) return;
             if (state.draft && state.draft.kind === "logical") {
                 const id = state.selectedId;
                 if (!state.draft.placements[id]) return;
@@ -789,6 +781,6 @@ window.PhysicalStage = {
          * Bounds and slot inputs
          * ---------------------------------------------------------------- */
 
-        return { addSelectedDevice, deleteSelectedSlot, endDrag, geometryHelp: helpText, matchScreenShape, matchStatus, nudgeSelected, onPointerCancel, onPointerDown, onPointerMove, onPointerUp, renderDeviceHealth, renderDeviceList, renderStage, rotateSelected, selectDevice, setViewZoom, syncInspector, viewZoom };
+        return { addSelectedDevice, deleteSelectedSlot, endDrag, geometryHelp: helpText, matchScreenShape, matchStatus, nudgeSelected, onPointerCancel, onPointerDown, onPointerMove, onPointerUp, renderDeviceHealth, renderDeviceList, renderStage, revealSheet, rotateSelected, selectDevice, setViewZoom, syncInspector, viewZoom };
     }
 };

@@ -181,6 +181,8 @@ assert.equal(inventoryController.model.normalizeAssets({}), null);
     assert.equal(inventoryRuntime.contentView, "image");
     assert.equal(inventoryRuntime.pendingContent, null);
 })().catch(error => { console.error(error); process.exitCode = 1; });
+load("operator-composition.js");
+load("operator-state.js");
 load("physical-stage.js");
 const physicalEditor = {
     busy: false, tabName: "show", selectedId: "tablet", draft: { slots: { tablet: {

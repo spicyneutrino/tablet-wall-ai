@@ -100,7 +100,8 @@ const sequence = [];
 const taskState = { tabName: "tablet", tabScroll: {} };
 const tasks = ["tablet", "content", "show"].map(name => ({ name,
     tab: { setAttribute() {} }, panel: { hidden: true, querySelector() { return null; } } }));
-const taskContext = { document, state: taskState, el: {}, tabEntries: () => tasks,
+const taskContext = { window: { OperatorComposition: require("../frontend/controller/operator-composition.js") },
+    compositionState: require("../frontend/controller/operator-composition.js").createState(), document, state: taskState, el: {}, tabEntries: () => tasks,
     workspace: { render() { sequence.push("move:" + taskState.tabName); } },
     renderStage() { sequence.push("draw:" + taskState.tabName); } };
 vm.createContext(taskContext); vm.runInContext(taskSource, taskContext);

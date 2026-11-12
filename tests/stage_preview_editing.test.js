@@ -2,7 +2,7 @@
 const assert = require("node:assert/strict");
 const vm = require("node:vm");
 const fs = require("node:fs");
-const context = { window: {} };
+const context = { window: { OperatorState: require("../frontend/controller/operator-state.js") } };
 vm.runInNewContext(fs.readFileSync("frontend/controller/physical-stage.js", "utf8"), context);
 const state = { draft: { kind: "logical", placements: { a: { x: 2, y: 3 } } }, selectedId: "a", tabName: "show" };
 const stage = context.window.PhysicalStage.create({ state, mutateDraft: change => change(state.draft) });

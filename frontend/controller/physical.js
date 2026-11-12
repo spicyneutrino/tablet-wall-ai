@@ -275,6 +275,17 @@
         Object.defineProperty(state, key, { get: () => read(session.view()) });
     }
 
+    let compositionState = window.OperatorComposition.createState();
+    delete state.selectedId;
+    Object.defineProperty(state, "selectedId", {
+        get: () => compositionState.selectedTablet,
+        set: id => { compositionState = window.OperatorComposition.reduce(compositionState, { type: "select-tablet", id }); }
+    });
+    Object.defineProperty(state, "composition", { get: () => window.OperatorComposition.select(compositionState, {
+        image: !!operatorContent && operatorContent.dirty(),
+        arrangement: isDirty() || !!operatorGrid && operatorGrid.dirty()
+    }) });
+
     let compositionBusy = false;
     delete state.busy;
     Object.defineProperty(state, "busy", { get: () => compositionBusy || session.view().busy, set: value => { compositionBusy = value; } });
@@ -721,6 +732,7 @@
             entry.panel.hidden = !active;
         });
         state.tabName = resolved;
+        compositionState = window.OperatorComposition.reduce(compositionState, { type: "open-panel", panel: resolved });
         if (changed && el.railPanels) {
             el.railPanels.scrollTop = state.tabScroll[resolved] || 0;
         }
@@ -1238,14 +1250,22 @@
      * ---------------------------------------------------------------- */
 
     const {
-        addSelectedDevice, deleteSelectedSlot, endDrag, geometryHelp, matchScreenShape, matchStatus, nudgeSelected, onPointerCancel, onPointerDown, onPointerMove, onPointerUp, renderDeviceHealth, renderDeviceList, renderStage: drawStage, rotateSelected, selectDevice, setViewZoom, syncInspector, viewZoom
+        addSelectedDevice, deleteSelectedSlot, endDrag, geometryHelp, matchScreenShape, matchStatus, nudgeSelected, onPointerCancel, onPointerDown, onPointerMove, onPointerUp, renderDeviceHealth, renderDeviceList, renderStage: drawStage, revealSheet, rotateSelected, selectDevice, setViewZoom, syncInspector, viewZoom
     } = window.PhysicalStage.create({
         selectionChanged: () => {
             if (operatorDevices) operatorDevices.render(); renderLogicalEditor();
             syncDraftUi();
-            if (state.tabName === "show") document.getElementById("arrange-custom").open = true;
         },
+        navigateSelection: (id, options) => navigateSelection(id, options),
         DRAG_THRESHOLD_PX, afterDraftChange, announce, bodyMetrics, calibrationFor, beginManual, canManualEdit, clearMsg, clone, deviceEntries, deviceLabel, deviceNumber, deviceRows, el, finiteOr, formatNumber, isOnline, latestProfile, mutateDraft, numberTag, numberedLabel, populateDeviceCard, profileFor, pushUndo, roundTo, selectedSlot, setInputValue, showError, showTab, state, syncTabDots, validPair
+    });
+
+    const navigateSelection = window.OperatorComposition.createSelectionNavigation({
+        composition: () => state.composition,
+        selectedId: () => state.selectedId,
+        openPanel: showTab,
+        revealTablet: (id, trigger) => revealSheet(id, trigger || document.activeElement),
+        expandArrange: () => { document.getElementById("arrange-custom").open = true; }
     });
 
     const geometryReady = typeof setViewZoom === "function" && typeof viewZoom === "function"
