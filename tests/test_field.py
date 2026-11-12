@@ -53,6 +53,16 @@ def placement(x=0):
             "bezel": {"top": 0, "right": 0, "bottom": 0, "left": 0}}
 
 
+def etag(client):
+    return client.get("/api/v3/config").json()["etag"]
+
+
+def rebind_request(client, target, body):
+    """Rebind through the legacy route with its current config guard."""
+    return client.post(
+        f"/devices/{target}/rebind", json=body, headers={"If-Match": etag(client)})
+
+
 # ---------------------------------------------------------------------------
 # diagnostics
 # ---------------------------------------------------------------------------
@@ -248,7 +258,7 @@ def test_rebind_moves_the_placement_and_the_number(client):
     old, other, new = lost_tablet_scenario(client)
     revision = client.get("/wall").json()["revision"]
 
-    response = client.post(f"/devices/{new}/rebind", json={"replaces": old})
+    response = rebind_request(client, new, {"replaces": old})
     assert response.status_code == 200, response.text
     assert response.json() == {
         "rebound": True, "device_id": new, "replaces": old, "number": 1,
@@ -276,15 +286,15 @@ def test_rebind_survives_a_server_restart_in_between(client):
     assert client.get("/devices").json()[new]["number"] == 1
 
     # The old id is only a vacant reservation now, and its number is unknown.
-    missing = client.post(f"/devices/{new}/rebind", json={"replaces": str(uuid.uuid4())})
+    missing = rebind_request(client, new, {"replaces": str(uuid.uuid4())})
     assert missing.status_code == 404
 
     other = register(client, number=2)
-    clash = client.post(f"/devices/{new}/rebind", json={"replaces": old, "number": 2})
+    clash = rebind_request(client, new, {"replaces": old, "number": 2})
     assert clash.status_code == 409
     assert other in client.get("/devices").json()
 
-    response = client.post(f"/devices/{new}/rebind", json={"replaces": old, "number": 4})
+    response = rebind_request(client, new, {"replaces": old, "number": 4})
     assert response.status_code == 200, response.text
     assert response.json()["number"] == 4 and response.json()["placed"] is True
     assert list(client.get("/wall").json()["placements"]) == [new]
@@ -294,7 +304,7 @@ def test_rebind_refuses_a_live_old_device(client):
     old, _other, new = lost_tablet_scenario(client)
     with client.websocket_connect("ws://127.0.0.1" + (f"/ws/device?device_id={old}&protocol=3")) as socket:
         socket.receive_json()
-        response = client.post(f"/devices/{new}/rebind", json={"replaces": old})
+        response = rebind_request(client, new, {"replaces": old})
         assert response.status_code == 409
     assert old in client.get("/wall").json()["placements"]
 
@@ -302,10 +312,10 @@ def test_rebind_refuses_a_live_old_device(client):
 def test_rebind_refuses_unknown_or_already_placed_targets(client):
     old, other, new = lost_tablet_scenario(client)
     ghost = str(uuid.uuid4())
-    assert client.post(f"/devices/{ghost}/rebind", json={"replaces": old}).status_code == 404
-    assert client.post(f"/devices/{new}/rebind", json={"replaces": new}).status_code == 422
-    assert client.post(f"/devices/{new}/rebind", json={"replaces": "nope"}).status_code == 422
-    assert client.post(f"/devices/{other}/rebind", json={"replaces": old}).status_code == 409
+    assert rebind_request(client, ghost, {"replaces": old}).status_code == 404
+    assert rebind_request(client, new, {"replaces": new}).status_code == 422
+    assert rebind_request(client, new, {"replaces": "nope"}).status_code == 422
+    assert rebind_request(client, other, {"replaces": old}).status_code == 409
     assert set(client.get("/wall").json()["placements"]) == {old, other}
 
 
@@ -313,7 +323,7 @@ def test_rebind_closes_a_connected_tablet_so_it_learns_its_new_number(client):
     old, _other, new = lost_tablet_scenario(client)
     with client.websocket_connect("ws://127.0.0.1" + (f"/ws/device?device_id={new}&protocol=3")) as socket:
         assert socket.receive_json()["number"] == 3
-        assert client.post(f"/devices/{new}/rebind", json={"replaces": old}).status_code == 200
+        assert rebind_request(client, new, {"replaces": old}).status_code == 200
         with pytest.raises(WebSocketDisconnect) as closed:
             while True:
                 socket.receive_json()
@@ -326,11 +336,37 @@ def test_rebind_closes_a_connected_tablet_so_it_learns_its_new_number(client):
 def test_rebind_is_a_guarded_write(client, monkeypatch):
     old, _other, new = lost_tablet_scenario(client)
     monkeypatch.setenv("TABLET_WALL_OPERATOR_ORIGIN", ORIGIN)
-    assert client.post(f"/devices/{new}/rebind", json={"replaces": old}).status_code == 403
+    assert rebind_request(client, new, {"replaces": old}).status_code == 403
     allowed = client.post(
-        f"/devices/{new}/rebind", json={"replaces": old}, headers={"Origin": ORIGIN}
+        f"/devices/{new}/rebind", json={"replaces": old},
+        headers={"Origin": ORIGIN, "If-Match": etag(client)},
     )
     assert allowed.status_code == 200
+
+
+def test_rebind_requires_the_current_config_etag_before_any_mutation(client):
+    old, other, new = lost_tablet_scenario(client)
+    before_wall = client.get("/wall").json()
+    before_roster = client.get("/devices").json()
+    body = {"replaces": old}
+
+    missing = client.post(f"/devices/{new}/rebind", json=body)
+    assert missing.status_code == 428
+    stale = client.post(
+        f"/devices/{new}/rebind", json=body, headers={"If-Match": "not-current"})
+    assert stale.status_code == 412
+    assert client.get("/wall").json() == before_wall
+    assert client.get("/devices").json() == before_roster
+
+    # An unknown or malformed target stays 404 before the guard can demand a
+    # header, so a stale caller cannot turn identity failure into 428/412.
+    ghost = str(uuid.uuid4())
+    assert client.post(f"/devices/{ghost}/rebind", json=body).status_code == 404
+    assert client.post("/devices/not-a-uuid/rebind", json=body).status_code == 404
+
+    accepted = rebind_request(client, new, body)
+    assert accepted.status_code == 200, accepted.text
+    assert set(client.get("/wall").json()["placements"]) == {new, other}
 
 
 def test_rebind_carries_a_physical_slot_and_its_display_records(client):
@@ -359,7 +395,7 @@ def test_rebind_carries_a_physical_slot_and_its_display_records(client):
     assert switched.status_code == 200, switched.text
 
     new = register(client)
-    response = client.post(f"/devices/{new}/rebind", json={"replaces": old})
+    response = rebind_request(client, new, {"replaces": old})
     assert response.status_code == 200, response.text
     assert response.json()["display_records"] == {"profiles": 1, "calibrations": 1}
 
@@ -385,7 +421,7 @@ def test_rebind_refuses_a_new_device_that_has_its_own_display_records(client):
         bezels={"left": 1, "top": 1, "right": 1, "bottom": 1},
         panel_pixels=None, label="new", provenance="hand-derived",
     )
-    response = client.post(f"/devices/{new}/rebind", json={"replaces": old})
+    response = rebind_request(client, new, {"replaces": old})
     assert response.status_code == 409
     assert old in client.get("/devices").json()
 
@@ -398,7 +434,7 @@ def test_rebind_from_an_unmeasured_old_device_ignores_the_new_devices_records(cl
         bezels={"left": 1, "top": 1, "right": 1, "bottom": 1},
         panel_pixels=None, label="new", provenance="hand-derived",
     )
-    response = client.post(f"/devices/{new}/rebind", json={"replaces": old})
+    response = rebind_request(client, new, {"replaces": old})
     assert response.status_code == 200, response.text
     assert response.json()["display_records"] == {"profiles": 0, "calibrations": 0}
     assert displays.profile(new, 1)["label"] == "new"

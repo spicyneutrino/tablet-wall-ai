@@ -1,5 +1,16 @@
 "use strict";
 (function (root) {
+    const RECOVERY_ACTION = /^(Allow|Bring|Open|Check|Reopen|Keep|Return|Wait|Refresh|Review|On the tablet,)/;
+    const RECOVERY_LIMIT = /\b(cannot|not proof|does not confirm)\b/i;
+    function recoveryParagraphs(text) {
+        const parts = [[], [], []];
+        for (const raw of String(text || "").match(/[^.!?]+[.!?]+/g) || []) {
+            const sentence = raw.trim();
+            if (!sentence) continue;
+            parts[RECOVERY_ACTION.test(sentence) ? 1 : RECOVERY_LIMIT.test(sentence) ? 2 : 0].push(sentence);
+        }
+        return parts.map(sentences => sentences.join(" ")).filter(Boolean);
+    }
     async function confirmModels({ ids, modelId, hardwareDeclared, reviewedEtag, api, ingestConfig, currentEtag, progress = () => {}, readAuthority = () => api("GET", "/api/v3/config", undefined, { fenced: true }) }) {
         if (!hardwareDeclared || !ids.length || new Set(ids).size !== ids.length || !modelId || !reviewedEtag) throw new Error("Review the exact tablets, select a model, and declare that you checked their hardware.");
         const captured = ids.slice(), completed = [];
@@ -24,13 +35,40 @@
     }
     function create({ state, api, labelFor, profileFor, calibrationFor, ingestConfig, refreshRoster, showConflict, announce, tabletForms, resolveOutput = async () => true, removedFromWall = () => {}, selectTablet, openArrange, renderRoster = () => {} }) {
         const { $ } = typeof module !== "undefined" && module.exports ? require("./operator-dom.js") : root.OperatorDom;
+        const powerReadiness = root.OperatorStage && root.OperatorStage.powerReadiness
+            ? root.OperatorStage.powerReadiness
+            : typeof module !== "undefined" && module.exports ? require("./operator-stage.js").powerReadiness : null;
+        const powerFor = id => powerReadiness
+            ? powerReadiness(state.roster[id], { stale: !!state.rosterError, checkedAt: state.rosterCheckedAt }) : null;
 
         let selectedId = null, impact = null, replacement = null, busy = false, snapshotsKey = "", replaceVersion = 0;
+        let replacementCandidate = null, replacementPointer = null;
         const results = new Map();
         let nameReview = null;
         const message = text => { $("tablet-action-message").textContent = text; };
         const path = (id, suffix = "") => "/api/v3/devices/" + encodeURIComponent(id) + suffix;
         function config() { return state.operatorConfig || { layout: state.base, scene: state.scene, runtime: { devices: state.roster }, revision: state.revision, generation: state.generation }; }
+        function ensureReplacementPointer() {
+            if (replacementPointer) return replacementPointer;
+            replacementPointer = $("tablet-replacement-pointer");
+            if (!replacementPointer) {
+                replacementPointer = document.createElement("div");
+                replacementPointer.id = "tablet-replacement-pointer";
+                replacementPointer.className = "operator-actions";
+                const recovery = $("tablet-recovery");
+                if (recovery && recovery.parentElement) recovery.parentElement.insertBefore(replacementPointer, recovery.nextSibling);
+            }
+            const button = document.createElement("button");
+            button.type = "button"; button.className = "btn"; button.textContent = "Review replacement with a new tablet";
+            button.addEventListener("click", () => {
+                if (!replacementCandidate) return;
+                selectTablet(replacementCandidate);
+                const first = $("replacement-old");
+                if (first && typeof first.focus === "function") first.focus();
+            });
+            replacementPointer.append(button);
+            return replacementPointer;
+        }
         function clearPlans() { nameReview = null; $("tablet-name-review").hidden = true; impact = null; replacement = null; $("tablet-forget-impact").hidden = true; $("replace-apply").disabled = true; $("replace-cancel").disabled = true; }
         function render() {
             renderRoster();
@@ -58,18 +96,31 @@
                 const form = tabletForms.observe(id, "name", { name: (state.deviceLabels || {})[id] || device && device.label || "" }, state.etag);
                 if (document.activeElement !== $("tablet-label")) $("tablet-label").value = form.values.name;
                 $("tablet-label-form").dataset.dirty = String(form.dirty);
+                $("tablet-label-save").classList.toggle("btn-primary", form.dirty && $("tablet-label-form").matches(":valid"));
                 $("tablet-label-form").dataset.deviceId = id;
+                $("tablet-label").placeholder = labelFor(id);
+                if ($("tablet-name-help")) $("tablet-name-help").textContent = "Current name: " + labelFor(id) + ". Leave empty to use the generated tablet name.";
                 $("tablet-label-review").hidden = !form.dirty;
                 $("tablet-label-discard").hidden = !form.dirty;
                 if (form.conflict) message("This tablet’s saved name changed elsewhere. Discard to use the current name, or review before saving.");
             }
             $("tablet-action-name").textContent = id ? labelFor(id) : "Select a tablet in the list or stage.";
             const evidence = id ? window.OperatorState.tabletState(config(), id, performance.now()) : null;
+            const power = id ? powerFor(id) : null;
+            const mappingStale = evidence?.status === "stale" && evidence.text === "Active mapping revisions differ from the pinned slot";
             if (impact || replacement) $("tablet-lifecycle").open = true;
             const keepEvidence = evidence && !evidence.showing && evidence.status !== "unplaced";
-            $("tablet-evidence").hidden = !keepEvidence;
-            $("tablet-evidence").textContent = keepEvidence ? evidence.text : "";
-            $("tablet-recovery").textContent = !id ? "" : evidence.status === "unplaced"
+            const paintText = keepEvidence ? evidence.text : "";
+            const staleText = state.rosterError ? "Status stale" : "";
+            const powerText = power ? power.label : "";
+            $("tablet-evidence").hidden = !id || (!staleText && !paintText && !powerText);
+            $("tablet-evidence").textContent = !id ? "" : [staleText, paintText, powerText].filter(Boolean).join("\n");
+            $("tablet-evidence").dataset.status = state.rosterError ? "stale" : evidence ? evidence.status : "";
+            $("tablet-evidence").dataset.powerState = power ? power.state : "";
+            $("tablet-evidence").dataset.powerWarning = String(!!power && power.warning);
+            $("tablet-evidence").dataset.powerStale = String(!!power && power.stale);
+            const paintGuidance = state.rosterError ? "The roster status is stale, so current paint cannot be confirmed. Refresh status before relying on this view."
+                : !id || !evidence || evidence.showing ? "" : evidence.status === "unplaced"
                 ? "Not placed yet. The wall cannot address this tablet until it is placed in Arrange."
                 : !device || !device.online
                 ? "On the tablet, check power, keep its screen awake, join the wall network and reopen the tablet page in its existing browser. The server cannot wake a powered-off or sleeping tablet."
@@ -77,21 +128,48 @@
                 : evidence.status === "identifying" ? "The Identify overlay temporarily covers the image. Wait for it to clear before relying on current image proof."
                 : ["unsupported_client", "unsupported_content", "unsupported"].includes(evidence.status) ? "Reopen the current tablet page in its existing browser and check browser support. The operator cannot remotely install or wake the tablet."
                 : evidence.status === "failed" ? "The tablet reported a failed image. Check the image availability, then retry it."
+                : mappingStale ? "Active mapping revisions differ from this placement. Review its measurements and pinned profile or calibration before relying on the wall."
+                : evidence.status === "stale" ? "The tablet's previous paint no longer matches the current content. Keep the page visible, check its connection, then retry the image. Wake lock readiness does not confirm paint."
                 : ["blocked", "invalid", "stale_calibration", "needs_calibration", "needs_profile", "viewport_mismatch", "zoom_changed", "missing_profile", "missing_calibration", "invalid_mapping"].includes(evidence.status) ? "Return the tablet to its calibrated rotation, 100% zoom and launch mode, or review its measurements."
-                : evidence.status === "unplaced" ? "Connected and available. Place this tablet in Arrange." : "Current matching reports are separate from connection status. Reconnect keeps this browser identity.";
-            $("tablet-recovery").hidden = !!evidence?.showing;
+                : "Current matching reports are separate from connection status. Reconnect keeps this browser identity.";
+            const powerGuidance = power && (power.warning || power.stale || !evidence || !evidence.showing) ? power.guidance : "";
+            const recoveryText = [paintGuidance, powerGuidance].filter(Boolean).join(" ");
+            $("tablet-recovery").replaceChildren(...recoveryParagraphs(recoveryText).map(part => {
+                const paragraph = document.createElement("p");
+                paragraph.textContent = part;
+                return paragraph;
+            }));
+            $("tablet-recovery").dataset.powerState = power ? power.state : "";
+            $("tablet-recovery").dataset.powerWarning = String(!!power && power.warning);
+            $("tablet-recovery").dataset.powerStale = String(!!power && power.stale);
+            $("tablet-recovery").hidden = !state.rosterError && !!evidence?.showing && !(power && (power.warning || power.stale));
             const recovery = $("tablet-recovery-actions");
             const healthy = !!evidence?.showing && !state.rosterError && state.etagState === "current";
             if (id !== recovery.dataset.deviceId || String(healthy) !== recovery.dataset.healthy) recovery.open = !healthy;
             recovery.dataset.deviceId = id; recovery.dataset.healthy = String(healthy);
+            const statusDetails = $("tablet-status-details");
+            if (statusDetails && (id !== statusDetails.dataset.deviceId || String(healthy) !== statusDetails.dataset.healthy)) statusDetails.open = !healthy;
+            if (statusDetails) { statusDetails.dataset.deviceId = id; statusDetails.dataset.healthy = String(healthy); }
             const tabletOnline = !!device && device.online === true;
             recovery.hidden = !tabletOnline;
+            recovery.dataset.powerState = power ? power.state : "";
+            recovery.dataset.powerWarning = String(!!power && power.warning);
             for (const action of ["tablet-identify", "tablet-retry-image", "tablet-reconnect"]) {
                 const button = $(action);
                 if (button) button.hidden = !tabletOnline;
             }
-            $("open-tablet-measurements").hidden = !["blocked", "invalid", "stale_calibration", "needs_calibration", "needs_profile", "viewport_mismatch", "zoom_changed", "missing_profile", "missing_calibration", "invalid_mapping"].includes(evidence?.status);
+            const mapped = mappingStale || ["blocked", "invalid", "stale_calibration", "needs_calibration", "needs_profile", "viewport_mismatch", "zoom_changed", "missing_profile", "missing_calibration", "invalid_mapping"].includes(evidence?.status);
+            const measured = state.layoutKind === "physical" || !!(state.base && state.base.kind === "physical")
+                || !!$("grid-kind") && $("grid-kind").value === "physical";
+            $("open-tablet-measurements").hidden = !id || !(measured || mapped);
             $("tablet-arrange").hidden = !id || evidence?.status !== "unplaced";
+            const applied = state.base ? window.OperatorState.entries(state.base) : {};
+            const onlineUnplaced = Object.keys(state.roster)
+                .filter(key => state.roster[key] && state.roster[key].online === true && !applied[key])
+                .sort((a, b) => window.OperatorState.compareIds(state.roster, state.deviceLabels || {}, a, b));
+            replacementCandidate = onlineUnplaced.length ? onlineUnplaced[onlineUnplaced.length - 1] : null;
+            const pointer = ensureReplacementPointer();
+            pointer.hidden = !device || device.online === true || !replacementCandidate;
             const oldIds = Object.keys(state.roster).filter(key => key !== id && !state.roster[key].online);
             $("replacement-offer").hidden = !device || !device.online || !!active || !oldIds.length;
             const oldSelect = $("replacement-old"), oldKey = oldIds.map(key => key + labelFor(key)).join("|");
@@ -122,12 +200,17 @@
             } else if (slot) details.push("Pinned calibration health is unavailable. Reload before relying on the mapping.");
             if (mapping.reason) details.push(mapping.reason + ". Return to the calibrated rotation, zoom and launch mode, or recalibrate.");
             if (device && device.viewport) details.push("Live viewport " + device.viewport.width + " × " + device.viewport.height + ", " + device.viewport.orientation + "°, " + device.viewport.mode + ", zoom " + (device.viewport.visual_scale === undefined ? "not reported" : device.viewport.visual_scale) + ".");
+            if (power) details.push("Wake lock readiness: " + power.label.replace(/^Wake lock: |^Last known wake lock /, power.stale ? "last known " : "") + ". " + power.guidance);
             $("tablet-provenance").textContent = details.join(" ");
             for (const action of ["tablet-label-save", "tablet-remove", "tablet-forget-preview", "replace-preview"]) $(action).disabled = !id || busy || state.etagState !== "current";
             for (const action of ["identify", "retry-image", "reconnect"]) {
                 const button = $("tablet-" + action);
                 button.disabled = action === "identify" ? !canIdentify(id) : !device || !device.online || busy;
-                button.title = !device || !device.online ? "Unavailable while offline" : action === "identify" && !(device.caps || []).includes("identify") ? "This client does not advertise Identify" : action === "identify" && state.etagState !== "current" ? "Refresh status before Identify" : "";
+                button.title = !device || !device.online ? "Unavailable while offline"
+                    : action === "identify" && !(device.caps || []).includes("identify") ? "This client does not advertise Identify"
+                    : action === "identify" && state.etagState !== "current" ? "Refresh status before Identify"
+                    : action === "retry-image" ? "Ask this online tablet to retry the current image. This does not wake a sleeping tablet."
+                    : action === "reconnect" ? "Reconnect this browser identity. This does not wake a sleeping tablet." : "";
             }
             $("tablet-forget-confirm").disabled = busy || !impact;
             $("replace-apply").disabled = busy || !replacement;
@@ -214,6 +297,7 @@
             nameReview = null; $("tablet-name-review").hidden = true;
             const form = tabletForms.edit(selectedId, "name", { name: $("tablet-label").value }, state.etag);
             $("tablet-label-form").dataset.dirty = String(form.dirty);
+            $("tablet-label-save").classList.toggle("btn-primary", form.dirty && $("tablet-label-form").matches(":valid"));
             $("tablet-label-review").hidden = !form.dirty;
             $("tablet-label-discard").hidden = !form.dirty;
         });
@@ -257,7 +341,7 @@
         for (const action of ["retry-image", "reconnect"]) $("tablet-" + action).addEventListener("click", () => {
             const id = selectedId;
             run(async () => { await api("POST", path(id, "/" + action), undefined, { etag: true });
-                const text = action === "retry-image" ? "Image retry requested. Waiting for a fresh paint confirmation." : "Reconnect requested. The tablet keeps its identity.";
+                const text = action === "retry-image" ? "Image retry requested. Waiting for a fresh paint confirmation. This does not wake a sleeping tablet." : "Reconnect requested. The tablet keeps its identity. This does not wake a sleeping tablet.";
                 results.set(id, text); if (selectedId === id) message(text);
                 await refreshRoster(); });
         });

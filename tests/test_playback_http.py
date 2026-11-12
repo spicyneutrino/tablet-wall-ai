@@ -249,7 +249,8 @@ def test_rebind_aborts_an_active_session():
             started = client.post("/api/v3/playback/start")
             assert started.status_code == 200, started.text
             response = client.post(
-                f"/devices/{replacement}/rebind", json={"replaces": B}
+                f"/devices/{replacement}/rebind", json={"replaces": B},
+                headers={"If-Match": client.get("/api/v3/config").json()["etag"]},
             )
             assert response.status_code == 200, response.text
             assert client.get("/api/v3/playback").json() == {"state": "stopped"}

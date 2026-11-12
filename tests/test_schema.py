@@ -7,12 +7,14 @@ initializers cannot both migrate.
 """
 
 import json
+import shutil
 import sqlite3
 import threading
 from pathlib import Path
 
 import pytest
 
+import main
 import tabletwall.persist as persist
 
 WALL = {
@@ -390,3 +392,152 @@ def test_schema_3_missing_media_video_is_refused(tmp_path, monkeypatch):
     connection.close()
     with pytest.raises(persist.SchemaError, match="media_video"):
         persist.ensure_schema()
+
+
+# ---------------------------------------------------------------------------
+# startup validation and generation-only save (M7-01)
+# ---------------------------------------------------------------------------
+
+_DEVICE = "0f8fad5b-d9cb-469f-a165-70867728950e"
+
+
+def _seed_and_copy(tmp_path, monkeypatch, layout, scene, *, revision=7,
+                   generation="old-generation"):
+    """Write one schema-3 row, then run startup against a byte copy of it."""
+    source = tmp_path / "source.db"
+    monkeypatch.setenv("TABLET_WALL_DB", str(source))
+    persist.ensure_schema()
+    connection = sqlite3.connect(source)
+    try:
+        connection.execute(
+            "INSERT INTO wall_state VALUES (1, ?, ?, ?, ?)",
+            (json.dumps(layout, sort_keys=True), json.dumps(scene, sort_keys=True),
+             revision, generation),
+        )
+        connection.commit()
+    finally:
+        connection.close()
+    candidate = tmp_path / "candidate.db"
+    shutil.copy2(source, candidate)
+    monkeypatch.setenv("TABLET_WALL_DB", str(candidate))
+    return candidate
+
+
+def _wall_row(path: Path) -> tuple[str, str, int, str]:
+    connection = sqlite3.connect(path)
+    try:
+        return connection.execute(
+            "SELECT layout, scene, revision, generation FROM wall_state WHERE id = 1"
+        ).fetchone()
+    finally:
+        connection.close()
+
+
+def _logical_layout() -> dict:
+    return {"width": 2000, "height": 1000, "placements": {}}
+
+
+def test_startup_refuses_a_malformed_logical_placement_before_any_write(
+    tmp_path, monkeypatch
+):
+    layout = {
+        "width": 2000,
+        "height": 1000,
+        "placements": {
+            _DEVICE: {
+                "device_id": _DEVICE, "x": 0, "y": 0, "w": 100, "h": 100,
+                # The left bezel consumes the whole visible width.
+                "bezel": {"top": 0, "right": 0, "bottom": 0, "left": 100},
+            }
+        },
+    }
+    path = _seed_and_copy(
+        tmp_path, monkeypatch, layout,
+        {"content": {"type": "color"}, "layout": "active"},
+    )
+    before = _wall_row(path)
+
+    with pytest.raises(persist.SchemaError, match="visible rectangle"):
+        main._restore_wall_state()
+
+    assert _wall_row(path) == before
+
+
+@pytest.mark.parametrize("content", [
+    {"type": "image", "asset": "sha256:" + "a" * 64},
+    {"type": "image", "asset": "not-an-id", "intrinsicWidth": 10, "intrinsicHeight": 10},
+    {"type": "image", "asset": "sha256:" + "a" * 64,
+     "intrinsicWidth": 10, "intrinsicHeight": 10, "fit": "stretch"},
+    {"type": "image", "asset": "sha256:" + "a" * 64,
+     "intrinsicWidth": 10, "intrinsicHeight": 10, "background": "red"},
+    {"type": "future"},
+])
+def test_startup_refuses_malformed_scene_content_before_any_write(
+    tmp_path, monkeypatch, content
+):
+    path = _seed_and_copy(
+        tmp_path, monkeypatch, _logical_layout(),
+        {"content": content, "layout": "active"},
+    )
+    before = _wall_row(path)
+
+    with pytest.raises(persist.SchemaError):
+        main._restore_wall_state()
+
+    assert _wall_row(path) == before
+
+
+def test_startup_preserves_legacy_documents_and_updates_only_the_generation(
+    tmp_path, monkeypatch
+):
+    layout = {
+        **_logical_layout(),
+        "legacyNote": {"kept": ["byte", "for", "byte"]},
+    }
+    scene = {
+        "content": {
+            "type": "image", "asset": "sha256:" + "a" * 64,
+            "intrinsicWidth": 16, "intrinsicHeight": 9,
+            # A legitimate legacy image may omit both fit and background.
+        },
+        "layout": "active",
+        "legacyNote": "keep me",
+    }
+    path = _seed_and_copy(tmp_path, monkeypatch, layout, scene)
+    before_layout, before_scene, before_revision, before_generation = _wall_row(path)
+
+    main._restore_wall_state()
+
+    after_layout, after_scene, after_revision, after_generation = _wall_row(path)
+    assert (after_layout, after_scene, after_revision) == (
+        before_layout, before_scene, before_revision)
+    assert after_generation != before_generation
+    restored = persist.load_state()
+    assert restored["layout"]["legacyNote"] == layout["legacyNote"]
+    assert restored["scene"]["content"] == scene["content"]
+
+
+def test_startup_accepts_a_schema_2_envelope_and_preserves_its_stored_bytes(
+    tmp_path, monkeypatch
+):
+    stored_layout = {
+        "schema": 2, "kind": "logical",
+        "data": {**_logical_layout(), "legacyNote": "inside the envelope"},
+    }
+    stored_scene = {
+        "kind": "static",
+        "content": {"type": "color"},
+        "layout": "active",
+        "legacyNote": "outside the runtime shape",
+    }
+    path = _seed_and_copy(tmp_path, monkeypatch, stored_layout, stored_scene)
+    before_layout, before_scene, before_revision, _ = _wall_row(path)
+
+    main._restore_wall_state()
+
+    after_layout, after_scene, after_revision, _ = _wall_row(path)
+    assert (after_layout, after_scene, after_revision) == (
+        before_layout, before_scene, before_revision)
+    assert persist.load_state()["scene"] == {
+        "content": {"type": "color"}, "layout": "active"}
+    assert persist.load_state()["layout"]["legacyNote"] == "inside the envelope"

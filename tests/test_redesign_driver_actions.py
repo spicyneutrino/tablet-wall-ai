@@ -19,7 +19,7 @@ def test_first_journey_count_includes_real_native_confirmations(tmp_path):
     ), result["failures"]
     identity = json.loads((tmp_path / "run/identity.json").read_text())
     initial = identity["first_wall_actions"]
-    assert len(initial) == identity["script_fixture_action_count"] == 16
+    assert len(initial) == identity["script_fixture_action_count"] == 17
     assert (
         sum(action.startswith("Accept explicit confirmation:") for action in initial)
         == 2

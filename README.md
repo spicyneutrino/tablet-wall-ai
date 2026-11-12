@@ -160,6 +160,10 @@ applies the saved arrangement and keeps the current content. **Preview** beside
 a content record opens a preview for **Show saved content**. Automatic restore points are labelled separately from
 named arrangements. Saving a record does not apply a pending preview.
 
+Fit uses the scene background, default `#0b1120`. A custom background from
+an applied or saved scene is retained when that content is adjusted or recalled.
+The workspace has no background colour picker.
+
 Follow the [image-wall runbook](deploy/IMAGE-WALL-RUNBOOK.md) for startup,
 joining, display checks, backup, and recovery.
 

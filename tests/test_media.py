@@ -260,6 +260,22 @@ class TestPublication:
         problems = media.verify_integrity()
         assert problems and problems[0]["object_id"] == descriptor["id"]
 
+    def test_only_the_display_rendition_can_become_the_scene_image(
+        self, monkeypatch, tmp_path
+    ):
+        configure(monkeypatch, tmp_path)
+        job, result = _synthetic_job(tmp_path)
+        by_role = {
+            entry["role"]: "sha256:" + entry["sha256"]
+            for entry in result["objects"]
+        }
+        descriptor = media.publish(job, result, "phone.jpg")
+        assert descriptor["id"] == by_role["display"]
+        assert media.find_object(by_role["display"])["id"] == by_role["display"]
+        for role in ("master", "fallback", "thumbnail"):
+            assert media.find_object(by_role[role]) is None, role
+            assert media.find_servable(by_role[role])["id"] == by_role[role], role
+
     def test_an_unready_asset_is_not_listed(self, monkeypatch, tmp_path):
         configure(monkeypatch, tmp_path)
         job, result = _synthetic_job(tmp_path)

@@ -185,7 +185,7 @@
     }
 
     function create({ state, api, copyText }) {
-        const { $ } = typeof module !== "undefined" && module.exports ? require("./operator-dom.js") : root.OperatorDom;
+        const { $, setTextIfChanged } = typeof module !== "undefined" && module.exports ? require("./operator-dom.js") : root.OperatorDom;
 
         let data = null, fetchedAt = null, failure = null, qrFailed = false, loading = false, qrRetry = 0;
 
@@ -194,6 +194,7 @@
             element.replaceChildren();
             pairs.forEach(([term, value]) => {
                 const dt = document.createElement("dt"), dd = document.createElement("dd");
+                if (term === "Security trust") dd.className = "callout callout-warning";
                 dt.textContent = term;
                 dd.textContent = typeof value === "object" ? JSON.stringify(value) : value;
                 element.append(dt, dd);
@@ -204,12 +205,13 @@
         function render() {
             const model = view(data, { error: failure, fetchedAt: fetchedAt });
             const status = $("readiness-status");
-            status.textContent = model.status.text;
+            setTextIfChanged(status, model.status.text);
             status.dataset.kind = model.status.kind;
 
             $("tablet-url").textContent = model.url.href || "";
             $("tablet-join-line").hidden = $("join-network").hidden = !model.url.copyable;
-            $("tablet-url-note").textContent = model.url.note;
+            $("tablet-url-note").textContent = /loopback/.test(model.url.note) ? "Reachable from this computer only." : model.url.note;
+            if ($("tablet-join-guidance")) $("tablet-join-guidance").textContent = model.url.note;
 
             const figure = $("tablet-qr-figure"), image = $("tablet-qr"), qrError = $("tablet-qr-error");
             figure.hidden = !model.qr.href;
@@ -225,12 +227,17 @@
                 ? "The server did not provide a usable same-origin QR address. Use the text address."
                 : "The QR encodes only the join address, not a credential.";
 
-            const overview = new Set(["Wi-Fi", "Uploads", "Security trust"]);
-            const facts = model.facts.filter(([name]) => overview.has(name));
-            const details = model.facts.filter(([name]) => !overview.has(name)).map(([name, value]) =>
-                [name === "Image content" ? "Content at last check" : name, value]);
+            const overview = new Set(["Wi-Fi", "Security trust"]);
+            const backup = new Set(["Backup manifest", "Backup proof", "Restore rehearsal", "Backup scope"]);
+            const facts = model.facts.filter(([name, value]) => overview.has(name) && !(name === "Wi-Fi" && String(value).startsWith("Not reported"))).map(([name, value]) => [name,
+                name === "Security trust" && String(value).startsWith("Trusted local hotspot") ? "Trusted local hotspot only" : value]);
+            const backupFacts = model.facts.filter(([name]) => backup.has(name));
+            const details = model.facts.filter(([name]) => !overview.has(name) && !backup.has(name))
+                .map(([name, value]) => [name === "Image content" ? "Content at last check" : name, value]);
             factList($("operator-readiness-facts"), facts, JSON.stringify(facts));
-            factList($("operator-readiness-details"), details, JSON.stringify(details));
+            factList($("operator-readiness-backup"), backupFacts, JSON.stringify(backupFacts));
+            const guidance = model.facts.filter(([name]) => overview.has(name));
+            factList($("operator-readiness-details"), [...details, ...guidance], JSON.stringify([...details, ...guidance]));
             factList($("operator-readiness-paths"), model.paths, JSON.stringify(model.paths));
 
             const errors = $("readiness-errors");
@@ -258,7 +265,6 @@
                 : "Last successful read at " + new Date(fetchedAt).toLocaleTimeString() + ".";
             const refresh = $("btn-readiness-refresh");
             refresh.disabled = loading;
-            refresh.textContent = loading ? "Refreshing…" : failure ? "Retry" : "Refresh";
             refresh.setAttribute("aria-label", loading ? "Refreshing server checks…" : failure ? "Retry server checks" : "Refresh server checks");
             return model;
         }
@@ -309,9 +315,14 @@
         });
         $("copy-tablet-url").addEventListener("click", async function () {
             const model = view(data, { error: failure, fetchedAt: fetchedAt });
-            $("readiness-message").textContent = await copyText(model.url.href)
-                ? "Tablet address copied."
-                : "Copy failed. Select and copy the text address.";
+            const copied = await copyText(model.url.href);
+            $("readiness-message").textContent = copied ? "Tablet address copied." : "Copy failed. Select and copy the text address.";
+            $("copy-tablet-url").textContent = copied ? "Copied" : "Copy";
+            $("copy-tablet-url").setAttribute("aria-label", copied ? "Copied tablet address" : "Copy tablet address");
+            $("copy-tablet-url").addEventListener("blur", () => {
+                $("copy-tablet-url").textContent = "Copy";
+                $("copy-tablet-url").setAttribute("aria-label", "Copy tablet address");
+            }, { once: true });
         });
 
         return { render, load, refresh: load };

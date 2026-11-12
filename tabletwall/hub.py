@@ -121,6 +121,27 @@ async def _send_wall_to_device(
             await _broadcast_offline(device_id, record.get("last_seen", _now_iso()))
 
 
+def _config_updated_frame() -> dict[str, Any]:
+    """A protocol-3 config event carrying the durable generation/etag.
+
+    The etag is computed at send time, after the caller's durable commit, and
+    is exactly the value ``GET /api/v3/config`` reports for that state. Callers
+    build one frame per change so every controller sees the same token even
+    when a send yields to another request.
+    """
+    from main import _config_etag
+
+    frame: dict[str, Any] = {
+        "type": "config_updated",
+        "revision": wall["revision"],
+        "generation": wall["generation"],
+    }
+    etag = _config_etag()
+    if etag:
+        frame["etag"] = etag
+    return frame
+
+
 async def _broadcast_wall() -> None:
     """Push the current wall to every version-2 socket.
 
@@ -130,15 +151,18 @@ async def _broadcast_wall() -> None:
     "Concurrency rules"). Version-1 sockets never receive a version-2 frame.
     """
     wall_updated = {"type": "wall_updated", "wall": _wall_state()}
+    v3_sockets = [
+        websocket for websocket in list(controller_sockets)
+        if controller_protocols.get(websocket) == 3
+    ]
+    config_frame = _config_updated_frame() if v3_sockets else None
     for websocket in list(controller_sockets):
         protocol = controller_protocols.get(websocket, 1)
         if protocol == 3:
+            if config_frame is None:
+                config_frame = _config_updated_frame()
             try:
-                await _send(websocket, {
-                    "type": "config_updated",
-                    "revision": wall["revision"],
-                    "generation": wall["generation"],
-                })
+                await _send(websocket, config_frame)
             except Exception:
                 controller_sockets.discard(websocket)
                 controller_protocols.pop(websocket, None)
@@ -225,11 +249,18 @@ async def _broadcast_device_status(device_id: str, *, presentation_active: bool 
 
 
 async def _broadcast_config_updated() -> None:
-    for socket in list(controller_sockets):
-        if controller_protocols.get(socket) != 3:
-            continue
+    sockets = [
+        socket for socket in list(controller_sockets)
+        if controller_protocols.get(socket) == 3
+    ]
+    if not sockets:
+        # No v3 listener: do not build the durable config payload (which reads
+        # snapshots and histories) just to throw the frame away.
+        return
+    frame = _config_updated_frame()
+    for socket in sockets:
         try:
-            await _send(socket, {"type": "config_updated", "generation": wall["generation"], "revision": wall["revision"]})
+            await _send(socket, frame)
         except Exception:
             controller_sockets.discard(socket)
             controller_protocols.pop(socket, None)

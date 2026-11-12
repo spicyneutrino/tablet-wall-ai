@@ -19,6 +19,10 @@ def register(client, payload, device_id=DEVICE):
     assert response.status_code == 200, response.text
 
 
+def etag(client):
+    return client.get("/api/v3/config").json()["etag"]
+
+
 def test_restart_retains_identity_number_color_and_metadata_but_no_presence(device_payload):
     with TestClient(main.app) as client:
         register(client, device_payload)
@@ -57,11 +61,11 @@ def test_delete_and_rebind_do_not_resurrect_old_identity(device_payload):
     with TestClient(main.app) as client:
         register(client, device_payload)
         register(client, device_payload, SECOND)
-        assert client.post(f"/devices/{SECOND}/rebind", json={"replaces": DEVICE}).status_code == 200
+        assert client.post(f"/devices/{SECOND}/rebind", json={"replaces": DEVICE}, headers={"If-Match": etag(client)}).status_code == 200
         assert set(persist.load_devices()) == {SECOND}
     with TestClient(main.app) as client:
         assert client.get(f"/device/{SECOND}").json()["number"] == 1
-        assert client.delete(f"/devices/{SECOND}").status_code == 200
+        assert client.delete(f"/devices/{SECOND}", headers={"If-Match": etag(client)}).status_code == 200
     with TestClient(main.app) as client:
         assert client.get("/devices").json() == {}
 
@@ -85,7 +89,7 @@ def test_failed_roster_write_restores_live_metadata(client, device_payload, monk
         elif operation == "all_colors":
             client.post("/devices/color", json={"color": "#123abc"})
         else:
-            client.delete(f"/devices/{DEVICE}")
+            client.delete(f"/devices/{DEVICE}", headers={"If-Match": etag(client)})
     assert main.devices == previous
     assert main.devices[DEVICE] is original_record
     assert persist.load_devices() == durable
@@ -189,9 +193,9 @@ def test_combined_mutations_roll_back_wall_roster_profiles_and_notifications(
                     patch.setattr(persist, "save_devices", fail_roster)
                 with pytest.raises(sqlite3.OperationalError, match="injected"):
                     if operation == "delete":
-                        client.delete(f"/devices/{DEVICE}")
+                        client.delete(f"/devices/{DEVICE}", headers={"If-Match": etag(client)})
                     else:
-                        client.post(f"/devices/{SECOND}/rebind", json={"replaces": DEVICE})
+                        client.post(f"/devices/{SECOND}/rebind", json={"replaces": DEVICE}, headers={"If-Match": etag(client)})
             assert main.wall == before_wall
             assert main.devices == before_devices
             assert socket_id in main.device_sockets

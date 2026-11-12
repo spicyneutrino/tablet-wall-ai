@@ -8,10 +8,12 @@ scanning, addressed by the opaque content ID ``sha256:`` plus the lowercase
 SHA-256 of their bytes, and read-only. Identical bytes therefore have one
 identity, a rename preserves it, and replacing the bytes mints a new one.
 
-Every read path scans the directory and hashes its current bytes. Decoded
-format and dimensions are cached by content hash, with a bounded entry count.
-A copied file is usable at once, and an ID whose bytes are gone returns 404.
-File metadata alone never establishes that bytes passed image validation.
+Inventory refresh, scene acceptance, and serving scan the directory and hash
+current bytes. The readiness probe validates its cached candidate with one
+capped read instead, and falls back to a bounded directory scan after a miss.
+Decoded format and dimensions are cached by content hash, with a bounded entry
+count. A copied file is usable at once, and an ID whose bytes are gone returns
+404. File metadata alone never establishes that bytes passed image validation.
 
 Two invariants are worth spelling out because the design hangs off them:
 
@@ -41,6 +43,7 @@ import hashlib
 import logging
 import os
 import stat
+import time
 from collections import OrderedDict
 from dataclasses import dataclass
 from io import BytesIO
@@ -63,6 +66,13 @@ DEFAULT_ASSET_DIR = "./assets"
 MAX_ASSET_BYTES = 10 * 1024 * 1024
 MAX_ASSET_PIXELS = 12_000_000
 
+# A cache miss re-scans the directory at most once per this interval, per
+# directory. Repeated missing IDs therefore cost one bounded scan per window
+# instead of one full scan per readiness read, while renamed or restored bytes
+# still become discoverable within the window. The clock is monotonic, so a
+# wall-clock change neither extends nor shortens it.
+NEGATIVE_REFRESH_SECONDS = 2.0
+
 # Only these formats are inventoried, and only under these extensions: a JPEG
 # named ``.png`` is "misleadingly named" and rejected. Matching is
 # case-insensitive (``PHOTO.JPG`` is a normal camera name).
@@ -74,7 +84,7 @@ _NORMAL_ORIENTATION = 1
 
 # ``O_NOFOLLOW`` is the symlink half of the race defence: a path swapped for
 # a link between listing and opening fails here instead of being followed.
-_OPEN_FLAGS = os.O_RDONLY | os.O_CLOEXEC | getattr(os, "O_NOFOLLOW", 0)
+_OPEN_FLAGS = os.O_RDONLY | os.O_CLOEXEC | getattr(os, "O_NOFOLLOW", 0) | getattr(os, "O_NONBLOCK", 0)
 _READ_CHUNK = 1 << 20
 
 
@@ -141,10 +151,21 @@ class Asset:
         }
 
 
-# The inventory from the most recent scan: ``{asset_id: Asset}``. Replaced
-# wholesale by ``refresh`` (never updated in place), so a concurrent reader
-# sees either the previous inventory or the new one, never a partial one.
-_inventory: dict[str, Asset] = {}
+# The inventory from the most recent scan together with the directory it came
+# from: ``(directory, {asset_id: Asset})``. Published as one immutable value,
+# so a reader never pairs one directory's inventory with another's and never
+# sees a partially built scan. Replaced wholesale, never updated in place.
+_inventory_state: tuple[str, dict[str, Asset]] | None = None
+
+# Serializes scans and the negative-refresh decision. A healthy probe does not
+# take it: it hashes one cached candidate without enumerating anything.
+_scan_lock = Lock()
+
+# ``directory -> monotonic time of the last bounded scan``. Directory-scoped
+# so switching ``TABLET_WALL_ASSET_DIR`` neither reuses nor extends another
+# directory's cooldown.
+_negative_refresh: dict[str, float] = {}
+_clock = time.monotonic
 
 # Cache only validation facts, never file paths or bytes. A hash from a new
 # capped read is required on every hit, even if stat metadata was preserved.
@@ -159,16 +180,31 @@ def asset_dir() -> str:
 
 
 def refresh() -> dict[str, Asset]:
-    """Re-scan the directory and replace the cached inventory.
+    """Re-scan the directory now and replace the cached inventory.
 
-    Called at startup and before every read, so callers never have to decide
-    whether the cache is fresh. A directory that does not exist yet is an
-    empty inventory (the default ``./assets`` is usually created by the
-    operator later); a directory that exists but cannot be scanned raises,
-    because silently reporting "no assets" would hide a broken configuration.
+    This is the explicit inventory refresh (startup and ``GET /assets``). It
+    clears the directory's negative-refresh cooldown, so an operator who asks
+    for a refresh renews the opportunity to discover new bytes instead of
+    waiting out a miss window. A directory that does not exist yet is an empty
+    inventory (the default ``./assets`` is usually created by the operator
+    later); a directory that exists but cannot be scanned raises, because
+    silently reporting "no assets" would hide a broken configuration.
     """
-    global _inventory
     directory = asset_dir()
+    with _scan_lock:
+        fresh = _scan(directory)
+        _negative_refresh.pop(directory, None)
+    return fresh
+
+
+def _scan(directory: str) -> dict[str, Asset]:
+    """Scan ``directory`` and publish the inventory atomically.
+
+    Callers hold ``_scan_lock``. Validation is a full read/hash/decode of every
+    candidate, exactly as an inventory refresh must be; probes never come here
+    unless their cached candidate is missing or invalid.
+    """
+    global _inventory_state
     fresh: dict[str, Asset] = {}
     for name, path in _candidates(directory):
         try:
@@ -181,13 +217,14 @@ def refresh() -> dict[str, Asset]:
         # Content identity: two files with the same bytes are one logical
         # asset, and the first name in sort order is its display name.
         fresh.setdefault(asset.id, asset)
-    _inventory = fresh
+    _inventory_state = (directory, fresh)
     return fresh
 
 
 def current() -> dict[str, Asset]:
     """The inventory from the most recent scan (empty before the first one)."""
-    return dict(_inventory)
+    state = _inventory_state
+    return dict(state[1]) if state is not None else {}
 
 
 def list_assets() -> list[dict[str, Any]]:
@@ -204,9 +241,61 @@ def find(asset_id: str) -> Asset | None:
 
     Scene acceptance uses this, so an ID is accepted only against the
     directory as it is *now*, with intrinsic dimensions read from the file
-    that was just validated.
+    that was just validated. This is not the bounded readiness probe: it
+    always scans, and does not reset the negative-refresh cooldown.
     """
-    return refresh().get(asset_id)
+    with _scan_lock:
+        return _scan(asset_dir()).get(asset_id)
+
+
+def available(asset_id: str) -> bool:
+    """Bounded availability probe for one content ID.
+
+    A cached candidate is validated by reading and hashing that one file
+    (``_still_valid``): one capped read, no directory enumeration. Only when
+    the candidate is missing or its bytes no longer hash to the requested ID
+    does this fall back to a full scan, at most once per
+    ``NEGATIVE_REFRESH_SECONDS`` per directory. Repeated misses therefore cost
+    one scan per window, while a rename, restoration, or newly copied bytes
+    still become available inside the window. A stale entry is never success.
+    """
+    if not _is_asset_id(asset_id):
+        return False
+    directory = asset_dir()
+    cached = _cached(directory, asset_id)
+    if cached is not None and _still_valid(cached, asset_id):
+        return True
+    with _scan_lock:
+        now = _clock()
+        last = _negative_refresh.get(directory)
+        if last is not None and now - last < NEGATIVE_REFRESH_SECONDS:
+            return False
+        fresh = _scan(directory)
+        _negative_refresh[directory] = now
+    return asset_id in fresh
+
+
+def _cached(directory: str, asset_id: str) -> Asset | None:
+    """The cached candidate for ``asset_id``, only from ``directory``."""
+    state = _inventory_state
+    if state is None or state[0] != directory:
+        return None
+    return state[1].get(asset_id)
+
+
+def _still_valid(asset: Asset, asset_id: str) -> bool:
+    """True when the cached candidate still hashes to ``asset_id``.
+
+    ``_load`` re-reads the path capped (``O_NOFOLLOW``), re-hashes the bytes,
+    and re-checks the extension against the decoded format using cached decode
+    facts. A changed, corrupt, oversized, or symlinked replacement therefore
+    fails here and can never answer for the old identity.
+    """
+    try:
+        current_asset = _load(asset.name, asset.path)
+    except _Rejected:
+        return False
+    return current_asset.id == asset_id
 
 
 def fetch(asset_id: str) -> tuple[Asset, bytes] | None:
@@ -219,7 +308,8 @@ def fetch(asset_id: str) -> tuple[Asset, bytes] | None:
     """
     if not _is_asset_id(asset_id):
         return None
-    inventory = refresh()
+    with _scan_lock:
+        inventory = _scan(asset_dir())
     asset = inventory.get(asset_id)
     if asset is None:
         return None

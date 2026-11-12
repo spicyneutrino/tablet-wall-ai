@@ -15,6 +15,7 @@
     const MAX_DWELL_MS = 600000;
     const TAB_STORAGE_KEY = "tablet-wall-console-tab-v1";
     const TAB_NAMES = ["tablet", "show", "content", "saved", "system"];
+    const SNAPSHOT_NAME_RULE = "Use letters, numbers, spaces, dots, underscores or hyphens. Start with a letter or number. 64 characters at most.";
     const COMPACT_MEDIA = typeof window.matchMedia === "function"
         ? window.matchMedia("(max-width: 719px)") : null;
 
@@ -44,7 +45,6 @@
         btnRedo: document.getElementById("btn-redo"),
         btnApply: document.getElementById("btn-apply"),
         btnCancel: document.getElementById("btn-cancel"),
-        btnReload: document.getElementById("btn-reload"),
         errorText: document.getElementById("error-text"),
         conflictPanel: document.getElementById("conflict-panel"),
         conflictText: document.getElementById("conflict-text"),
@@ -663,8 +663,8 @@
     function tabEntries() {
         return [
             { name: "content", tab: el.tabContent, panel: el.panelContent },
-            { name: "tablet", tab: el.tabTablet, panel: el.panelTablet },
             { name: "show", tab: el.tabShow, panel: el.panelShow },
+            { name: "tablet", tab: el.tabTablet, panel: el.panelTablet },
             { name: "saved", tab: document.getElementById("tab-saved"), panel: document.getElementById("panel-saved") },
             { name: "system", tab: el.tabSystem, panel: el.panelSystem }
         ];
@@ -735,6 +735,7 @@
         if (workspace) workspace.render();
         if (changed) renderStage();
         if (changed && name === "saved") { loadLayouts(); loadScenes(); }
+        if (changed && name === "system" && operatorReadiness) { operatorReadiness.load(); loadDiagnostics(false); }
         return true;
     }
 
@@ -937,8 +938,11 @@
         if (conflict) showConflict("The wall changed. Your arrangement preview and its original guard are retained. Review the live wall, then rebuild or discard the preview.");
         else if (!state.draftConflict) hideConflict();
         renderAll(); maybeChooseInitialTab();
-        if (firstConfig) announce(Object.keys(window.OperatorState.entries(state.base)).length ? "Controller connected to the server. Review current tablet reports."
+        if (firstConfig) {
+            loadLayouts(); loadScenes();
+            announce(Object.keys(window.OperatorState.entries(state.base)).length ? "Controller connected to the server. Review current tablet reports."
             : Object.values(state.roster).some(device => device.online) ? "Controller connected to the server. Arrange connected tablets." : "Controller connected to the server. Add tablets to begin.");
+        }
     }
 
     function ensureSelection() {
@@ -957,6 +961,7 @@
             state.gridPreview = null;
             state.draftConflict = false;
             state.draft = state.base ? clone(state.base) : null;
+            clearLogicalErrors();
             if (operatorGrid) operatorGrid.reset();
             await session.refresh();
             const config = session.view().config;
@@ -991,7 +996,7 @@
         if (workspace) workspace.render();
         renderLogicalEditor();
         const colourSubject = document.getElementById("diagnostic-colour-subject");
-        if (colourSubject) colourSubject.textContent = state.selectedId ? "Selected · " + numberedLabel(state.selectedId) : "Select a tablet in Tablets.";
+        if (colourSubject) colourSubject.textContent = state.selectedId ? numberedLabel(state.selectedId) : "Select a tablet in Tablets.";
     }
 
     function syncMeta() {
@@ -1049,12 +1054,14 @@
     }
 
     function syncDraftUi() {
+        syncGeometryControls();
         renderCalibrationHelper();
         if (!state.draft) {
             el.btnApply.disabled = true;
+            document.getElementById("arrange-status").textContent = "Nothing to apply.";
             el.btnCancel.disabled = true;
-            el.btnUndo.disabled = el.btnUndo.hidden = true;
-            el.btnRedo.disabled = el.btnRedo.hidden = true;
+            el.btnUndo.disabled = true; el.btnUndo.hidden = true;
+            el.btnRedo.disabled = true; el.btnRedo.hidden = true;
             el.boundsMode.disabled = true;
             el.boundsPadding.disabled = true;
             el.btnPackTablets.disabled = true;
@@ -1068,12 +1075,17 @@
 
         const emptyPhysical = state.draft.kind === "physical" && Object.keys(state.draft.slots).length === 0;
         el.btnApply.disabled = state.busy || !state.etag || state.etagState !== "current" || !!sizingError()
-            || !dirty || (emptyPhysical && !state.gridPreview);
+            || !!logicalError() || !dirty || (emptyPhysical && !state.gridPreview);
+        document.getElementById("arrange-status").textContent = !el.btnApply.disabled ? ""
+            : state.busy ? "Applying arrangement…"
+            : !state.etag || state.etagState !== "current" ? "Refresh status before applying this preview."
+            : sizingError() || logicalError() ? "Resolve the arrangement fields before applying."
+            : !dirty ? "Nothing to apply."
+            : "Add a tablet before applying this arrangement.";
         el.btnApply.title = emptyPhysical ? "This arrangement has no tablets. Use an explicit Remove action to clear a slot." : "Apply the entire previewed layout once";
         el.btnCancel.disabled = state.busy || !dirty && !inputDirty;
-        el.btnUndo.disabled = el.btnUndo.hidden = state.busy || state.undo.length === 0;
-        el.btnRedo.disabled = el.btnRedo.hidden = state.busy || state.redo.length === 0;
-        el.btnReload.disabled = state.busy;
+        el.btnUndo.disabled = state.busy || state.undo.length === 0; el.btnUndo.hidden = state.undo.length === 0;
+        el.btnRedo.disabled = state.busy || state.redo.length === 0; el.btnRedo.hidden = state.redo.length === 0;
         el.btnProfileSave.disabled = state.busy;
         el.btnCalibrationSave.disabled = state.busy || rulerSaveBlocked();
         el.btnLayoutSave.disabled = state.busy || !state.etag;
@@ -1131,6 +1143,7 @@
         beginManual();
         const before = clone(state.draft);
         mutator(state.draft);
+        reconcileLogicalErrors(state.draft);
         if (layoutSignature(before) === layoutSignature(state.draft)) return false;
         pushUndo(before);
         afterDraftChange();
@@ -1158,6 +1171,7 @@
     function cancelDraft() {
         if (state.busy) return;
         const restoreFocus = document.activeElement === el.btnCancel;
+        clearLogicalErrors();
         observeSession(session.view());
         if (operatorGrid) operatorGrid.cancel();
         if (restoreFocus) document.getElementById("grid-preview").focus({ preventScroll: true });
@@ -1224,63 +1238,208 @@
      * ---------------------------------------------------------------- */
 
     const {
-        addSelectedDevice, deleteSelectedSlot, endDrag, nudgeSelected, onPointerCancel, onPointerDown, onPointerMove, onPointerUp, renderDeviceHealth, renderDeviceList, renderStage: drawStage, rotateSelected, selectDevice, syncInspector
+        addSelectedDevice, deleteSelectedSlot, endDrag, geometryHelp, matchScreenShape, matchStatus, nudgeSelected, onPointerCancel, onPointerDown, onPointerMove, onPointerUp, renderDeviceHealth, renderDeviceList, renderStage: drawStage, rotateSelected, selectDevice, setViewZoom, syncInspector, viewZoom
     } = window.PhysicalStage.create({
         selectionChanged: () => {
             if (operatorDevices) operatorDevices.render(); renderLogicalEditor();
+            syncDraftUi();
             if (state.tabName === "show") document.getElementById("arrange-custom").open = true;
         },
         DRAG_THRESHOLD_PX, afterDraftChange, announce, bodyMetrics, calibrationFor, beginManual, canManualEdit, clearMsg, clone, deviceEntries, deviceLabel, deviceNumber, deviceRows, el, finiteOr, formatNumber, isOnline, latestProfile, mutateDraft, numberTag, numberedLabel, populateDeviceCard, profileFor, pushUndo, roundTo, selectedSlot, setInputValue, showError, showTab, state, syncTabDots, validPair
     });
 
+    const geometryReady = typeof setViewZoom === "function" && typeof viewZoom === "function"
+        && typeof matchStatus === "function" && typeof matchScreenShape === "function" && typeof geometryHelp === "function";
+
+    function syncGeometryControls() {
+        const zoom = geometryReady && typeof viewZoom === "function" ? viewZoom() : "fit";
+        for (const [id, value] of [["view-zoom-fit", "fit"], ["view-zoom-2x", "2x"]]) {
+            const button = document.getElementById(id);
+            if (!button) continue;
+            button.disabled = !geometryReady;
+            button.setAttribute("aria-pressed", String(value === zoom));
+            if (!geometryReady) button.title = "Available with the reviewed geometry update.";
+        }
+        const snap = document.getElementById("logical-snap-enabled"), snapNote = document.getElementById("logical-snap-note");
+        if (snap) {
+            snap.disabled = !geometryReady;
+            snap.title = geometryReady
+                ? "Uncheck to disable grid and edge snapping for relative drags."
+                : "Available with the reviewed geometry update.";
+            if (snapNote) snapNote.textContent = geometryReady
+                ? "Mouse and pen: hold Alt to pause snapping. Touch uses this checkbox."
+                : "Edge snapping controls are available with the reviewed geometry update.";
+        }
+        const match = document.getElementById("btn-match-shape"), matchNote = document.getElementById("match-shape-note");
+        if (match) {
+            if (!geometryReady) {
+                match.disabled = true;
+                match.title = "Available with the reviewed geometry update.";
+                if (matchNote) matchNote.textContent = "Match screen shape is available with the reviewed geometry update.";
+            } else {
+                let status;
+                try { status = matchStatus(); }
+                catch (error) { status = { available: false, reason: "Match screen shape is unavailable until the wall loads." }; }
+                match.disabled = !status.available;
+                match.title = status.reason || "Match the selected relative slot to its current online viewport shape.";
+                if (matchNote) matchNote.textContent = status.available
+                    ? "Uses the selected tablet's current online viewport shape. It changes height and vertical centre only; the draft stays unapplied."
+                    : status.reason;
+            }
+        }
+        const help = document.getElementById("geometry-help-text");
+        if (help) {
+            let text = "Geometry help is available with the reviewed geometry update.";
+            if (geometryReady) {
+                try { text = geometryHelp(); }
+                catch (error) { text = "Geometry help is unavailable until the wall loads."; }
+            }
+            if (help.textContent !== text) help.textContent = text;
+        }
+    }
+
+    document.getElementById("btn-match-shape").addEventListener("click", () => {
+        if (!geometryReady) return;
+        matchScreenShape();
+        syncGeometryControls();
+    });
+    document.getElementById("view-zoom-fit").addEventListener("click", () => {
+        if (geometryReady) setViewZoom("fit");
+        syncGeometryControls();
+    });
+    document.getElementById("view-zoom-2x").addEventListener("click", () => {
+        if (geometryReady) setViewZoom("2x");
+        syncGeometryControls();
+    });
+    document.getElementById("logical-snap-enabled").addEventListener("change", event => {
+        if (!geometryReady) { event.target.checked = true; return; }
+        announce(event.target.checked ? "Relative drag snapping is on." : "Relative drag snapping is off.");
+    });
+
     const logicalFields = new Map();
+    const logicalInvalid = new Map();
+    function logicalError() {
+        return logicalInvalid.size ? logicalInvalid.values().next().value : "";
+    }
+    function setLogicalError(input, message) {
+        logicalInvalid.set(input, message);
+        markInvalid(input, true);
+        input.setAttribute("aria-describedby", "grid-message");
+        const node = document.getElementById("grid-message");
+        if (node) node.textContent = message;
+        announce(message, "err");
+        syncDraftUi();
+    }
+    function clearLogicalError(input) {
+        if (!logicalInvalid.has(input)) return;
+        logicalInvalid.delete(input);
+        markInvalid(input, false);
+        input.removeAttribute("aria-describedby");
+        const node = document.getElementById("grid-message");
+        if (node) node.textContent = logicalError();
+        if (!logicalInvalid.size) syncDraftUi();
+    }
+    function clearLogicalErrors() {
+        if (!logicalInvalid.size) return;
+        for (const input of logicalInvalid.keys()) {
+            markInvalid(input, false);
+            input.removeAttribute("aria-describedby");
+        }
+        logicalInvalid.clear();
+        const node = document.getElementById("grid-message");
+        if (node) node.textContent = "";
+        syncDraftUi();
+    }
+    function reconcileLogicalErrors(draft) {
+        if (!draft || draft.kind !== "logical") return;
+        for (const input of Array.from(logicalInvalid.keys())) {
+            const placementField = Array.from(logicalFields.entries()).find(([, node]) => node === input);
+            const field = placementField ? placementField[0] : input.id.slice("logical-".length);
+            const placement = placementField ? draft.placements[input.dataset.deviceId] : null;
+            if (placementField && !placement) continue;
+            const result = window.PhysicalSizing.validateLogicalField(field, input.value, draft, placement);
+            if (!result.valid) continue;
+            if (placement) {
+                if (field.startsWith("bezel-")) placement.bezel[field.slice(6)] = result.value;
+                else placement[field] = result.value;
+            } else if (field === "padding") draft.sizing.padding = result.value;
+            else draft[field] = result.value;
+            clearLogicalError(input);
+        }
+    }
     function renderLogicalEditor() {
         const box = document.getElementById("logical-editor"), draft = state.draft;
         if (!box) return;
         box.hidden = !draft || draft.kind !== "logical";
-        if (box.hidden) return;
+        if (box.hidden) { clearLogicalErrors(); return; }
         const placement = draft.placements[state.selectedId];
         for (const [field, input] of logicalFields) {
+            if (input.dataset.deviceId && input.dataset.deviceId !== state.selectedId) clearLogicalError(input);
             const value = placement && (field.startsWith("bezel-") ? placement.bezel[field.slice(6)] : placement[field]);
             input.disabled = !placement || !!state.gridPreview;
-            if (document.activeElement !== input) input.value = value === undefined ? "" : value;
-            input.dataset.deviceId = state.selectedId || "";
+            if (document.activeElement !== input && !logicalInvalid.has(input)) {
+                input.value = value === undefined ? "" : value;
+                input.dataset.deviceId = state.selectedId || "";
+                markInvalid(input, false);
+            }
         }
         for (const [id, value] of [["logical-width", draft.width], ["logical-height", draft.height],
             ["logical-padding", draft.sizing.padding], ["logical-mode", draft.sizing.mode]]) {
             const input = document.getElementById(id);
-            if (document.activeElement !== input) input.value = value;
+            if (document.activeElement !== input && !logicalInvalid.has(input)) input.value = value;
         }
         for (const id of ["logical-width", "logical-height"]) document.getElementById(id).readOnly = draft.sizing.mode === "tablets";
         document.getElementById("logical-message").textContent = placement ? "Editing " + numberedLabel(state.selectedId) + ". Apply arrangement writes all reviewed geometry once." : "Select a placed tablet to edit its position and size.";
     }
 
+    let logicalResetPending = false;
     function bindLogicalEditor() {
+        document.addEventListener("pointerdown", event => {
+            const button = event.target.closest && event.target.closest("#btn-cancel");
+            logicalResetPending = !!button && !button.disabled;
+        }, true);
+        for (const type of ["pointerup", "pointercancel"]) {
+            document.addEventListener(type, () => { logicalResetPending = false; }, true);
+        }
         const fields = document.getElementById("logical-fields");
         for (const [field, name] of [["x", "X"], ["y", "Y"], ["w", "Width"], ["h", "Height"],
             ["bezel-top", "Top bezel"], ["bezel-right", "Right bezel"], ["bezel-bottom", "Bottom bezel"], ["bezel-left", "Left bezel"]]) {
             const label = document.createElement("label"); label.className = "field";
-            label.textContent = name + " (relative units)";
+            label.textContent = name;
             const input = document.createElement("input"); input.className = "inp"; input.type = "number"; input.step = "1";
             input.id = "logical-" + field; input.dataset.field = field; label.htmlFor = input.id;
             label.append(input); fields.append(label); logicalFields.set(field, input);
+            input.addEventListener("blur", renderLogicalEditor);
             input.addEventListener("change", () => {
-                const id = input.dataset.deviceId, value = Number(input.value);
-                if (!input.value || !Number.isInteger(value) || ((field === "w" || field === "h") ? value < 1 : field.startsWith("bezel-") && value < 0)) { markInvalid(input, true); return; }
-                markInvalid(input, false);
+                if (logicalResetPending) return;
+                const id = input.dataset.deviceId || state.selectedId;
+                const placement = state.draft && state.draft.placements[id];
+                if (!placement) return;
+                input.dataset.deviceId = id;
+                const result = window.PhysicalSizing.validateLogicalField(field, input.value, state.draft, placement);
+                if (!result.valid) { setLogicalError(input, result.message); return; }
+                clearLogicalError(input);
                 mutateDraft(draft => {
                     const p = draft.placements[id];
                     if (!p) return;
-                    if (field.startsWith("bezel-")) p.bezel[field.slice(6)] = value; else p[field] = value;
+                    if (field.startsWith("bezel-")) p.bezel[field.slice(6)] = result.value; else p[field] = result.value;
                 });
             });
         }
         for (const [id, field] of [["logical-width", "width"], ["logical-height", "height"], ["logical-padding", "padding"], ["logical-mode", "mode"]]) {
             document.getElementById(id).addEventListener("change", event => {
-                const value = field === "mode" ? event.target.value : Number(event.target.value);
-                if (field !== "mode" && (!Number.isInteger(value) || value < (field === "padding" ? 0 : 1))) { markInvalid(event.target, true); return; }
-                markInvalid(event.target, false);
-                mutateDraft(draft => { if (["mode", "padding"].includes(field)) draft.sizing[field] = value; else draft[field] = value; });
+                if (logicalResetPending) return;
+                if (field === "mode") {
+                    const resetInvalid = logicalInvalid.size > 0;
+                    clearLogicalErrors();
+                    mutateDraft(draft => { draft.sizing.mode = event.target.value; });
+                    if (resetInvalid) announce("Sizing mode changed. Invalid entries were reset to the draft values.");
+                    return;
+                }
+                const result = window.PhysicalSizing.validateLogicalField(field, event.target.value, state.draft, null);
+                if (!result.valid) { setLogicalError(event.target, result.message); return; }
+                clearLogicalError(event.target);
+                mutateDraft(draft => { if (field === "padding") draft.sizing.padding = result.value; else draft[field] = result.value; });
             });
         }
         document.getElementById("logical-rotate").addEventListener("click", rotateSelected);
@@ -1307,11 +1466,24 @@
         });
     }
 
+    function syncStageSummary(view) {
+        const node = document.getElementById("stage-wall-summary");
+        if (!node) return;
+        if (!view || !view.layout) { node.textContent = "Waiting for the wall."; return; }
+        const bounds = window.OperatorState.bounds(view.layout);
+        const placed = Object.keys(window.OperatorState.entries(view.layout)).length;
+        node.textContent = formatNumber(bounds.width, 1) + " × " + formatNumber(bounds.height, 1)
+            + (view.layout.kind === "physical" ? " mm" : " wall units")
+            + " · " + placed + (placed === 1 ? " tablet" : " tablets");
+    }
+
     function renderStage() {
         const view = window.OperatorState.stageView(state);
         syncTabDots();
+        syncStageSummary(view);
         if (workspace) workspace.render(view);
         drawStage(view);
+        syncGeometryControls();
     }
 
     function bindNumberInput(input, write, validate) {
@@ -1882,21 +2054,19 @@
         let text = "loading";
         let kind = "info";
         if (state.diagnosticsState === "refreshing") text = "refreshing";
-        else if (state.diagnosticsState === "ready") { text = "loaded"; kind = "ok"; }
+        else if (state.diagnosticsState === "ready") { text = "current"; kind = "ok"; }
         else if (state.diagnosticsState === "error") { text = "error"; kind = "err"; }
         else if (state.diagnosticsState === "forbidden") { text = "unavailable"; kind = "warn"; }
         setTextIfChanged(el.diagState, text);
         el.diagState.dataset.kind = kind;
-        el.diagState.hidden = state.diagnosticsState === "ready";
+        el.diagState.hidden = false;
     }
 
     function wakeLockSummary(counts) {
         const order = ["held", "released", "unsupported", "insecure", "denied"];
         const source = counts && typeof counts === "object" ? counts : {};
-        return order.map(function (key) {
-            const value = Number(source[key]);
-            return key + " " + (Number.isFinite(value) ? value : 0);
-        }).join(" · ");
+        return order.filter(key => Number(source[key]) > 0)
+            .map(key => Number(source[key]) + " " + key).join(", ") || "No reports";
     }
 
     function problemText(problem) {
@@ -1936,42 +2106,52 @@
         if (!el.diagGrid) return;
         const data = state.diagnostics;
         const facts = [];
+        const reading = state.diagnosticsState === "pending" || state.diagnosticsState === "loading"
+            || state.diagnosticsState === "refreshing";
         if (!data) {
-            facts.push(["Status", state.diagnosticsState === "loading"
-                ? "Reading diagnostics…" : "No diagnostics loaded."]);
+            facts.push(["Status", reading ? "Reading diagnostics…" : "No diagnostics loaded."]);
         } else {
             const media = data.media && typeof data.media === "object" ? data.media : {};
             const db = data.db && typeof data.db === "object" ? data.db : {};
             const backup = data.backup && typeof data.backup === "object" ? data.backup : {};
             const clients = data.clients && typeof data.clients === "object" ? data.clients : {};
-            facts.push(["Last checked", new Date(state.diagnosticsCapturedAt).toLocaleString()]);
-            facts.push(["Storage",
-                formatBytes(media.used_bytes) + " used of " + formatBytes(media.quota_bytes)
-                + " (" + formatPercent(media.used_bytes, media.quota_bytes) + ")"]);
-            facts.push(["Free / reserve",
-                formatBytes(media.free_bytes) + " free · " + formatBytes(media.reserve_bytes)
-                + " reserve"]);
-            facts.push(["Objects",
-                (media.objects ?? "—") + " objects · " + (media.assets ?? "—") + " assets · "
-                + (media.orphans ?? "—") + " orphans"]);
-            facts.push(["Database",
-                "schema " + (db.schema ?? "—") + " · " + formatBytes(db.bytes)]);
+            facts.push(["Report", state.diagnosticsState === "ready" ? "Current" : "Last known"]);
+            facts.push(["Captured", new Date(state.diagnosticsCapturedAt).toLocaleString()]);
+            facts.push(["Storage", formatBytes(media.used_bytes) + " of " + formatBytes(media.quota_bytes)]);
+            facts.push(["Free space", formatBytes(media.free_bytes)]);
+            facts.push(["Reserve", formatBytes(media.reserve_bytes)]);
+            facts.push(["Objects", String(media.objects ?? "—")]);
+            facts.push(["Assets", String(media.assets ?? "—")]);
+            facts.push(["Orphans", String(media.orphans ?? "—")]);
+            facts.push(["Database", formatBytes(db.bytes)]);
+            facts.push(["Schema", String(db.schema ?? "—")]);
             facts.push(["Backup",
                 backup.last_manifest_at
-                    ? formatTime(backup.last_manifest_at) + " · "
-                        + relativeAge(backup.last_manifest_at)
+                    ? formatTime(backup.last_manifest_at) + " (" + relativeAge(backup.last_manifest_at) + ")"
                     : "No backup manifest found"]);
             facts.push(["Clients",
-                (clients.online ?? "—") + " online · " + (clients.total ?? "—") + " registered"]);
+                (clients.online ?? "—") + " of " + (clients.total ?? "—") + " online"]);
             facts.push(["Wake lock", wakeLockSummary(clients.wake_lock)]);
         }
+        const lastKnown = document.getElementById("diag-last-known");
+        if (lastKnown) {
+            const stale = !!data && state.diagnosticsState !== "ready";
+            lastKnown.hidden = !stale;
+            lastKnown.textContent = stale
+                ? (reading ? "Showing the last known diagnostics report while this refresh runs."
+                    : "Showing the last known diagnostics report. This read did not complete, so it is not current evidence for the wall.")
+                : "";
+            lastKnown.dataset.kind = reading ? "info" : "err";
+        }
+        const evidence = document.getElementById("settings-evidence");
+        if (evidence) evidence.dataset.state = state.diagnosticsState;
         renderFactList(el.diagGrid, facts);
     }
 
     async function loadDiagnostics(verify) {
         if (state.diagnosticsLoading) return;
         state.diagnosticsLoading = true;
-        renderIntegrity(null);
+        if (verify) renderIntegrity(null);
         state.diagnosticsState = state.diagnostics ? "refreshing" : "loading";
         if (el.btnDiagRefresh) el.btnDiagRefresh.disabled = true;
         if (el.btnDiagVerify) el.btnDiagVerify.disabled = true;
@@ -1997,7 +2177,7 @@
             } else {
                 setMsg(el.diagMsg, "", null);
             }
-            await refreshRoster();
+            await refreshRoster().catch(() => {});
         } catch (error) {
             const forbidden = error && error.status === 403;
             state.diagnosticsState = forbidden ? "forbidden" : "error";
@@ -2051,13 +2231,18 @@
      * ---------------------------------------------------------------- */
 
     let layoutsVersion = 0, scenesVersion = 0, savedScenes = [], returnPoint = null;
+    let layoutsLoaded = false, scenesLoaded = false;
     function snapshotMatches(entry, kind) {
         const item = (state.snapshots[kind] || []).find(row => row.name === entry.name);
         return !!item && !!entry.etag && item.etag === entry.etag;
     }
 
     async function loadLayouts() {
+        if (!state.configLoaded) return;
         const version = ++layoutsVersion;
+        const status = document.getElementById("layouts-status");
+        setMsg(status, layoutsLoaded ? "Refreshing saved arrangements…" : "Reading saved arrangements…", "info");
+        if (el.btnLayoutsRefresh) el.btnLayoutsRefresh.disabled = true;
         try {
             const results = await Promise.all([api("GET", API_LAYOUTS, undefined, { fenced: "durable" }), api("GET", "/api/v3/logical-layouts", undefined, { fenced: "durable" })]);
             if (version !== layoutsVersion) return;
@@ -2065,9 +2250,25 @@
             (results[0].layouts || []).forEach(entry => byName.set(entry.name, { ...entry, logical: false }));
             (results[1].layouts || []).forEach(entry => byName.set(entry.name, { ...entry, logical: true }));
             state.savedLayouts = [...byName.values()].sort((a, b) => a.name.localeCompare(b.name));
-            renderSavedLayouts(); clearMsg(document.getElementById("layouts-status"));
+            layoutsLoaded = true;
+            renderSavedLayouts(); clearMsg(status);
             if (operatorDevices) operatorDevices.render();
-        } catch (error) { if (version === layoutsVersion) setMsg(document.getElementById("layouts-status"), "Saved arrangements could not be refreshed. " + error.message + " Use Refresh to retry.", "err"); }
+        } catch (error) {
+            if (version !== layoutsVersion) return;
+            renderSavedLayouts();
+            setMsg(status, (layoutsLoaded ? "Showing last known saved arrangements. " : "Saved arrangements could not be read. ")
+                + error.message + " Use Refresh saved to retry.", "err");
+        } finally {
+            if (version === layoutsVersion && el.btnLayoutsRefresh) el.btnLayoutsRefresh.disabled = state.busy;
+        }
+    }
+
+    const restorePointName = name => /^Before (physical|logical) [a-f0-9]{12}$/.test(name);
+
+    function savedTag(text, kind) {
+        const tag = document.createElement("span"); tag.className = "saved-tag"; tag.textContent = text;
+        if (kind) tag.dataset.kind = kind;
+        return tag;
     }
 
     function renderSavedLayouts() {
@@ -2076,12 +2277,19 @@
         el.savedLayouts.replaceChildren();
         for (const entry of state.savedLayouts) {
             const layout = entry.layout || {}, count = Object.keys(window.OperatorState.entries(layout)).length;
-            const row = document.createElement("li"); row.className = "saved-row"; row.dataset.snapshotName = entry.name; row.dataset.kind = entry.logical ? "logical" : "physical";
+            const automatic = restorePointName(entry.name);
+            const row = document.createElement("li"); row.className = "saved-row saved-row-layout"; row.dataset.snapshotName = entry.name;
+            row.dataset.kind = entry.logical ? "logical" : "physical";
+            if (automatic) row.dataset.automatic = "true";
             const info = document.createElement("span"); info.className = "saved-info";
-            const name = document.createElement("strong"); name.className = "saved-name"; name.textContent = (/^Before (physical|logical) [a-f0-9]{12}$/.test(entry.name) ? "Restore point · " : "") + entry.name;
+            const name = document.createElement("strong"); name.className = "saved-name"; name.textContent = entry.name;
+            const tags = document.createElement("span"); tags.className = "saved-tags";
+            tags.append(savedTag(entry.logical ? "Relative geometry" : "Measured geometry", "kind"));
+            if (automatic) tags.append(savedTag("Automatic restore point", "auto"));
             const meta = document.createElement("span"); meta.className = "saved-meta";
-            meta.textContent = entry.valid === false ? "Damaged saved data · replace or delete" : count + (count === 1 ? " tablet" : " tablets") + " · " + (entry.logical ? "Relative" : "Measured");
-            info.append(name, meta);
+            meta.textContent = entry.valid === false ? "Damaged saved data · replace or delete"
+                : count + (count === 1 ? " tablet" : " tablets") + " · Recall restores geometry only";
+            info.append(name, tags, meta);
             if (entry.valid !== false) {
                 const svg = document.createElementNS("http://www.w3.org/2000/svg", "svg");
                 svg.classList.add("saved-thumb"); svg.setAttribute("aria-hidden", "true");
@@ -2107,17 +2315,24 @@
             }
             row.append(info);
             const actions = document.createElement("span"); actions.className = "saved-actions";
-            for (const [verb, handler] of [["Recall", () => recallLayout(entry)], ["Delete", () => deleteLayout(entry)]]) {
+            for (const [verb, handler] of [["Recall geometry", () => recallLayout(entry)], ["Delete", () => deleteLayout(entry)]]) {
                 const button = document.createElement("button"); button.type = "button"; button.className = "btn btn-sm";
                 if (verb === "Delete") button.classList.add("btn-danger");
-                button.textContent = verb; button.setAttribute("aria-label", verb + " arrangement “" + entry.name + "”");
-                button.dataset.invalid = String(verb === "Recall" && entry.valid === false);
-                button.disabled = state.busy || !state.etag || button.dataset.invalid === "true";
+                button.textContent = verb;
+                button.setAttribute("aria-label", verb === "Delete" ? "Delete arrangement “" + entry.name + "”"
+                    : "Recall geometry for arrangement “" + entry.name + "”");
+                button.dataset.invalid = String(verb === "Recall geometry" && entry.valid === false);
+                button.disabled = state.busy || !state.etag || state.etagState !== "current" || button.dataset.invalid === "true";
                 button.addEventListener("click", handler); actions.append(button);
             }
             row.append(actions); el.savedLayouts.append(row);
         }
-        el.savedEmpty.hidden = state.savedLayouts.length > 0;
+        el.savedEmpty.hidden = !layoutsLoaded || state.savedLayouts.length > 0;
+        const countNode = document.getElementById("layouts-count");
+        if (countNode) {
+            countNode.textContent = state.savedLayouts.length + (state.savedLayouts.length === 1 ? " arrangement" : " arrangements");
+            countNode.hidden = !layoutsLoaded || !state.savedLayouts.length;
+        }
         if (focusName && document.activeElement === document.body) {
             const row = Array.from(el.savedLayouts.children).find(item => item.dataset.snapshotName === focusName);
             (row?.querySelector("button:not(:disabled)") || el.layoutName).focus({ preventScroll: true });
@@ -2126,6 +2341,7 @@
 
     function updateSavedButtons() {
         for (const button of el.savedLayouts.querySelectorAll("button")) button.disabled = state.busy || !state.etag || state.etagState !== "current" || button.dataset.invalid === "true";
+        for (const button of document.getElementById("saved-scenes").querySelectorAll("button")) button.disabled = state.busy || button.dataset.invalid === "true";
     }
 
     function showReturnPoint(result) {
@@ -2137,8 +2353,12 @@
 
     async function saveLayout(event) {
         event.preventDefault();
-        const name = el.layoutName.value.trim();
-        if (!name) { setMsg(el.layoutMsg, "Enter an arrangement name.", "err"); el.layoutName.focus(); return; }
+        const name = tabletForms.snapshotName(el.layoutName.value);
+        if (name === null) {
+            setMsg(el.layoutMsg, el.layoutName.value.trim() ? SNAPSHOT_NAME_RULE : "Enter an arrangement name. " + SNAPSHOT_NAME_RULE, "err");
+            el.layoutName.focus();
+            return;
+        }
         if (state.busy || !await resolveOutput("Save the applied arrangement")) return;
         const existing = state.savedLayouts.find(item => item.name === name);
         if (existing && !window.confirm("Overwrite saved arrangement “" + name + "” with the applied geometry? The image is excluded.")) return;
@@ -2182,54 +2402,92 @@
         finally { setBusy(false); }
     }
 
+    function sceneMeta(content) {
+        if (content.type !== "image") {
+            return content.type === "calibration" ? "Calibration pattern · preview only" : "Colour test · preview only";
+        }
+        return "Image · " + (content.fit === "contain" ? "Show whole image" : "Fill wall") + " · preview only";
+    }
+
+    function renderSavedScenes() {
+        const focused = document.activeElement;
+        const focusName = focused && focused.closest("[data-snapshot-name]")?.dataset.snapshotName;
+        const list = document.getElementById("saved-scenes"); list.replaceChildren();
+        for (const entry of savedScenes) {
+            const row = document.createElement("li"); row.className = "saved-row saved-row-content"; row.dataset.snapshotName = entry.name; row.dataset.kind = "scene";
+            const label = document.createElement("span"); label.className = "saved-info";
+            const name = document.createElement("strong"); name.className = "saved-name"; name.textContent = entry.name;
+            const tags = document.createElement("span"); tags.className = "saved-tags";
+            tags.append(savedTag("Content", "kind"));
+            const meta = document.createElement("span"); meta.className = "saved-meta";
+            meta.textContent = entry.valid === false ? "Damaged saved data" : sceneMeta(entry.content);
+            label.append(name, tags, meta);
+            const image = entry.valid !== false && operatorContent.imageFor(entry.content.asset);
+            if (image) {
+                const thumbnail = document.createElement("img"); thumbnail.className = "saved-thumb"; thumbnail.alt = ""; thumbnail.src = image.thumbnail_url;
+                thumbnail.addEventListener("error", () => { thumbnail.hidden = true; }); row.append(thumbnail);
+                const source = document.createElement("span"); source.className = "saved-meta"; source.textContent = image.name; label.append(source);
+            }
+            row.append(label);
+            const actions = document.createElement("span"); actions.className = "saved-actions";
+            for (const verb of ["Preview content", "Delete"]) {
+                const button = document.createElement("button"); button.type = "button"; button.className = "btn btn-sm";
+                if (verb === "Delete") button.classList.add("btn-danger");
+                button.textContent = verb;
+                button.setAttribute("aria-label", verb === "Delete" ? "Delete content “" + entry.name + "”"
+                    : "Preview content “" + entry.name + "”");
+                button.dataset.invalid = String(verb === "Preview content" && entry.valid === false);
+                button.disabled = state.busy || button.dataset.invalid === "true";
+                button.addEventListener("click", async () => {
+                    if (state.busy) return;
+                    if (!await resolveOutput(verb + " saved content “" + entry.name + "”")) return;
+                    if (!snapshotMatches(entry, "scenes")) { setMsg(document.getElementById("scene-message"), "The saved content changed. Refresh saved and review it again.", "err"); return; }
+                    if (verb === "Preview content") {
+                        operatorContent.previewScene(entry, state.etag); await showTab("content", { focus: true, persist: true });
+                        return;
+                    }
+                    if (!window.confirm("Delete saved content “" + entry.name + "”? Applied content is unchanged.")) return;
+                    try {
+                        const result = await api("DELETE", "/api/v3/scenes/" + encodeURIComponent(entry.name), undefined, { etag: true });
+                        ingestConfig(result, { preserveDraft: true }); await loadScenes();
+                        setMsg(document.getElementById("scene-message"), "Saved content deleted.", "ok"); document.getElementById("scene-name").focus();
+                    } catch (error) { setMsg(document.getElementById("scene-message"), error.message, "err"); }
+                });
+                actions.append(button);
+            }
+            row.append(actions);
+            list.append(row);
+        }
+        const empty = document.getElementById("saved-scenes-empty");
+        if (empty) empty.hidden = !scenesLoaded || savedScenes.length > 0;
+        const countNode = document.getElementById("scenes-count");
+        if (countNode) {
+            countNode.textContent = savedScenes.length + (savedScenes.length === 1 ? " content item" : " content items");
+            countNode.hidden = !scenesLoaded || !savedScenes.length;
+        }
+        if (focusName && document.activeElement === document.body) {
+            const row = Array.from(list.children).find(item => item.dataset.snapshotName === focusName);
+            (row?.querySelector("button:not(:disabled)") || document.getElementById("scene-name")).focus({ preventScroll: true });
+        }
+    }
+
     async function loadScenes() {
+        if (!state.configLoaded) return;
         const version = ++scenesVersion;
+        const status = document.getElementById("scenes-status");
+        setMsg(status, scenesLoaded ? "Refreshing saved content…" : "Reading saved content…", "info");
         try {
             const result = await api("GET", "/api/v3/scenes", undefined, { fenced: "durable" });
             if (version !== scenesVersion) return;
-            savedScenes = result.scenes || [];
-            document.getElementById("scene-message").textContent = "";
-            const list = document.getElementById("saved-scenes"); list.replaceChildren();
-            for (const entry of savedScenes) {
-                const row = document.createElement("li"); row.className = "saved-row"; row.dataset.snapshotName = entry.name; row.dataset.kind = "scene";
-                const label = document.createElement("span"); label.className = "saved-info";
-                const name = document.createElement("strong"); name.textContent = entry.name;
-                const meta = document.createElement("span"); meta.className = "saved-meta";
-                meta.textContent = (entry.valid === false ? "Damaged saved data" : entry.content.type === "image" ? "Image · " + (entry.content.fit === "contain" ? "Show whole image" : "Fill wall") : "Test content");
-                label.append(name, meta);
-                const image = entry.valid !== false && operatorContent.imageFor(entry.content.asset);
-                if (image) {
-                    const thumbnail = document.createElement("img"); thumbnail.className = "saved-thumb"; thumbnail.alt = ""; thumbnail.src = image.thumbnail_url;
-                    thumbnail.addEventListener("error", () => { thumbnail.hidden = true; }); row.append(thumbnail);
-                    const source = document.createElement("span"); source.className = "saved-meta"; source.textContent = image.name; label.append(source);
-                }
-                row.append(label);
-                const actions = document.createElement("span"); actions.className = "saved-actions";
-                for (const verb of ["Preview", "Delete"]) {
-                    const button = document.createElement("button"); button.type = "button"; button.className = "btn btn-sm";
-                    if (verb === "Delete") button.classList.add("btn-danger");
-                    button.textContent = verb; button.setAttribute("aria-label", verb + " content “" + entry.name + "”"); button.disabled = verb === "Preview" && entry.valid === false;
-                    button.addEventListener("click", async () => {
-                        if (!await resolveOutput(verb + " saved content “" + entry.name + "”")) return;
-                        if (!snapshotMatches(entry, "scenes")) { document.getElementById("scene-message").textContent = "The saved content changed. Refresh saved and review it again."; return; }
-                        if (verb === "Preview") {
-                            operatorContent.previewScene(entry, state.etag); await showTab("content", { focus: true, persist: true });
-                            return;
-                        }
-                        if (!window.confirm("Delete saved content “" + entry.name + "”? Applied content is unchanged.")) return;
-                        try {
-                            const result = await api("DELETE", "/api/v3/scenes/" + encodeURIComponent(entry.name), undefined, { etag: true });
-                            ingestConfig(result, { preserveDraft: true }); await loadScenes();
-                            document.getElementById("scene-message").textContent = "Saved content deleted."; document.getElementById("scene-name").focus();
-                        } catch (error) { document.getElementById("scene-message").textContent = error.message; }
-                    });
-                    actions.append(button);
-                }
-                row.append(actions);
-                list.append(row);
-            }
-            if (!savedScenes.length) document.getElementById("scene-message").textContent = "No saved content yet.";
-        } catch (error) { if (version === scenesVersion) document.getElementById("scene-message").textContent = "Saved content could not be read. " + error.message + " Use Refresh saved to retry."; }
+            savedScenes = (result.scenes || []).slice().sort((a, b) => a.name.localeCompare(b.name));
+            scenesLoaded = true;
+            renderSavedScenes(); clearMsg(status);
+        } catch (error) {
+            if (version !== scenesVersion) return;
+            renderSavedScenes();
+            setMsg(status, (scenesLoaded ? "Showing last known saved content. " : "Saved content could not be read. ")
+                + error.message + " Use Refresh saved to retry.", "err");
+        }
     }
 
     function bindDiagnosticColours() {
@@ -2363,8 +2621,9 @@
         });
         document.getElementById("image-rebuild").addEventListener("click", async () => {
             await session.refresh();
-            if (!window.confirm("Keep this image choice and rebuild its preview against the current applied arrangement? Review it before Show image.")) return;
-            operatorContent.rebuild(); hideConflict(); renderStage();
+            if (operatorContent.rebuild(() => window.confirm("Keep this image choice and rebuild its preview against the current applied arrangement? Review it before Show image."))) {
+                hideConflict(); renderStage();
+            }
         });
         document.getElementById("image-discard").addEventListener("click", () => { operatorContent.discard(); state.draftConflict = false; hideConflict(); renderStage(); });
     }
@@ -2377,15 +2636,19 @@
         });
         document.getElementById("scene-save-form").addEventListener("submit", async event => {
             event.preventDefault();
-            const name = document.getElementById("scene-name").value.trim(), message = document.getElementById("scene-message");
-            if (!name) { message.textContent = "Enter a content name."; document.getElementById("scene-name").focus(); return; }
+            const input = document.getElementById("scene-name"), message = document.getElementById("scene-message");
+            const name = tabletForms.snapshotName(input.value);
+            if (name === null) {
+                setMsg(message, input.value.trim() ? SNAPSHOT_NAME_RULE : "Enter a content name. " + SNAPSHOT_NAME_RULE, "err");
+                input.focus(); return;
+            }
             if (!await resolveOutput("Save the applied content")) return;
             const existing = savedScenes.find(entry => entry.name === name);
             if (existing && !window.confirm("Overwrite saved content “" + name + "” with the applied content? Geometry is excluded.")) return;
             try {
                 const result = await api("PUT", "/api/v3/scenes/" + encodeURIComponent(name) + (existing ? "?replace=true" : ""), undefined, { etag: true });
-                ingestConfig(result, { preserveDraft: true }); await loadScenes(); message.textContent = "Content saved.";
-            } catch (error) { message.textContent = error.message; }
+                ingestConfig(result, { preserveDraft: true }); await loadScenes(); setMsg(message, "Content saved.", "ok");
+            } catch (error) { setMsg(message, error.message, "err"); }
         });
     }
 
@@ -2448,6 +2711,13 @@
         nudgeSelected(deltaX, deltaY);
     }
 
+    function openMeasurements(id) {
+        if (id && state.selectedId !== id) selectDevice(id);
+        showTab("system", { persist: true });
+        document.getElementById("measurement-details").open = true;
+        document.getElementById("tablet-model").focus();
+    }
+
     function bindEvents() {
         tabEntries().forEach(function (entry) {
             if (!entry.tab) return;
@@ -2468,7 +2738,6 @@
         el.btnRedo.addEventListener("click", redoDraft);
         el.btnApply.addEventListener("click", applyLayout);
         el.btnCancel.addEventListener("click", cancelDraft);
-        el.btnReload.addEventListener("click", reloadConfigWithConfirm);
         el.btnConflictReload.addEventListener("click", reloadConfigWithConfirm);
 
         el.btnRotate.addEventListener("click", rotateSelected);
@@ -2823,7 +3092,9 @@
             modelBusy: () => confirmingModels,
             modelReview: () => modelBatchReview,
             identifyTablet: id => operatorDevices.identify(id),
-            canIdentify: id => !!operatorDevices && operatorDevices.canIdentify(id)
+            canIdentify: id => !!operatorDevices && operatorDevices.canIdentify(id),
+            discardDraft: cancelDraft,
+            openMeasurements: id => openMeasurements(id)
         });
         operatorDevices = window.OperatorDevices.create({
             state, api, labelFor, profileFor, calibrationFor,
@@ -2854,10 +3125,22 @@
             onViewChange: () => operatorContent.viewChanged()
         });
         document.getElementById("refresh-command-status").addEventListener("click", () => session.refresh().catch(error => showError(error.message)));
+        const refreshStatus = document.getElementById("refresh-status");
+        if (refreshStatus) refreshStatus.addEventListener("click", async () => {
+            const restoreFocus = document.activeElement === refreshStatus;
+            const refreshTask = state.tabName;
+            refreshStatus.disabled = true;
+            try { await Promise.all([refreshRoster(), operatorReadiness.load()]); workspace.render(); }
+            catch (error) { showError(error.message); }
+            finally {
+                refreshStatus.disabled = false;
+                if (restoreFocus && state.tabName === refreshTask && document.activeElement === document.body) refreshStatus.focus({ preventScroll: true });
+            }
+        });
         window.addEventListener("beforeunload", event => {
             if (hasUnsavedEdits()) { event.preventDefault(); event.returnValue = ""; }
         });
-        document.getElementById("open-tablet-measurements").addEventListener("click", () => { showTab("system", { persist: true }); document.getElementById("measurement-details").open = true; document.getElementById("tablet-model").focus(); });
+        document.getElementById("open-tablet-measurements").addEventListener("click", () => openMeasurements(state.selectedId));
         const imageActions = document.querySelector(".image-actions");
         const workspaceNav = document.querySelector(".workspace-nav-landmark");
         const imageActionObserver = new ResizeObserver(() => {
@@ -2892,8 +3175,6 @@
         renderDiagnostics();
         session.start();
         operatorContent.refresh();
-        loadLayouts();
-        loadScenes();
         loadDiagnostics(false);
         startPlaybackPolling();
     }

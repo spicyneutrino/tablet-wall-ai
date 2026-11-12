@@ -628,7 +628,7 @@ def video_duration_ms(object_id: str) -> int | None:
     return int(descriptor["durationMs"]) if descriptor else None
 
 
-def _lookup(object_id: str, kind: str | None) -> dict[str, Any] | None:
+def _lookup(object_id: str, kind: str | None, role: str | None = None) -> dict[str, Any] | None:
     if not _is_asset_id(object_id):
         return None
     query = (
@@ -641,6 +641,9 @@ def _lookup(object_id: str, kind: str | None) -> dict[str, Any] | None:
     if kind is not None:
         query += " AND a.kind = ?"
         arguments += (kind,)
+    if role is not None:
+        query += " AND r.role = ?"
+        arguments += (role,)
     with persist._connection() as connection:
         row = connection.execute(query + " LIMIT 1", arguments).fetchone()
     if row is None:
@@ -650,13 +653,17 @@ def _lookup(object_id: str, kind: str | None) -> dict[str, Any] | None:
 
 
 def find_object(object_id: str) -> dict[str, Any] | None:
-    """Metadata for a ready published still object, without reading its bytes.
+    """Metadata for a ready published still *display* object.
 
     Video assets are excluded on purpose: this lookup feeds the still scene
     and playlist code, which must not accept an MP4 or a poster as an image.
-    Use ``find_servable`` to serve bytes and ``video_descriptor`` for video.
+    Only the role that may stand for the scene is accepted here — a thumbnail,
+    master, or fallback object is a different rendition and cannot become the
+    wall image even though it belongs to the same ready asset. Use
+    ``find_servable`` to serve any rendition's bytes and ``video_descriptor``
+    for video.
     """
-    return _lookup(object_id, "image")
+    return _lookup(object_id, "image", "display")
 
 
 def find_servable(object_id: str) -> dict[str, Any] | None:

@@ -178,6 +178,7 @@ def test_child_environment_fences_operator_data(tmp_path, monkeypatch):
         "TABLET_WALL_DB": str(tmp_path / "wall.db"),
         "TABLET_WALL_ASSET_DIR": str(tmp_path / "assets"),
         "TABLET_WALL_MEDIA_DIR": str(tmp_path / "media"),
+        "TABLET_WALL_BACKUP_DIR": str(tmp_path / "backups"),
     }
     assert os.environ["TABLET_WALL_DB"] == "/operator/live.db"
 
@@ -286,3 +287,93 @@ def test_clock_adapter_step_changes_the_epoch_only_past_the_suspend_threshold(tm
     )
     assert result.returncode == 0, result.stderr
     assert json.loads(result.stdout) == [False, False, True, True, True]
+
+
+def test_csp_safe_predicate_polling_is_bounded_and_preserves_arguments():
+    class Page:
+        def __init__(self):
+            self.calls = []
+
+        async def evaluate(self, expression, arg):
+            self.calls.append((expression, arg))
+            return len(self.calls) == 2
+
+    page = Page()
+    assert asyncio.run(run.wait_for_predicate(page, "value => value.ready", arg={"ready": True}, timeout=1000))
+    assert page.calls == [("value => value.ready", {"ready": True})] * 2
+
+    class NeverReady:
+        async def evaluate(self, expression, arg):
+            return False
+
+    with pytest.raises(TimeoutError, match="did not settle"):
+        asyncio.run(run.wait_for_predicate(NeverReady(), "false", timeout=1))
+
+
+def test_video_audit_requires_completed_superseding_static_render():
+    from simulator.browser.video_run import unexpected_browser_issues
+
+    token = {"render_seq": 8, "asset": "sha256:idle"}
+    url = "http://localhost/assets/sha256:idle"
+    events = [
+        {"kind": "ws_received", "frame": {"type": "playback", "state": "stopped"}},
+        {"kind": "request_started", "url": url, "resource_type": "fetch"},
+        {"kind": "ws_received", "frame": {"type": "render", "token": token,
+         "scene": {"content": {"type": "image", "asset": "sha256:idle"}}}},
+        {"kind": "request_started", "url": url, "resource_type": "fetch"},
+        {"kind": "request_failed", "url": url, "error": "net::ERR_ABORTED"},
+        {"kind": "http", "url": url, "status": 200},
+        {"kind": "ws_sent", "frame": {"type": "render_ack", "status": "displayed", "token": token}},
+    ]
+    for i, event in enumerate(events):
+        event["time"] = i
+    assert unexpected_browser_issues(SimpleNamespace(events=events)) == []
+    for missing in (0, 1, 2, 3, 5, 6):
+        incomplete = [event for i, event in enumerate(events) if i != missing]
+        assert unexpected_browser_issues(SimpleNamespace(events=incomplete))
+    for replacement in ("net::ERR_FAILED", "net::ERR_CONNECTION_REFUSED"):
+        changed = [dict(event) for event in events]
+        changed[4]["error"] = replacement
+        assert unexpected_browser_issues(SimpleNamespace(events=changed))
+    changed = [dict(event) for event in events]
+    changed[-1] = {"kind": "ws_sent", "frame": {"type": "render_ack", "status": "displayed",
+                   "token": {**token, "render_seq": 7}}}
+    assert unexpected_browser_issues(SimpleNamespace(events=changed))
+
+
+def test_watch_page_records_fetch_lifecycle_for_video_audit():
+    class Page:
+        def __init__(self):
+            self.handlers = {}
+
+        def set_default_timeout(self, value):
+            pass
+
+        async def expose_binding(self, name, callback):
+            pass
+
+        async def add_init_script(self, script):
+            pass
+
+        def on(self, name, callback):
+            self.handlers[name] = callback
+
+    page = Page()
+
+    async def new_page():
+        return page
+
+    observations = []
+    _, observation = asyncio.run(run.watch_page(
+        SimpleNamespace(new_page=new_page), run.ClientSpec("fetch", 240, 160, 1), observations
+    ))
+    request = SimpleNamespace(url="http://localhost/assets/sha256:idle", resource_type="fetch",
+                              failure="net::ERR_ABORTED")
+    page.handlers["request"](request)
+    page.handlers["requestfailed"](request)
+    page.handlers["response"](SimpleNamespace(url=request.url, status=200))
+    assert observations == [observation]
+    assert [event["kind"] for event in observation.events] == ["request_started", "request_failed", "http"]
+    assert observation.events[0]["url"] == request.url
+    assert observation.events[0]["resource_type"] == "fetch"
+    assert observation.events[0]["time"] <= observation.events[1]["time"] <= observation.events[2]["time"]

@@ -93,7 +93,6 @@ class HeldResponse:
         if not self.response:
             raise AssertionError("No captured response: " + self.label)
         self.route.fulfill(response=self.response, **response_fields)
-        self.page.unroute(self.pattern, self.capture)
         self.record["response_overrides"] = response_fields
         self.record.update(
             released=True,
@@ -890,7 +889,7 @@ def upload_ambiguous(rig, malformed=False):
                 times=1,
             )
             p.locator("#refresh-images").click()
-            expect(p.locator("#image-message")).to_contain_text("unavailable")
+            expect(p.locator("#library-status")).to_contain_text("unavailable")
             rig.check(
                 p.locator("#upload-submit").is_disabled(),
                 "Failed explicit inventory refresh cannot unlock uncertain upload",
@@ -926,10 +925,27 @@ def stale_scene(rig):
     p.locator("#scene-name").fill("Guarded scene")
     p.locator("#scene-save").click()
     expect(p.locator("#scene-message")).to_contain_text("Content saved")
-    p.get_by_role("button", name="Preview content “Guarded scene”", exact=True).click()
-    old_guard = rig.config()["etag"]
-    task(other, "Settings")
-    other.get_by_text("Check patterns", exact=True).click()
+    def preview():
+        p.get_by_role("button", name="Preview content “Guarded scene”", exact=True).click()
+    preview()
+    original_asset = p.locator("#selected-image-controls").get_attribute("data-asset-id")
+    original = rig.config()
+    start = len(rig.requests)
+    p.locator("#show-image").click()
+    expect(p.locator("body")).to_have_attribute("data-output-dirty", "false")
+    sent = [r for r in rig.requests[start:] if r["page"] == "operator"
+            and r["method"] in ("PUT", "POST", "DELETE", "PATCH")]
+    rig.check(
+        len(sent) == 1 and sent[0]["method"] == "POST"
+        and sent[0]["url"].endswith("/scenes/Guarded%20scene/recall")
+        and sent[0]["if_match"] == original["etag"]
+        and rig.config()["scene"] == original["scene"] and rig.config()["layout"] == original["layout"],
+        "Fresh saved image Show recalls exactly the previewed asset, fit and background with one original guard",
+        sent,
+    )
+    task(p, "Saved")
+    preview()
+    task(other, "Images")
     rig.open_disclosures(other.locator("#show-colours"))
     other.locator("#show-colours").click()
     expect(other.locator("#stage-mode-label")).to_have_text("Showing tablet colours")
@@ -938,24 +954,147 @@ def stale_scene(rig):
     other.locator("#scene-save").click()
     expect(other.locator("#scene-message")).to_contain_text("Content saved")
     before = rig.config()
-    with rig.fault(
-        "saved scene changed after real preview", [(r"/scenes/.*/recall", [412])]
-    ):
+    expect(p.locator("#show-image")).to_be_disabled()
+    expect(p.locator("#image-rebuild")).to_be_visible()
+
+    def writes_since(start):
+        return [r for r in rig.requests[start:] if r["page"] == "operator"
+                and r["method"] in ("PUT", "POST", "DELETE", "PATCH")]
+
+    start = len(rig.requests)
+    p.locator("#show-image").click(force=True)
+    p.wait_for_timeout(300)
+    rig.check(
+        not writes_since(start)
+        and p.locator("body").get_attribute("data-output-dirty") == "true"
+        and p.locator("#selected-image-controls").get_attribute("data-asset-id") == original_asset
+        and rig.config()["scene"] == before["scene"] and rig.config()["layout"] == before["layout"],
+        "Known obsolete saved preview disables Show, sends zero writes and retains original content",
+        writes_since(start),
+    )
+    p.locator("#image-rebuild").click()
+    expect(p.locator("#image-message")).to_contain_text("Discard it, then open Saved")
+    rig.check(
+        p.locator("#show-image").is_disabled() and not writes_since(start)
+        and p.locator("#image-message").evaluate("e => e === document.activeElement")
+        and p.locator("#selected-image-controls").get_attribute("data-asset-id") == original_asset
+        and rig.config()["scene"] == before["scene"] and rig.config()["layout"] == before["layout"],
+        "Replaced saved-entry Rebuild refuses visibly with focused re-preview instruction, original draft and zero writes",
+        writes_since(start),
+    )
+    rig.shot(p, "saved-rebuild-refused")
+    p.locator("#image-discard").click()
+    task(p, "Saved")
+    preview()
+    guard = rig.config()["etag"]
+    start = len(rig.requests)
+    p.locator("#show-image").click()
+    expect(p.locator("body")).to_have_attribute("data-output-dirty", "false")
+    sent = writes_since(start)
+    rig.check(
+        len(sent) == 1 and sent[0]["method"] == "POST"
+        and sent[0]["url"].endswith("/scenes/Guarded%20scene/recall")
+        and sent[0]["if_match"] == guard and rig.config()["scene"]["content"]["type"] == "color"
+        and rig.config()["layout"] == before["layout"],
+        "Explicit discard and Saved re-preview recover with one original-guard recall of the previewed colours",
+        sent,
+    )
+
+    task(p, "Saved")
+    preview()
+    guard = rig.config()["etag"]
+    start = len(rig.requests)
+    race = {}
+
+    def competing_write(route):
+        result = other.request.put(rig.base + "/api/v3/scene",
+                                   data={"content": {"type": "calibration"}},
+                                   headers={"If-Match": rig.config()["etag"], "Origin": rig.base})
+        race["writer_status"] = result.status
+        race["before"] = rig.config()
+        response = route.fetch()
+        race.update(status=response.status, guard=route.request.headers.get("if-match"),
+                    body=response.json())
+        rig.events.append({"real_saved_recall_race": race})
+        route.fulfill(response=response)
+
+    expect(p.locator("#show-image")).to_be_enabled()
+    p.route("**/api/v3/scenes/*/recall", competing_write, times=1)
+    with rig.fault("real saved recall guard race", [(r"/scenes/.*/recall", [412])]):
         p.locator("#show-image").click()
         expect(p.locator("#image-message")).to_contain_text("Could not show")
-        sent = [
-            r
-            for r in rig.requests
-            if r["url"].endswith("/scenes/Guarded%20scene/recall")
-        ]
+        p.wait_for_timeout(600)
+        sent = writes_since(start)
         rig.check(
-            bool(sent)
-            and sent[-1]["if_match"] == old_guard
-            and rig.config()["scene"] == before["scene"]
-            and rig.config()["layout"] == before["layout"],
+            race["writer_status"] == 200 and race["status"] == 412 and race["guard"] == guard
+            and len(sent) == 1 and sent[0]["if_match"] == guard
+            and rig.config()["scene"] == race["before"]["scene"]
+            and rig.config()["layout"] == race["before"]["layout"]
+            and p.locator("body").get_attribute("data-output-dirty") == "true",
             "Saved scene Show retains original preview guard and refuses changed snapshot without substituting content",
-            sent,
+            {"requests": sent, "real_server": race},
         )
+        p.wait_for_timeout(1400)
+        rig.check(len(writes_since(start)) == 1,
+                  "Real 412 saved Show never retries, rebases or substitutes after settling", writes_since(start))
+
+    p.locator("#image-discard").click()
+    task(p, "Saved")
+    preview()
+    before = rig.config()
+    original_asset = p.locator("#selected-image-controls").get_attribute("data-asset-id")
+    start = len(rig.requests)
+    task(other, "Saved")
+    other.locator("#scene-name").fill("Guarded scene")
+    other.locator("#scene-save").click()
+    expect(other.locator("#scene-message")).to_contain_text("Content saved")
+    expect(p.locator("#show-image")).to_be_disabled()
+    replaced = rig.config()
+    p.locator("#image-rebuild").click()
+    expect(p.locator("#image-message")).to_contain_text("Discard it, then open Saved")
+    rig.check(
+        replaced["etag"] != before["etag"] and replaced["scene"] == before["scene"]
+        and replaced["layout"] == before["layout"] and not writes_since(start)
+        and p.locator("#selected-image-controls").get_attribute("data-asset-id") == original_asset,
+        "Saved replacement alone changes the guard without a wall write; Rebuild retains the frozen preview with zero writes",
+        {"before": before["etag"], "after": replaced["etag"], "requests": writes_since(start)},
+    )
+    p.locator("#image-discard").click()
+    task(p, "Saved")
+    preview()
+    before = rig.config()
+    start = len(rig.requests)
+    other.get_by_role("button", name="Delete content “Guarded scene”", exact=True).click()
+    expect(other.locator("#scene-message")).to_contain_text("deleted")
+    expect(p.locator("#show-image")).to_be_disabled()
+    deleted = rig.config()
+    p.locator("#image-rebuild").click()
+    expect(p.locator("#image-message")).to_contain_text("Discard it, then open Saved")
+    rig.check(
+        deleted["etag"] != before["etag"] and deleted["scene"] == before["scene"]
+        and deleted["layout"] == before["layout"] and not writes_since(start)
+        and p.locator("body").get_attribute("data-output-dirty") == "true",
+        "Saved deletion alone changes the guard without a wall write; retained preview cannot rebuild or recall a replacement",
+        {"before": before["etag"], "after": deleted["etag"], "requests": writes_since(start)},
+    )
+    other.locator("#scene-name").fill("Guarded scene")
+    other.locator("#scene-save").click()
+    expect(other.locator("#scene-message")).to_contain_text("Content saved")
+    p.locator("#image-discard").click()
+    task(p, "Saved")
+    preview()
+    start = len(rig.requests)
+    guard = rig.config()["etag"]
+    p.locator("#show-image").click()
+    expect(p.locator("body")).to_have_attribute("data-output-dirty", "false")
+    sent = writes_since(start)
+    rig.check(
+        len(sent) == 1 and sent[0]["if_match"] == guard
+        and rig.config()["scene"]["content"]["type"] == "calibration"
+        and rig.config()["layout"] == before["layout"],
+        "Explicit re-preview of a recreated saved name shows calibration with one guarded recall and unchanged geometry",
+        sent,
+    )
 
 
 def missing_live(rig):

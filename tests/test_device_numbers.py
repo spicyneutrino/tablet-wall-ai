@@ -115,12 +115,17 @@ def test_an_open_socket_keeps_the_number(client):
     assert main.devices[first]["number"] == 1
 
 
+def _etag(client) -> str:
+    return client.get("/api/v3/config").json()["etag"]
+
+
 def test_delete_frees_the_number_for_reuse(client):
     first, second, third = _three_ids()
     _register(client, first)
     _register(client, second)
 
-    response = client.delete(f"/devices/{first}")
+    response = client.delete(
+        f"/devices/{first}", headers={"If-Match": _etag(client)})
     assert response.status_code == 200, response.text
     assert _register(client, third)["number"] == 1
 

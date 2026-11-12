@@ -124,6 +124,24 @@ class TestInventory:
 
         assert [entry["id"] for entry in inventory(client)] == [digest(data)]
 
+    def test_an_explicit_inventory_refresh_bypasses_the_negative_cooldown(
+        self, client, asset_dir, monkeypatch
+    ):
+        data = image_bytes()
+        target = digest(data)
+        assets.refresh()
+        monkeypatch.setattr(assets, "_clock", lambda: 50.0)
+
+        assert assets.available(target) is False, "the miss opens the cooldown"
+        put_file(asset_dir, "poster.png", data)
+        assert assets.available(target) is False, "still inside the window"
+
+        assert [entry["id"] for entry in inventory(client)] == [target]
+        assert assets.available(target) is True
+        served = client.get(f"/assets/{target}")
+        assert served.status_code == 200
+        assert served.content == data
+
     def test_a_directory_that_does_not_exist_yet_is_an_empty_inventory(
         self, client, tmp_path
     ):
@@ -215,10 +233,10 @@ class TestServing:
         assert client.get(f"/assets/{asset_id}").status_code == 404
 
     def test_malformed_id_does_not_scan_the_directory(self, client, monkeypatch):
-        def unexpected_scan():
+        def unexpected_scan(*_args, **_kwargs):
             raise AssertionError("a malformed asset id must be rejected before scanning")
 
-        monkeypatch.setattr(assets, "refresh", unexpected_scan)
+        monkeypatch.setattr(assets.os, "scandir", unexpected_scan)
         assert client.get("/assets/not-an-id").status_code == 404
 
     def test_a_removed_file_is_404_on_serving(self, client, asset_dir):

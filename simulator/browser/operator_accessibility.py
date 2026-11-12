@@ -160,10 +160,10 @@ def native_keyboard(rig):
     p.keyboard.press("Enter")
     expect(p.locator("body")).to_have_attribute("data-stage-mode", "arrangement-preview")
     native_tab_task(p, "Tablets")
-    trigger_id = p.locator("[role=tab][aria-selected=true]").get_attribute("id")
     native_tab_task(p, "Images")
     dialog = p.locator("#draft-resolution")
     expect(dialog).to_be_visible()
+    trigger_id = p.locator("[role=tab][aria-selected=true]").get_attribute("id")
     contains = []
     for key in ["Tab"] * 7 + ["Shift+Tab"] * 7:
         p.keyboard.press(key)
@@ -212,7 +212,8 @@ def entry_recovery(rig):
                 rig.base
                 + "/controller/physical.html?acceptance=preserve%20me&x=2#wall-proof"
             )
-            expect(page.locator("#rail-tabs")).to_be_visible()
+            navigation = "#compact-task-select" if page.evaluate("matchMedia('(max-width: 48rem)').matches") else "#rail-tabs"
+            expect(page.locator(navigation)).to_be_visible()
             expect(page.locator("body")).to_have_attribute("data-connection", "current")
             page.evaluate("document.fonts.ready")
             sockets = [
@@ -301,7 +302,7 @@ def visual_states(rig):
     expect(
         p.get_by_role("button", name="Preview " + long_name, exact=True)
     ).to_have_count(1)
-    for width, height in ((1440, 900), (390, 844), (320, 640)):
+    for width, height in ((1440, 900), (1280, 800), (390, 844), (320, 640)):
         p.set_viewport_size({"width": width, "height": height})
         for name in ("Tablets", "Images"):
             task(p, name)
@@ -342,9 +343,9 @@ def visual_states(rig):
             ),
             p.wait_for_timeout,
         )
-        for width, height in ((1440, 900), (390, 844)):
+        for width, height in ((1440, 900), (1280, 800), (390, 844)):
             p.set_viewport_size({"width": width, "height": height})
-            button = p.get_by_role("button", name="Preview " + long_name, exact=True)
+            button = p.get_by_role("button", name="Preview " + long_name + ", thumbnail unavailable", exact=True)
             rig.check(
                 button.is_visible()
                 and button.is_enabled()
@@ -365,10 +366,11 @@ def visual_states(rig):
     )
     p.locator("#refresh-images").click()
     held.wait()
-    for width, height in ((1440, 900), (390, 844)):
+    for width, height in ((1440, 900), (1280, 800), (390, 844)):
         p.set_viewport_size({"width": width, "height": height})
         rig.check(
-            "Reading" in p.locator("#image-message").inner_text()
+            "Refreshing the image library. Showing the last known library state."
+            in p.locator("#library-status").inner_text()
             and p.locator("#show-image").is_disabled(),
             f"Canonical image loading state disables unsafe Show at {width}",
         )
@@ -386,12 +388,12 @@ def visual_states(rig):
             times=1,
         )
         p.locator("#refresh-images").click()
-        expect(p.locator("#image-message")).to_contain_text("Image library unavailable")
-        for width, height in ((1440, 900), (390, 844)):
+        expect(p.locator("#library-status")).to_contain_text("Image library unavailable")
+        for width, height in ((1440, 900), (1280, 800), (390, 844)):
             p.set_viewport_size({"width": width, "height": height})
             rig.check(
                 p.locator("#refresh-images").is_enabled()
-                and "retry" in p.locator("#image-message").inner_text(),
+                and "retry" in p.locator("#library-status").inner_text(),
                 f"Canonical image error state retains explicit Refresh recovery at {width}",
             )
             rig.shot(p, "inventory-error")
@@ -407,12 +409,12 @@ def visual_states(rig):
         }
     )
     p.locator("#refresh-images").click()
-    expect(p.locator("#image-message")).to_have_text("No images available.")
-    for width, height in ((1440, 900), (390, 844)):
+    expect(p.locator("#library-status")).to_have_text("No images available.")
+    for width, height in ((1440, 900), (1280, 800), (390, 844)):
         p.set_viewport_size({"width": width, "height": height})
         rig.check(
             p.locator("#image-gallery li").count() == 0
-            and "No images" in p.locator("#image-message").inner_text(),
+            and "No images" in p.locator("#library-status").inner_text(),
             f"Canonical empty image inventory retains admitted Add image and Arrange at {width}",
         )
         rig.shot(p, "inventory-empty")
@@ -639,13 +641,13 @@ def responsive(rig):
     tab.focus()
     tab.press("ArrowRight")
     rig.check(
-        task_tab(p, "Saved").get_attribute("aria-selected")
+        task_tab(p, "Tablets").get_attribute("aria-selected")
         == "true",
         "Task tabs support ArrowRight roving navigation",
         focus(p),
         fatal=False,
     )
-    task_tab(p, "Saved").press("Home")
+    task_tab(p, "Tablets").press("Home")
     rig.check(
         task_tab(p, "Images").get_attribute("aria-selected")
         == "true",
@@ -688,7 +690,7 @@ def responsive(rig):
     rig.task("Saved")
     rig.click(
         p.get_by_role(
-            "button", name="Recall arrangement “Keyboard arrangement”", exact=True
+            "button", name="Recall geometry for arrangement “Keyboard arrangement”", exact=True
         )
     )
     expect(p.locator("#layout-msg")).to_contain_text("recalled")

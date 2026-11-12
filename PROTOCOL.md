@@ -260,12 +260,34 @@ Applies one color to every known device.
 
 ### `DELETE /devices/{device_id}`
 
-Removes a device from the roster and closes its socket with `1000` if open.
-Broadcasts `device_offline` (only when a socket was actually closed) followed
-by `device_removed`.
+Removes the roster identity and its active placement or slot, preserves saved
+layout references, and broadcasts `device_removed`. Playback is aborted.
+Requires `If-Match` with the current `GET /api/v3/config` ETag. An invalid or
+unknown identity returns `404` before the guard. For a known identity, a
+missing guard returns `428`, and a stale guard returns `412` before lifecycle
+validation and commit.
 
 - `200` → `{"removed": true, "device_id": "..."}`
 - `404` if the device is unknown.
+
+### `POST /devices/{device_id}/rebind`
+
+The path identifies the registered new device. The JSON body is
+`{"replaces":"<old UUID4>","number":1}`. `number` is optional and must be
+between 1 and the server device limit. The command assumes the same hardware,
+transfers the label and active arrangement, and leaves saved layouts unchanged.
+It uses the new device's current connection identity internally.
+
+Requires the current config `If-Match`. Framework body validation can return
+`422` before the handler. Once the body is valid, a malformed or unknown new
+path identity returns `404` before the ETag check. For a known new identity,
+missing `If-Match` returns `428`, and a stale value returns `412` before
+lifecycle validation. Old-identity and live-connection conflicts are evaluated
+after that guard. Do not infer `409` precedence from an old device being live.
+A live owned socket for the old identity returns `409 old_connected`; rebind
+does not forcibly close that socket.
+The workspace v3 preview supports explicit hardware choice and saved-layout
+selection. This legacy request does not have those fields.
 
 ### Ids and status codes
 

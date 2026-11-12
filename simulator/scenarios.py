@@ -404,7 +404,10 @@ def registration(ctx: Ctx) -> None:
     )
     ctx.eq("an extra device can register", created.status_code, 200)
     ctx.eq("roster grew by one", len(ctx.harness.roster()), ctx.n + 1)
-    removed = ctx.harness.delete(f"/devices/{extra}")
+    removed = ctx.harness.delete(
+        f"/devices/{extra}",
+        headers={"If-Match": ctx.harness.get("/api/v3/config").json()["etag"]},
+    )
     ctx.eq("removing it succeeds", removed.json(), {"removed": True, "device_id": extra})
     ctx.eq("roster is back to the fleet", len(ctx.harness.roster()), ctx.n)
     ctx.eq(
@@ -1728,10 +1731,13 @@ def socket_replacement(ctx: Ctx) -> None:
 # ---------------------------------------------------------------------------
 
 
-@scenario("21_restart", "Restart mints a new generation and keeps the persisted wall")
+@scenario("21_restart", "Restart mints a new generation and keeps the persisted wall and roster")
 def restart(ctx: Ctx) -> None:
     before = ctx.wall
-    roster_before = len(ctx.harness.roster())
+    roster_before = ctx.harness.roster()
+    colors_before = {
+        device_id: record.get("color") for device_id, record in roster_before.items()
+    }
 
     ctx.harness.restart()
     ctx.expect(
@@ -1751,7 +1757,25 @@ def restart(ctx: Ctx) -> None:
     ctx.eq("revision continues from the database", after["revision"], before["revision"])
     ctx.eq("placements survive the restart", after["placements"], before["placements"])
     ctx.eq("scene survives the restart", after["scene"], before["scene"])
-    ctx.eq("the roster is memory-only", len(ctx.harness.roster()), 0)
+
+    # Device metadata is durable. A restart restores the roster with every
+    # tablet offline (no socket outlived the process) and with its colour.
+    after_roster = ctx.harness.roster()
+    ctx.eq(
+        "the durable roster survives the restart",
+        set(after_roster),
+        set(roster_before),
+    )
+    ctx.eq(
+        "restored tablets start offline",
+        {record["online"] for record in after_roster.values()},
+        {False},
+    )
+    ctx.eq(
+        "restored colours survive the restart",
+        {device_id: record.get("color") for device_id, record in after_roster.items()},
+        colors_before,
+    )
     ctx.expect(
         "no socket outlived the server",
         all(not device.connected for device in ctx.devices),
@@ -1759,30 +1783,34 @@ def restart(ctx: Ctx) -> None:
         actual=[device.label for device in ctx.devices if device.connected],
     )
 
-    # Without a roster entry the handshake must fail with a documented code.
-    code = ctx.raw_close_code(
-        f"/ws/device?device_id={ctx.devices[0].device_id}&protocol=2"
+    # A *never-registered* identity is what the unknown-device handshake is
+    # about; the fleet's own ids are now durable roster entries.
+    unknown_id = deterministic_device_id("never-registered-restart")
+    ctx.expect(
+        "an unregistered device is still refused",
+        unknown_id not in after_roster,
+        expected="an identity absent from the durable roster",
+        actual=unknown_id,
     )
-    ctx.eq("a forgotten device is closed with 4404", code, 4404)
+    code = ctx.raw_close_code(f"/ws/device?device_id={unknown_id}&protocol=2")
+    ctx.eq("a never-registered device is closed with 4404", code, 4404)
 
-    ctx.harness.register_all()
-    ctx.eq("the fleet re-registers", len(ctx.harness.roster()), roster_before)
-    ctx.eq(
-        "the roster really is rebuilt from nothing",
-        {record["color"] for record in ctx.harness.roster().values()},
-        {None},
-        detail="colour and presence live in memory only",
-    )
-
+    # The durable roster alone admits the fleet back; no re-registration is
+    # needed before scenario 22's live-socket checks.
     welcomes = ctx.harness.connect_all()
-    ctx.eq("every tablet reconnects", len(welcomes), ctx.n)
+    ctx.eq("every tablet reconnects from durable metadata", len(welcomes), ctx.n)
     frames = ctx.wall_frames(revision=after["revision"], what="first frame after restart")
     for device in ctx.devices:
         frame = frames[device.device_id]
         ctx.eq(f"{device.label} new generation", frame["generation"], after["generation"])
         ctx.eq(f"{device.label} persisted revision", frame["revision"], after["revision"])
+        restored = device.pump.next_frame(
+            predicate=lambda candidate: candidate.get("type") == "set_color",
+            what="restored colour",
+        )
+        ctx.eq(f"{device.label} restored colour", restored["color"], colors_before[device.device_id])
 
-    # A controller opened after the restart sees the rebuilt roster and the
+    # A controller opened after the restart sees the restored roster and the
     # new generation, proving the snapshot reads live state.
     fresh = ctx.harness.open_controller("v2", protocol=2)
     snapshot = fresh.next_frame(predicate=lambda f: f.get("type") == "snapshot", what="snapshot")

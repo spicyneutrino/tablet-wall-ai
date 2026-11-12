@@ -579,7 +579,7 @@
         else reportRender(renderInstruction.status, renderInstruction.reason);
     }
 
-    function updateRenderEvidence(instruction, paint) {
+    function updateRenderEvidence(instruction, paint, scenePainted) {
         if (!instructionOwned(instruction) || !wallState) return;
         if (!pageVisible()) { reportRender("hidden", null); return; }
         if (playbackOnScreen) { reportRender("blocked", "playback"); return; }
@@ -600,7 +600,17 @@
         if (["image", "color", "calibration"].indexOf(wallState.contentType) < 0) {
             reportRender("unsupported", "capability"); return;
         }
-        if (wallState.contentType !== "image") return;
+        if (wallState.contentType !== "image") {
+            if (scenePainted === false) {
+                reportRender("failed", "surface"); return;
+            }
+            requestAnimationFrame(function () {
+                if (!instructionOwned(instruction) || paint !== paintSequence || !pageVisible() ||
+                    instruction.viewport !== JSON.stringify(viewportReport()) || playbackOnScreen) return;
+                reportRender("displayed", null);
+            });
+            return;
+        }
         if (imageStatus === "failed") {
             var reason = imageFailureReason || "fetch";
             reportRender("failed", reason); return;
@@ -947,16 +957,17 @@
     function render() {
         var instruction = renderInstruction;
         var paint = ++paintSequence;
+        var scenePainted;
         imagePainted = false;
         try {
-            renderScene();
+            scenePainted = renderScene();
             relayoutVideo();
         } catch (err) {
             warn("drawing failed", err);
             reportRender("failed", "surface");
             return;
         }
-        updateRenderEvidence(instruction, paint);
+        updateRenderEvidence(instruction, paint, scenePainted);
     }
 
     function syncCalibrationRecovery() {
@@ -983,7 +994,7 @@
 
         if (wallState.contentType === "color") {
             showCanvas(false);
-            return;
+            return true;
         }
         if ((wallState.physical && wallState.contentType === "calibration") ||
             ["color", "image", "calibration"].indexOf(wallState.contentType) < 0) {
@@ -1002,7 +1013,7 @@
             if (!wallState.visible) {
                 drawUnplaced();
             } else {
-                drawCalibration();
+                return drawCalibration();
             }
             return;
         }
@@ -1065,9 +1076,9 @@
 
     function drawCalibration() {
         var vp = viewportSize();
-        if (!vp) return;
+        if (!vp) return false;
         var view = prepareCanvas(vp.w, vp.h);
-        if (!view) return;
+        if (!view) return false;
         var visible = wallState.visible;
 
         /*
@@ -1080,7 +1091,7 @@
          * outside the canvas and is cropped.
          */
         var scale = Math.max(vp.w / visible.w, vp.h / visible.h);
-        if (!Number.isFinite(scale) || scale <= 0) return;
+        if (!Number.isFinite(scale) || scale <= 0) return false;
         var k = scale * view.dpr; /* wall unit -> backing pixel */
         var ky = scale * view.dprY;
         var ox = (visible.w - vp.w / scale) / 2;
@@ -1095,6 +1106,7 @@
         );
         drawPattern(view.ctx, scale, view.dpr, visible);
         drawDeviceBadge(view.ctx, vp, view.dpr, view.dprY);
+        return true;
     }
 
     /*
@@ -1404,6 +1416,7 @@
             signal: controller ? controller.signal : undefined,
         })
             .then(function (response) {
+                if (handle.released) throw new Error("image load cancelled");
                 if (!response || !response.ok) {
                     var status =
                         response && response.status != null
@@ -1418,6 +1431,7 @@
                 return response.blob();
             })
             .then(function (blob) {
+                if (handle.released) throw new Error("image load cancelled");
                 handle.phase = "decode";
                 return decodeBlob(blob, url, handle);
             });
@@ -1515,20 +1529,36 @@
         }
     }
 
-    /* One attempt's handle on the platform: the <img> still downloading and
-     * the object URL its bytes live behind. */
+    /* One attempt's handle on the platform: the <img> still downloading,
+     * the object URL its bytes live behind, and the fetch deadline/abort
+     * owner that must stop when the attempt is abandoned. */
     function newLoadHandle() {
-        return { img: null, objectUrl: null };
+        return { img: null, objectUrl: null, controller: null, timer: null, released: false };
     }
 
     /*
      * Abandon a load nobody is waiting for any more: clear its handlers and
-     * its src so the <img> stops pulling bytes, then revoke the object URL.
+     * its src so the <img> stops pulling bytes, abort a fetch still running,
+     * clear the attempt deadline, then revoke the object URL.
      * Idempotent — every field is nulled as it goes — so a timeout, a scene
      * change and a late settle can all call it without double work.
      */
     function releaseLoad(handle) {
         if (!handle) return;
+        handle.released = true;
+        if (handle.timer !== null) {
+            clearTimeout(handle.timer);
+            handle.timer = null;
+        }
+        if (handle.controller) {
+            var controller = handle.controller;
+            handle.controller = null;
+            try {
+                controller.abort();
+            } catch (err) {
+                warn("could not abort the image request", err);
+            }
+        }
         var img = handle.img;
         if (img) {
             handle.img = null;
@@ -1677,7 +1707,13 @@
 
         if (imageCache && imageCache.key === desc.key) {
             /* Already decoded this exact picture: a replayed or reconnected
-             * frame needs no refetch. */
+             * frame needs no refetch. A different load may still be in
+             * flight; it is no longer the answer, so settle and release it
+             * rather than letting it decode or hold its object URL. */
+            if (imageAttempt !== null) {
+                imageAttempt.settled = true;
+                releaseLoad(imageAttempt.load);
+            }
             imageAttempt = null;
             imageStatus = "ready";
             imageFailure = null;
@@ -1753,6 +1789,7 @@
 
         var controller =
             typeof AbortController === "function" ? new AbortController() : null;
+        attempt.load.controller = controller;
 
         /*
          * ONE timer bounds the WHOLE attempt — response headers, body and
@@ -1765,15 +1802,8 @@
          * stale callback never restarts the attempt — retrying is the
          * operator's tap.
          */
-        var timer = setTimeout(function () {
-            timer = null;
-            if (controller) {
-                try {
-                    controller.abort();
-                } catch (err) {
-                    warn("could not abort the image request", err);
-                }
-            }
+        attempt.load.timer = setTimeout(function () {
+            attempt.load.timer = null;
             if (!isCurrentImageAttempt(attempt)) return;
             attempt.settled = true;
             failImageScene("image load timed out", attempt.load.phase);
@@ -1781,10 +1811,11 @@
 
         /* The promise settled, so the attempt's own deadline is spent. */
         function settle() {
-            if (timer !== null) {
-                clearTimeout(timer);
-                timer = null;
+            if (attempt.load.timer !== null) {
+                clearTimeout(attempt.load.timer);
+                attempt.load.timer = null;
             }
+            attempt.load.controller = null;
         }
 
         fetchImageSource(url, controller, attempt.load).then(

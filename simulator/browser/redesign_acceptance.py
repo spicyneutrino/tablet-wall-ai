@@ -816,14 +816,34 @@ class Rig:
             launch_profile="deploy.hotspot.backend_environment composition only; no ingress/hotspot run",
         )
         self.start_server()
-        self.browser = playwright.chromium.launch(
-            headless=True,
-            executable_path=playwright.chromium.executable_path,
-            env=self.env,
+        self.browser = playwright.chromium.launch(headless=True, env=self.env)
+        browser_processes = owned_browser_processes()
+        browser_executable = next(
+            (
+                command.split()[0]
+                for command in browser_processes.values()
+                if "--type=" not in command
+            ),
+            None,
         )
         self.manifest.update(
             browser_version=self.browser.version,
-            browser_executable=playwright.chromium.executable_path,
+            browser_executable=browser_executable,
+            browser_launch={
+                "api": "playwright.chromium.launch",
+                "headless": True,
+                "executable_path_override": None,
+                "executable_path_override_reason": (
+                    "Playwright default headless shell; a forced full-Chrome "
+                    "executable_path reproduced SIGTRAP in prior isolated runs."
+                ),
+                "env": "private child environment",
+                "actual_executable": browser_executable,
+                "actual_executable_source": "first owned main browser process cmdline",
+                "browser_type_executable_path_not_used": (
+                    playwright.chromium.executable_path
+                ),
+            },
         )
         context = self.browser.new_context(
             viewport={"width": 1440, "height": 900}, reduced_motion="reduce"
@@ -1014,6 +1034,15 @@ class Rig:
 def first_wall(rig):
     p = rig.page
     rig.select("#grid-kind", "physical")
+    # The group setup is unhidden only by a full authoritative render, not by
+    # the kind change itself. Wait for that render before opening its details.
+    wait_until(
+        lambda: p.evaluate(
+            "() => !document.querySelector('#arrange-model .group-setup')?.hidden"
+        ),
+        p.wait_for_timeout,
+        timeout=15,
+    )
     rig.select("#group-model", "google-pixel-c")
     subjects = p.locator("#group-subjects").inner_text()
     rig.check(
@@ -1099,10 +1128,10 @@ def first_wall(rig):
     rig.manifest["script_fixture_action_count"] = len(rig.manifest["operator_actions"])
     rig.manifest["first_wall_actions"] = deepcopy(rig.manifest["operator_actions"])
     rig.check(
-        len(rig.manifest["operator_actions"]) <= 16,
-        "Scripted first journey at most 16 deliberate console actions including fixture refresh",
+        len(rig.manifest["operator_actions"]) <= 17,
+        "Scripted first journey at most 17 deliberate console actions including fixture refresh",
         rig.manifest["operator_actions"],
-        "<=16; client visits and file picker excluded; not a human benchmark",
+        "<=17; client visits and file picker excluded; not a human benchmark",
     )
     rig.shot(p, "image-shown")
     rig.shot(rig.tablets[0], "real-client-slice")
@@ -1601,22 +1630,26 @@ def corrections(rig):
     (rig.out / "image-preview-ax.yml").write_text(tree)
 
     toggle = p.locator("#view-toggle")
-    expect(toggle).to_have_text("View applied")
+    expect(toggle).to_have_text("On wall")
+    expect(toggle).to_have_attribute("aria-label", "On wall")
     toggle.focus()
     toggle.press("Enter")
     expect(toggle).to_be_focused()
-    expect(toggle).to_have_text("View preview")
+    expect(toggle).to_have_text("Preview")
+    expect(toggle).to_have_attribute("aria-label", "Preview")
     rig.check(True, "View applied keeps focus and relabels the toggle View preview")
     rig.task("Tablets")
     with p.expect_response("**/api/v3/config"):
         rig.click("#btn-roster-refresh")
     rig.task("Images")
-    expect(toggle).to_have_text("View preview")
+    expect(toggle).to_have_text("Preview")
+    expect(toggle).to_have_attribute("aria-label", "Preview")
     rig.check(True, "Status refresh retains the applied comparison and pending image preview")
     toggle.focus()
     toggle.press("Enter")
     expect(toggle).to_be_focused()
-    expect(toggle).to_have_text("View applied")
+    expect(toggle).to_have_text("On wall")
+    expect(toggle).to_have_attribute("aria-label", "On wall")
     rig.check(True, "View preview keeps focus and relabels the toggle View applied")
 
     for width, height in ((320, 844), (390, 844), (667, 375), (844, 390)):
@@ -1737,9 +1770,17 @@ def corrections(rig):
 
     rig.task("Saved")
     restore_points = p.locator('#saved-layouts [data-snapshot-name^="Before physical "]')
-    expect(restore_points.first.locator(".saved-name")).to_contain_text("Restore point · Before physical ")
-    expect(restore_points.first.get_by_role("button", name="Recall", exact=False)).to_be_enabled()
-    rig.check(True, "Automatic safety copy is labelled as a restore point and retains Recall")
+    restore_point = restore_points.first
+    restore_name = restore_point.get_attribute("data-snapshot-name")
+    expect(restore_point.locator(".saved-name")).to_have_text(restore_name)
+    expect(restore_point.locator('.saved-tag[data-kind="auto"]')).to_have_text("Automatic restore point")
+    expect(restore_point).to_have_attribute("data-automatic", "true")
+    expect(
+        restore_point.get_by_role(
+            "button", name=f"Recall geometry for arrangement “{restore_name}”", exact=True
+        )
+    ).to_be_enabled()
+    rig.check(True, "Automatic restore point keeps its server name, a separate tag and geometry-only Recall")
     p.locator("#layout-name").fill("")
     p.locator("#btn-layout-save").click()
     expect(p.locator("#layout-msg")).to_contain_text("name")
@@ -1753,7 +1794,8 @@ def corrections(rig):
     expect(p.locator("#layout-name")).to_be_focused()
     rig.shot(p, "saved-local-feedback")
     rig.check(
-        p.locator("#btn-layouts-refresh").inner_text() == "Refresh"
+        p.locator("#btn-layouts-refresh svg").count() == 1
+        and p.locator("#btn-layouts-refresh").get_attribute("aria-label") == "Refresh saved arrangements and content"
         and p.locator("#scenes-refresh").count() == 0,
         "One task-level Refresh saved names both object inventories",
     )

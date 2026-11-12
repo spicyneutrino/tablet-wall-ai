@@ -26,6 +26,10 @@ THIRD_ID = str(uuid.uuid4())
 ZERO_BEZEL = {"top": 0, "right": 0, "bottom": 0, "left": 0}
 
 
+def config_etag(client) -> str:
+    return client.get("/api/v3/config").json()["etag"]
+
+
 def device_url(
     device_id: str = DEVICE_ID, protocol: object = None, caps: str | None = None
 ) -> str:
@@ -1152,7 +1156,7 @@ class TestDeletingADevice:
         before = wall_state(client)
         assert DEVICE_ID in before["placements"]
 
-        assert client.delete(f"/devices/{DEVICE_ID}").status_code == 200
+        assert client.delete(f"/devices/{DEVICE_ID}", headers={"If-Match": config_etag(client)}).status_code == 200
 
         after = wall_state(client)
         assert DEVICE_ID not in after["placements"]
@@ -1165,6 +1169,6 @@ class TestDeletingADevice:
         register(client, device_payload, DEVICE_ID)
         before = wall_state(client)
 
-        assert client.delete(f"/devices/{DEVICE_ID}").status_code == 200
+        assert client.delete(f"/devices/{DEVICE_ID}", headers={"If-Match": config_etag(client)}).status_code == 200
 
         assert wall_state(client)["revision"] == before["revision"]

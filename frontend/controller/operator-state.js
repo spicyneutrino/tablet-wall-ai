@@ -144,6 +144,9 @@
     function tabletState(config, id, nowMono) {
         const slot = entries(config.layout)[id];
         const device = config.runtime && config.runtime.devices && config.runtime.devices[id];
+        const content = config.scene && config.scene.content || {};
+        const image = content.type === "image";
+        const subject = image ? "image" : "scene";
         const result = (status, text, showing = false) => ({ status, text, showing, online: !!device && device.online === true });
         if (!slot) return result("unplaced", "No placement");
         if (!device) return result("unknown", "Missing tablet · spot reserved");
@@ -163,18 +166,20 @@
             const accepted = render.accepted_token;
             const elapsed = Number.isFinite(render.observed_mono) ? Math.max(0, nowMono - render.observed_mono) : Infinity;
             const age = typeof render.age_ms === "number" ? render.age_ms + elapsed : Infinity;
-            const content = config.scene && config.scene.content || {};
             if (render.current !== true || !sameToken(expected, accepted) || !Number.isFinite(age) || age < 0 || age >= 15000
                     || expected.generation !== config.generation || expected.revision !== config.revision
-                    || expected.asset !== (content.type === "image" ? content.asset : null) || mapping.state !== "ready"
+                    || expected.asset !== (image ? content.asset : null) || mapping.state !== "ready"
                     || device.connection_id !== undefined && expected.connection_id !== device.connection_id) {
-                return result("stale", "Previous paint · current image unconfirmed");
+                return result("stale", "Previous paint · current " + subject + " unconfirmed");
             }
-            return result("displayed", content.type === "image" ? "Reports current image" : "Current scene reported", content.type === "image");
+            return result("displayed", image ? "Reports current image" : "Current scene reported", true);
         }
-        const texts = { blocked: "Blocked", loading: "Loading image", failed: "Image failed", hidden: "Page hidden",
-            stale: "Confirmation expired", unsupported: "Unsupported client or content", unplaced: "No placement", unknown: "Image unconfirmed" };
+        const texts = { blocked: "Blocked", loading: "Loading " + subject, failed: image ? "Image failed" : "Scene failed", hidden: "Page hidden",
+            stale: "Confirmation expired", unsupported: "Unsupported client or content", unplaced: "No placement", unknown: "Current " + subject + " unconfirmed" };
         return result(status in texts ? status : "unknown", (texts[status] || texts.unknown) + (render.reason ? " · " + render.reason : ""));
+    }
+    function needsAttention(item) {
+        return !item.showing && item.status !== "excluded";
     }
     function aggregate(config, nowMs) {
         const ids = Object.keys(entries(config.layout)).filter(id => entries(config.layout)[id].participating !== false);
@@ -186,7 +191,7 @@
         return { event() { epoch += 1; }, start() { return { epoch, sequence: ++issued }; }, current(ticket) { return ticket.epoch === epoch; },
             accept(ticket) { if (ticket.epoch !== epoch || ticket.sequence < accepted) return false; accepted = ticket.sequence; return true; } };
     }
-    const api = { stageView, layoutSignature, fitLogical, arrangeLogical, rotateLogical, clone, entries, registrationCounts, layoutDraft, bounds, fitTransform, compareIds, sameToken, observeDevice, observeConfig, tabletState, aggregate, readFence };
+    const api = { stageView, layoutSignature, fitLogical, arrangeLogical, rotateLogical, clone, entries, registrationCounts, layoutDraft, bounds, fitTransform, compareIds, sameToken, observeDevice, observeConfig, tabletState, needsAttention, aggregate, readFence };
     if (typeof module !== "undefined" && module.exports) module.exports = api;
     else root.OperatorState = api;
 }(typeof window !== "undefined" ? window : globalThis));

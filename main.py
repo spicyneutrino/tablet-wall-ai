@@ -106,6 +106,7 @@ from tabletwall.persist import (
     load_scene,
     load_scenes,
     load_state,
+    save_generation,
     save_layout,
     save_scene,
     save_state,
@@ -173,7 +174,13 @@ def _restore_wall_state() -> None:
     wall.clear()
     wall.update(persisted if persisted is not None else _fresh_wall())
     wall["generation"] = _new_generation()
-    save_state(wall)
+    if persisted is None:
+        save_state(wall)
+    else:
+        # The row was validated before it reached memory. Only the generation
+        # changes; a full rewrite would replace the operator's layout and
+        # scene bytes (and drop fields this build does not model).
+        save_generation(wall["generation"])
 
 
 @asynccontextmanager
@@ -1082,10 +1089,13 @@ async def change_color(device_id: str, command: ColorCommand):
 
 
 @app.delete("/devices/{device_id}")
-async def delete_device(device_id: str):
+async def delete_device(device_id: str, request: Request):
     key = _parse_device_id(device_id)
     if key is None or key not in devices:
         raise HTTPException(status_code=404, detail="Unknown device")
+    # A known device may still be refused for the current config: the guard
+    # follows the identity check so a stale caller cannot turn a 404 into 428.
+    _require_config_etag(request)
     result = await _forget_device(key, device_lifecycle.ForgetCommand(remove_active=True, saved_layouts="keep"))
     return {"removed": True, "device_id": key, **({"remaining_saved": result} if result else {})}
 
@@ -1103,10 +1113,13 @@ class RebindCommand(BaseModel):
 
 
 @app.post("/devices/{device_id}/rebind")
-async def rebind_device(device_id: str, command: RebindCommand):
+async def rebind_device(device_id: str, command: RebindCommand, request: Request):
     key = _parse_device_id(device_id)
     if key is None:
         raise HTTPException(status_code=404, detail="Unknown device")
+    if key not in devices:
+        raise HTTPException(status_code=404, detail="Unknown device")
+    _require_config_etag(request)
     command_v3 = device_lifecycle.RebindApply(
         replaces=str(command.replaces), hardware="same_hardware", active=True,
         saved_layouts=[], transfer_label=True, number=command.number,
@@ -1841,7 +1854,7 @@ def _config_payload() -> dict[str, Any]:
         payload["referenced_calibrations"] = calibrations
     if payload["scene"]["content"].get("type") == "image":
         payload["scene"]["content"].setdefault("fit", "cover")
-        payload["scene"]["content"].setdefault("background", "#22252a")
+        payload["scene"]["content"].setdefault("background", "#0b1120")
         payload["scene"]["content"]["available"] = operability.asset_available(
             payload["scene"]["content"]["asset"])
     payload["operator_state_version"] = 1
@@ -2737,7 +2750,7 @@ async def _send_prepare(
         "type": "prepare",
         **pending.as_frame(),
         **session.lineage(),
-        "asset": {**descriptor, **({"fit": "cover", "background": "#22252a"} if descriptor.get("kind") != "video" else {})},
+        "asset": {**descriptor, **({"fit": "cover", "background": "#0b1120"} if descriptor.get("kind") != "video" else {})},
         "plan": plan,
         "calibration": calibration,
         "connection_id": connection_id,

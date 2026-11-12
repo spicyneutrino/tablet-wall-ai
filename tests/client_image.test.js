@@ -662,6 +662,7 @@ function createHarness(opts = {}) {
             if (entry) entry.cancelled = true;
         },
         URL: URLShim,
+        AbortController: opts.AbortController,
         fetch: fetchMock,
         WebSocket: MockWebSocket,
         document: documentMock,
@@ -1178,8 +1179,7 @@ test("stale load: an older in-flight asset never paints over a newer one", async
     await drain();
 
     const loser = h.bitmaps.find((b) => b.tag === "A");
-    assert.ok(loser, "the stale asset was decoded before being judged");
-    assert.strictEqual(loser.closed, true, "the stale bitmap is released");
+    assert.equal(loser, undefined, "the released request never decodes");
     assert.strictEqual(
         h.named("drawImage").length,
         paintsBefore,
@@ -1237,7 +1237,7 @@ test("generation change restarts the load; the old lineage is discarded", async 
     first.resolve(okResponse(assetBlob("stale", 400, 400)));
     await drain();
     const loser = h.bitmaps.find((b) => b.tag === "stale");
-    assert.ok(loser && loser.closed, "the old lineage's bitmap is released");
+    assert.equal(loser, undefined, "the old lineage's request never decodes");
     assert.strictEqual(
         h.named("drawImage").length,
         paintsBefore,
@@ -1690,15 +1690,14 @@ test("a stalled asset times out, and its late decode neither paints nor retries"
     assert.strictEqual(h.named("drawImage").length, 0, "still nothing painted");
 
     /* The stalled body arrives AFTER the timeout: it must not paint over
-     * the failure, must not leak its bitmap, and must not kick off a fresh
-     * load on its own — retrying is the operator's tap. */
+     * the failure, must not decode, and must not kick off a fresh load on
+     * its own — retrying is the operator's tap. */
     const fetchesAtTimeout = h.fetchLog.length;
     stalled.resolve(okResponse(assetBlob("late", 400, 400)));
     await drain();
 
-    const late = h.bitmaps.find((b) => b.tag === "late");
-    assert.ok(late, "the late body was decoded before being judged");
-    assert.strictEqual(late.closed, true, "…and its bitmap is released");
+    assert.equal(h.bitmaps.some((b) => b.tag === "late"), false,
+        "a released request never starts a late decode");
     assert.strictEqual(
         h.named("drawImage").length,
         0,
@@ -2745,19 +2744,14 @@ test("grid: lower-revision generations stay repeatable and a stale lineage never
         );
 
         /* The pending C response arrives LAST, already a generation
-         * stale: it paints nothing, releases its bitmap to nobody, and
-         * starts nothing on its own. */
+         * stale: it paints nothing, never decodes, and starts nothing on
+         * its own. */
         const paintsNow = h.named("drawImage").length;
         const fetchesNow = h.fetchLog.length;
         lineage.resolve(okResponse(assetBlob("late-lineage", 1000, 1000)));
         await drain();
-        const late = h.bitmaps.find((b) => b.tag === "late-lineage");
-        assert.ok(late, entry.id + " decoded the late response before judging it");
-        assert.strictEqual(
-            late.closed,
-            true,
-            entry.id + " releases the stale lineage's bitmap"
-        );
+        assert.equal(h.bitmaps.some((b) => b.tag === "late-lineage"), false,
+            entry.id + " never decodes a released lineage");
         assert.strictEqual(
             h.named("drawImage").length,
             paintsNow,

@@ -93,11 +93,30 @@ assert.equal(stageNodes.statusUndo.hidden, false);
 // Execute each page's classic scripts in markup order before DOMContentLoaded.
 // This catches missing dependencies and initialization cycles in the VM path.
 for (const page of ["index.html", "physical.html", "experimental.html"]) {
+    const geometryControls = new Set(["btn-match-shape", "view-zoom-fit", "view-zoom-2x", "logical-snap-enabled"]);
     const boot = vm.createContext({ window: {}, document: {
-        readyState: "loading", getElementById: () => null,
+        readyState: "loading", getElementById: id => geometryControls.has(id) ? { addEventListener() {} } : null,
         querySelector: () => null, querySelectorAll: () => [], addEventListener: () => {}
     } });
     const html = fs.readFileSync(path.join(__dirname, "../frontend/controller", page), "utf8");
+    if (page === "physical.html") for (const id of geometryControls) {
+        assert.ok(html.includes('id="' + id + '"'), "boot fixture geometry control exists in the real page: " + id);
+    }
+    if (page === "physical.html") {
+        assert.match(html, /<body class="physical" data-view-zoom="fit">/,
+            "the initial view zoom state is the truthful Fit default");
+        const shape = html.slice(html.indexOf('id="arrange-shape"'), html.indexOf('id="arrange-custom"'));
+        assert.ok(shape.includes('id="grid-rows"') && shape.includes('id="grid-columns"'),
+            "custom grid rows and columns sit in the wall-shape group, not behind the order disclosure");
+        assert.ok(shape.indexOf('id="grid-rows"') < shape.indexOf('id="grid-2x2"'),
+            "custom rows and columns are adjacent to the presets they feed");
+        assert.ok(shape.includes('id="arrange-grid-heading"') && shape.includes('id="arrange-bounds-heading"'),
+            "the wall-shape group labels grid controls apart from bounds controls");
+        assert.match(html, /<details id="arrange-custom"[^>]*\bopen\b/,
+            "selected geometry and relative arrangement controls are expanded instead of behind a collapsed disclosure");
+        assert.ok(html.includes('id="arrange-model"') && html.includes('id="arrange-membership"'),
+            "order and mounting and model and measurements have separate groups");
+    }
     for (const match of html.matchAll(/<script src="([^"?]+)(?:\?[^\"]*)?"><\/script>/g)) {
         vm.runInContext(fs.readFileSync(path.join(__dirname, "../frontend/controller", match[1]), "utf8"), boot, { filename: match[1] });
     }
@@ -231,4 +250,56 @@ for (const kind of ["logical", "physical"]) {
             assert.deepEqual(notified, ["Beta"], "selection actions refresh independently of inspector kind, viewport and reveal");
         }
     }
+}
+
+{
+    const source = fs.readFileSync(path.join(__dirname, "../frontend/controller/physical.js"), "utf8");
+    const html = fs.readFileSync(path.join(__dirname, "../frontend/controller/physical.html"), "utf8");
+    const sizing = require("../frontend/controller/physical-sizing.js");
+    const nodes = new Map(), handlers = new Map(), invalid = new Map(), fields = new Map();
+    function node(id = "") {
+        const tag = Array.from(html.matchAll(/<input\b[^>]*>/g)).map(match => match[0])
+            .find(value => value.includes('id="' + id + '"')) || "";
+        return { id, value: "", dataset: { field: (tag.match(/data-field="([^"]+)"/) || [])[1] },
+            handlers: new Map(), append() {}, addEventListener(type, callback) { this.handlers.set(type, callback); } };
+    }
+    const draft = { kind: "logical", width: 3600, height: 2400, sizing: { mode: "fixed" },
+        placements: { a: { x: 0, y: 0, w: 900, h: 700, bezel: { top: 0, right: 0, bottom: 0, left: 0 } } } };
+    let errors = 0;
+    const sandbox = vm.createContext({ window: { PhysicalSizing: sizing }, logicalFields: fields,
+        logicalInvalid: invalid, state: { draft, selectedId: "a" },
+        clearLogicalError: input => invalid.delete(input), setLogicalError: () => { errors++; },
+        clearLogicalErrors: () => invalid.clear(), mutateDraft: callback => callback(draft),
+        renderLogicalEditor() {}, rotateSelected() {}, announce() {},
+        document: { addEventListener: (type, callback) => handlers.set(type, callback),
+            createElement: () => node(), getElementById: id => {
+                if (!nodes.has(id)) nodes.set(id, node(id));
+                return nodes.get(id);
+            } } });
+    const reconcile = source.slice(source.indexOf("    function reconcileLogicalErrors("),
+        source.indexOf("    function renderLogicalEditor("));
+    const bind = source.slice(source.indexOf("    let logicalResetPending ="),
+        source.indexOf("    function syncStageSummary("));
+    vm.runInContext(reconcile + bind + "\nbindLogicalEditor();", sandbox);
+    for (const [id, value, dimension] of [["logical-width", "1000", "width"], ["logical-height", "700", "height"]]) {
+        const input = nodes.get(id); input.value = value; invalid.set(input, "out of wall");
+        vm.runInContext("reconcileLogicalErrors(state.draft)", sandbox);
+        assert.equal(invalid.has(input), false, "real wall markup revalidates " + id);
+        assert.equal(draft[dimension], Number(value));
+    }
+    const width = fields.get("w"); width.dataset.deviceId = "a"; width.value = "0";
+    const button = { disabled: false };
+    handlers.get("pointerdown")({ target: { closest: () => button } });
+    width.handlers.get("change")();
+    assert.equal(errors, 0, "reset pointer intent avoids inserting a blur error before click");
+    handlers.get("pointerup")();
+    width.handlers.get("change")();
+    assert.equal(errors, 1, "later ordinary invalid changes are still reported");
+    handlers.get("pointerdown")({ target: { closest: () => button } });
+    handlers.get("pointercancel")();
+    width.handlers.get("change")();
+    assert.equal(errors, 2, "cancelled pointers do not suppress later validation");
+    handlers.get("pointerdown")({ target: { closest: () => ({ disabled: true }) } });
+    width.handlers.get("change")();
+    assert.equal(errors, 3, "disabled reset controls do not bypass validation");
 }

@@ -29,6 +29,10 @@ def device_url(device_id: str = DEVICE_ID) -> str:
     return f"/ws/device?device_id={device_id}"
 
 
+def config_etag(client) -> str:
+    return client.get("/api/v3/config").json()["etag"]
+
+
 class TestControllerSocket:
     def test_snapshot_is_the_first_frame(self, client):
         with client.websocket_connect("/ws/controller") as controller:
@@ -129,6 +133,77 @@ class TestControllerSocket:
                     assert event["type"] == "device_updated"
                     assert event["device"]["device_id"] == DEVICE_ID
                     assert event["device"]["online"] is True
+
+
+class TestConfigUpdatedEtag:
+    def test_a_v3_write_frame_carries_the_exact_committed_etag(self, client):
+        with client.websocket_connect("/ws/controller?protocol=3") as controller:
+            snapshot = controller.receive_json()
+            assert snapshot["type"] == "snapshot"
+            before = client.get("/api/v3/config").json()
+
+            accepted = client.put(
+                "/api/v3/scene",
+                json={"content": {"type": "calibration"}},
+                headers={"If-Match": before["etag"]},
+            )
+            assert accepted.status_code == 200, accepted.text
+            response = accepted.json()
+            frame = controller.receive_json()
+
+        assert frame["type"] == "config_updated"
+        assert frame["revision"] == response["revision"]
+        assert frame["generation"] == response["generation"]
+        assert frame["etag"] == response["etag"]
+        assert frame["etag"] != before["etag"]
+        assert frame["etag"] == client.get("/api/v3/config").json()["etag"]
+
+    def test_a_registration_event_carries_the_same_durable_etag(
+        self, client, device_payload
+    ):
+        with client.websocket_connect("/ws/controller?protocol=3") as controller:
+            assert controller.receive_json()["type"] == "snapshot"
+            before = client.get("/api/v3/config").json()
+            response = client.post("/devices/register", json=device_payload)
+            assert response.status_code == 200, response.text
+            # device_updated is broadcast before the config event.
+            assert controller.receive_json()["type"] == "device_updated"
+            frame = controller.receive_json()
+
+        assert frame["type"] == "config_updated"
+        assert frame["revision"] == client.get("/wall").json()["revision"]
+        assert frame["etag"] == client.get("/api/v3/config").json()["etag"]
+        assert frame["etag"] != before["etag"]
+
+    def test_v2_frames_keep_their_original_shape(self, client):
+        with client.websocket_connect("/ws/controller?protocol=2") as controller:
+            assert controller.receive_json()["type"] == "snapshot"
+            response = client.put("/scene", json={"content": {"type": "color"}})
+            assert response.status_code == 200
+            frame = controller.receive_json()
+        assert frame["type"] == "wall_updated"
+        assert "etag" not in frame
+        assert frame["wall"]["revision"] == response.json()["revision"]
+
+    def test_no_v3_listener_skips_building_the_durable_config(
+        self, client, monkeypatch, device_payload
+    ):
+        with client.websocket_connect("/ws/controller?protocol=2") as controller:
+            assert controller.receive_json()["type"] == "snapshot"
+            calls = []
+
+            def fail_if_called(*args, **kwargs):
+                calls.append(args)
+                raise AssertionError("durable config built without a v3 listener")
+
+            monkeypatch.setattr(main, "_config_etag", fail_if_called)
+            response = client.put("/scene", json={"content": {"type": "color"}})
+            assert response.status_code == 200
+            assert controller.receive_json()["type"] == "wall_updated"
+            registered = client.post("/devices/register", json=device_payload)
+            assert registered.status_code == 200
+            assert controller.receive_json()["type"] == "device_updated"
+        assert calls == []
 
 
 class TestDeviceSocket:
@@ -369,7 +444,10 @@ class TestDelete:
             with client.websocket_connect(device_url()) as device:
                 device.receive_json()
                 controller.receive_json()
-                response = client.delete(f"/devices/{DEVICE_ID}")
+                response = client.delete(
+                    f"/devices/{DEVICE_ID}",
+                    headers={"If-Match": config_etag(client)},
+                )
                 assert response.status_code == 409
                 assert response.json()["detail"]["code"] == "old_connected"
                 assert client.get(f"/device/{DEVICE_ID}").json()["online"] is True
@@ -386,7 +464,10 @@ class TestDelete:
         with client.websocket_connect("/ws/controller") as controller:
             controller.receive_json()  # snapshot
 
-            assert client.delete(f"/devices/{DEVICE_ID}").status_code == 200
+            assert client.delete(
+                f"/devices/{DEVICE_ID}",
+                headers={"If-Match": config_etag(client)},
+            ).status_code == 200
 
             assert controller.receive_json() == {
                 "type": "device_removed",
@@ -400,6 +481,29 @@ class TestDelete:
 
     def test_delete_malformed_device_id_is_404(self, client):
         assert client.delete("/devices/not-a-uuid").status_code == 404
+
+    def test_delete_requires_the_current_config_etag_and_mutates_nothing_on_refusal(
+        self, client, device_payload
+    ):
+        client.post("/devices/register", json=device_payload)
+        before = client.get("/wall").json()
+        before_roster = client.get("/devices").json()
+
+        assert client.delete(f"/devices/{DEVICE_ID}").status_code == 428
+        assert client.delete(
+            f"/devices/{DEVICE_ID}", headers={"If-Match": "not-current"}
+        ).status_code == 412
+        assert client.get("/wall").json() == before
+        assert client.get("/devices").json() == before_roster
+
+        # Identity failures still win over the guard.
+        assert client.delete(f"/devices/{uuid.uuid4()}").status_code == 404
+        assert client.delete("/devices/not-a-uuid").status_code == 404
+
+        accepted = client.delete(
+            f"/devices/{DEVICE_ID}", headers={"If-Match": config_etag(client)}
+        )
+        assert accepted.status_code == 200
 
 
 class TestPresence:

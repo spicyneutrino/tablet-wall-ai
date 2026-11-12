@@ -31,3 +31,99 @@ assert.deepEqual(rotated.bezel, { top: 11, right: 3, bottom: 5, left: 7 });
 assert.throws(() => arrangeLogical(fixed, ["a"], { columns: 0, gap: 0 }), /whole/);
 assert.throws(() => arrangeLogical(fixed, ["missing"], { columns: 1, gap: 0 }), /order changed/);
 console.log("Relative fit, packing, fixed tiling and asymmetric bezel rotation passed");
+
+const sizing = require("../frontend/controller/physical-sizing.js");
+const stageModel = require("../frontend/controller/operator-stage.js");
+const logical = { kind: "logical", width: 1000, height: 700, sizing: { mode: "fixed", padding: 0 },
+    placements: {
+        a: { x: 100, y: 100, w: 100, h: 70, bezel: { top: 3, right: 5, bottom: 7, left: 11 } },
+        b: { x: 300, y: 250, w: 80, h: 120, bezel: { top: 0, right: 0, bottom: 0, left: 0 } }
+    } };
+const baseSlot = logical.placements.a;
+assert.equal(sizing.LOGICAL_EDGE_THRESHOLD_PX, 8);
+assert.equal(sizing.edgeThreshold(8, 4), 2);
+assert.equal(sizing.edgeThreshold(8, 0), 0, "an unavailable scale disables edge snapping instead of snapping to pixels");
+const gridOnly = sizing.snapLogical({ ...baseSlot, x: 123, y: 144 }, logical, { id: "a", step: 4, threshold: 10 });
+assert.equal(gridOnly.x, 124, "grid spacing rounds wall coordinates, not pixels");
+assert.equal(gridOnly.y, 144);
+assert.equal(gridOnly.w, 100, "a move leaves the reviewed size unchanged");
+const edge = sizing.snapLogical({ ...baseSlot, x: 197, y: 177 }, logical, { id: "a", step: 4, threshold: 10 });
+assert.equal(edge.x, 200, "the nearest tablet body edge wins before grid spacing");
+assert.equal(edge.y, 180);
+const active = sizing.snapLogical({ ...baseSlot, x: 288 }, logical, { id: "a", step: 1, threshold: 10 });
+assert.equal(active.x, 289, "the active screen edge can align through the left bezel");
+const bypassed = sizing.snapLogical({ ...baseSlot, x: 197, y: 177 }, logical, { id: "a", step: 4, enabled: false, threshold: 10 });
+assert.deepEqual([bypassed.x, bypassed.y], [197, 177], "Alt bypass rounds to whole logical units only");
+const resize = sizing.snapLogical({ ...baseSlot, w: 97.2, h: 50.1 }, logical, { id: "a", mode: "resize", step: 4, threshold: 10 });
+assert.equal(resize.w, 96);
+assert.equal(resize.h, 52);
+assert.equal(resize.x, 100, "resize does not move the selected body");
+const resizeBypassed = sizing.snapLogical({ ...baseSlot, w: 97.2, h: 50.1 }, logical, { id: "a", mode: "resize", step: 4, enabled: false });
+assert.deepEqual([resizeBypassed.w, resizeBypassed.h], [97, 50]);
+const tiedLayout = { ...logical, placements: { ...logical.placements, c: { x: 10, y: 400, w: 1, h: 10, bezel: {} } } };
+const tied = sizing.snapLogical({ ...baseSlot, x: 5 }, tiedLayout, { id: "a", step: 1, threshold: 10 });
+assert.equal(tied.x, 0, "equal distances resolve deterministically to the lower body edge");
+const physical = sizing.snapLogical({ center_x_mm: 10.25, center_y_mm: 20.5 }, { kind: "physical" }, { id: "a" });
+assert.deepEqual(physical, { center_x_mm: 10.25, center_y_mm: 20.5 }, "measured millimetres never enter logical snapping");
+
+const matched = sizing.matchScreenShape(baseSlot, { width: 1600, height: 1000 });
+assert.equal(matched.changed, true);
+assert.equal(matched.placement.w, 100, "active width is preserved");
+assert.equal(matched.placement.x, 100, "body x is preserved");
+assert.deepEqual(matched.placement.bezel, baseSlot.bezel, "bezels are preserved exactly");
+assert.equal(matched.placement.h, 63, "active height plus bezels rounds to a positive integer");
+assert.equal(matched.placement.y, 104, "the active centre is preserved as closely as integer geometry permits");
+assert.equal((matched.placement.y + 3 + (63 - 3 - 7) / 2), 133.5);
+assert.equal((baseSlot.y + 3 + (70 - 3 - 7) / 2), 133);
+const already = sizing.matchScreenShape(baseSlot, { width: 1400, height: 1000 });
+assert.equal(already.changed, false, "an already matching shape is not rewritten");
+assert.equal(sizing.matchScreenShape(baseSlot, { width: 0, height: 1000 }).error.includes("viewport"), true);
+assert.equal(sizing.matchScreenShape({ ...baseSlot, w: 12 }, { width: 1600, height: 1000 }).error.includes("active screen width"), true);
+const fresh = sizing.freshViewport({ online: true, viewport: { width: 1600, height: 1000 } });
+assert.equal(fresh.available, true);
+assert.deepEqual(fresh.viewport, { width: 1600, height: 1000 });
+assert.equal(sizing.freshViewport({ online: false, viewport: { width: 1600, height: 1000 } }).available, false);
+assert.equal(sizing.freshViewport({ online: true, viewport: null }).available, false);
+assert.equal(sizing.freshViewport({ online: true, viewport: { width: 1600, height: 1000 } }, { stale: true }).reason.includes("stale"), true);
+assert.equal(sizing.freshViewport({ online: true, viewport: { width: 1600, height: 1000 } }, { expected: { width: 1200, height: 1000 } }).available, false);
+
+const fixedDraft = { kind: "logical", width: 3600, height: 2400, sizing: { mode: "fixed", padding: 0 }, placements: { a: baseSlot } };
+assert.equal(sizing.validateLogicalField("w", "0", fixedDraft, baseSlot).valid, false);
+assert.match(sizing.validateLogicalField("w", "0", fixedDraft, baseSlot).message, /at least 1/);
+assert.equal(sizing.validateLogicalField("w", "999999", fixedDraft, baseSlot).valid, false);
+assert.match(sizing.validateLogicalField("w", "999999", fixedDraft, baseSlot).message, /wall width 3600/);
+assert.equal(sizing.validateLogicalField("h", "999999", fixedDraft, baseSlot).valid, false);
+assert.match(sizing.validateLogicalField("h", "999999", fixedDraft, baseSlot).message, /wall height 2400/);
+assert.equal(sizing.validateLogicalField("w", "1.5", fixedDraft, baseSlot).valid, false);
+assert.match(sizing.validateLogicalField("w", "1.5", fixedDraft, baseSlot).message, /whole number/);
+assert.equal(sizing.validateLogicalField("w", "", fixedDraft, baseSlot).valid, false);
+assert.equal(sizing.validateLogicalField("w", "1300", fixedDraft, baseSlot).valid, true);
+assert.equal(sizing.validateLogicalField("w", "3600", fixedDraft, baseSlot).valid, true, "a body exactly as wide as the wall is allowed");
+assert.equal(sizing.validateLogicalField("x", "-20", fixedDraft, baseSlot).valid, true, "a partial off-wall position stays editable");
+assert.equal(sizing.validateLogicalField("bezel-left", "-1", fixedDraft, baseSlot).valid, false);
+assert.match(sizing.validateLogicalField("bezel-left", "-1", fixedDraft, baseSlot).message, /negative/);
+assert.match(sizing.validateLogicalField("bezel-left", "100", fixedDraft, baseSlot).message, /no visible width/);
+assert.equal(sizing.validateLogicalField("bezel-left", "100", fixedDraft, baseSlot).valid, false);
+const tabletsDraft = { ...fixedDraft, sizing: { mode: "tablets", padding: 0 } };
+assert.equal(sizing.validateLogicalField("w", "999999", tabletsDraft, baseSlot).valid, true,
+    "fit-to-tablets mode may grow the wall instead of rejecting the requested body");
+assert.equal(sizing.validateLogicalField("width", "0", fixedDraft, null).valid, false);
+assert.equal(sizing.validateLogicalField("padding", "-1", fixedDraft, null).valid, false);
+assert.equal(sizing.validateLogicalField("height", "2400", fixedDraft, null).valid, true);
+const wallWithBodies = { ...fixedDraft, placements: { a: { ...baseSlot, w: 1200, h: 800, x: -50 } } };
+assert.equal(sizing.validateLogicalField("width", "1000", wallWithBodies, null).valid, false,
+    "shrinking a fixed wall below a body width requires an explicit correction");
+assert.equal(sizing.validateLogicalField("height", "700", wallWithBodies, null).valid, false);
+assert.equal(sizing.validateLogicalField("width", "1200", wallWithBodies, null).valid, true,
+    "partial off-wall positioning does not invalidate the body-size check");
+assert.equal(sizing.validateLogicalField("width", "1000", { ...wallWithBodies, sizing: { mode: "tablets" } }, null).valid, true);
+const help = stageModel.helpText(true);
+for (const phrase of ["Shift", "Escape", "Alt", "touch", "Numeric", "Fit and 2x"]) assert.ok(help.includes(phrase), "help names " + phrase);
+assert.ok(stageModel.helpText(false).includes("Numeric"));
+assert.ok(stageModel.helpText(true, "physical").includes("millimetre"), "measured help names millimetres");
+assert.equal(stageModel.helpText(true, "physical").includes("snap checkbox"), false, "measured help does not claim logical snap");
+assert.equal(stageModel.viewZoom({ ownerDocument: { body: { dataset: { viewZoom: "2x" } } } }), "2x");
+assert.equal(stageModel.viewZoom({ ownerDocument: { body: { dataset: {} } } }), "fit");
+assert.deepEqual(stageModel.viewSize(300, 200, "fit"), { zoom: "fit", inlineSize: 300, blockSize: 200, fieldBlockSize: null, overflow: "" });
+assert.deepEqual(stageModel.viewSize(300, 200, "2x"), { zoom: "2x", inlineSize: 600, blockSize: 400, fieldBlockSize: 200, overflow: "auto" });
+console.log("Bounded edge snap, Alt bypass, logical Match and stage help contracts passed");
