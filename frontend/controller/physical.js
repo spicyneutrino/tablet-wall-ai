@@ -2341,6 +2341,7 @@
 
     function updateSavedButtons() {
         for (const button of el.savedLayouts.querySelectorAll("button")) button.disabled = state.busy || !state.etag || state.etagState !== "current" || button.dataset.invalid === "true";
+        for (const button of document.getElementById("saved-scenes").querySelectorAll("button")) button.disabled = state.busy || button.dataset.invalid === "true";
     }
 
     function showReturnPoint(result) {
@@ -2435,7 +2436,8 @@
                 button.textContent = verb;
                 button.setAttribute("aria-label", verb === "Delete" ? "Delete content “" + entry.name + "”"
                     : "Preview content “" + entry.name + "”");
-                button.disabled = state.busy || verb === "Preview content" && entry.valid === false;
+                button.dataset.invalid = String(verb === "Preview content" && entry.valid === false);
+                button.disabled = state.busy || button.dataset.invalid === "true";
                 button.addEventListener("click", async () => {
                     if (state.busy) return;
                     if (!await resolveOutput(verb + " saved content “" + entry.name + "”")) return;
