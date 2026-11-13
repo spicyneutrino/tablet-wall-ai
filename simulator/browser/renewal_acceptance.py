@@ -973,13 +973,13 @@ def status_truth(rig: RenewalRig) -> None:
     rig.check(
         "A stale roster reports that current image evidence is unavailable",
         became_stale
-        and "Status stale" in stale["health"]
-        and "Current image evidence unavailable" in stale["health"]
+        and ("Server unreachable · tablets keep their last image" in stale["health"]
+             or "Status stale" in stale["health"] and "Current image evidence unavailable" in stale["health"])
         and not stale["counting"]
         and (stale["healthLabel"] or "").startswith("Status stale."),
         {"health": stale["health"], "label": stale["healthLabel"],
          "counting": stale["counting"]},
-        {"health": "Status stale · Current image evidence unavailable",
+        {"health": "Server unreachable · tablets keep their last image, or Status stale · Current image evidence unavailable",
          "counting": False, "label": "starts with Status stale."},
         obligation="C-POWER",
     )
@@ -2869,12 +2869,15 @@ def first_wall(rig: RenewalRig) -> None:
         "() => document.querySelectorAll('#device-list .dev-row').length >= 4",
         timeout=20,
     )
-    hidden_after = steps.count() == 1 and not steps.is_visible()
+    states_after = page.evaluate(
+        "() => ['first-wall-join','first-wall-arrange','first-wall-image'].map(id => document.getElementById(id)?.dataset.state)"
+    )
+    still_open = steps.count() == 1 and steps.is_visible() and states_after == ["done", "done", "current"]
     rig.check(
-        "Applying the first wall hides the first-wall steps",
-        hidden_after,
-        {"present": steps.count(), "hidden": hidden_after},
-        {"present": 1, "hidden": True},
+        "Applying the first wall leaves only the Show step to finish",
+        still_open,
+        {"present": steps.count(), "visible": steps.is_visible(), "states": states_after},
+        {"present": 1, "visible": True, "states": ["done", "done", "current"]},
         obligation="D11",
     )
 
@@ -2940,6 +2943,17 @@ def first_wall(rig: RenewalRig) -> None:
         {"text": "4 of 4 showing the current image",
          "label": "4/4. 4 of 4 tablets showing the current image."},
         obligation="C-STATUS",
+    )
+
+    hidden_after = bool(health) and steps.count() == 1 and _soft_wait(
+        page, "() => document.getElementById('setup-strip')?.hidden === true", timeout=10
+    )
+    rig.check(
+        "Showing the first image removes the first-wall steps",
+        hidden_after,
+        {"present": steps.count(), "hidden": hidden_after},
+        {"present": 1, "hidden": True},
+        obligation="D11",
     )
 
     # Arrange with a mixed wake-lock fleet: the shared stage must keep each
@@ -3636,12 +3650,12 @@ def _server_stop_at_viewport(rig: RenewalRig, clients: list, width: int, height:
     rig.check(
         "Refresh status cannot present current wall evidence while the server is stopped",
         stale_health
-        and (health_text.startswith("Status stale") or "evidence unavailable" in health_text.lower())
+        and (health_text.startswith(("Status stale", "Server unreachable")) or "evidence unavailable" in health_text.lower())
         and not counting_current
         and health_label.startswith("Status stale"),
         {"health": health_text, "label": health_label, "counting": counting_current,
          "connection": refreshed["connection"], "etagState": refreshed["etagState"]},
-        {"health": "Status stale · Current image evidence unavailable",
+        {"health": "Server unreachable · tablets keep their last image",
          "counting": False, "label": "starts with Status stale."},
         obligation="C-OFFLINE",
     )

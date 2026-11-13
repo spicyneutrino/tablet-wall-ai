@@ -1,7 +1,7 @@
 /* Persistent-wall shell. Regions: header, stage column (toolbar, setup strip, well, commit bar), inspector. */
 *, *::before, *::after { box-sizing: border-box; }
 [hidden] { display: none !important; }
-:root { --header-h: 44px; --inspector-w: 20.5rem; --commit-h: 3.5rem; --tool-h: 32px; }
+:root { --header-h: 44px; --inspector-w: 20.5rem; --commit-h: 3.5rem; --tool-h: 34px; }
 html { accent-color: var(--accent); scrollbar-color: var(--control) var(--surface-raised); }
 body { margin: 0; background: var(--bg); color: var(--text); font: 0.875rem/var(--lead) var(--font); }
 body.physical { display: grid; grid-template-columns: minmax(0, 1fr); grid-template-rows: auto minmax(0, 1fr); inline-size: 100%; block-size: 100dvh; min-block-size: 0; overflow: hidden; }
@@ -87,8 +87,8 @@ body:not([data-mode="arrange"]) #arrange-selection { display: none; }
 /* Toolbar, roster chips, mode switch */
 .stage-toolbar { display: grid; grid-template-columns: auto minmax(0, 1fr) auto; align-items: center; gap: 0 var(--space-3); min-block-size: 40px; }
 .mode-switch { display: flex; flex: none; justify-self: start; gap: 2px; padding: 2px; border-radius: var(--radius); background: var(--hover); }
-.rail-tab { position: relative; min-block-size: calc(var(--tool-h) - 4px); padding: 0 var(--space-3); border: 0; border-radius: 6px; background: transparent; color: var(--muted); font-weight: 500; white-space: nowrap; }
-.rail-tab:hover { color: var(--text); }
+.rail-tab { position: relative; min-block-size: calc(var(--tool-h) - 4px); padding: 0 var(--space-3); border: 0; border-radius: 6px; background: transparent; color: var(--text); font-weight: 500; white-space: nowrap; }
+.rail-tab:not([aria-selected="true"]):hover { background: var(--border); }
 .rail-tab[aria-selected="true"] { background: var(--surface); color: var(--text); box-shadow: 0 0 0 1px var(--border-strong); }
 .roster-strip { display: flex; align-items: center; gap: var(--space-2); flex: 1 1 14rem; min-inline-size: 0; }
 .roster { display: flex; flex-wrap: wrap; max-block-size: 76px; overflow-y: auto; scrollbar-width: thin; gap: var(--space-1); list-style: none; padding: 3px; margin: -3px; min-inline-size: 0; }
@@ -108,7 +108,7 @@ body:not([data-mode="arrange"]) #arrange-selection { display: none; }
 .toolbar-tools { display: flex; align-items: center; gap: var(--space-2); margin-inline-start: auto; }
 .mode-title { display: none; font-weight: 600; }
 .stage-view-zoom { display: flex; gap: 0; padding: 2px; border: 1px solid var(--border-strong); border-radius: var(--radius); background: var(--surface-raised); }
-.stage-view-zoom .btn { min-block-size: calc(var(--tool-h) - 6px); padding: .1rem .5rem; border: 0; background: transparent; font-size: var(--text-label); }
+.stage-view-zoom .btn { min-block-size: max(var(--control-min), calc(var(--tool-h) - 6px)); padding: .1rem .5rem; border: 0; background: transparent; font-size: var(--text-label); }
 .stage-view-zoom .btn[aria-pressed="true"] { background: var(--surface); color: var(--accent); outline: 1px solid var(--border-strong); outline-offset: -1px; }
 .arrangement-history { display: flex; gap: 0; }
 .arrangement-history .btn { min-block-size: var(--tool-h); min-inline-size: 32px; padding-inline: 6px; font-size: 1.1rem; }
@@ -515,6 +515,9 @@ dialog.server-drawer::backdrop { background: var(--backdrop); }
     .saved-actions { grid-column: 1 / -1; }
     .operator-fields, .form-grid, .slot-fields, .bounds-grid, .pack-row, #logical-fields, .saved-form, #scene-save-form { grid-template-columns: minmax(0, 1fr); }
     .operator-facts, :where(.diag-grid, .playback-facts) .fact { grid-template-columns: minmax(0, 1fr); gap: .25rem; }
+    .operator-facts dd { padding-inline-start: 0; }
+    .grid-summary .operator-facts { grid-template-columns: minmax(0, 1fr) auto; }
+    .grid-summary .operator-facts dd { padding-inline-start: var(--space-3); }
     .tablet-facts { grid-template-columns: 6rem minmax(0, 1fr); gap: 0 var(--space-3); }
     #first-wall-steps ol { grid-template-columns: minmax(0, 1fr); }
     #first-wall-steps li:not([data-state="current"]) { display: none; }

@@ -2733,6 +2733,7 @@
             });
         }
         document.getElementById("nav-tablets").addEventListener("click", () => {
+            if (state.selectedId && document.body.dataset.view === "tablets") { clearSelection(); return; }
             const tablets = document.body.dataset.view !== "tablets";
             document.body.dataset.view = tablets ? "tablets" : "tools";
             if (workspace) workspace.render();
