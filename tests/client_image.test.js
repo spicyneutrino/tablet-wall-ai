@@ -5235,7 +5235,7 @@ test("hud: welcome, tap and re-bind show #N, short id and placement, then fade",
         })
     );
     await drain();
-    assert.strictEqual(h.hudState().textContent, "Not placed");
+    assert.strictEqual(h.hudState().textContent, "Waiting for the operator");
     assert.strictEqual(h.hud().attributes["data-placed"], "false");
 
     assert.ok(
@@ -5256,7 +5256,7 @@ test("hud: welcome, tap and re-bind show #N, short id and placement, then fade",
         "true",
         "a tap brings the HUD back"
     );
-    assert.strictEqual(h.hudState().textContent, "Not placed");
+    assert.strictEqual(h.hudState().textContent, "Waiting for the operator");
 
     /* A placement arrives, as it does after an operator places or re-binds
      * this tablet: the HUD updates and stays up for its full window. */
@@ -5409,6 +5409,17 @@ test("client shell: cache versions, HUD markup and the 56 px CSS pill", () => {
     assert.ok(
         !CLIENT_SOURCE.includes("enableDisplayEl.style"),
         "the Enable display pill keeps no inline styles"
+    );
+
+    assert.match(
+        css,
+        /#hud\[data-placed="false"\]\[data-visible="false"\]\s*\{[^}]*opacity:\s*0\.35/,
+        "an unplaced tablet keeps a faint HUD marker instead of going dead"
+    );
+    assert.match(
+        css,
+        /body:has\(#hud\[data-placed="false"\]\)\s*\{[^}]*box-shadow:\s*inset 0 0 0 1px/,
+        "the waiting backdrop is not the flat scene colour"
     );
 });
 

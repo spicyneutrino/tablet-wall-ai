@@ -25,6 +25,21 @@ body {
 }
 
 /*
+ * Waiting backdrop. An unplaced tablet used to sit on the scene colour, which
+ * looks like a working screen showing a flat test. A neutral ground with a
+ * faint inset edge says "registered, waiting" instead. The canvas is
+ * untouched: it covers this whenever it has something to draw.
+ */
+html:has(#hud[data-placed="false"]) {
+    background-color: #0b1120;
+}
+
+body:has(#hud[data-placed="false"]) {
+    background-color: #0b1120;
+    box-shadow: inset 0 0 0 1px rgba(148, 163, 184, 0.22);
+}
+
+/*
  * Calibration / image surface. Hidden by default so colour mode is exactly
  * the plain painted background; client.js flips it to `display: block` only
  * while it has something to draw — a calibration pattern, a wall-wide image
@@ -209,6 +224,19 @@ body {
 
 #hud[data-placed="false"] .hud-state {
     color: #fbbf24;
+}
+
+/*
+ * An unplaced tablet keeps a faint, persistent marker in the corner once its
+ * HUD fades. Without it the screen sits on the bare background and reads as a
+ * dead display; the chip stays just visible enough to recognise. Only the
+ * hidden state dims — the HUD itself is at full strength while it is up, and
+ * placed tablets keep the plain fade.
+ */
+#hud[data-placed="false"][data-visible="false"] {
+    opacity: 0.35;
+    visibility: visible;
+    transition: opacity 0.35s ease;
 }
 
 /*
