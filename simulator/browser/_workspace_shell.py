@@ -35,10 +35,10 @@ def task(page, name, keyboard=False):
         return
     if name == "Tablets":
         nav = page.locator("#nav-tablets")
-        if nav.is_visible() and nav.get_attribute("aria-pressed") != "true":
-            nav.click()
-        elif nav.is_visible():
+        if nav.is_visible():
             clear_selection(page)
+            if page.locator("body").get_attribute("data-view") != "tablets":
+                nav.click()
         return
     mode = MODES[name]
     if name not in ("Test colour", "Arrange tablet"):

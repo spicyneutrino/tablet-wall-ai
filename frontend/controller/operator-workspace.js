@@ -75,9 +75,6 @@ window.OperatorWorkspace = {
         function renderProblems(ids, evidence) {
             const attention = ids.filter(id => window.OperatorState.needsAttention(evidence.get(id)));
             const failures = state.rosterError ? [] : ids.filter(id => window.OperatorState.rosterStatus(evidence.get(id)).tone === "failure");
-            const fleet = window.OperatorStage && window.OperatorStage.fleetPower(state.rosterError ? [] : ids
-                .filter(id => window.OperatorState.entries(state.operatorConfig.layout)[id].participating !== false)
-                .map(id => ({ id, online: !!state.roster[id] && state.roster[id].online === true, power: powerFor(id) })));
             const strip = $("exception-strip");
             const shown = failures.slice(0, 2);
             const wanted = shown.concat(failures.length > 2 ? ["+more"] : []);
@@ -112,13 +109,6 @@ window.OperatorWorkspace = {
             if ($("issues-description")) setTextIfChanged($("issues-description"), attention.length + " current content report issue" + (attention.length === 1 ? "" : "s"));
             $("btn-wall-health").dataset.issues = String(attention.length);
             if ($("wall-status-summary")) setTextIfChanged($("wall-status-summary"), "Content report issues: " + attention.length);
-            if ($("wall-power-summary")) {
-                setTextIfChanged($("wall-power-summary"), fleet
-                    ? "Screen wake lock: all " + fleet.count + " online tablets report " + fleet.label + ". Browser report, not proof the screen is lit." : "");
-                $("wall-power-summary").hidden = !fleet;
-                if ($("wall-power-caution")) $("wall-power-caution").hidden = !fleet;
-                if ($("wall-power-caution")) $("wall-power-caution").dataset.state = fleet ? fleet.state : "";
-            }
             return attention;
         }
         const powerFor = id => {

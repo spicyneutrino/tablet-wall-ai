@@ -751,10 +751,10 @@ def status_truth(rig: RenewalRig) -> None:
         }"""
     )
     rig.check(
-        "Uniform wake-lock warnings leave at most three visible power mentions in Images",
-        len(power_mentions) <= 3 and page.locator("#wall-power-caution").is_visible(),
+        "Uniform wake-lock reports stay out of Content tools",
+        len(power_mentions) == 0 and page.locator("#wall-power-caution").count() == 0,
         power_mentions,
-        {"max": 3},
+        {"max": 0},
         obligation="D2",
     )
 
@@ -777,13 +777,13 @@ def status_truth(rig: RenewalRig) -> None:
     )
 
     summary = page.locator("#wall-power-summary")
-    summary_visible = page.locator("#wall-power-caution").is_visible() and summary.count() == 1 and summary.locator("xpath=ancestor::details[@id='stage-technical']").count() == 1
+    summary_visible = summary.is_visible() if summary.count() else False
     summary_text = summary.text_content() if summary.count() else ""
     rig.check(
-        "The fleet caution is visible and Details names the five online reports",
-        summary_visible and "5" in summary_text and "denied" in summary_text.lower(),
+        "Wall details do not infer fleet screen readiness from browser wake reports",
+        summary.count() == 0 and not summary_visible,
         {"count": summary.count(), "visible": summary_visible, "text": summary_text},
-        {"count": 1, "visible": True, "names": "5 ... denied"},
+        {"count": 0, "visible": False},
         obligation="D2",
     )
 
@@ -869,10 +869,10 @@ def status_truth(rig: RenewalRig) -> None:
     mixed_summary = page.locator("#wall-power-summary")
     rig.check(
         "Mixed wake-lock states hide the fleet line instead of summarising one state",
-        mixed_summary.count() == 1 and not mixed_summary.is_visible(),
+        mixed_summary.count() == 0,
         {"count": mixed_summary.count(),
          "visible": mixed_summary.is_visible() if mixed_summary.count() else None},
-        {"count": 1, "visible": False},
+        {"count": 0, "visible": False},
         obligation="D2",
     )
 
@@ -976,11 +976,11 @@ def status_truth(rig: RenewalRig) -> None:
         and ("Server unreachable · tablets keep their last image" in stale["health"]
              or "Status stale" in stale["health"] and "Current image evidence unavailable" in stale["health"])
         and not stale["counting"]
-        and (stale["healthLabel"] or "").startswith("Status stale."),
+        and (stale["healthLabel"] or "").startswith(("Status stale.", "Server unreachable")),
         {"health": stale["health"], "label": stale["healthLabel"],
          "counting": stale["counting"]},
         {"health": "Server unreachable · tablets keep their last image, or Status stale · Current image evidence unavailable",
-         "counting": False, "label": "starts with Status stale."},
+         "counting": False, "label": "starts with Status stale or Server unreachable."},
         obligation="C-POWER",
     )
     rig.check(
@@ -999,11 +999,9 @@ def status_truth(rig: RenewalRig) -> None:
     rig.check(
         "A stale roster hides the fleet power line",
         became_stale
-        and stale["fleet"]["present"]
-        and stale["fleet"]["hidden"]
-        and not stale["fleet"]["visible"],
+        and not stale["fleet"]["present"],
         stale["fleet"],
-        {"present": True, "hidden": True, "visible": False},
+        {"present": False},
         obligation="D2",
     )
 
@@ -3639,7 +3637,7 @@ def _server_stop_at_viewport(rig: RenewalRig, clients: list, width: int, height:
         page.click("#refresh-status")
     stale_health = _soft_wait(
         page,
-        "() => /Status stale|evidence unavailable|stale/i.test("
+        "() => /Status stale|Server unreachable|evidence unavailable|stale/i.test("
         "document.getElementById('wall-health').textContent)",
         timeout=15,
     )
@@ -3652,11 +3650,11 @@ def _server_stop_at_viewport(rig: RenewalRig, clients: list, width: int, height:
         stale_health
         and (health_text.startswith(("Status stale", "Server unreachable")) or "evidence unavailable" in health_text.lower())
         and not counting_current
-        and health_label.startswith("Status stale"),
+        and health_label.startswith(("Status stale", "Server unreachable")),
         {"health": health_text, "label": health_label, "counting": counting_current,
          "connection": refreshed["connection"], "etagState": refreshed["etagState"]},
         {"health": "Server unreachable · tablets keep their last image",
-         "counting": False, "label": "starts with Status stale."},
+         "counting": False, "label": "starts with Status stale or Server unreachable."},
         obligation="C-OFFLINE",
     )
     after_refresh_index = len(rig.requests)

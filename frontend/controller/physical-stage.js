@@ -433,7 +433,7 @@ window.PhysicalStage = {
                 el.btnWallHealth.dataset.kind = unreachable ? "err" : !stale && result.states.some(item => ["failed", "blocked", "invalid_mapping"].includes(item.status)) ? "err" : stale || result.states.some(item => !["displayed", "offline", "excluded"].includes(item.status)) ? "warn"
                     : result.total && result.showing === result.total ? "ok" : "info";
                 if ($("wall-health-short")) $("wall-health-short").textContent = unreachable ? "Server unreachable" : (stale ? "Stale " : "") + (result.total ? result.showing + "/" + result.total : counts?.online ? counts.online + " online" : "No wall");
-                el.btnWallHealth.setAttribute("aria-label", (stale ? "Status stale. " : "") + (result.total ? result.showing + "/" + result.total + ". " + result.showing + " of " + result.total + " tablets showing the current " + noun + "." : empty + "."));
+                el.btnWallHealth.setAttribute("aria-label", unreachable ? el.wallHealth.textContent : (stale ? "Status stale. " : "") + (result.total ? result.showing + "/" + result.total + ". " + result.showing + " of " + result.total + " tablets showing the current " + noun + "." : empty + "."));
                 el.deviceCount.textContent = rosterSummary(state.operatorConfig, stale);
                 el.rosterStatus.hidden = !stale;
                 el.rosterStatus.textContent = stale ? "Status stale. " + state.rosterError + ". Refresh status to retry." : "";

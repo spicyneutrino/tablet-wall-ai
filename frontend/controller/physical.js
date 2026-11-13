@@ -929,6 +929,7 @@
     }
 
     let landed = false;
+    let diagnosticSubject = null;
 
     function renderAll() {
         if (operatorContent) operatorContent.update();
@@ -946,6 +947,14 @@
         if (workspace) workspace.render();
         if (workspace && !landed && state.configLoaded) { landed = true; workspace.land(); }
         renderLogicalEditor();
+        syncDiagnosticColours();
+    }
+
+    function syncDiagnosticColours() {
+        if (diagnosticSubject !== state.selectedId) {
+            diagnosticSubject = state.selectedId;
+            clearMsg(document.getElementById("diagnostic-colour-message"));
+        }
         const colourSubject = document.getElementById("diagnostic-colour-subject");
         if (colourSubject) colourSubject.textContent = state.selectedId ? numberedLabel(state.selectedId) : "None selected";
         const colourReason = document.getElementById("diagnostic-colour-reason");
@@ -1205,6 +1214,7 @@
         addSelectedDevice, deleteSelectedSlot, endDrag, geometryHelp, matchScreenShape, matchStatus, nudgeSelected, onPointerCancel, onPointerDown, onPointerMove, onPointerUp, renderDeviceHealth, renderDeviceList, renderStage: drawStage, revealSheet, clearSelection, rotateSelected, selectDevice, setViewZoom, syncInspector, viewZoom
     } = window.PhysicalStage.create({
         selectionChanged: () => {
+            syncDiagnosticColours();
             if (operatorDevices) operatorDevices.render(); renderLogicalEditor();
             syncDraftUi();
             if (workspace) workspace.render();
@@ -2485,10 +2495,10 @@
             if (!await resolveOutput("Set a diagnostic test colour")) return;
             try {
                 const result = await api("POST", target === "all" ? "/devices/color" : "/devices/" + encodeURIComponent(id) + "/color", { color: colour });
-                message.textContent = "Diagnostic colour set for " + (target === "all" ? "all currently registered tablets" : numberedLabel(id)) + ". "
+                if (target === "all" || id === state.selectedId) message.textContent = "Diagnostic colour set for " + (target === "all" ? "all currently registered tablets" : numberedLabel(id)) + ". "
                     + (result.delivered === false ? "Delivery waits for connection. " : "") + "This legacy test command has no revision guard. It does not show an image.";
                 await session.refresh();
-            } catch (error) { message.textContent = "Diagnostic colour command failed. " + error.message; }
+            } catch (error) { if (target === "all" || id === state.selectedId) message.textContent = "Diagnostic colour command failed. " + error.message; }
         });
     }
 

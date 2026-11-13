@@ -713,9 +713,9 @@ console.log("Fit feedback slots are unique, labelled, decorative and placed afte
 {
     const html = fs.readFileSync(require.resolve("../frontend/controller/physical.html"), "utf8");
     const status = html.slice(html.indexOf('id="wall-status"'), html.indexOf("</div>", html.indexOf('id="wall-status"')));
-    assert.ok(status.includes('id="wall-power-caution"'), "the wall status group exposes a short wake-lock caution");
+    assert.ok(!status.includes('id="wall-power-caution"'), "wall status does not infer whether tablet screens may sleep");
     const details = html.slice(html.indexOf('id="stage-technical"'));
-    assert.ok(details.includes('id="wall-power-summary"'), "the complete fleet evidence is reachable in Details");
+    assert.ok(!details.includes('id="wall-power-summary"'), "wake-lock reports stay in the Tablet panel");
     assert.match(html, /id="image-message"[^>]*tabindex="-1"/, "the Images message is programmatically focusable");
     for (const [input, hint, message] of [["layout-name", "layout-name-rule", "layout-msg"],
         ["scene-name", "scene-name-rule", "scene-message"]]) {
@@ -725,4 +725,4 @@ console.log("Fit feedback slots are unique, labelled, decorative and placed afte
             "the " + input + " rule sentence is stated once as a hint");
     }
 }
-console.log("Wave-one HTML adds the power summary, both name-rule hints and a focusable Images message");
+console.log("HTML keeps wake reports out of wall details, both name-rule hints and a focusable Images message");
