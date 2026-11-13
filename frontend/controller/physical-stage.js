@@ -425,7 +425,7 @@ window.PhysicalStage = {
                 const content = state.operatorConfig.scene && state.operatorConfig.scene.content || {};
                 const noun = window.OperatorState.shownSubject(content);
                 const paint = result.total
-                    ? (stale ? "Current " + noun + " evidence unavailable" : result.showing + " of " + result.total + " showing " + (appliedName() || "the current " + noun))
+                    ? (stale ? "Current " + noun + " evidence unavailable" : result.showing + " of " + result.total + " showing " + (/^wall-pattern-/.test(appliedName()) ? "Test pattern" : appliedName() || "the current " + noun))
                     : empty;
                 const unreachable = stale && /Connection lost|Failed to fetch|NetworkError|Load failed|aborted|timed out/i.test(state.rosterError);
                 el.wallHealth.textContent = unreachable ? "Server unreachable · tablets keep their last image" : (stale ? "Status stale · " : "") + paint;

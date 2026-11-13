@@ -319,6 +319,7 @@
             selectTablet(oldId);
             $("replace-target").value = newId;
             $("replace-target").dispatchEvent(new Event("change", { bubbles: true }));
+            $("tablet-lifecycle").open = true;
             $("replace-target").closest("details").open = true;
             $("replace-hardware").focus();
         });

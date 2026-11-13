@@ -234,11 +234,13 @@ window.OperatorWorkspace = {
             if ($("tablet-back")) {
                 setTextIfChanged($("tablet-back"), { content: "‹ Library", arrange: "‹ Wall shape", test: "‹ Test patterns" }[state.mode] || "‹ Tools");
             }
-            const names = stageNames();
+            const rawNames = stageNames();
+            const isPattern = patternName.test(rawNames.applied || "");
+            const names = { ...rawNames, applied: isPattern ? "Test pattern" : rawNames.applied };
             if ($("commit-draft-name")) setTextIfChanged($("commit-draft-name"), "Draft: " + (image && names.pending || "None"));
             if ($("commit-applied-name")) setTextIfChanged($("commit-applied-name"), "On wall: " + (names.unavailable ? "Unavailable image" : names.applied || "No image"));
             const shownType = state.scene && state.scene.content && state.scene.content.type;
-            const testLive = mode === "live" && !wallEmpty && (shownType === "color" || shownType === "calibration" || patternName.test(names.applied || ""));
+            const testLive = mode === "live" && !wallEmpty && (shownType === "color" || shownType === "calibration" || isPattern);
             const commit = image ? "image" : arrangement ? "arrangement" : testLive ? "test" : "idle";
             body.dataset.testLive = String(testLive);
             $("commit-bar").dataset.commit = commit;
