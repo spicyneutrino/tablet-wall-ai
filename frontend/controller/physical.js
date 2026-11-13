@@ -2568,16 +2568,20 @@
             state.formDeviceId = null; populateDeviceCard(); syncTabDots();
         });
         const clearConfirm = document.getElementById("clear-wall-confirm"), clearButton = document.getElementById("clear-wall");
-        const closeClearConfirm = () => { clearConfirm.hidden = true; clearButton.setAttribute("aria-expanded", "false"); };
+        let clearReviewedEtag = null;
+        const closeClearConfirm = () => { clearReviewedEtag = null; clearConfirm.hidden = true; clearButton.setAttribute("aria-expanded", "false"); };
         clearButton.addEventListener("click", async () => {
             if (!await resolveOutput("Clear the active wall")) return;
+            clearReviewedEtag = state.etag;
             clearConfirm.hidden = false; clearButton.setAttribute("aria-expanded", "true");
             document.getElementById("clear-wall-cancel").focus();
         });
         document.getElementById("clear-wall-cancel").addEventListener("click", () => { closeClearConfirm(); clearButton.focus(); });
         document.getElementById("clear-wall-confirm-yes").addEventListener("click", async () => {
+            const reviewedEtag = clearReviewedEtag;
             closeClearConfirm(); clearButton.focus();
-            try { const result = await api("POST", "/api/v3/layout/clear", { confirm: true }, { etag: true }); ingestConfig(result); announce("Active positions cleared. Tablets and saved arrangements are retained."); }
+            if (!reviewedEtag || reviewedEtag !== state.etag) { announce("The wall changed. Review Clear wall again.", "err"); return; }
+            try { const result = await api("POST", "/api/v3/layout/clear", { confirm: true }, { etag: true, ifMatch: reviewedEtag }); ingestConfig(result); announce("Active positions cleared. Tablets and saved arrangements are retained."); }
             catch (error) { handleWriteError(error); }
         });
         const newModelReview = () => { modelReviewVersion += 1; modelBatchReview = null; document.getElementById("group-hardware").checked = false; operatorGrid.render(); };
