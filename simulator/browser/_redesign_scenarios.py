@@ -570,7 +570,7 @@ def parity(rig):
         "Explicit all-tablet colour command targets all four registrations",
     )
     before_pattern = config()
-    task("Images")
+    task("Test")
     expect(page.locator("#presentation-checks")).to_be_visible()
     rig.open_disclosures(page.locator("#show-colours"))
     page.locator("#show-colours").click()

@@ -1883,6 +1883,12 @@ def _gallery_metrics(page: Any, *, reset_scroll: bool = True) -> dict[str, Any]:
     )
 
 
+def _contained_size(img: dict[str, Any], natural_width: int, natural_height: int) -> tuple[float, float]:
+    """Size an object-fit contain image paints inside its element box."""
+    scale = min(img["width"] / natural_width, img["height"] / natural_height)
+    return natural_width * scale, natural_height * scale
+
+
 def _whole_image_ok(
     tile: dict[str, Any] | None, expected_width: int, expected_height: int
 ) -> bool:
@@ -1898,9 +1904,8 @@ def _whole_image_ok(
         return False
     if not img.get("width") or not img.get("height"):
         return False
-    aspect = img["width"] / img["height"]
-    expected = expected_width / expected_height
-    return abs(aspect / expected - 1) <= 0.02
+    rendered = _contained_size(img, expected_width, expected_height)
+    return abs(rendered[0] / rendered[1] / (expected_width / expected_height) - 1) <= 0.02
 
 
 def _drawing_metrics(page: Any) -> dict[str, Any]:
@@ -2214,11 +2219,12 @@ def images_workbench(rig: RenewalRig) -> None:
     )
     for name, width, height in WORKBENCH_SHAPES:
         tile = next((item for item in gallery["tiles"] if item["name"] == name), None)
-        aspect = (
-            tile["img"]["width"] / tile["img"]["height"]
+        rendered = (
+            _contained_size(tile["img"], width, height)
             if tile and tile["img"] and tile["img"]["height"]
             else None
         )
+        aspect = rendered[0] / rendered[1] if rendered else None
         expected = width / height
         ok = _whole_image_ok(tile, width, height)
         rig.check(
@@ -2231,6 +2237,18 @@ def images_workbench(rig: RenewalRig) -> None:
              "objectFit": "contain", "aspectWithin": "2%"},
             obligation="C-WORKBENCH",
         )
+    boxes = {
+        (round(tile["img"]["width"]), round(tile["img"]["height"]))
+        for tile in gallery["tiles"]
+        if tile["img"]
+    }
+    rig.check(
+        "1440x900: every gallery thumbnail shares one box, so wide images letterbox instead of shrinking",
+        len(boxes) == 1,
+        sorted(boxes),
+        {"distinct boxes": 1},
+        obligation="C-WORKBENCH",
+    )
     rig.check(
         "Gallery tile buttons keep the plain image name so gallery-focus still reads it",
         bool(gallery["tiles"])
