@@ -34,9 +34,9 @@ test("renderAll observes content and grid before any presentation", () => {
     const context = { state: {}, operatorContent: feature("content"), operatorGrid: feature("grid"),
         syncMeta: () => calls.push("meta"), syncDraftUi: noop, renderDeviceList: noop, renderStage: noop,
         populateDeviceCard: noop, renderPlayback: noop, operatorDevices: null, operatorReadiness: null,
-        workspace: null, renderLogicalEditor: noop, document: { getElementById: () => null } };
+        workspace: null, renderLogicalEditor: noop, syncDiagnosticColours: noop, document: { getElementById: () => null } };
     const source = fs.readFileSync(require.resolve("../frontend/controller/physical.js"), "utf8");
-    vm.runInNewContext(source.slice(source.indexOf("    function renderAll()"), source.indexOf("    function syncMeta()")), context);
+    vm.runInNewContext(source.slice(source.indexOf("    function renderAll()"), source.indexOf("    function syncDiagnosticColours()")), context);
     context.renderAll();
     assert.deepEqual(calls, ["update content", "update grid", "meta", "render content", "render grid"]);
 });
