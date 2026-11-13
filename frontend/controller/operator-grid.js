@@ -409,7 +409,7 @@
             finally {
                 busy = false; updateButtons(); syncDraftUi();
                 if (restoreFocus && $("btn-apply").disabled) {
-                    const target = $("grid-preview");
+                    const target = $(state.selectedId ? "tablet-action-name" : "grid-preview");
                     if (target && (typeof target.getClientRects !== "function" || target.getClientRects().length) && !target.disabled) target.focus({ preventScroll: true });
                 }
             }

@@ -43,7 +43,7 @@
             ? powerReadiness(state.roster[id], { stale: !!state.rosterError, checkedAt: state.rosterCheckedAt }) : null;
 
         let selectedId = null, impact = null, replacement = null, busy = false, snapshotsKey = "", replaceVersion = 0;
-        let replacementCandidate = null, replacementPointer = null;
+        let replacementCandidate = null, replacementPointer = null, suggestedOld = null;
         const results = new Map();
         let nameReview = null;
         const message = text => { $("tablet-action-message").textContent = text; };
@@ -97,7 +97,7 @@
                 const form = tabletForms.observe(id, "name", { name: (state.deviceLabels || {})[id] || device && device.label || "" }, state.etag);
                 if (document.activeElement !== $("tablet-label")) $("tablet-label").value = form.values.name;
                 $("tablet-label-form").dataset.dirty = String(form.dirty);
-                $("tablet-label-save").classList.toggle("btn-primary", form.dirty && $("tablet-label-form").matches(":valid"));
+                $("tablet-label-save").dataset.ready = String(form.dirty && $("tablet-label-form").matches(":valid"));
                 $("tablet-label-form").dataset.deviceId = id;
                 $("tablet-label").placeholder = labelFor(id);
                 if ($("tablet-name-help")) $("tablet-name-help").textContent = "Current name: " + labelFor(id) + ". Leave empty to use the generated tablet name.";
@@ -152,12 +152,28 @@
             if (statusDetails && (id !== statusDetails.dataset.deviceId || String(healthy) !== statusDetails.dataset.healthy)) statusDetails.open = !healthy;
             if (statusDetails) { statusDetails.dataset.deviceId = id; statusDetails.dataset.healthy = String(healthy); }
             const tabletOnline = !!device && device.online === true;
-            recovery.hidden = !tabletOnline;
+            recovery.hidden = !tabletOnline || healthy;
             recovery.dataset.powerState = power ? power.state : "";
             recovery.dataset.powerWarning = String(!!power && power.warning);
             for (const action of ["tablet-identify", "tablet-retry-image", "tablet-reconnect"]) {
                 const button = $(action);
                 if (button) button.hidden = !tabletOnline;
+            }
+            const facts = $("tablet-facts");
+            if (facts) {
+                const word = id && evidence ? window.OperatorState.rosterStatus(evidence, { stale: !!state.rosterError }).word : "";
+                const seen = device && device.last_seen ? Date.parse(device.last_seen) : NaN;
+                const rows = id ? [["Status", word],
+                    ["Last seen", tabletOnline ? "Now" : Number.isFinite(seen) ? new Date(seen).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }) : "Never"]] : [];
+                const signature = JSON.stringify(rows);
+                if (facts.dataset.signature !== signature) {
+                    facts.dataset.signature = signature;
+                    facts.replaceChildren(...rows.flatMap(([term, value]) => {
+                        const dt = document.createElement("dt"), dd = document.createElement("dd");
+                        dt.textContent = term; dd.textContent = value;
+                        return [dt, dd];
+                    }));
+                }
             }
             const mapped = mappingStale || ["blocked", "invalid", "stale_calibration", "needs_calibration", "needs_profile", "viewport_mismatch", "zoom_changed", "missing_profile", "missing_calibration", "invalid_mapping"].includes(evidence?.status);
             const measured = state.layoutKind === "physical" || !!(state.base && state.base.kind === "physical")
@@ -171,6 +187,14 @@
             replacementCandidate = onlineUnplaced.length ? onlineUnplaced[onlineUnplaced.length - 1] : null;
             const pointer = ensureReplacementPointer();
             pointer.hidden = !device || device.online === true || !replacementCandidate;
+            const offlineSlots = Object.keys(applied).filter(key => !(state.roster[key] && state.roster[key].online === true));
+            suggestedOld = offlineSlots.length === 1 ? offlineSlots[0] : null;
+            const suggestion = $("replacement-suggestion");
+            if (suggestion) {
+                suggestion.hidden = !offlineSlots.length || !replacementCandidate || !!state.rosterError
+                    || !(offlineSlots.includes(id) || onlineUnplaced.includes(id));
+                if (!suggestion.hidden) $("replacement-suggestion-text").textContent = (offlineSlots.length === 1 ? labelFor(offlineSlots[0]) : offlineSlots.length + " tablets") + " offline, " + labelFor(replacementCandidate) + " not placed.";
+            }
             const oldIds = Object.keys(state.roster).filter(key => key !== id && !state.roster[key].online);
             $("replacement-offer").hidden = !device || !device.online || !!active || !oldIds.length;
             const oldSelect = $("replacement-old"), oldKey = oldIds.map(key => key + labelFor(key)).join("|");
@@ -256,14 +280,22 @@
                 results.set(id, text); if (id === selectedId) message(text); }
             finally {
                 busy = false; render();
-                if (focused && focused !== document.body && document.activeElement === document.body) {
+                if (id === selectedId && focused && focused !== document.body && document.activeElement === document.body) {
                     const target = focused.isConnected && !focused.disabled && focused.getClientRects().length
-                        ? focused : document.querySelector('.dev-pick[aria-pressed="true"]');
+                        ? focused : $("tablet-action-name");
                     if (target) target.focus();
                 }
             }
         }
         $("tablet-arrange").addEventListener("click", () => { if (selectedId) openArrange(); });
+        if ($("replacement-suggestion-open")) $("replacement-suggestion-open").addEventListener("click", () => {
+            if (!replacementCandidate) return;
+            const old = suggestedOld;
+            selectTablet(replacementCandidate, { reveal: true });
+            const select = $("replacement-old");
+            if (old && select) select.value = old;
+            if (select && typeof select.focus === "function") select.focus();
+        });
         $("replacement-open").addEventListener("click", () => {
             const newId = selectedId, oldId = $("replacement-old").value;
             if (!newId || !oldId || !state.roster[newId]?.online || state.roster[oldId]?.online) { message("Choose an offline registration to replace with this connected tablet."); return; }
@@ -298,7 +330,7 @@
             nameReview = null; $("tablet-name-review").hidden = true;
             const form = tabletForms.edit(selectedId, "name", { name: $("tablet-label").value }, state.etag);
             $("tablet-label-form").dataset.dirty = String(form.dirty);
-            $("tablet-label-save").classList.toggle("btn-primary", form.dirty && $("tablet-label-form").matches(":valid"));
+            $("tablet-label-save").dataset.ready = String(form.dirty && $("tablet-label-form").matches(":valid"));
             $("tablet-label-review").hidden = !form.dirty;
             $("tablet-label-discard").hidden = !form.dirty;
         });

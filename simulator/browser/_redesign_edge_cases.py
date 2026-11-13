@@ -12,28 +12,19 @@ def ids(rig):
     return [client["id"] for client in rig.manifest["clients"]]
 
 
-TASK_TABS = {"Images": "content", "Tablets": "tablet", "Arrange": "show", "Saved": "saved", "Settings": "system"}
+try:
+    from ._workspace_shell import MODES, mode_button, tablet_button, task, pick
+except ImportError:
+    from _workspace_shell import MODES, mode_button, tablet_button, task, pick
 
 
 def task_tab(page, name):
-    return page.get_by_role("tab", name=re.compile(rf"^{re.escape(name)}(?:, unsaved changes)?$"))
-
-
-def task(page, name):
-    selector = page.locator("#compact-task-select")
-    if selector.is_visible():
-        selector.select_option(value=TASK_TABS[name])
-    else:
-        task_tab(page, name).click()
-
-
-def pick(page, device):
-    page.locator(f'.dev-pick[data-device-id="{device}"]').click()
+    return mode_button(page, MODES[name])
 
 
 def refreshed(page):
     with page.expect_response("**/api/v3/config"):
-        page.locator("#btn-roster-refresh").click()
+        page.locator("#refresh-status").click()
     expect(page.locator("body")).to_have_attribute("data-connection", "current")
 
 
@@ -44,7 +35,7 @@ def second_operator(rig):
     page = context.new_page()
     page.set_default_timeout(7000)
     page.goto(rig.base + "/controller/physical.html")
-    expect(page.locator("#device-list .dev-pick")).to_have_count(len(ids(rig)))
+    expect(page.locator(":is(.dev-pick,.roster-pick):visible")).to_have_count(len(ids(rig)))
     return page
 
 
@@ -120,7 +111,7 @@ def show_supplied(rig):
     rig.page.get_by_role("button", name="Preview supplied.png", exact=True).click()
     rig.page.locator("#show-image").click()
     expect(rig.page.locator("#wall-health")).to_contain_text(
-        "4 of 4 showing the current image", timeout=15000
+        "4 of 4 showing supplied.png", timeout=15000
     )
 
 
@@ -183,15 +174,15 @@ def pointer_drag(rig):
         ),
         "Physical drag commits reviewed position with all exact measurement pins",
     )
-    task(p, "Settings")
-    rig.dialog_accept = False
+    task(p, "Server")
     count = len(rig.requests)
     rig.open_disclosures(p.locator("#clear-wall"))
     p.locator("#clear-wall").click()
+    p.locator("#clear-wall-cancel").click()
     rig.check(
         rig.config()["layout"] == current["layout"]
         and not any(r["url"].endswith("/layout/clear") for r in rig.requests[count:]),
-        "Native Clear cancellation sends no command and preserves the wall",
+        "In-page Clear cancellation sends no command and preserves the wall",
     )
     rig.dialog_accept = True
     rig.viewport_shots("physical-drag-clear-cancel")
@@ -422,7 +413,7 @@ def mixed_models(rig):
     p, subjects = rig.page, ids(rig)
     task(p, "Tablets")
     pick(p, subjects[0])
-    task(p, "Settings")
+    task(p, "Measure")
     p.locator("#measurement-details > summary").click()
     rig.open_disclosures(p.locator("#tablet-model"))
     p.locator("#tablet-model").select_option("ipad-air-2")
@@ -491,7 +482,7 @@ def mixed_models(rig):
     task(p, "Images")
     p.get_by_role("button", name="Preview supplied.png", exact=True).click()
     p.locator("#show-image").click()
-    expect(p.locator("#wall-health")).to_contain_text("3 of 4 showing the current image", timeout=15000)
+    expect(p.locator("#wall-health")).to_contain_text(re.compile(r"3 of 4 showing "), timeout=15000)
     expect(rig.tablets[0].locator("#calibration-recovery")).to_be_visible()
     task(p, "Tablets")
     pick(p, subjects[0])
@@ -529,7 +520,7 @@ def stale_reads(rig):
     held = HeldResponse(
         rig, p, "**/devices", "fallback roster held across newer runtime"
     )
-    p.locator("#btn-roster-refresh").click()
+    p.locator("#refresh-status").click()
     held.wait()
     rig.tablets[0].close()
     wait_until(
@@ -539,12 +530,12 @@ def stale_reads(rig):
     expect(p.locator("#tablet-evidence")).to_contain_text("Offline")
     held.release()
     expect(p.locator("#tablet-evidence")).to_contain_text("Offline")
-    expect(p.locator("#wall-health")).to_contain_text("3 of 4 showing the current image", timeout=15000)
+    expect(p.locator("#wall-health")).to_contain_text(re.compile(r"3 of 4 showing "), timeout=15000)
     rig.check(
         not p.locator("#tablet-reconnect").is_enabled(),
         "Stale fallback roster cannot revive online commands or old paint after newer offline event",
     )
-    task(p, "Settings")
+    task(p, "Test colour")
     p.locator("#diagnostic-colour").fill("#123456")
     diagnostic = HeldResponse(
         rig, p, "**/devices", "diagnostic GET held across newer v3 runtime"
@@ -554,7 +545,7 @@ def stale_reads(rig):
     reopened = rig.tablets[0].context.new_page()
     reopened.goto(rig.base + "/client/")
     rig.tablets[0] = reopened
-    expect(p.locator("#wall-health")).to_contain_text("4 of 4 showing the current image", timeout=15000)
+    expect(p.locator("#wall-health")).to_contain_text("4 of 4 showing supplied.png", timeout=15000)
     diagnostic.release()
     expect(p.locator("#diagnostic-colour-message")).to_contain_text("newer update")
     rig.check(
@@ -650,7 +641,7 @@ def old_paint(rig):
     bridges[-1].send(old[0])
     with p.expect_response("**/api/v3/config"):
         task(p, "Tablets")
-        p.locator("#btn-roster-refresh").click()
+        p.locator("#refresh-status").click()
     latest = rig.config()
     rig.check(
         not latest["runtime"]["devices"][device]["render"]["current"]
@@ -673,7 +664,7 @@ def old_paint(rig):
         if row[1]["token"]["revision"] == latest["revision"]
     )
     bridges[-1].send(newest[0])
-    expect(p.locator("#wall-health")).to_contain_text("4 of 4 showing the current image", timeout=15000)
+    expect(p.locator("#wall-health")).to_contain_text("4 of 4 showing supplied.png", timeout=15000)
     rig.check(
         rig.config()["runtime"]["devices"][device]["render"]["current"],
         "Only fresh exact native paint acknowledgement restores four current reports",
@@ -921,7 +912,7 @@ def stale_scene(rig):
     quick_wall(rig)
     show_supplied(rig)
     p, other = rig.page, second_operator(rig)
-    task(p, "Saved")
+    task(p, "Saved content")
     p.locator("#scene-name").fill("Guarded scene")
     p.locator("#scene-save").click()
     expect(p.locator("#scene-message")).to_contain_text("Content saved")
@@ -943,13 +934,13 @@ def stale_scene(rig):
         "Fresh saved image Show recalls exactly the previewed asset, fit and background with one original guard",
         sent,
     )
-    task(p, "Saved")
+    task(p, "Saved content")
     preview()
     task(other, "Images")
     rig.open_disclosures(other.locator("#show-colours"))
     other.locator("#show-colours").click()
     expect(other.locator("#stage-mode-label")).to_have_text("Showing tablet colours")
-    task(other, "Saved")
+    task(other, "Saved content")
     other.locator("#scene-name").fill("Guarded scene")
     other.locator("#scene-save").click()
     expect(other.locator("#scene-message")).to_contain_text("Content saved")
@@ -984,7 +975,7 @@ def stale_scene(rig):
     )
     rig.shot(p, "saved-rebuild-refused")
     p.locator("#image-discard").click()
-    task(p, "Saved")
+    task(p, "Saved content")
     preview()
     guard = rig.config()["etag"]
     start = len(rig.requests)
@@ -1000,7 +991,7 @@ def stale_scene(rig):
         sent,
     )
 
-    task(p, "Saved")
+    task(p, "Saved content")
     preview()
     guard = rig.config()["etag"]
     start = len(rig.requests)
@@ -1039,12 +1030,12 @@ def stale_scene(rig):
                   "Real 412 saved Show never retries, rebases or substitutes after settling", writes_since(start))
 
     p.locator("#image-discard").click()
-    task(p, "Saved")
+    task(p, "Saved content")
     preview()
     before = rig.config()
     original_asset = p.locator("#selected-image-controls").get_attribute("data-asset-id")
     start = len(rig.requests)
-    task(other, "Saved")
+    task(other, "Saved content")
     other.locator("#scene-name").fill("Guarded scene")
     other.locator("#scene-save").click()
     expect(other.locator("#scene-message")).to_contain_text("Content saved")
@@ -1060,7 +1051,7 @@ def stale_scene(rig):
         {"before": before["etag"], "after": replaced["etag"], "requests": writes_since(start)},
     )
     p.locator("#image-discard").click()
-    task(p, "Saved")
+    task(p, "Saved content")
     preview()
     before = rig.config()
     start = len(rig.requests)
@@ -1081,7 +1072,7 @@ def stale_scene(rig):
     other.locator("#scene-save").click()
     expect(other.locator("#scene-message")).to_contain_text("Content saved")
     p.locator("#image-discard").click()
-    task(p, "Saved")
+    task(p, "Saved content")
     preview()
     start = len(rig.requests)
     guard = rig.config()["etag"]
@@ -1151,7 +1142,7 @@ def missing_live(rig):
         )
         p.locator("#show-image").click()
         expect(p.locator("#wall-health")).to_contain_text(
-            "4 of 4 showing the current image", timeout=15000
+            "4 of 4 showing supplied.png", timeout=15000
         )
         rig.check(
             rig.config()["layout"] == before["layout"]
@@ -1162,7 +1153,7 @@ def missing_live(rig):
 
 
 def save_arrangement(page, name):
-    task(page, "Saved")
+    task(page, "Saved arrangements")
     page.locator("#layout-name").fill(name)
     page.locator("#btn-layout-save").click()
     expect(page.locator("#layout-msg")).to_contain_text("saved")
@@ -1197,7 +1188,7 @@ def different_hardware(rig):
     p = rig.page
     task(p, "Tablets")
     pick(p, target)
-    task(p, "Settings")
+    task(p, "Measure")
     p.locator("#measurement-details > summary").click()
     rig.open_disclosures(p.locator("#tablet-model"))
     p.locator("#tablet-model").select_option("ipad-air-2")
@@ -1482,7 +1473,7 @@ def history_ownership(rig):
     tile = p.locator(f'#stage-svg .slot[data-device-id="{device}"]')
     tile.focus()
     tile.press("ArrowRight")
-    task(p, "Settings")
+    task(p, "Server")
     rig.open_disclosures(p.locator("#clear-wall"))
     p.locator("#clear-wall").click()
     expect(p.locator("#draft-resolution")).to_be_visible()
@@ -1521,7 +1512,7 @@ def history_ownership(rig):
     expect(p.locator("#draft-resolution")).to_be_visible()
     expect(p.locator("#resolve-commit")).to_have_text("Show image")
     p.locator("#resolve-stay").click()
-    task(p, "Settings")
+    task(p, "Server")
     rig.open_disclosures(p.locator("#clear-wall"))
     p.locator("#clear-wall").click()
     expect(p.locator("#draft-resolution")).to_be_visible()
@@ -1530,6 +1521,7 @@ def history_ownership(rig):
     expect(p.locator("#draft-resolution")).to_be_hidden()
     from redesign_acceptance import wait_until
 
+    p.locator("#clear-wall-confirm-yes").click()
     wait_until(lambda: not rig.config()["layout"]["placements"], p.wait_for_timeout)
     rig.check(
         rig.config()["scene"] == before["scene"]

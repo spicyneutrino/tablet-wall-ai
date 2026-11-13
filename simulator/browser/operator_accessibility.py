@@ -4,6 +4,7 @@ import argparse
 from pathlib import Path
 import sys
 from playwright.sync_api import expect
+from _workspace_shell import select_tablet
 
 from _redesign_edge_cases import task_tab
 
@@ -47,7 +48,7 @@ def native_tab_task(page, name):
     current = names.index(
         page.locator("[role=tab][aria-selected=true]").inner_text().strip()
     )
-    target = names.index(name)
+    target = names.index("Content" if name == "Images" else name)
     for _ in range(abs(target - current)):
         page.keyboard.press("ArrowRight" if target > current else "ArrowLeft")
 
@@ -107,7 +108,7 @@ def native_keyboard(rig):
         [row for row in walk if row["occluded"]],
         fatal=False,
     )
-    native_tab_task(p, "Saved")
+    native_tab_task(p, "Arrange")
     native_tab_to(p, "#btn-layout-save")
     p.keyboard.press("Enter")
     expect(p.locator("#layout-msg")).to_contain_text("Enter an arrangement name")
@@ -159,8 +160,8 @@ def native_keyboard(rig):
     native_tab_to(p, "#grid-preview")
     p.keyboard.press("Enter")
     expect(p.locator("body")).to_have_attribute("data-stage-mode", "arrangement-preview")
-    native_tab_task(p, "Tablets")
-    native_tab_task(p, "Images")
+    native_tab_task(p, "Test")
+    native_tab_task(p, "Content")
     dialog = p.locator("#draft-resolution")
     expect(dialog).to_be_visible()
     trigger_id = p.locator("[role=tab][aria-selected=true]").get_attribute("id")
@@ -212,7 +213,7 @@ def entry_recovery(rig):
                 rig.base
                 + "/controller/physical.html?acceptance=preserve%20me&x=2#wall-proof"
             )
-            navigation = "#compact-task-select" if page.evaluate("matchMedia('(max-width: 48rem)').matches") else "#rail-tabs"
+            navigation = "#bottom-nav" if page.evaluate("matchMedia('(max-width: 47.99rem)').matches") else "#rail-tabs"
             expect(page.locator(navigation)).to_be_visible()
             expect(page.locator("body")).to_have_attribute("data-connection", "current")
             page.evaluate("document.fonts.ready")
@@ -276,7 +277,7 @@ def entry_recovery(rig):
     client.set_viewport_size({"width": 900, "height": 1280})
     cdp.send("Emulation.setPageScaleFactor", {"pageScaleFactor": 1})
     expect(client.locator("#calibration-recovery")).to_be_hidden(timeout=15000)
-    expect(p.locator("#wall-health")).to_contain_text("4 of 4 showing the current image", timeout=15000)
+    expect(p.locator("#wall-health")).to_contain_text("4 of 4 showing supplied.png", timeout=15000)
     rig.check(
         True,
         "Restoring calibrated viewport removes DOM recovery and requires fresh current paints",
@@ -489,7 +490,7 @@ def interaction_contrast(rig):
         for mode in ("hover", "focus"):
             target = p.locator("#tablet-label-save")
             if not target.is_visible():
-                p.locator(".dev-pick").first.click()
+                select_tablet(p.locator(":is(.dev-pick,.roster-pick):visible").first)
             if mode == "hover":
                 target.hover()
             else:
@@ -611,13 +612,13 @@ def responsive(rig):
     first_wall(rig)
     rig.task("Tablets")
     ids = [row["id"] for row in rig.manifest["clients"]]
-    rig.click(f'.dev-pick[data-device-id="{ids[0]}"]')
+    rig.click(f':is(.dev-pick,.roster-pick):visible[data-device-id="{ids[0]}"]')
     label = ("Café e\u0301 長い名前 🧱 العربية " * 3).strip()
     p.locator("#tablet-label").focus()
     p.keyboard.insert_text(label)
     p.locator("#tablet-label").evaluate("e=>e.setSelectionRange(3,6)")
     before = focus(p)
-    p.locator("#btn-roster-refresh").dispatch_event("click")
+    p.locator("#refresh-status").dispatch_event("click")
     expect(p.locator("#device-count")).to_contain_text("4")
     retained = p.locator("#tablet-label").evaluate(
         "e=>({value:e.value,start:e.selectionStart,end:e.selectionEnd})"
@@ -628,7 +629,7 @@ def responsive(rig):
         retained,
     )
     p.locator("#tablet-label").dispatch_event("compositionstart", {"data": "あ"})
-    p.locator("#btn-roster-refresh").dispatch_event("click")
+    p.locator("#refresh-status").dispatch_event("click")
     p.locator("#tablet-label").dispatch_event("compositionend", {"data": "あ"})
     rig.check(
         p.locator("#tablet-label").input_value() == label,
@@ -641,25 +642,26 @@ def responsive(rig):
     tab.focus()
     tab.press("ArrowRight")
     rig.check(
-        task_tab(p, "Tablets").get_attribute("aria-selected")
+        p.locator("#tab-test").get_attribute("aria-selected")
         == "true",
-        "Task tabs support ArrowRight roving navigation",
+        "Wall modes support ArrowRight roving navigation",
         focus(p),
         fatal=False,
     )
-    task_tab(p, "Tablets").press("Home")
+    task_tab(p, "Test").press("Home")
     rig.check(
         task_tab(p, "Images").get_attribute("aria-selected")
         == "true",
-        "Task tabs support Home navigation",
+        "Wall modes support Home navigation",
         focus(p),
         fatal=False,
     )
-    rig.task("Saved")
+    rig.task("Saved arrangements")
     p.locator("#layout-name").focus()
     p.keyboard.insert_text("Keyboard arrangement")
     rig.click("#btn-layout-save")
     expect(p.locator("#layout-msg")).to_contain_text("saved")
+    rig.task("Saved content")
     p.locator("#scene-name").focus()
     p.keyboard.insert_text("Keyboard scene")
     rig.click("#scene-save")
@@ -675,7 +677,7 @@ def responsive(rig):
         fatal=False,
     )
     rig.task("Tablets")
-    rig.click(f'.dev-pick[data-device-id="{ids[1]}"]')
+    rig.click(f':is(.dev-pick,.roster-pick):visible[data-device-id="{ids[1]}"]')
     rig.click("#tablet-remove")
     rig.check(
         ids[1] not in rig.config()["layout"]["slots"],
@@ -687,7 +689,7 @@ def responsive(rig):
         focus(p),
         fatal=False,
     )
-    rig.task("Saved")
+    rig.task("Saved arrangements")
     rig.click(
         p.get_by_role(
             "button", name="Recall geometry for arrangement “Keyboard arrangement”", exact=True
@@ -704,7 +706,7 @@ def responsive(rig):
     )
     rig.click("#btn-cancel")
     rig.task("Tablets")
-    rig.click(f'.dev-pick[data-device-id="{ids[0]}"]')
+    rig.click(f':is(.dev-pick,.roster-pick):visible[data-device-id="{ids[0]}"]')
     field = p.locator("#tablet-label")
     field.focus()
     field.press("End")
@@ -727,7 +729,7 @@ def responsive(rig):
         lambda: not rig.config()["runtime"]["devices"][ids[3]]["online"],
         p.wait_for_timeout,
     )
-    rig.click(f'.dev-pick[data-device-id="{ids[3]}"]')
+    rig.click(f':is(.dev-pick,.roster-pick):visible[data-device-id="{ids[3]}"]')
     for attempt in range(3):
         with p.expect_response(f"**/api/v3/devices/{ids[3]}/impact"):
             rig.click("#tablet-forget-preview")
@@ -745,7 +747,7 @@ def responsive(rig):
             }
         )
         with p.expect_response("**/api/v3/config"):
-            rig.click("#btn-roster-refresh")
+            rig.click("#refresh-status")
     expect(p.locator("#tablet-forget-impact")).to_be_visible()
     rig.shot(p, "keyboard-forget-review")
     rig.click("#tablet-forget-cancel")
@@ -757,7 +759,7 @@ def responsive(rig):
     reopened = rig.tablets[3].context.new_page()
     reopened.goto(rig.base + "/client/")
     rig.tablets[3] = reopened
-    expect(p.locator("#wall-health")).to_contain_text("4 of 4 showing the current image", timeout=15000)
+    expect(p.locator("#wall-health")).to_contain_text("4 of 4 showing supplied.png", timeout=15000)
     rig.check(
         reopened.evaluate("localStorage.getItem('tablet-wall-device-id')") == ids[3],
         "Keyboard recovery retains tablet storage identity",
@@ -784,7 +786,7 @@ def inspect_layout(rig):
         (1089, 900),
     ]
     rig.manifest["breakpoint_probe"] = (
-        "Actual integrated workspace/stage styles use 68rem/1088px and 36rem/576px boundaries. This matrix probes 68rem ±1 and both phone widths; text enlargement is recorded separately."
+        "The persistent shell uses 1280px, 1024px and 768px boundaries. This matrix includes desktop, both phone widths and breakpoint probes; text enlargement is recorded separately."
     )
     for width, height in viewports:
         p.set_viewport_size({"width": width, "height": height})
@@ -810,11 +812,11 @@ def inspect_layout(rig):
                     "reduced_motion": "reduce",
                 }
             )
-            for task in ("Tablets", "Arrange", "Images", "Saved", "Settings"):
+            for task in ("Tablets", "Arrange", "Images", "Test", "Saved arrangements", "Saved content", "Server"):
                 rig.task(task)
                 metrics = p.evaluate("""()=>({overflow:document.documentElement.scrollWidth>innerWidth+1,
                   viewport:innerWidth,scrollWidth:document.documentElement.scrollWidth,
-                  navBeforeTask:!!(document.getElementById('rail-tabs').compareDocumentPosition(document.querySelector('.task-panel:not([hidden])'))&Node.DOCUMENT_POSITION_FOLLOWING),
+                  navBeforeTask:!!(document.getElementById('rail-tabs').compareDocumentPosition(document.getElementById('inspector'))&Node.DOCUMENT_POSITION_FOLLOWING),
                   clippedTabs:[...document.querySelectorAll('[role=tab]')].filter(e=>{const r=document.createRange();r.selectNodeContents(e);const a=r.getBoundingClientRect(),b=e.getBoundingClientRect();return a.left<b.left-1||a.right>b.right+1||a.top<b.top-1||a.bottom>b.bottom+1}).map(e=>e.textContent),
                   unnamed:[...document.querySelectorAll('button,input:not([type=hidden]),select,a[href]')].filter(e=>e.checkVisibility()&&!e.closest('[hidden]')&&!e.getAttribute('aria-label')&&!e.getAttribute('aria-labelledby')&&!e.textContent.trim()&&![...(e.labels||[])].some(l=>l.textContent.trim())).map(e=>e.outerHTML),
                   smallText:[...document.querySelectorAll('.hint,.task-title,.btn,.field label')].filter(e=>e.checkVisibility()&&parseFloat(getComputedStyle(e).fontSize)<14).map(e=>({id:e.id,size:getComputedStyle(e).fontSize})),

@@ -86,15 +86,12 @@ const sheet = {
     removeAttribute(name) { delete this.attrs[name]; },
     setAttribute(name, value) { this.attrs[name] = value; this.open = true; }
 };
-assert.equal(configureDeviceSheet(sheet, true, true), true);
-assert.equal(sheet.closed, 0, "same-mode height changes leave an open device sheet alone");
-assert.equal(sheet.open, true);
-assert.equal(configureDeviceSheet(sheet, false, true), false);
-assert.equal(sheet.closed, 1, "switching to desktop closes a modal sheet");
-assert.equal(sheet.open, true, "desktop mode keeps the sheet available as an open panel");
-assert.equal(sheet.attrs.open, "");
-
-console.log("Physical stage roster counts and device-sheet mode transitions passed");
+for (const compact of [true, false, true]) {
+    assert.equal(configureDeviceSheet(sheet, compact), compact);
+    assert.equal(sheet.closed, 0, "resize never closes or remounts the docked tablet panel");
+    assert.equal(sheet.open, true);
+}
+console.log("Roster counts and stable docked tablet panel passed");
 
 function stageSetup(overrides = {}) {
     const nodes = new Map();
@@ -134,7 +131,7 @@ function stageSetup(overrides = {}) {
         matchMedia: () => ({ matches: compact }),
         addEventListener(event, handler) { if (event === "resize") resizeListeners.push(handler); }
     };
-    const state = { selectedId: null, tabName: "tablet", roster: { a: { online: true }, b: { online: true } },
+    const state = { get composition() { return { mode: this.mode }; }, selectedId: null, mode: "content", roster: { a: { online: true }, b: { online: true } },
         deviceLabels: {}, base: { slots: { a: {}, b: {} } } };
     const showTabCalls = [];
     const el = {
@@ -168,14 +165,13 @@ function stageSetup(overrides = {}) {
         selectionChanged() { heading.textContent = state.selectedId || ""; },
         navigateSelection: (id, options) => navigateSelection(id, options),
         setInputValue() {}, showError() {},
-        showTab(name) { showTabCalls.push(name); state.tabName = name; return true; },
+        showMode(name) { showTabCalls.push(name); state.mode = name; return true; },
         state, syncTabDots() {}, validPair: () => ({})
     });
     const composition = require("../frontend/controller/operator-composition.js");
     navigateSelection = composition.createSelectionNavigation({
-        composition: () => composition.legacyState(state.tabName, state.selectedId),
+        composition: () => ({ mode: state.mode, selectedTablet: state.selectedId }),
         selectedId: () => state.selectedId,
-        openPanel(name) { showTabCalls.push(name); state.tabName = name; return true; },
         revealTablet: (id, trigger) => stage.revealSheet(id, trigger || document.activeElement),
         expandArrange() {}
     });
@@ -187,119 +183,31 @@ function stageSetup(overrides = {}) {
 (async () => {
     const same = stageSetup();
     const trigger = same.node("issue-a");
-    same.state.selectedId = "a";
-    same.stage.selectDevice("a", { reveal: true, taskOpened: true, trigger });
-    await new Promise(setImmediate);
-    assert.equal(same.sheet.modalCount, 1, "the selected device sheet opens once");
-    assert.equal(same.sheet.dataset.modal, "true");
-    assert.equal(same.heading.focusCount, 1, "the recovery heading receives focus after showModal");
-    assert.equal(same.state.sheetTrigger, trigger, "the invoking issue control is kept for close return");
-    assert.deepEqual(same.showTabCalls, [], "a completed task transition is not re-entered");
-    same.stage.selectDevice("a", { reveal: true, taskOpened: true, trigger: same.node("issue-a-again") });
-    await new Promise(setImmediate);
-    assert.equal(same.sheet.modalCount, 1, "selecting the same tablet again reuses the open sheet");
-    assert.equal(same.state.sheetTrigger, same.node("issue-a-again"), "the newest invoking control owns close return");
-
-    const other = stageSetup();
-    other.state.selectedId = "a";
-    const triggerB = other.node("issue-b");
-    other.stage.selectDevice("b", { reveal: true, taskOpened: true, trigger: triggerB });
-    await new Promise(setImmediate);
-    assert.equal(other.state.selectedId, "b", "a different device becomes the selected tablet");
-    assert.equal(other.heading.textContent, "b", "the recovery heading names the selected device");
-    assert.equal(other.sheet.modalCount, 1, "a different device reveals through the same single sheet");
-    other.sheet.close();
-    assert.equal(triggerB.focusCount, 1, "close restores the invoking issue control");
-    assert.equal(other.state.sheetTrigger, null);
-
-    const controls = [other.node("close"), other.node("name"), other.node("save"), other.node("remove")];
-    other.sheet.controls = controls;
-    other.stage.selectDevice("b", { reveal: true, taskOpened: true, trigger: triggerB });
-    await new Promise(setImmediate);
-    function sheetTab(from, shiftKey = false) {
-        from.focus();
-        const event = { key: "Tab", shiftKey, currentTarget: other.sheet, defaultPrevented: false,
-            preventDefault() { this.defaultPrevented = true; } };
-        other.sheet.listeners.keydown?.(event);
-        return event.defaultPrevented;
-    }
-    assert.equal(sheetTab(controls[3]), true, "modal sheet Tab prevents the native BODY stop");
-    assert.equal(other.document.activeElement, controls[0]);
-    assert.equal(sheetTab(controls[0], true), true);
-    assert.equal(other.document.activeElement, controls[3]);
-    controls[3].collapsed = true;
-    controls[2].disabled = true;
-    assert.equal(sheetTab(controls[0], true), true);
-    assert.equal(other.document.activeElement, controls[1], "closed disclosure content with layout boxes and disabled actions cannot own the reverse boundary");
-    assert.equal(sheetTab(controls[0]), false, "ordinary internal Tab keeps native navigation");
-    other.node("draft-resolution").modal = true;
-    const draftAction = other.node("resolve-stay");
-    draftAction.focus();
-    const nestedTab = { key: "Tab", shiftKey: true, currentTarget: other.document,
-        preventDefault() { this.defaultPrevented = true; } };
-    other.document.listeners.keydown(nestedTab);
-    assert.equal(nestedTab.defaultPrevented, undefined, "the lower sheet leaves reverse navigation to the draft modal above it");
-    assert.equal(other.document.activeElement, draftAction);
-    other.node("draft-resolution").modal = false;
-    controls[0].hidden = controls[1].hidden = true;
-    other.document.activeElement = other.document.body;
-    const bodyTab = { key: "Tab", currentTarget: other.document, preventDefault() { this.defaultPrevented = true; } };
-    other.document.listeners.keydown(bodyTab);
-    assert.equal(bodyTab.defaultPrevented, true);
-    assert.equal(other.document.activeElement, other.sheet, "a modal with no available actions recovers cleared focus");
-    other.setCompact(false); other.resize();
-    assert.equal(other.document.listeners.keydown, undefined, "leaving modal mode removes document keyboard handling");
-    assert.equal(other.sheet.open, true);
-    assert.equal(sheetTab(controls[0], true), false, "desktop inline sheet does not intercept Tab after a phone-to-desktop transition");
-
-    const navigated = stageSetup();
-    navigated.state.selectedId = "a";
-    navigated.stage.selectDevice("a", { reveal: true, taskOpened: true, trigger: navigated.node("review-trigger") });
-    await new Promise(setImmediate);
-    navigated.state.sheetTrigger = null;
-    const measurement = navigated.node("tablet-model");
-    measurement.focus();
-    navigated.sheet.close();
-    assert.equal(navigated.document.activeElement, measurement, "task navigation keeps its deliberately focused measurement field after the queued close");
-    assert.equal(navigated.node("issues-title").focusCount, 0);
-
+    await same.stage.selectDevice("a", { reveal: true, trigger });
+    assert.equal(same.sheet.open, true);
+    assert.equal(same.sheet.modalCount, 0, "the docked phone panel leaves the commit bar operable");
+    assert.equal(same.heading.focusCount, 1, "explicit reveal focuses the subject heading");
+    assert.equal(same.state.sheetTrigger, trigger);
+    assert.deepEqual(same.showTabCalls, [], "selection cannot navigate away from the current mode");
+    await same.stage.selectDevice("b", { reveal: true, trigger: same.node("issue-b") });
+    assert.equal(same.heading.textContent, "b");
+    same.node("device-sheet-close").listeners.click();
+    assert.equal(same.state.selectedId, null);
+    assert.equal(same.document.activeElement, same.node("issue-b"), "clearing the panel returns focus to its exact invoking control");
+    assert.equal(same.state.sheetTrigger, null);
     const gone = stageSetup();
-    const staleTrigger = gone.node("issue-gone");
-    staleTrigger.isConnected = false;
-    gone.state.selectedId = "a";
-    gone.stage.selectDevice("a", { reveal: true, taskOpened: true, trigger: staleTrigger });
-    await new Promise(setImmediate);
-    gone.sheet.close();
-    assert.equal(gone.node("issues-title").focusCount, 1, "a removed invoking control falls back to the task heading");
-
-    const race = stageSetup();
-    race.state.selectedId = "a";
-    race.state.tabName = "content";
-    race.stage.selectDevice("b", { reveal: true, trigger: race.node("issue-b") });
-    race.state.selectedId = "c";
-    await new Promise(setImmediate);
-    assert.equal(race.state.tabName, "tablet", "the pending transition completed before the stale reveal was rejected");
-    assert.equal(race.state.selectedId, "c");
-    assert.equal(race.sheet.modalCount, 0, "a newer selection wins over a pending transition");
-    assert.deepEqual(race.showTabCalls, ["tablet"], "the pending reveal used the existing task transition once");
-
+    const detached = gone.node("removed"); detached.isConnected = false;
+    await gone.stage.selectDevice("a", { reveal: true, trigger: detached });
+    gone.stage.clearSelection();
+    assert.equal(gone.document.activeElement, gone.node("issues-title"), "a removed origin uses the surviving fallback");
     const resize = stageSetup();
-    const resizeTrigger = resize.node("issue-a");
-    resize.state.selectedId = "a";
-    resize.stage.selectDevice("a", { reveal: true, taskOpened: true, trigger: resizeTrigger });
-    await new Promise(setImmediate);
-    assert.equal(resize.sheet.modal, true);
-    resize.setCompact(false);
-    resize.resize();
-    assert.equal(resize.sheet.open, true, "phone to desktop keeps the sheet available as an inline panel");
-    assert.equal(resize.sheet.dataset.modal, "", "desktop mode no longer claims a modal");
-    assert.equal(resize.sheet.attrs.open, "", "desktop mode opens the inline panel");
-    assert.equal(resizeTrigger.focusCount, 1, "closing the modal on resize restores the invoking control");
-    resize.setCompact(true);
-    resize.resize();
-    assert.equal(resize.sheet.open, false, "desktop to phone closes the inline sheet instead of leaving an invisible modal");
-    assert.equal(resize.sheet.attrs.open, undefined);
-    console.log("Recovery reveals once after task completion, guards stale selections and restores focus across close and resize");
+    await resize.stage.selectDevice("a", { reveal: true, trigger: resize.node("issue-a") });
+    resize.setCompact(false); resize.resize(); resize.setCompact(true); resize.resize();
+    assert.equal(resize.state.selectedId, "a", "selection survives responsive transitions");
+    assert.equal(resize.document.activeElement, resize.heading, "resize cannot steal focus from the edited subject");
+    assert.equal(resize.sheet.modalCount, 0);
+    assert.equal(resize.document.listeners.keydown, undefined, "the docked panel does not trap keyboard navigation to the persistent wall");
+    console.log("Persistent tablet panel reveals once, keeps mode and restores its invoking focus");
 })().catch(error => { console.error(error); process.exitCode = 1; });
 
 /* Pointer deltas, view transform changes, logical snap and Match shape. */
@@ -336,7 +244,7 @@ function dragSetup(options = {}) {
         } };
     };
     state.selectedId = "a";
-    state.tabName = "show";
+    state.mode = "arrange";
     state.busy = false;
     state.gridPreview = false;
     state.viewLive = false;
@@ -711,7 +619,7 @@ function descendants(node, predicate) {
         assert.equal(slot(id).getAttribute("aria-label"), id + ", Reports current image, Wake lock: denied");
     }
     assert.equal(descendants(slot("offline"), node => node.getAttribute("class") === "operator-slot-status")[0].textContent,
-        "Offline · Last known wake lock denied");
+        "▲ Offline · Last known wake lock denied");
     delete global.document;
     console.log("Fleet stage text is stated once while offline text, power marks and accessible evidence remain");
 }
@@ -744,9 +652,9 @@ function rosterSetup() {
                 render: { state: "displayed", current: true, expected_token: { ...token }, accepted_token: { ...token }, age_ms: 0, observed_mono: now } }
         } }
     };
-    const state = { operatorConfig: config, roster: config.runtime.devices, rosterError: null,
+    const state = { get composition() { return { mode: this.mode }; }, operatorConfig: config, roster: config.runtime.devices, rosterError: null,
         rosterCheckedAt: new Date(now).toISOString(), base: config.layout, basePlacements: {},
-        deviceLabels: {}, selectedId: null, tabName: "tablet", busy: false, etagState: "current" };
+        deviceLabels: {}, selectedId: null, mode: "content", busy: false, etagState: "current" };
     const el = { deviceList: doc.getElementById("device-list"), wallHealth: doc.getElementById("wall-health"),
         btnWallHealth: doc.getElementById("btn-wall-health"), deviceCount: doc.getElementById("device-count"),
         rosterStatus: doc.getElementById("roster-status") };
@@ -765,7 +673,7 @@ function rosterSetup() {
         isOnline: id => !!(config.runtime.devices[id] && config.runtime.devices[id].online), latestProfile: () => null,
         mutateDraft: () => true, numberTag: id => id, numberedLabel: id => "Tablet " + id,
         populateDeviceCard() {}, profileFor: () => null, pushUndo() {}, roundTo: value => value,
-        selectedSlot: () => null, selectionChanged() {}, setInputValue() {}, showError() {}, showTab() {},
+        selectedSlot: () => null, selectionChanged() {}, setInputValue() {}, showError() {}, showMode() {},
         state, syncTabDots() {}, validPair: () => ({})
     });
     const rowFor = id => el.deviceList.children.find(item => item.dataset.deviceId === id);
@@ -866,8 +774,8 @@ function rosterSetup() {
         draw(options) { captured = options; return {}; },
         panels: () => []
     });
-    const state = { operatorConfig: config, roster: devices, rosterError: null, rosterCheckedAt: new Date().toISOString(),
-        base: applied, deviceLabels: {}, selectedId: null, tabName: "content", busy: false, etagState: "current" };
+    const state = { get composition() { return { mode: this.mode }; }, operatorConfig: config, roster: devices, rosterError: null, rosterCheckedAt: new Date().toISOString(),
+        base: applied, deviceLabels: {}, selectedId: null, mode: "content", busy: false, etagState: "current" };
     const el = { stageSvg: { querySelectorAll: () => [], style: {} }, stageScale: doc.getElementById("stage-scale") };
     const stage = context.window.PhysicalStage.create({
         DRAG_THRESHOLD_PX: 3, afterDraftChange() {}, announce() {}, bodyMetrics: () => null,
@@ -877,18 +785,18 @@ function rosterSetup() {
         isOnline: id => !!devices[id] && devices[id].online === true, latestProfile: () => null,
         mutateDraft: () => true, numberTag: () => "1", numberedLabel: id => id, populateDeviceCard() {},
         profileFor: () => null, pushUndo() {}, roundTo: value => value, selectedSlot: () => null,
-        selectionChanged() {}, setInputValue() {}, showError() {}, showTab() {}, state, syncTabDots() {}, validPair: () => ({})
+        selectionChanged() {}, setInputValue() {}, showError() {}, showMode() {}, state, syncTabDots() {}, validPair: () => ({})
     });
     const view = { layout: draftView, content: { type: "image", asset: "image" }, preview: false, editable: true };
     stage.renderStage(view);
     assert.deepEqual(captured.fleet, { state: "denied", label: "denied", count: 2 },
         "Images aggregates only current online applied-layout reports, never the local draft or excluded slots");
-    for (const tabName of ["tablet", "show"]) {
-        state.tabName = tabName;
+    for (const mode of ["arrange"]) {
+        state.mode = mode;
         stage.renderStage(view);
-        assert.equal(captured.fleet, null, tabName + " keeps per-tablet power text instead of the fleet sentence");
+        assert.equal(captured.fleet, null, mode + " keeps per-tablet power text instead of the fleet sentence");
     }
-    state.tabName = "content";
+    state.mode = "content";
     state.rosterError = "503 unavailable";
     stage.renderStage(view);
     assert.equal(captured.fleet, null, "a stale roster never states a fleet power sentence");

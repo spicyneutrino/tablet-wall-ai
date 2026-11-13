@@ -115,17 +115,22 @@
             + "Escape cancels a drag. Alt pauses snapping while dragging with a mouse or pen; on touch use the snap checkbox. "
             + "Numeric position, size and bezel fields are available in Arrange. Fit and 2x change the view only. " + powerHelp;
     }
+    const LABEL_MAX = 16, LABEL_MIN = 10;
     function fitLabels(svg) {
-        svg.querySelectorAll(".operator-slot-label").forEach(label => {
+        const labels = [...svg.querySelectorAll(".operator-slot-label")].map(label => {
             const matrix = label.getScreenCTM();
-            if (!matrix) return;
-            const scale = Math.hypot(matrix.a, matrix.b);
-            if (!scale) return;
+            const scale = matrix ? Math.hypot(matrix.a, matrix.b) : 0;
+            if (!scale) return null;
             const width = Number(label.dataset.width) * scale, height = Number(label.dataset.height) * scale;
+            const fit = Math.min(LABEL_MAX, height - 8, (width - 12) / (Math.min(4, label.dataset.label.length) * 0.6));
+            return { label, scale, width, fit };
+        }).filter(Boolean);
+        const wallSize = Math.min(LABEL_MAX, ...labels.map(item => item.fit).filter(fit => fit >= LABEL_MIN));
+        labels.forEach(({ label, scale, width, fit }) => {
             const text = label.dataset.label;
-            const size = Math.min(12, height - 8, (width - 12) / (Math.min(4, text.length) * 0.6));
-            label.style.display = size < 10 ? "none" : "";
-            if (size < 10) return;
+            const size = Math.min(wallSize, fit);
+            label.style.display = fit < LABEL_MIN ? "none" : "";
+            if (fit < LABEL_MIN) return;
             const room = Math.max(1, Math.floor((width - 12) / (size * 0.6)));
             const numbered = /^Tablet (\d+)\b/.exec(text);
             label.textContent = text.length > room && numbered && room <= numbered[0].length ? numbered[1]
@@ -152,13 +157,20 @@
             if (!scale) return;
             const width = Number(label.dataset.width) * scale, height = Number(label.dataset.height) * scale;
             const text = label.dataset.label || "";
-            const size = Math.min(10, height - 10, (width - 12) / (Math.max(1, text.length) * 0.6));
+            const offline = label.dataset.status === "offline";
+            const size = Math.min(offline ? LABEL_MAX : 10, height - 10, (width - 12) / (Math.max(1, text.length) * 0.6));
             const room = Math.max(1, Math.floor((width - 12) / (Math.max(1, size) * 0.6)));
             const fits = size >= 9 && text.length <= room;
             label.style.display = fits ? "" : "none";
             if (!fits) return;
             label.setAttribute("font-size", size / scale);
             label.setAttribute("stroke-width", 2 / scale);
+            if (offline) {
+                label.setAttribute("text-anchor", "middle");
+                label.setAttribute("x", Number(label.dataset.x) + Number(label.dataset.width) / 2);
+                label.setAttribute("y", Number(label.dataset.y) + Number(label.dataset.height) / 2 + size / 3 / scale);
+                return;
+            }
             label.setAttribute("x", Number(label.dataset.x) + 6 / scale);
             label.setAttribute("y", Number(label.dataset.y) + height / scale - 6 / scale);
         });
@@ -246,7 +258,7 @@
                     + (estimate.upscale > 1.1 ? " · " + estimate.upscale.toFixed(1) + "× upscale" : ""));
             } else outline.append(node("circle", { cx: panel.cx, cy: panel.cy, r: 8 / scale, fill: "none", stroke: "var(--stage-selected)", "stroke-width": 2 / scale }));
             if (!preview && status.status === "offline" && !panel.missing) {
-                outline.append(rect(panel.body, { class: "offline-reservation", opacity: 0.18 }));
+                outline.append(rect(panel.body, { class: "offline-reservation", opacity: 0.45 }));
                 outline.append(rect(panel.body, { fill: "url(#operator-occlusion)", opacity: 0.28 }));
             }
             if (!panel.missing) {
@@ -281,18 +293,19 @@
             group.append(outline);
             const fleetCovered = fleet && runtime && runtime.devices && runtime.devices[panel.id]
                 && runtime.devices[panel.id].online && power && power.state === fleet.state;
-            const statusText = [exception, power && !fleetCovered && (power.warning || power.stale) ? power.short : ""].filter(Boolean).join(" · ");
+            const exceptionText = status.status === "offline" && exception ? "▲ " + exception : exception;
+            const statusText = [exceptionText, power && !fleetCovered && (power.warning || power.stale) ? power.short : ""].filter(Boolean).join(" · ");
             if (!panel.missing && statusText && panel.body.width * scale >= 40 && panel.body.height * scale >= 24) {
                 const statusNode = node("text", { x: panel.body.x + 6 / scale, y: panel.body.y + panel.body.height - 6 / scale,
                     class: "operator-slot-status", "font-size": 10 / scale, "stroke-width": 2 / scale,
                     "paint-order": "stroke", fill: "var(--stage-text)", stroke: "var(--stage)",
                     "data-status": status.status, "data-power-state": power ? power.state : "",
-                    "data-label": exception, "data-x": panel.body.x, "data-y": panel.body.y,
+                    "data-label": exceptionText, "data-x": panel.body.x, "data-y": panel.body.y,
                     "data-width": panel.body.width, "data-height": panel.body.height, "aria-hidden": "true" }, statusText);
                 if (typeof document.createTextNode === "function") {
                     statusNode.textContent = "";
-                    if (exception) statusNode.append(node("tspan", {}, exception));
-                    const powerLabel = statusText.slice(exception.length);
+                    if (exceptionText) statusNode.append(node("tspan", {}, exceptionText));
+                    const powerLabel = statusText.slice(exceptionText.length);
                     if (powerLabel) statusNode.append(node("tspan", { class: "operator-slot-power-text" }, powerLabel));
                 }
                 group.append(statusNode);

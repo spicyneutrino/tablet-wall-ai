@@ -25,12 +25,12 @@ function setup() {
     vm.runInNewContext(fs.readFileSync(require.resolve("../frontend/controller/operator-dom.js"), "utf8") + "\n" + fs.readFileSync(require.resolve("../frontend/controller/operator-workspace.js"), "utf8"),
         { window, document });
     const draft = { arrangement: true, image: true, applied: [] };
-    const workspace = window.OperatorWorkspace.create({ state: {}, arrangementDirty: () => draft.arrangement,
+    const workspace = window.OperatorWorkspace.create({ state: { mode: "content" }, arrangementDirty: () => draft.arrangement,
         arrangementPreview: () => draft.arrangement, imageDirty: () => draft.image,
         applyArrangement: async () => { draft.applied.push("arrangement"); draft.arrangement = false; },
         showImage: async () => { draft.applied.push("image"); draft.image = false; },
         discardArrangement: () => { draft.arrangement = false; }, discardImage: () => { draft.image = false; },
-        commitTask() {}, renderStage() {}, refreshReadiness() {}, refreshStatus() {}, selectTablet() {}, canCommit: () => true });
+        commitMode() {}, renderStage() {}, refreshReadiness() {}, refreshStatus() {}, selectTablet() {}, canCommit: () => true });
     return { workspace, draft, element, document, choose: choice => element("resolve-" + choice).listeners.click() };
 }
 
@@ -51,12 +51,12 @@ function setupIssue(options = {}) {
         roster: { a: { online: true }, b: { online: true } }, tabName: "tablet", deviceLabels: {}
     };
     vm.runInNewContext(fs.readFileSync(require.resolve("../frontend/controller/operator-dom.js"), "utf8") + "\n" + fs.readFileSync(require.resolve("../frontend/controller/operator-workspace.js"), "utf8"),
-        { window, document: { getElementById: element, querySelector: () => element("stage"), activeElement: element("trigger") } });
+        { window, document: { addEventListener() {}, getElementById: element, querySelector: () => element("stage"), activeElement: element("trigger") } });
     const calls = [];
     const workspace = window.OperatorWorkspace.create({ state, arrangementDirty: () => false,
         arrangementPreview: () => false, imageDirty: () => false,
         applyArrangement: async () => {}, showImage: async () => {}, discardArrangement() {}, discardImage() {},
-        commitTask(name, taskOptions) {
+        commitMode(name, taskOptions) {
             calls.push({ kind: "commit", name, options: taskOptions });
             return options.commit ? options.commit(name, taskOptions) : true;
         },
@@ -118,7 +118,7 @@ function setupIssue(options = {}) {
     assert.equal(keyboard.document.listeners.keydown, undefined, "closing the modal removes document keyboard handling");
     assert.equal(keyboard.draft.image, true, "Escape retains the image draft");
     assert.deepEqual(keyboard.draft.applied, [], "Escape never writes");
-    assert.equal(keyboard.document.activeElement, keyboard.element("compact-task-select"), "an invisible trigger uses a visible fallback");
+    assert.equal(keyboard.document.activeElement, keyboard.element("tab-content"), "an invisible trigger uses a visible fallback");
 
     const nativeClose = setup();
     const closedResolution = nativeClose.workspace.resolve("Open Images");
@@ -165,99 +165,15 @@ function setupIssue(options = {}) {
     const issue = setupIssue();
     const triggerA = element("issue-a");
     const rowA = { isConnected: true, firstElementChild: triggerA };
-    assert.equal(await issue.workspace.revealIssue("a", rowA, triggerA), true, "an issue action opens Tablets first");
-    assert.deepEqual(issue.calls.map(call => [call.kind, call.id || call.name]), [["commit", "tablet"], ["select", "a"]],
-        "task transition completes once before the selected device sheet is revealed");
-    assert.deepEqual([issue.calls[1].options.reveal, issue.calls[1].options.taskOpened, issue.calls[1].options.trigger],
-        [true, true, triggerA], "the invoking issue control is preserved and the reveal reuses the completed task transition");
-    assert.equal(issue.calls.some(call => call.kind === "select" && !call.options.reveal), false, "selection never precedes the task transition");
-
-    const other = setupIssue();
-    other.state.selectedId = "a";
-    const triggerB = element("issue-b");
-    await other.workspace.revealIssue("b", { isConnected: true, firstElementChild: triggerB }, triggerB);
-    assert.deepEqual(other.calls.map(call => [call.kind, call.id || call.name]), [["commit", "tablet"], ["select", "b"]],
-        "a different device reveals after the same single transition");
-
-    const refused = setupIssue({ commit: () => false });
-    assert.equal(await refused.workspace.revealIssue("a", { isConnected: true }, element("issue-a")), false,
-        "a refused task transition leaves recovery hidden");
-    assert.deepEqual(refused.calls.map(call => call.kind), ["commit"], "refused navigation never selects or reveals");
-
+    assert.equal(await issue.workspace.revealIssue("a", rowA, triggerA), true);
+    assert.deepEqual(issue.calls.map(call => [call.kind, call.id]), [["select", "a"]], "recovery selection leaves the current mode in place");
+    assert.deepEqual([issue.calls[0].options.reveal, issue.calls[0].options.trigger], [true, triggerA]);
     const removed = setupIssue();
     removed.state.operatorConfig.layout.slots = { b: {} };
-    assert.equal(await removed.workspace.revealIssue("a", { isConnected: true }, element("issue-a")), false,
-        "a device removed during the transition does not reveal stale recovery");
-    assert.deepEqual(removed.calls.map(call => call.kind), ["commit"], "removed device never reaches selection");
-
+    assert.equal(await removed.workspace.revealIssue("a", rowA, triggerA), false, "removed tablets cannot reveal stale recovery");
+    assert.deepEqual(removed.calls, []);
     const detached = setupIssue();
-    assert.equal(await detached.workspace.revealIssue("a", { isConnected: false }, element("issue-a")), false,
-        "a detached issue row does not reveal");
-    assert.deepEqual(detached.calls.map(call => call.kind), ["commit"]);
-
-    let releaseFirst;
-    let commitCount = 0;
-    const raced = setupIssue({ commit: () => {
-        commitCount += 1;
-        return commitCount === 1 ? new Promise(resolve => { releaseFirst = resolve; }) : true;
-    } });
-    const firstReveal = raced.workspace.revealIssue("a", { isConnected: true }, element("issue-a"));
-    const latestReveal = raced.workspace.revealIssue("b", { isConnected: true }, element("issue-b"));
-    assert.equal(await latestReveal, true);
-    releaseFirst(true);
-    assert.equal(await firstReveal, false, "a superseded reveal cannot select or open stale recovery");
-    assert.deepEqual(raced.calls.filter(call => call.kind === "select").map(call => call.id), ["b"],
-        "only the newest issue request reveals");
+    assert.equal(await detached.workspace.revealIssue("a", { isConnected: false }, triggerA), false);
+    assert.deepEqual(detached.calls, []);
 })().catch(error => { console.error(error); process.exitCode = 1; });
 
-(async () => {
-const nodes = new Map();
-const document = { activeElement: null, body: { dataset: {} }, getElementById: node, querySelector: selector => node(selector === ".arrange-tools" ? "arrange-tools" : "shared-stage") };
-function node(id) {
-    if (!nodes.has(id)) nodes.set(id, { dataset: {}, hidden: true, textContent: "", listeners: {}, appends: [], scrollIntoView() {},
-        setAttribute(name, value) { (this.attrs ||= {})[name] = value; },
-        addEventListener(event, fn) { this.listeners[event] = fn; },
-        append(child) { this.appends.push(child); child.parent = this; },
-        contains(child) { return child === this || child === node(id + "-summary"); },
-        querySelector() { return node(id + "-summary"); }, focus() { document.activeElement = this; } });
-    return nodes.get(id);
-}
-const state = { tabName: "content", roster: { a: { online: true }, b: { online: false } }, configLoaded: true, base: { placements: { a: {} } }, draft: { placements: { a: {} } } };
-let dirty = false, applied = "a.png", unavailable = false;
-node("stage-mode").hidden = false;
-node("image-title").textContent = "a.png";
-const context = { window: { OperatorState: require("../frontend/controller/operator-state.js") }, document };
-vm.createContext(context);
-vm.runInContext(fs.readFileSync(require.resolve("../frontend/controller/operator-dom.js"), "utf8"), context);
-vm.runInNewContext(fs.readFileSync(require.resolve("../frontend/controller/operator-workspace.js"), "utf8"), context);
-const workspace = context.window.OperatorWorkspace.create({ state, arrangementDirty: () => false, arrangementPreview: () => false,
-    imageDirty: () => dirty, canCommit: () => true, stageNames: () => ({ applied, pending: "b.png", unavailable }), commitTask: name => { state.tabName = name; return true; } });
-
-state.base = { placements: {} };
-workspace.render();
-assert.equal(node("first-wall-steps").hidden, false);
-assert.equal(node("first-wall-join-status").textContent, "1 tablet online");
-assert.equal(node("first-wall-join").dataset.done, "true");
-assert.equal(node("first-wall-arrange-status").textContent, "Not arranged yet");
-assert.equal(node("first-wall-arrange").dataset.done, "false");
-assert.equal(node("first-wall-image-status").textContent, "No image shown yet");
-assert.equal(node("first-wall-image").dataset.done, "false");
-node("first-wall-join-action").listeners.click();
-assert.equal(document.activeElement, node("tablet-joining-summary"));
-await node("first-wall-arrange-action").listeners.click();
-assert.equal(state.tabName, "show");
-assert.equal(document.activeElement, node("grid-2x2"));
-await node("first-wall-image-action").listeners.click();
-assert.equal(state.tabName, "content");
-assert.equal(document.activeElement, node("image-gallery-summary"));
-state.roster = {}; workspace.render();
-assert.equal(node("first-wall-join-status").textContent, "No tablets yet");
-assert.equal(node("first-wall-arrange-action").disabled, true, "Arrange cannot target hidden controls before tablets join");
-node("image-gallery").querySelector = () => null;
-await node("first-wall-image-action").listeners.click();
-assert.equal(document.activeElement, node("image-search"), "an empty gallery focuses the visible search control");
-assert.equal(node("first-wall-join").dataset.done, "false");
-state.base = { placements: { a: {} } }; workspace.render();
-assert.equal(node("first-wall-steps").hidden, true);
-console.log("First-wall visibility, step text, completion attributes and all three destinations passed");
-})().catch(error => { console.error(error); process.exitCode = 1; });

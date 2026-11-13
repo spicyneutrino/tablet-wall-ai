@@ -30,9 +30,6 @@ class Element {
 }
 const events = {}, observers = [], frames = [];
 const win = {
-    innerHeight: 900,
-    scrollY: 0,
-    matchMedia: query => ({ matches: query === "(orientation: portrait)" ? win.innerWidth < win.innerHeight : win.innerWidth <= 768 || win.innerHeight <= 512 }),
     getComputedStyle: node => node.computed,
     addEventListener: (name, callback) => { events[name] = callback; },
     removeEventListener: name => { delete events[name]; },
@@ -44,124 +41,64 @@ const win = {
         disconnect() { this.node = null; }
     }
 };
-const bar = { computed: { position: "fixed", marginTop: "8px" }, getClientRects: () => [1],
-    getBoundingClientRect: () => ({ top: 788, bottom: 844, height: 56 }) };
-const navigation = { ...bar, computed: { position: "fixed", marginTop: "0px" },
-    getBoundingClientRect: () => ({ top: 844, bottom: 900, height: 56 }) };
-const doc = { defaultView: win, body: { dataset: { task: "images", outputDirty: "false" } },
-    querySelector: selector => selector === ".image-actions" ? bar : navigation,
-    createElementNS: (_, tag) => new Element(tag), getElementById: () => null };
-const parent = { clientWidth: 1000, computed: { paddingLeft: "16px", paddingRight: "16px" }, getBoundingClientRect: () => ({ bottom: 400 }) };
+const doc = { defaultView: win, body: { dataset: {} }, createElementNS: (_, tag) => new Element(tag) };
+const well = { clientWidth: 1000, clientHeight: 600, getClientRects: () => [1],
+    computed: { paddingLeft: "16px", paddingRight: "16px", paddingTop: "8px", paddingBottom: "8px" } };
+const parent = { computed: { rowGap: "8px" } };
+const tally = { getBoundingClientRect: () => ({ height: 28 }) };
 const field = { parentElement: parent, style: {},
-    computed: { borderLeftWidth: "1px", borderRightWidth: "1px", borderTopWidth: "1px", borderBottomWidth: "1px" },
-    getClientRects: () => [1], getBoundingClientRect: () => ({ top: 200, bottom: 400 }) };
-let dragging = false;
-const svg = { classList: { contains: () => dragging }, ownerDocument: doc, viewBox: { baseVal: { width: 720, height: 370 } }, style: {},
-    closest: () => field, querySelectorAll: () => labels };
-const { create, measureLegacyHost } = require("../frontend/controller/operator-stage-viewport.js");
-const viewport = create({ svg, field, measure: () => measureLegacyHost(svg, { field, actionBar: bar,
-    navigation, taskSelector: doc.getElementById("compact-task-select"), commitShelf: doc.getElementById("commit-shelf") }) });
-const fit = () => viewport.fit();
+    computed: { borderLeftWidth: "1px", borderRightWidth: "1px", borderTopWidth: "1px", borderBottomWidth: "1px" } };
+let dragging = false, rotation = 0;
 const label = new Element("text");
 label.dataset = { width: "667", height: "354", x: "0", y: "0", label: "Screen 1" };
-let rotation = 0;
+const svg = { classList: { contains: () => dragging }, ownerDocument: doc,
+    viewBox: { baseVal: { width: 720, height: 370 } }, style: {}, closest: () => field,
+    querySelectorAll: selector => selector === ".operator-slot-label" ? [label] : [] };
 label.getScreenCTM = () => {
     const scale = parseFloat(svg.style.inlineSize) / 720 * 0.35;
     return { a: scale * Math.cos(rotation), b: scale * Math.sin(rotation) };
 };
-const labels = [label];
-let result = fit(svg);
-assert.equal(result.width, 966, "available width excludes parent padding and field border");
-assert.equal(parseFloat(field.style.inlineSize), 968, "field shrink-wraps the SVG and its border");
+const { create, measureWell } = require("../frontend/controller/operator-stage-viewport.js");
+const viewport = create({ svg, field, observe: well, measure: () => measureWell(svg, { well, field, tally }) });
+const fit = () => viewport.fit();
+let result = fit();
+assert.equal(result.width, 966, "well padding and field borders are excluded");
+assert.equal(parseFloat(field.style.inlineSize), 968);
 assert.equal(result.width / result.height, 720 / 370);
+assert.equal(observers[0].node, well, "the persistent well owns observation");
 const dragSize = { ...svg.style };
 dragging = true;
-assert.equal(fit(svg), null, "stage chrome cannot refit the field during a captured drag");
+assert.equal(fit(), null, "a captured drag cannot change its transform");
 assert.deepEqual(svg.style, dragSize);
 dragging = false;
-assert.equal(Number(label.getAttribute("font-size")) * Math.hypot(label.getScreenCTM().a, label.getScreenCTM().b), 12);
-assert.equal(Number(label.getAttribute("stroke-width")), 0, "the solid label chip replaces the glyph halo");
-
-win.innerHeight = 600;
-navigation.getClientRects = () => [];
-result = fit(svg);
-assert.equal(result.height, 382, "height accounts for field top, bottom margin and borders");
-assert.equal(result.width, 382 * 720 / 370, "height-limited walls retain their aspect ratio");
-doc.body.dataset.outputDirty = "true";
-bar.getBoundingClientRect = () => ({ top: 500, bottom: 556, height: 56 });
-result = fit(svg);
-assert.equal(result.height, 274, "preview reserves the visible fixed action bar and gap");
-win.scrollY = 100;
-field.getBoundingClientRect = () => ({ top: 100, bottom: 300 });
-assert.equal(fit(svg).height, 274, "opening a preview while scrolled keeps the unscrolled stage budget");
-win.scrollY = 0;
-field.getBoundingClientRect = () => ({ top: 200, bottom: 400 });
-win.innerWidth = 320;
-bar.getBoundingClientRect = () => ({ top: 220, bottom: 556, height: 336 });
-assert.equal(fit(svg).height, 966 / (720 / 370), "an inline portrait preview keeps the full-width wall scrollable");
-assert.equal(doc.body.dataset.imageActionsInline, "true");
-win.innerWidth = 1440;
-bar.getBoundingClientRect = () => ({ top: 500, bottom: 556, height: 56 });
-doc.body.dataset.outputDirty = "false";
-assert.equal(fit(svg).height, 382, "applied state regains the action bar budget");
-bar.computed.position = "static";
-doc.body.dataset.outputDirty = "true";
-assert.equal(fit(svg).height, 382, "desktop actions in another column do not consume stage height");
-
-win.innerWidth = 390;
-doc.body.dataset.outputDirty = "false";
-assert.equal(fit(svg).height, 966 / (720 / 370), "the portrait wall remains full width below the Library");
-parent.getBoundingClientRect = () => ({ bottom: 448 });
-assert.equal(fit(svg).height, 966 / (720 / 370), "wrapped notes do not shrink the scrollable portrait artwork");
-parent.getBoundingClientRect = () => ({ bottom: 400 });
-doc.body.dataset.task = "images";
-doc.querySelector = selector => selector === ".image-actions" ? bar : navigation;
-win.innerWidth = 1440;
-assert.equal(fit(svg).height, 382, "desktop actions retain their separate column");
-
-win.innerHeight = 1200;
-field.computed.width = "968px";
-field.getBoundingClientRect = () => ({ top: 400, bottom: 800, width: 1936 });
-assert.equal(fit(svg).height, 382, "CSS zoom converts viewport measurements into the field's layout units");
-win.innerHeight = 600;
-delete field.computed.width;
-field.getBoundingClientRect = () => ({ top: 200, bottom: 400 });
+assert.equal(Number(label.getAttribute("font-size")) * Math.hypot(label.getScreenCTM().a, label.getScreenCTM().b), 16);
+well.clientHeight = 300;
+result = fit();
+assert.equal(result.height, 246, "height excludes well padding, tally, gap and field borders");
+assert.equal(result.width, 246 * 720 / 370);
+const stable = { ...result };
+for (const mode of ["content", "arrange", "test"]) {
+    doc.body.dataset.mode = mode;
+    assert.deepEqual(fit(), stable, "mode tools cannot change the well's measured budget");
+}
 rotation = Math.PI / 3;
-fit(svg);
-assert.ok(Math.abs(Number(label.getAttribute("font-size")) * Math.hypot(label.getScreenCTM().a, label.getScreenCTM().b) - 12) < 1e-10);
-parent.clientWidth = 170;
+fit();
+assert.ok(Math.abs(Number(label.getAttribute("font-size")) * Math.hypot(label.getScreenCTM().a, label.getScreenCTM().b) - 16) < 1e-10);
+well.clientWidth = 170;
 label.dataset.label = "Tablet 2";
-fit(svg);
-assert.equal(label.textContent, "2", "compact labels keep the distinguishing tablet number");
-parent.clientWidth = 70;
-fit(svg);
-assert.equal(label.style.display, "none", "panels too small for 10px text omit their visual label");
-parent.clientWidth = 1000;
-events.resize();
-frames.shift()();
-assert.equal(label.style.display, "", "resize restores readable labels");
-const relocated = { ...parent, clientWidth: 400 };
-field.parentElement = relocated;
-result = fit(svg);
-assert.equal(observers[0].node, relocated, "a fit after relocation observes the new stage host");
-assert.equal(result.width, 366);
-win.innerHeight = 180;
-result = fit(svg);
-assert.equal(result.height, 120, "an exhausted viewport keeps a usable field with page scrolling");
-
-win.innerHeight = 600;
-doc.getElementById = () => ({ getClientRects: () => [1] });
-result = fit(svg);
-assert.equal(result.width, 366, "enlarged-text navigation keeps a full-width scrollable wall");
-assert.ok(Math.abs(result.height - result.width * 370 / 720) < 1e-10);
-doc.getElementById = () => null;
-
+fit();
+assert.equal(label.textContent, "2", "small labels preserve the distinguishing number");
+well.clientWidth = 1000;
+events.resize(); frames.shift()();
+assert.equal(label.style.display, "");
 const measured = fitMeasured(svg, { width: 640, height: 300 }, { field });
-assert.equal(measured.height, 300, "an explicit well rectangle needs no task chrome measurements");
+assert.equal(measured.height, 300);
 assert.equal(measured.width, 300 * (720 / 370));
+well.getClientRects = () => [];
+assert.equal(fit(), null, "a hidden well cannot supply a fitting rectangle");
 viewport.destroy();
-assert.equal(observers[0].node, null, "destroy stops observing the host");
-assert.equal(events.resize, undefined, "destroy removes the viewport listener");
+assert.equal(observers[0].node, null);
+assert.equal(events.resize, undefined);
 
 global.document = doc;
 for (const [width, height] of [[2000, 1000], [1000, 2000], [8000, 200]]) {
@@ -243,4 +180,4 @@ for (const selectedId of ["a", "z", "m"]) {
         "stage tab order follows tablet numbers regardless of placement order or selection");
 }
 delete global.document;
-console.log("Stage geometry, measured fit, relocation, action budgets and screen-space labels passed");
+console.log("Stage geometry, persistent-well fitting and screen-space labels passed");

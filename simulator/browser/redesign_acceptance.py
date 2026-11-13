@@ -21,8 +21,10 @@ import urllib.request
 
 from PIL import Image, ImageDraw
 from playwright.sync_api import expect, sync_playwright
+from _workspace_shell import select_tablet
 
-from _redesign_edge_cases import TASK_TABS, HeldResponse, save_name, second_operator, task_tab
+from _redesign_edge_cases import HeldResponse, save_name, second_operator, task_tab
+from _workspace_shell import task as workspace_task, tablet_button
 
 ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(ROOT))
@@ -481,6 +483,11 @@ class Rig:
 
     def open_disclosures(self, selector):
         locator = self.page.locator(selector) if isinstance(selector, str) else selector
+        pane = locator.evaluate("e=>e.closest('.inspector-pane')?.id || null")
+        if pane and not self.page.locator('#' + pane).is_visible():
+            mode = {"panel-content": "Images", "panel-show": "Arrange", "panel-test": "Test"}.get(pane)
+            if mode:
+                self.task(mode)
         for detail in locator.locator("xpath=ancestor::details").all():
             if detail.get_attribute("open") is None:
                 summary = detail.locator(":scope > summary")
@@ -494,6 +501,9 @@ class Rig:
     def click(self, selector, label=None):
         locator = self.page.locator(selector) if isinstance(selector, str) else selector
         self.open_disclosures(locator)
+        if locator.evaluate("e=>e.matches('.roster-pick[aria-pressed=true]')"):
+            locator.focus()
+            return
         self.manifest["operator_actions"].append(label or str(selector))
         if self.keyboard:
             expect(locator).to_be_visible()
@@ -504,11 +514,8 @@ class Rig:
             locator.click()
 
     def task(self, name):
-        selector = self.page.locator("#compact-task-select")
-        if selector.is_visible():
-            selector.select_option(value=TASK_TABS[name])
-            return
-        self.click(task_tab(self.page, name), "Open " + name)
+        self.manifest["operator_actions"].append("Open " + name)
+        workspace_task(self.page, name, keyboard=self.keyboard)
 
     def select(self, selector, value):
         self.open_disclosures(selector)
@@ -803,7 +810,16 @@ class Rig:
             "sha256": digest(self.private / "assets/supplied.png"),
         }
         with socket.socket() as probe:
-            probe.bind(("127.0.0.1", 0))
+            probe.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+            ports = os.environ.get("TABLET_WALL_RENEWAL_PORT_RANGE", "43955-43959").split("-")
+            for port in range(int(ports[0]), int(ports[-1]) + 1):
+                try:
+                    probe.bind(("127.0.0.1", port))
+                    break
+                except OSError:
+                    continue
+            else:
+                raise RuntimeError("No free private browser-driver port")
             self.port = probe.getsockname()[1]
         self.base = f"http://127.0.0.1:{self.port}"
         self.env = child_environment(self.private, self.port, self.uploads)
@@ -859,7 +875,7 @@ class Rig:
             "Console opens before any tablet registers",
         )
         self.viewport_shots("empty")
-        expect(self.page.locator("#wall-empty")).to_be_hidden()
+        expect(self.page.locator("#wall-empty")).to_be_visible()
         for i in range(4):
             self.new_tablet(i, delay=i == 0)
         expect(self.page.locator("#device-count")).to_contain_text("4")
@@ -867,7 +883,7 @@ class Rig:
         expect(self.page.locator("#wall-health")).to_contain_text("4 online · none on the wall")
         self.task("Images")
         expect(self.page.locator("#wall-empty")).to_be_visible()
-        self.click("#empty-add-tablets", "Arrange joined tablets")
+        self.click("#first-wall-arrange-action", "Arrange joined tablets")
         expect(self.page.locator("#wall-empty")).to_be_hidden()
         expect(
             self.page.locator("#grid-order input[type=checkbox]:checked")
@@ -923,10 +939,10 @@ class Rig:
             with page.expect_response("**/devices/register"):
                 page.goto(self.base + "/client/")
             self.click(
-                "#btn-roster-refresh",
+                "#refresh-status",
                 "Fixture-only refresh to observe registration delay",
             )
-            expect(self.page.locator("#device-list .dev-pick")).to_have_count(1)
+            expect(self.page.locator(":is(.dev-pick,.roster-pick):visible")).to_have_count(1)
             rows = self.config()["runtime"]["devices"]
             self.check(
                 len(rows) == 1 and next(iter(rows.values()))["online"] is False,
@@ -936,7 +952,7 @@ class Rig:
             )
         else:
             page.goto(self.base + "/client/")
-        expect(self.page.locator("#device-list .dev-pick")).to_have_count(number + 1)
+        expect(self.page.locator(":is(.dev-pick,.roster-pick):visible")).to_have_count(number + 1)
         wait_until(
             lambda: page.evaluate("localStorage.getItem('tablet-wall-device-id')"),
             page.wait_for_timeout,
@@ -1010,6 +1026,7 @@ class Rig:
                     cleanup["private_data_removed"] = not self.private.exists()
                 if hasattr(self, "port"):
                     with socket.socket() as probe:
+                        probe.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
                         cleanup["port_closed"] = (
                             probe.connect_ex(("127.0.0.1", self.port)) != 0
                         )
@@ -1110,7 +1127,7 @@ def first_wall(rig):
         "Select supplied image",
     )
     rig.click("#show-image", "Show image")
-    expect(p.locator("#wall-health")).to_contain_text("4 of 4 showing the current image", timeout=15000)
+    expect(p.locator("#wall-health")).to_contain_text("4 of 4 showing supplied.png", timeout=15000)
     current = rig.config()
     renders = {id: row["render"] for id, row in current["runtime"]["devices"].items()}
     rig.check(
@@ -1151,7 +1168,7 @@ def first_wall(rig):
     rig.viewport_shots("two-by-two-review")
     rig.click("#btn-apply")
     expect(p.locator("body")).to_have_attribute("data-stage-mode", "live", timeout=15000)
-    expect(p.locator("#wall-health")).to_contain_text("4 of 4 showing the current image", timeout=15000)
+    expect(p.locator("#wall-health")).to_contain_text("4 of 4 showing supplied.png", timeout=15000)
     rig.check(
         rig.config()["scene"] == before["scene"],
         "Additional 2 by 2 Apply changes only arrangement",
@@ -1361,10 +1378,10 @@ def image_negatives(rig):
         client.unroute("**/assets/**")
         client.unroute("**/media/**")
         rig.task("Tablets")
-        rig.click(f'.dev-pick[data-device-id="{rig.manifest["clients"][0]["id"]}"]')
+        rig.click(f':is(.dev-pick,.roster-pick):visible[data-device-id="{rig.manifest["clients"][0]["id"]}"]')
         rig.click("#tablet-retry-image")
         expect(p.locator("#wall-health")).to_contain_text(
-            "4 of 4 showing the current image", timeout=15000
+            "4 of 4 showing supplied.png", timeout=15000
         )
         after = rig.config()
         rig.check(
@@ -1384,8 +1401,8 @@ def precise_measurement(rig):
     p = rig.page
     id = rig.manifest["clients"][0]["id"]
     rig.task("Tablets")
-    rig.click(f'.dev-pick[data-device-id="{id}"]')
-    rig.task("Settings")
+    rig.click(f':is(.dev-pick,.roster-pick):visible[data-device-id="{id}"]')
+    rig.task("Measure")
     p.locator("#measurement-details").evaluate("e=>e.open=true")
     p.locator("#cal-use-ruler").scroll_into_view_if_needed()
     before = rig.config()
@@ -1447,8 +1464,8 @@ def race_suite(rig):
     rig.observe(other_context, "second-operator")
     other = other_context.new_page()
     other.goto(rig.base + "/controller/physical.html")
-    task_tab(other, "Tablets").click()
-    other.locator(f'.dev-pick[data-device-id="{ids[0]}"]').click()
+    workspace_task(other, "Tablets")
+    select_tablet(other.locator(f':is(.dev-pick,.roster-pick):visible[data-device-id="{ids[0]}"]'))
     old = rig.config()
 
     def held(route):
@@ -1470,9 +1487,9 @@ def race_suite(rig):
 
     p.route("**/api/v3/config", held, times=1)
     rig.task("Tablets")
-    rig.click(f'.dev-pick[data-device-id="{ids[1]}"]')
+    rig.click(f':is(.dev-pick,.roster-pick):visible[data-device-id="{ids[1]}"]')
     p.locator("#tablet-label").fill("Retained exact draft B")
-    rig.click("#btn-roster-refresh")
+    rig.click("#refresh-status")
     expect(p.locator("#tablet-label")).to_have_value("Retained exact draft B")
     expect(p.locator("#device-list")).to_contain_text("New authority after held GET")
     rig.check(
@@ -1490,7 +1507,7 @@ def recovery(rig):
     first_wall(rig)
     p = rig.page
     ids = [row["id"] for row in rig.manifest["clients"]]
-    rig.task("Saved")
+    rig.task("Saved arrangements")
     p.locator("#layout-name").fill("Durable recovery arrangement")
     rig.click("#btn-layout-save")
     expect(p.locator("#layout-msg")).to_contain_text("saved")
@@ -1500,11 +1517,11 @@ def recovery(rig):
     durable = rig.config()
     client = rig.tablets[0]
     rig.task("Tablets")
-    rig.click(f'.dev-pick[data-device-id="{ids[0]}"]')
+    rig.click(f':is(.dev-pick,.roster-pick):visible[data-device-id="{ids[0]}"]')
     rig.click("#tablet-identify")
     expect(client.locator("#identify")).to_be_visible()
     expect(client.locator("#identify")).to_be_hidden(timeout=10000)
-    expect(p.locator("#wall-health")).to_contain_text("4 of 4 showing the current image", timeout=15000)
+    expect(p.locator("#wall-health")).to_contain_text("4 of 4 showing supplied.png", timeout=15000)
     rig.check(
         True,
         "Identify overlay expires independently and fresh unobscured reports return",
@@ -1529,7 +1546,7 @@ def recovery(rig):
     reopened = client.context.new_page()
     reopened.goto(rig.base + "/client/")
     rig.tablets[0] = reopened
-    expect(p.locator("#wall-health")).to_contain_text("4 of 4 showing the current image", timeout=15000)
+    expect(p.locator("#wall-health")).to_contain_text("4 of 4 showing supplied.png", timeout=15000)
     rig.check(
         reopened.evaluate("localStorage.getItem('tablet-wall-device-id')") == ids[0],
         "Independent context storage preserves reconnect identity",
@@ -1550,7 +1567,7 @@ def recovery(rig):
             fatal=False,
         )
     reopened.set_viewport_size({"width": 900, "height": 1280})
-    expect(p.locator("#wall-health")).to_contain_text("4 of 4 showing the current image", timeout=15000)
+    expect(p.locator("#wall-health")).to_contain_text("4 of 4 showing supplied.png", timeout=15000)
     with rig.fault(
         "owned private backend restart; transient socket/network failures expected",
         [(r"127\.0\.0\.1", ["network"])],
@@ -1558,7 +1575,7 @@ def recovery(rig):
         rig.stop_server()
         rig.start_server()
         expect(p.locator("#wall-health")).to_contain_text(
-            "4 of 4 showing the current image", timeout=25000
+            "4 of 4 showing supplied.png", timeout=25000
         )
     fresh = rig.config()
     rig.check(
@@ -1585,7 +1602,7 @@ def corrections(rig):
     """
     p = rig.page
     first_wall(rig)
-    for name in ("Images", "Tablets", "Arrange", "Saved", "Settings"):
+    for name in ("Images", "Arrange", "Test"):
         tab = task_tab(p, name)
         tab.focus()
         tab.press("Enter")
@@ -1640,7 +1657,7 @@ def corrections(rig):
     rig.check(True, "View applied keeps focus and relabels the toggle View preview")
     rig.task("Tablets")
     with p.expect_response("**/api/v3/config"):
-        rig.click("#btn-roster-refresh")
+        rig.click("#refresh-status")
     rig.task("Images")
     expect(toggle).to_have_text("Preview")
     expect(toggle).to_have_attribute("aria-label", "Preview")
@@ -1724,10 +1741,10 @@ def corrections(rig):
     rig.shot(p, "ordering-identify")
 
     rig.task("Tablets")
-    p.locator(".dev-pick").first.click()
+    select_tablet(p.locator(":is(.dev-pick,.roster-pick):visible").first)
     rig.check(
         p.locator("#stage-svg .slot").evaluate_all("es=>es.map(e=>e.dataset.deviceId)")
-        == p.locator(".dev-pick").evaluate_all("es=>es.map(e=>e.dataset.deviceId)"),
+        == p.locator(":is(.dev-pick,.roster-pick):visible").evaluate_all("es=>es.map(e=>e.dataset.deviceId)"),
         "Stage tab order matches tablet-number roster order after selection",
     )
     other = second_operator(rig)
@@ -1743,11 +1760,11 @@ def corrections(rig):
     rig.check(True, "Inspector Identify recovers after authoritative reconciliation")
 
     p.set_viewport_size({"width": 390, "height": 844})
-    p.locator(".dev-pick").first.click()
+    select_tablet(p.locator(":is(.dev-pick,.roster-pick):visible").first)
     rig.tablets[0].set_viewport_size({"width": 930, "height": 1280})
     expect(p.locator("#open-tablet-measurements")).to_be_visible()
     p.locator("#open-tablet-measurements").click()
-    expect(p.locator("#panel-system")).to_be_visible()
+    expect(p.locator("#measurement-details")).to_be_visible()
     expect(p.locator("#tablet-model")).to_be_focused()
     expect(p.locator("dialog:modal")).to_have_count(0)
     p.locator("#tablet-model").click()
@@ -1758,7 +1775,7 @@ def corrections(rig):
     rig.tablets[0].set_viewport_size({"width": 900, "height": 1280})
     rig.task("Tablets")
     rig.new_tablet(4)
-    p.locator(".dev-pick").last.click()
+    select_tablet(p.locator(":is(.dev-pick,.roster-pick):visible").last)
     expect(p.locator("#tablet-arrange")).to_be_visible()
     p.locator("#tablet-arrange").click()
     expect(p.locator("#panel-show")).to_be_visible()
@@ -1768,7 +1785,7 @@ def corrections(rig):
     rig.check(True, "Phone Place in Arrange closes its modal and leaves the destination interactive")
     rig.shot(p, "arrange-destination")
 
-    rig.task("Saved")
+    rig.task("Saved arrangements")
     restore_points = p.locator('#saved-layouts [data-snapshot-name^="Before physical "]')
     restore_point = restore_points.first
     restore_name = restore_point.get_attribute("data-snapshot-name")

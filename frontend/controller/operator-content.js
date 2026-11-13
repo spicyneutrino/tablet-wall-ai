@@ -410,7 +410,7 @@ window.OperatorContent = {
             const image = images.find(item => item.id === selected);
             $("selected-image-controls").dataset.assetId = selectionDirty ? selected || "" : "";
             $("image-fit").value = selectionDirty ? fit : content.fit || "cover";
-            $("image-fit").disabled = busy || !selectionDirty || !selected;
+            $("image-fit").disabled = busy || !(selectionDirty ? selected : active);
             $("image-fit-field").hidden = selectionDirty && !selected;
             $("show-calibration").disabled = state.layoutKind !== "logical" || busy;
             if ($("calibration-reason")) $("calibration-reason").hidden = state.layoutKind === "logical";
@@ -435,7 +435,7 @@ window.OperatorContent = {
                     : ({ color: "Tablet colours", calibration: "Calibration grid" }[content.type] || "Nothing shown");
             $("image-details").textContent = selectionDirty && selected && !image
                 ? "Selected image unavailable. Refresh images or choose a replacement." : "";
-            $("image-preview-controls").hidden = !selectionDirty;
+            $("image-preview-controls").hidden = !selectionDirty && !active;
             $("edit-current-image").hidden = selectionDirty || !active;
             $("edit-current-image").disabled = busy || !active;
             const source = selectionDirty ? image : active;
@@ -493,7 +493,7 @@ window.OperatorContent = {
             let failed = false;
             if (!content || busy || !await resolveOutput("Show this content", "image")) return;
             const before = state.scene && state.scene.content;
-            const task = state.tabName;
+            const task = state.mode;
             let focusMoved = false;
             const trackFocus = event => { if (event.target !== trigger) focusMoved = true; };
             document.addEventListener?.("focusin", trackFocus);
@@ -503,6 +503,10 @@ window.OperatorContent = {
                     ? await api("POST", "/api/v3/scenes/" + encodeURIComponent(scene.name) + "/recall", undefined, { ifMatch: guard })
                     : await api("PUT", "/api/v3/scene", { content: sceneInput(content) }, { ifMatch: guard });
                 previous = before ? sceneInput(before) : previous;
+                for (const target of shownRevisions.keys()) if (target !== feedback) {
+                    shownRevisions.delete(target);
+                    $(target).textContent = "";
+                }
                 if (selectionVersion === submitted) { selectionDirty = false; selected = null; savedScene = null; baseEtag = null; }
                 ingestConfig(result, { preserveDraft: true });
                 if (feedback !== "image-message" || !retainMessage) {
@@ -529,14 +533,14 @@ window.OperatorContent = {
                 document.removeEventListener?.("focusin", trackFocus);
                 busy = false; updateAndRender(); renderStage();
                 const active = document.activeElement;
-                const ownsFocus = !focusMoved && state.tabName === task
+                const ownsFocus = !focusMoved && state.mode === task
                     && (!active || active === trigger || active === document.body || active === document.documentElement);
                 const lost = trigger && (trigger.hidden || trigger.disabled || !trigger.isConnected
                     || (typeof trigger.getClientRects === "function" && !trigger.getClientRects().length));
                 if (ownsFocus && (lost || failed && active !== trigger)) {
                     if (!failed) {
-                        const search = $("image-search");
-                        if (search && typeof search.focus === "function") search.focus({ preventScroll: true });
+                        const target = state.selectedId ? $("tablet-action-name") : $("image-search");
+                        if (target && typeof target.focus === "function") target.focus({ preventScroll: true });
                     } else {
                         const visible = node => Boolean(node) && !node.hidden && node.isConnected !== false
                             && (typeof node.getClientRects !== "function" || node.getClientRects().length > 0);
@@ -596,8 +600,10 @@ window.OperatorContent = {
             finally { $("images-check-connection").disabled = false; updateAndRender(); }
         });
         $("image-fit").addEventListener("change", event => {
-            if (!selectionDirty || !selected) { event.target.value = fit; return; }
-            choose(selected, event.target.value);
+            const applied = state.scene && state.scene.content;
+            const asset = selectionDirty ? selected : applied && applied.type === "image" && applied.asset;
+            if (!asset) { event.target.value = fit; return; }
+            choose(asset, event.target.value);
         });
         $("image-search").addEventListener("input", renderGallery);
         $("image-gallery").addEventListener("keydown", event => {

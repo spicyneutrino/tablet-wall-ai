@@ -7,15 +7,8 @@ function rosterSummary(config, stale) {
     return (stale ? "Status stale · Last known: " : "") + counts.online + " online"
         + (counts.retained ? " · " + counts.retained + (counts.retained === 1 ? " retained wall position" : " retained wall positions") : "");
 }
-function configureDeviceSheet(deviceSheet, compact, previousCompact) {
-    if (previousCompact === compact) return previousCompact;
-    if (compact) {
-        if (deviceSheet.open) deviceSheet.close();
-        deviceSheet.removeAttribute("open");
-    } else {
-        if (deviceSheet.open && deviceSheet.dataset.modal === "true") deviceSheet.close();
-        if (!deviceSheet.open) deviceSheet.setAttribute("open", "");
-    }
+function configureDeviceSheet(deviceSheet, compact) {
+    if (!deviceSheet.open) deviceSheet.setAttribute("open", "");
     return compact;
 }
 
@@ -24,7 +17,7 @@ window.PhysicalStage = {
     configureDeviceSheet: configureDeviceSheet,
     create: function (dependencies) {
         const {
-            DRAG_THRESHOLD_PX, afterDraftChange, announce, bodyMetrics, calibrationFor, beginManual, canManualEdit, clearMsg, clone, deviceEntries, deviceLabel, deviceNumber, deviceRows, el, finiteOr, formatNumber, isOnline, latestProfile, mutateDraft, numberTag, numberedLabel, populateDeviceCard, profileFor, pushUndo, roundTo, selectedSlot, selectionChanged, navigateSelection = () => {}, fitStage = () => {}, lookup = null, setInputValue, showError, showTab, state, syncTabDots, validPair
+            DRAG_THRESHOLD_PX, afterDraftChange, appliedName = () => "", announce, bodyMetrics, calibrationFor, beginManual, canManualEdit, clearMsg, clone, deviceEntries, deviceLabel, deviceNumber, deviceRows, el, finiteOr, formatNumber, isOnline, latestProfile, mutateDraft, numberTag, numberedLabel, populateDeviceCard, profileFor, pushUndo, roundTo, selectedSlot, selectionChanged, navigateSelection = () => {}, fitStage = () => {}, lookup = null, setInputValue, showError, showMode, state, syncTabDots, validPair
         } = dependencies;
 
         const $ = lookup || (id => typeof document !== "undefined" ? document.getElementById(id) : null);
@@ -51,7 +44,7 @@ window.PhysicalStage = {
             if (!view.layout) { el.stageScale.textContent = "Waiting for the wall."; return; }
             const { layout, content, preview, editable } = view;
             const config = state.operatorConfig || { layout: state.base, scene: state.scene, runtime: { devices: state.roster }, revision: state.revision, generation: state.generation };
-            const presentation = { content: "images", tablet: "tablets", show: "arrange" }[state.tabName] || "context";
+            const presentation = { content: "images", test: "images", arrange: "arrange" }[state.mode] || "context";
             state.stage = window.OperatorStage.draw({ svg: el.stageSvg, layout, presentation,
                 viewport: state.drag && state.drag.viewport,
                 content, profileFor,
@@ -190,7 +183,7 @@ window.PhysicalStage = {
             if (event.button !== 0 && event.pointerType === "mouse") return;
             const group = event.target && event.target.closest
                 ? event.target.closest(".slot") : null;
-            if (!group) return;
+            if (!group) { if (!state.drag && state.selectedId) clearSelection(); return; }
             const id = group.dataset.deviceId;
             if (!id || !state.draft) return;
             if (!window.OperatorState.entries(state.draft)[id]) return;
@@ -331,18 +324,6 @@ window.PhysicalStage = {
          * ---------------------------------------------------------------- */
 
         const deviceSheet = typeof document !== "undefined" ? $("device-sheet") : null;
-        const containSheetFocus = event => {
-            if (!$("draft-resolution").matches(":modal")) window.OperatorWorkspace.containModalFocus(event, deviceSheet);
-        };
-        let deviceSheetCompactMode = null;
-        function compactSheet() {
-            return typeof window.matchMedia === "function" && window.matchMedia("(max-width: 48rem)").matches;
-        }
-        function syncDeviceSheetMode() {
-            if (!deviceSheet) return;
-            const compact = compactSheet();
-            deviceSheetCompactMode = configureDeviceSheet(deviceSheet, compact, deviceSheetCompactMode);
-        }
         function focusNode(node) {
             if (!node || node.isConnected === false || node.disabled) return false;
             if (typeof node.getClientRects === "function" && !node.getClientRects().length) return false;
@@ -351,7 +332,7 @@ window.PhysicalStage = {
             return true;
         }
         function focusSheetFallback() {
-            for (const id of ["issues-title", "btn-wall-health", "tab-tablet"]) {
+            for (const id of ["issues-title", "add-tablet", "tab-content"]) {
                 const node = $(id);
                 if (node && focusNode(node)) return;
             }
@@ -360,19 +341,9 @@ window.PhysicalStage = {
             return !!trigger && trigger.isConnected !== false && !trigger.disabled
                 && (typeof trigger.getClientRects !== "function" || trigger.getClientRects().length > 0);
         }
-        function openDeviceSheet(trigger) {
-            if (!deviceSheet || !compactSheet()) return false;
-            if (deviceSheet.open && deviceSheet.dataset.modal !== "true") deviceSheet.close();
-            state.sheetTrigger = trigger || document.activeElement;
-            document.addEventListener("keydown", containSheetFocus);
-            if (!deviceSheet.open) { deviceSheet.dataset.modal = "true"; deviceSheet.showModal(); }
-            const heading = $("tablet-action-name");
-            if (focusNode(heading) && typeof heading.scrollIntoView === "function") heading.scrollIntoView({ block: "nearest" });
-            return true;
-        }
         function revealSheet(id, trigger) {
             if (state.selectedId !== id) return false;
-            if (compactSheet()) return openDeviceSheet(trigger);
+            state.sheetTrigger = trigger || document.activeElement;
             const heading = $("tablet-action-name");
             if (!focusNode(heading)) return false;
             if (typeof heading.scrollIntoView === "function") heading.scrollIntoView({ block: "nearest" });
@@ -383,25 +354,9 @@ window.PhysicalStage = {
             navigateSelection(state.selectedId, { reveal: true, stageActivation: true, trigger: document.activeElement });
         }
         if (deviceSheet && deviceSheet.addEventListener) {
-            deviceSheet.addEventListener("keydown", window.OperatorWorkspace.containModalFocus);
-            deviceSheet.addEventListener("close", function () {
-                document.removeEventListener("keydown", containSheetFocus);
-                const modal = deviceSheet.dataset.modal === "true";
-                const inside = typeof deviceSheet.contains === "function" && deviceSheet.contains(document.activeElement);
-                deviceSheet.dataset.modal = "";
-                const trigger = state.sheetTrigger;
-                state.sheetTrigger = null;
-                if (!modal && !trigger && !inside) return;
-                if (!trigger && !inside && document.activeElement !== document.body && originVisible(document.activeElement)) return;
-                if (originVisible(trigger)) { trigger.focus({ preventScroll: true }); return; }
-                focusSheetFallback();
-            });
-            $("device-sheet-close")?.addEventListener("click", function () { deviceSheet.close(); });
-            window.addEventListener("resize", function () {
-                if (state.drag) endDrag(false, "view");
-                syncDeviceSheetMode();
-            });
-            syncDeviceSheetMode();
+            configureDeviceSheet(deviceSheet);
+            window.addEventListener("resize", () => { if (state.drag) endDrag(false, "view"); });
+            $("device-sheet-close")?.addEventListener("click", clearSelection);
         }
 
         function selectDevice(id, options) {
@@ -425,11 +380,34 @@ window.PhysicalStage = {
             return navigateSelection(id, options);
         }
 
+        function clearSelection() {
+            if (!state.selectedId) return;
+            if (state.drag) endDrag(false, "subject");
+            state.stageTap = null;
+            state.selectedId = null;
+            clearMsg(el.profileMsg);
+            clearMsg(el.calibrationMsg);
+            syncDeviceRows();
+            syncInspector();
+            renderStage();
+            populateDeviceCard();
+            syncTabDots();
+            selectionChanged();
+            const trigger = state.sheetTrigger;
+            state.sheetTrigger = null;
+            if (trigger?.closest?.("#stage-svg")) {
+                el.stageSvg.closest(".stage-scroll").focus({ preventScroll: true });
+            } else if (originVisible(trigger)) trigger.focus({ preventScroll: true });
+            else focusSheetFallback();
+        }
+
         function syncDeviceRows() {
             deviceRows.forEach(function (row, id) {
                 const selected = id === state.selectedId;
                 row.item.dataset.selected = selected ? "true" : "false";
                 row.pick.setAttribute("aria-pressed", selected ? "true" : "false");
+                row.chip.dataset.selected = selected ? "true" : "false";
+                row.chipPick.setAttribute("aria-pressed", selected ? "true" : "false");
             });
             renderDeviceCount();
         }
@@ -447,15 +425,13 @@ window.PhysicalStage = {
                 const content = state.operatorConfig.scene && state.operatorConfig.scene.content || {};
                 const noun = content.type === "image" ? "image" : "scene";
                 const paint = result.total
-                    ? (stale ? "Current " + noun + " evidence unavailable" : result.showing + " of " + result.total + " showing the current " + noun)
+                    ? (stale ? "Current " + noun + " evidence unavailable" : result.showing + " of " + result.total + " showing " + (appliedName() || "the current " + noun))
                     : empty;
-                el.wallHealth.textContent = (stale ? "Status stale · " : "") + paint;
+                el.wallHealth.textContent = (stale ? (/Connection lost|Failed to fetch|NetworkError|timed out/i.test(state.rosterError) ? "Server unreachable · tablets keep their last image. " : "") + "Status stale · " : "") + paint;
                 el.btnWallHealth.dataset.kind = !stale && result.states.some(item => ["failed", "blocked", "invalid_mapping"].includes(item.status)) ? "err" : stale || result.states.some(item => !["displayed", "offline", "excluded"].includes(item.status)) ? "warn"
                     : result.total && result.showing === result.total ? "ok" : "info";
                 if ($("wall-health-short")) $("wall-health-short").textContent = (stale ? "Stale " : "") + (result.total ? result.showing + "/" + result.total : counts?.online ? counts.online + " online" : "No wall");
-                const compact = typeof window.matchMedia === "function" && window.matchMedia("(max-width: 36rem)").matches;
-                if (compact) el.wallHealth.textContent = (stale ? "Stale · " : "") + (result.total ? result.showing + "/" + result.total + " showing " + noun : counts && counts.online ? counts.online + " online · none on wall" : "No wall");
-                el.btnWallHealth.setAttribute("aria-label", (stale ? "Status stale. " : "") + (result.total ? result.showing + "/" + result.total + ". " + result.showing + " of " + result.total + " tablets showing the current " + noun + ". Issues." : empty + ". Issues."));
+                el.btnWallHealth.setAttribute("aria-label", (stale ? "Status stale. " : "") + (result.total ? result.showing + "/" + result.total + ". " + result.showing + " of " + result.total + " tablets showing the current " + noun + "." : empty + "."));
                 el.deviceCount.textContent = rosterSummary(state.operatorConfig, stale);
                 el.rosterStatus.hidden = !stale;
                 el.rosterStatus.textContent = stale ? "Status stale. " + state.rosterError + ". Refresh status to retry." : "";
@@ -507,7 +483,7 @@ window.PhysicalStage = {
 
         function renderDeviceList() {
             const entries = deviceEntries(), ids = new Set(entries.map(entry => entry.id));
-            for (const [id, row] of deviceRows) if (!ids.has(id)) { row.item.remove(); deviceRows.delete(id); }
+            for (const [id, row] of deviceRows) if (!ids.has(id)) { row.item.remove(); row.chip.remove(); deviceRows.delete(id); }
             const onlinePowers = entries.filter(entry => isOnline(entry.id)).map(entry => powerFor(entry.id));
             const powerCounts = new Map();
             if (!state.rosterError) for (const power of onlinePowers) {
@@ -547,12 +523,21 @@ window.PhysicalStage = {
                     const add = document.createElement("button"); add.type = "button"; add.className = "btn btn-sm dev-action"; add.textContent = "Place";
                     add.addEventListener("click", async () => {
                         selectDevice(entry.id);
-                        if (await showTab("show", { persist: true })) {
+                        if (await showMode("arrange", { persist: true })) {
                             if (state.draft.kind === "physical" && !validPair(entry.id)) announce("Confirm the model or save measurements in Arrange before placing this tablet.");
                             else addSelectedDevice();
                         }
                     });
-                    item.append(add); row = { item, pick, number, name, meta, facts, add }; deviceRows.set(entry.id, row);
+                    item.append(add);
+                    const chip = document.createElement("li"); chip.className = "roster-chip"; chip.dataset.deviceId = entry.id;
+                    const chipPick = document.createElement("button"); chipPick.type = "button"; chipPick.className = "roster-pick"; chipPick.dataset.deviceId = entry.id;
+                    const chipNumber = document.createElement("span"); chipNumber.className = "dev-number";
+                    const glyph = document.createElement("span"); glyph.className = "roster-glyph"; glyph.setAttribute("aria-hidden", "true");
+                    const word = document.createElement("span"); word.className = "roster-word";
+                    const chipName = document.createElement("span"); chipName.className = "dev-label sr-only";
+                    chipPick.append(chipNumber, glyph, word, chipName); chip.append(chipPick);
+                    chipPick.addEventListener("click", () => { if (state.selectedId === entry.id) clearSelection(); else selectDevice(entry.id, { reveal: true, trigger: chipPick }); });
+                    row = { item, pick, number, name, meta, facts, add, chip, chipPick, chipNumber, glyph, word, chipName }; deviceRows.set(entry.id, row);
                 }
                 const online = isOnline(entry.id), current = state.operatorConfig && !state.rosterError
                     && window.OperatorState.tabletState(state.operatorConfig, entry.id, performance.now());
@@ -584,12 +569,25 @@ window.PhysicalStage = {
                 row.facts.power.title = power ? power.label : "";
                 row.facts.power.className = "dev-fact" + (commonPower && power?.state === commonPower && !power.stale ? " sr-only" : "");
                 row.item.dataset.status = state.rosterError ? "stale" : current ? current.status : online ? "online" : "offline";
+                const roster = window.OperatorState.rosterStatus(current || { status: online ? "unknown" : "offline", online }, { stale: !!state.rosterError });
+                row.chip.dataset.status = roster.key; row.chip.dataset.tone = roster.tone;
+                row.chip.dataset.powerState = power ? power.state : "unknown";
+                row.chipNumber.textContent = String(deviceNumber(entry.id) || numberTag(entry.id).replace(/^#/, ""));
+                row.glyph.textContent = roster.tone === "failure" ? "▲" : roster.tone === "progress" ? "○" : roster.tone === "quiet" ? "–" : "●";
+                row.word.textContent = roster.key === "connected" ? "" : roster.word;
+                const named = entry.label !== "Tablet " + deviceNumber(entry.id);
+                row.chipName.className = "dev-label" + (named && entry.label.length <= 12 ? "" : " sr-only");
+                row.chipName.textContent = entry.label;
+                row.chipPick.title = numberedLabel(entry.id) + " · " + roster.word;
+                row.chipPick.setAttribute("aria-label", numberedLabel(entry.id) + ", " + roster.word + (power ? ". " + power.label : ""));
                 row.item.dataset.powerState = power ? power.state : "unknown";
                 row.item.dataset.powerWarning = String(!!power && power.warning);
                 row.item.dataset.powerStale = String(!!power && power.stale);
                 row.pick.setAttribute("aria-label", numberedLabel(entry.id) + ", " + connection + ", " + status + (power ? ". " + power.label : ""));
                 row.add.hidden = !!(entry.slot || entry.placement); row.add.disabled = state.busy;
                 if (el.deviceList.children[index] !== row.item) el.deviceList.insertBefore(row.item, el.deviceList.children[index] || null);
+                const chips = $("roster");
+                if (chips && chips.children[index] !== row.chip) chips.insertBefore(row.chip, chips.children[index] || null);
             }
             syncDeviceRows();
         }
@@ -783,6 +781,6 @@ window.PhysicalStage = {
          * Bounds and slot inputs
          * ---------------------------------------------------------------- */
 
-        return { addSelectedDevice, deleteSelectedSlot, endDrag, geometryHelp: helpText, matchScreenShape, matchStatus, nudgeSelected, onPointerCancel, onPointerDown, onPointerMove, onPointerUp, renderDeviceHealth, renderDeviceList, renderStage, revealSheet, rotateSelected, selectDevice, setViewZoom, syncInspector, viewZoom };
+        return { clearSelection, addSelectedDevice, deleteSelectedSlot, endDrag, geometryHelp: helpText, matchScreenShape, matchStatus, nudgeSelected, onPointerCancel, onPointerDown, onPointerMove, onPointerUp, renderDeviceHealth, renderDeviceList, renderStage, revealSheet, rotateSelected, selectDevice, setViewZoom, syncInspector, viewZoom };
     }
 };

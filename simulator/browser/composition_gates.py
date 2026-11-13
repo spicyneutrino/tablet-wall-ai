@@ -137,6 +137,7 @@ def measure_view(page: Any) -> dict:
         const well = document.querySelector(WELL.split(',')[0]) || document.querySelector('#stage-scroll');
         const svg = document.querySelector('#stage-svg');
         const vb = svg && svg.viewBox && svg.viewBox.baseVal;
+        const wall = svg && svg.querySelector('g[transform^=translate] > rect');
         const primaries = [...document.querySelectorAll('.btn-primary')].filter(vis)
           .map(e => ({id: e.id, text: e.textContent.trim().slice(0, 40)}));
         const inspector = document.querySelector('[data-inspector], #inspector')
@@ -148,6 +149,7 @@ def measure_view(page: Any) -> dict:
           viewport: {width: innerWidth, height: innerHeight},
           wellVisible: vis(well), well: vis(well) ? rect(well) : null,
           svgVisible: vis(svg), drawn: vis(svg) ? rect(svg) : null,
+          wallContent: vis(wall) ? rect(wall) : null,
           viewBox: vb && vb.width ? [vb.width, vb.height] : null,
           primaries,
           scrollWidth: document.documentElement.scrollWidth, innerWidth,
@@ -162,7 +164,7 @@ def measure_view(page: Any) -> dict:
 def roster_rows(page: Any) -> list[dict]:
     return page.evaluate(
         "() => {" + VISIBLE_JS + """
-        let rows = [...document.querySelectorAll('#roster [data-device-id]')];
+        let rows = [...document.querySelectorAll('#roster > [data-device-id]')];
         if (!rows.length) rows = [...document.querySelectorAll('.tablet-row')];
         return rows.map(e => ({id: e.dataset.deviceId, status: e.dataset.status || '',
           text: e.innerText.replace(/\\s+/g, ' ').trim(), visible: vis(e),
@@ -333,6 +335,11 @@ def run(out: Path, port_range: str) -> dict:
             gates["G1"] = verdict(ok1, g1, f"area>={STAGE_AREA_MIN}, drift<={WELL_DRIFT_MAX}, fill>={FILL_MIN} "
                                   "at 1366x768 and 1280x800 in every mode")
 
+            content_areas = {key: round(area_fraction(value["wallContent"], tuple(map(int, key.split("/")[0].split("x")))), 4)
+                             for key, value in grid.items() if tuple(map(int, key.split("/")[0].split("x"))) in AREA_SIZES}
+            gates["G1b"] = verdict(all(value >= 0.40 for value in content_areas.values()), content_areas,
+                                     "drawn wall content >=40% of viewport for the 3x2 fixture")
+
             g6: dict[str, Any] = {}
             narrow = {mode: grid[f"390x844/{mode}"] for mode in MODES}
             ok6 = True
@@ -453,7 +460,7 @@ def run(out: Path, port_range: str) -> dict:
             raise
         finally:
             result["cleanup"] = rig.close()
-            result["pass"] = len(gates) == 6 and all(g["pass"] for g in gates.values()) and "error" not in result
+            result["pass"] = len(gates) == 7 and all(g["pass"] for g in gates.values()) and "error" not in result
             result["gate_summary"] = {k: gates[k]["pass"] for k in sorted(gates)}
             (out / "gates.json").write_text(json.dumps(result, indent=2, default=str))
     for name in ("home", "xdg-config", "xdg-cache", "xdg-data", "tmp", "runtime"):

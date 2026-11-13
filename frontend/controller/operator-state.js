@@ -29,7 +29,7 @@
     }
 
     function stageEditable(state) {
-        return composition.stageEditable(state.composition || composition.legacyState(state.tabName, state.selectedId), state);
+        return composition.stageEditable({ mode: state.mode }, state);
     }
     function stageView(state) {
         const arrangement = !!state.gridPreview || !!state.base && !!state.draft && layoutSignature(state.draft) !== layoutSignature(state.base);
@@ -185,6 +185,17 @@
     function needsAttention(item) {
         return !item.showing && item.status !== "excluded";
     }
+    const WRONG_CONTENT = new Set(["failed", "blocked", "hidden", "unsupported", "unsupported_client", "unsupported_content", "viewport_mismatch", "zoom_changed",
+        "mapping_mismatch", "invalid", "invalid_mapping", "stale_calibration", "needs_calibration", "needs_profile", "missing_profile", "missing_calibration"]);
+    function rosterStatus(item, { stale = false } = {}) {
+        const result = (key, word, tone) => ({ key, word, tone });
+        if (stale) return result("stale", "Stale", "failure");
+        if (item.status === "unplaced") return item.online ? result("not-placed", "Not placed", "progress") : result("offline", "Offline", "quiet");
+        if (item.status === "offline" || (item.status === "unknown" && !item.online)) return result("offline", "Offline", "failure");
+        if (item.status === "stale") return result("stale", "Stale", "failure");
+        if (WRONG_CONTENT.has(item.status)) return result("wrong-content", "Wrong content", "failure");
+        return result("connected", "Connected", "ok");
+    }
     function aggregate(config, nowMs) {
         const ids = Object.keys(entries(config.layout)).filter(id => entries(config.layout)[id].participating !== false);
         const states = ids.map(id => tabletState(config, id, nowMs));
@@ -195,7 +206,7 @@
         return { event() { epoch += 1; }, start() { return { epoch, sequence: ++issued }; }, current(ticket) { return ticket.epoch === epoch; },
             accept(ticket) { if (ticket.epoch !== epoch || ticket.sequence < accepted) return false; accepted = ticket.sequence; return true; } };
     }
-    const api = { stageEditable, stageView, layoutSignature, fitLogical, arrangeLogical, rotateLogical, clone, entries, registrationCounts, layoutDraft, bounds, fitTransform, compareIds, sameToken, observeDevice, observeConfig, tabletState, needsAttention, aggregate, readFence };
+    const api = { stageEditable, stageView, layoutSignature, fitLogical, arrangeLogical, rotateLogical, clone, entries, registrationCounts, layoutDraft, bounds, fitTransform, compareIds, sameToken, observeDevice, observeConfig, tabletState, needsAttention, rosterStatus, aggregate, readFence };
     if (typeof module !== "undefined" && module.exports) module.exports = api;
     else root.OperatorState = api;
 }(typeof window !== "undefined" ? window : globalThis));

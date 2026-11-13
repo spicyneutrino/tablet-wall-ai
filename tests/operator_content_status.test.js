@@ -125,8 +125,8 @@ const content = context.window.OperatorContent.create({ state, renderStage() {},
     assert.equal(node("image-discard").hidden, true); assert.equal(node("restore-image").hidden, false);
     assert.equal(content.dirty(), false); assert.equal(state.previewContent, null);
     assert.equal(node("edit-current-image").hidden, false, "a saved image has an explicit adjust action");
-    assert.equal(node("image-preview-controls").hidden, true);
-    assert.equal(node("show-image").disabled, true); assert.equal(node("image-fit").disabled, true);
+    assert.equal(node("image-preview-controls").hidden, false, "idle image scaling remains available in the commit bar");
+    assert.equal(node("show-image").disabled, true); assert.equal(node("image-fit").disabled, false);
     assert.equal(node("image-message").textContent, "", "routine success is silent; the header carries the state");
     assert.equal(buttonA.attrs["aria-pressed"], "false", "a completed Show clears the rust draft outline");
     assert.equal(cardA.dataset.applied, "true", "the applied marker remains when no draft exists");
@@ -670,11 +670,11 @@ console.log("Fit feedback slots are unique, labelled, decorative and placed afte
     node("show-image").focus();
     pending = content.showSelected();
     await new Promise(resolve => setImmediate(resolve));
-    state.tabName = "system";
+    state.mode = "test";
     rejectShow(new Error("Connection lost"));
     await pending;
     assert.equal(doc.activeElement, doc.body, "intervening task navigation prevents late Show focus restoration");
-    state.tabName = "content";
+    state.mode = "content";
 
     state.etag = "e"; state.etagState = "current";
     content.discard();

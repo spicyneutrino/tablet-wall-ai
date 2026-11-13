@@ -5,8 +5,10 @@ import time
 import urllib.request
 from PIL import Image
 from playwright.sync_api import expect
+from _workspace_shell import select_tablet
 
 from _redesign_edge_cases import task_tab
+from _workspace_shell import task as workspace_task
 
 
 def review_forget(rig, page):
@@ -25,11 +27,11 @@ def review_forget(rig, page):
         if modal:
             page.locator("#device-sheet-close").click()
         with page.expect_response("**/api/v3/config") as response:
-            page.locator("#btn-roster-refresh").click()
+            page.locator("#refresh-status").click()
         response.value.finished()
         page.evaluate("()=>new Promise(requestAnimationFrame)")
         if modal:
-            page.locator(f'#device-list .dev-pick[data-device-id="{subject}"]').click()
+            select_tablet(page.locator(f':is(.dev-pick,.roster-pick):visible[data-device-id="{subject}"]'))
     expect(page.locator("#tablet-forget-impact")).to_be_visible()
 
 
@@ -55,7 +57,7 @@ def parity(rig):
         rig.task(name)
 
     def pick(id):
-        page.locator(f'#device-list .dev-pick[data-device-id="{id}"]').click()
+        select_tablet(page.locator(f':is(.dev-pick,.roster-pick):visible[data-device-id="{id}"]'))
 
     def wait_config(predicate, description):
         deadline = time.monotonic() + 10
@@ -69,7 +71,7 @@ def parity(rig):
 
     def showing(count=4):
         expect(page.locator("#btn-wall-health")).to_have_attribute(
-            "aria-label", f"{count}/{count}. {count} of {count} tablets showing the current image. Issues.", timeout=10000
+            "aria-label", f"{count}/{count}. {count} of {count} tablets showing the current image.", timeout=10000
         )
 
     def grid_preview():
@@ -82,13 +84,13 @@ def parity(rig):
         expect(page.locator("body")).to_have_attribute("data-stage-mode", "live", timeout=10000)
 
     def save_arrangement(name):
-        task("Saved")
+        task("Saved arrangements")
         page.locator("#layout-name").fill(name)
         page.locator("#btn-layout-save").click()
         expect(page.locator("#layout-msg")).to_contain_text("saved", timeout=10000)
 
     def save_scene(name):
-        task("Saved")
+        task("Saved content")
         page.locator("#scene-name").fill(name)
         page.locator("#scene-save").click()
         expect(page.locator("#scene-message")).to_contain_text(
@@ -96,7 +98,7 @@ def parity(rig):
         )
 
     def recall(name):
-        task("Saved")
+        task("Saved arrangements")
         page.get_by_role(
             "button", name=f"Recall geometry for arrangement “{name}”", exact=True
         ).click()
@@ -167,7 +169,7 @@ def parity(rig):
     )
     manifest["measured_config"] = config()
     page.locator(f'#stage-svg .slot[data-device-id="{ids[-1]}"]').click()
-    task("Arrange")
+    task("Arrange tablet")
     pins_before = {
         id: (slot["profile_revision"], slot["calibration_revision"])
         for id, slot in config()["layout"]["slots"].items()
@@ -221,6 +223,7 @@ def parity(rig):
         "Participation is a geometry draft until Apply",
     )
     task("Tablets")
+    pick(ids[-1])
     rig.open_disclosures(page.locator("#tablet-participation"))
     page.locator("#tablet-participation").check()
     task("Arrange")
@@ -249,7 +252,7 @@ def parity(rig):
     )
     task("Tablets")
     pick(ids[0])
-    task("Settings")
+    task("Measure")
     page.locator("#measurement-details").evaluate("details=>details.open=true")
     rig.open_disclosures(page.locator("#profile-active-width"))
     page.locator("#profile-active-width").fill("148.5")
@@ -325,7 +328,7 @@ def parity(rig):
     expect(page.locator("#tablet-label")).to_have_value("Lobby left")
     page.locator("#tablet-label").focus()
     page.locator("#tablet-label").evaluate("input => input.setSelectionRange(3,6)")
-    page.locator("#btn-roster-refresh").dispatch_event("click")
+    page.locator("#refresh-status").dispatch_event("click")
     page.wait_for_timeout(150)
     check(
         page.locator("#tablet-label").evaluate(
@@ -342,7 +345,7 @@ def parity(rig):
     expect(page.locator("#tablet-label")).to_have_value("Lobby right pending")
     page.locator("#tablet-label-discard").click()
     pick(ids[0])
-    task("Settings")
+    task("Measure")
     page.locator("#measurement-details").evaluate("details => details.open=true")
     rig.open_disclosures(page.locator("#profile-active-width"))
     page.locator("#profile-active-width").fill("148.25")
@@ -352,14 +355,14 @@ def parity(rig):
     page.locator("#tablet-model").select_option("manual")
     task("Tablets")
     pick(ids[1])
-    task("Settings")
+    task("Measure")
     check(
         page.locator("#profile-active-width").input_value() != "148.25",
         "Tablet B never inherits tablet A measurement fields",
     )
     task("Tablets")
     pick(ids[0])
-    task("Settings")
+    task("Measure")
     expect(page.locator("#profile-active-width")).to_have_value("148.25")
     expect(page.locator("#cal-viewport-width")).to_have_value("887")
     expect(page.locator("#tablet-model")).to_have_value("manual")
@@ -495,7 +498,7 @@ def parity(rig):
         config()["layout"] == before["layout"],
         "Saved scene Show recalls content while retaining custom logical geometry",
     )
-    task("Settings")
+    task("Test colour")
     page.locator("#diagnostic-colour").fill("#246344")
     with page.expect_response(
         lambda response: (
@@ -552,7 +555,7 @@ def parity(rig):
         and config()["scene"] == before_saved["scene"],
         "Explicit overwrite and delete for both Saved kinds preserve applied geometry and content",
     )
-    task("Settings")
+    task("Test colour")
     page.locator("#diagnostic-colour").fill("#654321")
     page.locator("#diagnostic-colour-all").click()
     expect(page.locator("#diagnostic-colour-message")).to_contain_text(
@@ -585,7 +588,7 @@ def parity(rig):
         == before_pattern["scene"]["content"]["asset"],
         "Restore previous content obtains four fresh current image reports",
     )
-    task("Settings")
+    task("Server")
     page.locator("#experimental-opt-in").check()
     expect(page.locator("#experimental-controls")).to_be_visible()
     experimental_text = (
@@ -687,9 +690,10 @@ def parity(rig):
             + " wall and retains registrations",
         )
     recall("Original measured")
-    task("Settings")
+    task("Server")
     rig.open_disclosures(page.locator("#clear-wall"))
     page.locator("#clear-wall").click()
+    page.locator("#clear-wall-confirm-yes").click()
     wait_config(
         lambda c: not c["layout"]["slots"],
         "Explicit Clear wall endpoint clears positions and preserves registrations",
@@ -733,7 +737,7 @@ def edges(rig):
         rig.task(name)
 
     def pick(id):
-        page.locator(f'#device-list .dev-pick[data-device-id="{id}"]').click()
+        select_tablet(page.locator(f':is(.dev-pick,.roster-pick):visible[data-device-id="{id}"]'))
 
     def wait_config(predicate, description):
         deadline = time.monotonic() + 10
@@ -814,8 +818,8 @@ def edges(rig):
     other = other_ctx.new_page()
     other.on("dialog", lambda d: d.accept())
     other.goto(base + "/controller/physical.html")
-    task_tab(other, "Tablets").click()
-    other.locator(f'#device-list .dev-pick[data-device-id="{ids[0]}"]').click()
+    workspace_task(other, "Tablets")
+    select_tablet(other.locator(f':is(.dev-pick,.roster-pick):visible[data-device-id="{ids[0]}"]'))
     other.locator("#tablet-label").fill("Other operator")
     other.locator("#tablet-label-save").click()
     expect(page.locator("#conflict-panel")).to_be_visible()
@@ -859,7 +863,7 @@ def edges(rig):
     page.locator("#tablet-label-discard").click()
     pick(ids[0])
     page.locator("#tablet-label").fill("My reviewed name")
-    other.locator(f'#device-list .dev-pick[data-device-id="{ids[0]}"]').click()
+    select_tablet(other.locator(f':is(.dev-pick,.roster-pick):visible[data-device-id="{ids[0]}"]'))
     other.locator("#tablet-label").fill("Remote name")
     other.locator("#tablet-label-save").click()
     expect(page.locator("#tablet-action-message")).to_contain_text("changed elsewhere")
@@ -875,8 +879,8 @@ def edges(rig):
     page.locator(f'#stage-svg .slot[data-device-id="{ids[-1]}"]').click()
     page.locator("#logical-x").fill("230")
     page.locator("#logical-x").press("Tab")
-    task_tab(other, "Tablets").click()
-    other.locator(f'#device-list .dev-pick[data-device-id="{ids[2]}"]').click()
+    workspace_task(other, "Tablets")
+    select_tablet(other.locator(f':is(.dev-pick,.roster-pick):visible[data-device-id="{ids[2]}"]'))
     other.locator("#tablet-label").fill("Manual conflict source")
     other.locator("#tablet-label-save").click()
     expect(page.locator("#btn-apply")).to_be_disabled()
@@ -915,7 +919,7 @@ def edges(rig):
         config()["layout"] == layout_before,
         "Resolve Show image writes content without a hidden geometry commit",
     )
-    task("Saved")
+    task("Saved content")
     page.locator("#scene-name").fill("Missing source")
     page.locator("#scene-save").click()
     expect(page.locator("#scene-message")).to_contain_text("Content saved")
@@ -939,10 +943,10 @@ def edges(rig):
     expect(page.locator("#upload-message")).to_contain_text("added and selected")
     page.locator("#show-image").click()
     expect(page.locator("#wall-health")).to_contain_text(
-        "4 of 4 showing the current image", timeout=10000
+        "4 of 4 showing supplied.png", timeout=10000
     )
     check(True, "Missing image recovers through actual Add image, preview and Show")
-    task("Saved")
+    task("Saved arrangements")
     page.locator("#layout-name").fill("Before swap")
     page.locator("#btn-layout-save").click()
     expect(page.locator("#layout-msg")).to_contain_text("saved")
@@ -973,7 +977,7 @@ def edges(rig):
         ),
         "Contextual same-hardware replacement updates the captured old/new identities",
     )
-    task("Saved")
+    task("Saved arrangements")
     page.get_by_role(
         "button", name="Recall geometry for arrangement “Before swap”", exact=True
     ).click()
@@ -1046,12 +1050,12 @@ def batch(rig):
     rig.observe(other_context, "second-operator")
     other = other_context.new_page()
     other.goto(base + "/controller/physical.html")
-    expect(other.locator("#device-list .dev-pick")).to_have_count(4)
+    expect(other.locator(":is(.dev-pick,.roster-pick):visible")).to_have_count(4)
 
     def conflict_before_third(route):
-        task_tab(other, "Tablets").click()
-        other.locator("#btn-roster-refresh").click()
-        other.locator(f'#device-list .dev-pick[data-device-id="{ids[0]}"]').click()
+        workspace_task(other, "Tablets")
+        other.locator("#refresh-status").click()
+        select_tablet(other.locator(f':is(.dev-pick,.roster-pick):visible[data-device-id="{ids[0]}"]'))
         other.locator("#tablet-label").fill("Concurrent batch edit")
         other.locator("#tablet-label-save").click()
         expect(other.locator("#tablet-action-message")).to_contain_text("Name saved")

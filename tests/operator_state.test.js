@@ -116,7 +116,7 @@ console.log("Operator tagged layout, fit, evidence, ordering and read-fence cont
 {
     const base = { kind: "logical", width: 100, height: 50, placements: {} };
     const image = { type: "image", asset: "applied", fit: "contain" };
-    const state = { base, draft: structuredClone(base), scene: { content: image }, tabName: "show" };
+    const state = { get composition() { return { mode: this.mode }; }, base, draft: structuredClone(base), scene: { content: image }, mode: "arrange" };
     assert.equal(model.stageView(state).mode, "live");
     assert.equal(model.stageView(state).editable, true);
     state.previewContent = { type: "image", asset: "preview" };
