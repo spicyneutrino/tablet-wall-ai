@@ -19,7 +19,7 @@ function node(id) {
 const composition = require("../frontend/controller/operator-composition.js");
 const state = { get composition() { return { mode: this.mode, selectedTablet: this.selectedId }; },
     mode: "content", roster: { a: { online: true }, b: { online: false } }, configLoaded: true,
-    base: { placements: { a: {} } }, draft: { placements: { a: {} } } };
+    base: { placements: { a: {} } }, draft: { placements: { a: {} } }, scene: { content: { type: "image" } } };
 let dirty = false, arrangement = false, applied = "a.png", unavailable = false;
 const context = { window: { OperatorState: require("../frontend/controller/operator-state.js") }, document };
 vm.createContext(context);
@@ -68,6 +68,9 @@ assert.equal(node("stage-mode-label").textContent, "Nothing shown", "a scene wit
 assert.equal(node("join-strip").dataset.presentation, "card");
 assert.equal(node("setup-strip").hidden, false);
 assert.equal(node("first-wall-join").dataset.done, "true");
+assert.deepEqual(["first-wall-join", "first-wall-arrange", "first-wall-image"].map(id => node(id).dataset.state), ["done", "current", "blocked"]);
+assert.equal(node("first-wall-arrange-action").classList.values.has("btn-primary"), true, "only the current step's action is the filled primary");
+assert.equal(node("first-wall-image-action").classList.values.has("btn-primary"), false);
 await node("first-wall-arrange-action").listeners.click();
 assert.equal(state.mode, "arrange");
 assert.equal(document.activeElement, node("grid-2x2"));
@@ -82,6 +85,18 @@ state.roster = { a: { online: true } }; workspace.render();
 assert.equal(node("tablet-joining").open, false);
 node("tablet-joining").open = true; workspace.render();
 assert.equal(node("tablet-joining").open, true, "runtime updates preserve disclosure state");
+state.mode = "arrange"; state.base = { placements: { a: {} } }; state.scene = {}; workspace.render();
+assert.equal(node("setup-strip").hidden, false, "a placed wall with no image still has a step to finish");
+assert.deepEqual(["first-wall-join", "first-wall-arrange", "first-wall-image"].map(id => node(id).dataset.state), ["done", "done", "current"]);
+assert.equal(node("first-wall-image-action").classList.values.has("btn-primary"), true);
+state.scene = { content: { type: "image" } }; workspace.render();
+assert.equal(node("setup-strip").hidden, true, "the strip disappears once tablets are placed and an image is shown");
+state.selectedId = null; state.mode = "content"; state.base = { placements: {} }; state.scene = {}; workspace.render();
+assert.equal(await workspace.land(), true, "an unarranged wall with tablets lands on Arrange");
+assert.equal(state.mode, "arrange");
+state.mode = "content"; state.base = { placements: { a: {} } }; workspace.render();
+assert.equal(await workspace.land(), false, "an arranged wall lands in Content");
+assert.equal(state.mode, "content");
 console.log("Persistent wall, draft identity, precedence and retained form focus passed");
 
 const controller = fs.readFileSync(require.resolve("../frontend/controller/physical.js"), "utf8");

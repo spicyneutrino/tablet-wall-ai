@@ -60,6 +60,13 @@ nodes.get("grid-preview").listeners.click().then(async () => {
     assert.equal(message.textContent, "1 tablet · 1 × 1 · 100 × 100 logical units");
     assert.equal(review.textContent, "Mixed footprint. Uneven edge. Apply will request a named safety copy of the current arrangement.");
     assert.equal(review.children[1].children[0].textContent, "Estimated measurement a.");
+    assert.deepEqual(nodes.get("grid-summary-facts").children.map(child => child.textContent),
+        ["Tablets", "1", "Grid", "1 × 1", "Wall size", "100 × 100 logical units"], "the preview summary is label-value rows");
+    assert.equal(nodes.get("grid-summary").hidden, false);
+    assert.equal(nodes.get("grid-summary-warning").hidden, false);
+    assert.equal(nodes.get("grid-summary-warning-title").textContent, "Uneven edge", "the uneven-edge warning is its own callout");
+    assert.match(nodes.get("grid-summary-warning-text").textContent, /^Mixed footprint\. Uneven edge\./);
+    assert.match(nodes.get("grid-summary-note").textContent, /named safety copy/);
     state.base = { kind: "logical", placements: Object.fromEntries(["a", "b", "c", "d"].map((id, i) => [id, { x: i * 100, y: 0, w: 100, h: 100 }])) };
     state.roster = Object.fromEntries(["a", "b", "c", "d"].map(id => [id, { online: true }]));
     owner.reset();

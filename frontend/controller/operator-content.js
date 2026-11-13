@@ -15,7 +15,13 @@ window.OperatorContent = {
         const gallery = new Map();
         let retainMessage = false, noteSequence = 0, uploadedSelectionId = null, previewStale = false;
         const shownRevisions = new Map();
-        const message = (text, retain = false, kind = "info", target = "image-message") => { shownRevisions.delete(target); if (target === "image-message") retainMessage = retain; $(target).dataset.kind = kind; $(target).textContent = text; };
+        const expireLater = node => {
+            const text = node.textContent;
+            if (typeof globalThis.setTimeout !== "function") return;
+            const timer = globalThis.setTimeout(() => { if (node.textContent === text && node.dataset.kind === "ok") node.textContent = ""; }, 8000);
+            if (timer && timer.unref) timer.unref();
+        };
+        const message = (text, retain = false, kind = "info", target = "image-message") => { shownRevisions.delete(target); if (target === "image-message") retainMessage = retain; $(target).dataset.kind = kind; $(target).textContent = text; if (kind === "ok") expireLater($(target)); };
         function focusRecovery(target) {
             const region = target.closest?.("#commit-bar") || target;
             const rect = region.getBoundingClientRect?.(), control = target.getBoundingClientRect?.();
@@ -32,7 +38,7 @@ window.OperatorContent = {
                 let text, kind = "ok";
                 if (!config || state.rosterError || state.etagState !== "current") {
                     kind = "warn";
-                    text = label + " applied. Tablet reports may be stale; refresh status in the header or Issues.";
+                    text = label + " applied. Tablet reports may be stale; refresh status in the header.";
                 } else if (config.generation !== revision.generation || config.revision !== revision.revision && (!revision.content || !revision.layout
                         || JSON.stringify(config.scene?.content) !== revision.content || JSON.stringify(config.layout) !== revision.layout)) {
                     kind = "warn";
@@ -587,6 +593,7 @@ window.OperatorContent = {
                     if (selectedUpload && (!state.previewContent || state.previewContent.asset !== id)) {
                         $("upload-message").textContent = "Image added to the library. Nothing was shown automatically.";
                     }
+                    expireLater($("upload-message"));
                 } else $("upload-message").textContent = "Image addition refused. " + (result && (typeof result.detail === "string" ? result.detail : result.detail && result.detail.message) || "HTTP " + request.status) + ". Check the file or launch admission, then retry.";
             };
             request.onerror = uncertain; request.ontimeout = uncertain;

@@ -8,7 +8,7 @@
     <title>Tablet wall · tablet-wall-ai</title>
     <link rel="icon" href="favicon.svg" type="image/svg+xml">
     <link rel="stylesheet" href="operator-tokens.css?v=20261113-a">
-    <link rel="stylesheet" href="operator-workspace.css?v=20261113-e">
+    <link rel="stylesheet" href="operator-workspace.css?v=20261113-f">
     <link rel="stylesheet" href="operator-stage.css?v=20261113-a">
     <script src="operator-theme.js?v=20261113-a"></script>
 </head>
@@ -84,12 +84,12 @@
             </div>
         </div>
         <div class="setup-strip" id="setup-strip" hidden>
-                        <section id="first-wall-steps" aria-labelledby="first-wall-title">
-                <h3 id="first-wall-title">Set up your first wall</h3>
+            <section id="first-wall-steps" aria-labelledby="first-wall-title">
+                <h3 id="first-wall-title" class="sr-only">Set up your first wall</h3>
                 <ol>
-                    <li id="first-wall-join"><span id="first-wall-join-status"></span> <button class="btn" id="first-wall-join-action" type="button">Add tablets</button></li>
-                    <li id="first-wall-arrange"><span id="first-wall-arrange-status"></span> <button class="btn" id="first-wall-arrange-action" type="button">Arrange wall</button></li>
-                    <li id="first-wall-image"><span id="first-wall-image-status"></span> <button class="btn" id="first-wall-image-action" type="button">Choose image</button></li>
+                    <li id="first-wall-join" data-state="blocked"><span class="step-mark" id="first-wall-join-mark" aria-hidden="true">1</span><span class="step-copy"><strong class="step-title">Add tablets</strong><span class="step-state" id="first-wall-join-status"></span></span><button class="btn" id="first-wall-join-action" type="button">Add tablets</button></li>
+                    <li id="first-wall-arrange" data-state="blocked"><span class="step-mark" id="first-wall-arrange-mark" aria-hidden="true">2</span><span class="step-copy"><strong class="step-title">Arrange</strong><span class="step-state" id="first-wall-arrange-status"></span></span><button class="btn" id="first-wall-arrange-action" type="button">Arrange wall</button></li>
+                    <li id="first-wall-image" data-state="blocked"><span class="step-mark" id="first-wall-image-mark" aria-hidden="true">3</span><span class="step-copy"><strong class="step-title">Show</strong><span class="step-state" id="first-wall-image-status"></span></span><button class="btn" id="first-wall-image-action" type="button">Choose image</button></li>
                 </ol>
             </section>
         </div>
@@ -308,6 +308,11 @@
 
         </section>
 <p id="grid-message" role="status" aria-live="polite"></p>
+<div class="grid-summary" id="grid-summary" aria-hidden="true" hidden>
+    <dl class="operator-facts" id="grid-summary-facts"></dl>
+    <div class="callout callout-warning" id="grid-summary-warning" hidden><strong id="grid-summary-warning-title"></strong><span id="grid-summary-warning-text"></span></div>
+    <p class="hint" id="grid-summary-note" hidden></p>
+</div>
 <details id="arrange-membership">
             <summary id="arrange-membership-summary"><svg class="disclosure-icon" viewBox="0 0 16 16" width="16" height="16" fill="none" stroke="currentColor" stroke-width="1.5" aria-hidden="true"><path d="m6 4 4 4-4 4"/></svg><span id="arrange-membership-label">Order and mounting</span></summary>
             <ol id="grid-order" class="operator-order" aria-label="Tablet order, left to right then top to bottom"></ol>
@@ -503,12 +508,12 @@
             <details class="technical-details" id="tablet-status-details"><summary>Details</summary>            <p id="tablet-evidence"></p>
             <p class="tablet-recovery" id="tablet-recovery"></p>
 </details>
-            <section id="tablet-recovery-actions" class="task-section" hidden><h3>Recovery</h3>
+            <details id="tablet-recovery-actions" class="task-section" hidden><summary>Recovery</summary>
                 <div class="operator-actions">
                     <button class="btn" id="tablet-retry-image" type="button" data-action="tablet-retry-image">Retry image</button>
                     <button class="btn" id="tablet-reconnect" type="button" data-action="tablet-reconnect">Reconnect</button>
                 </div>
-            </section>
+            </details>
             <form id="tablet-label-form" data-form="tablet-label-form">
                 <label class="field" for="tablet-label">Tablet name<input class="inp" id="tablet-label" aria-describedby="tablet-name-help" maxlength="80" autocomplete="off" data-field="tablet-label"></label>
                 <p class="sr-only" id="tablet-name-help"></p><div class="operator-actions">
@@ -875,13 +880,14 @@
 </dialog>
             <section id="diagnostic-colours" class="diagnostic-colours task-section" aria-labelledby="diagnostic-colours-title">
                 <h2 id="diagnostic-colours-title">Test colours</h2>
-                <p id="diagnostic-colour-subject">Select a tablet on the wall to test one screen.</p>
+                <dl class="operator-facts" id="diagnostic-colour-facts"><dt>Tablet</dt><dd id="diagnostic-colour-subject">None selected</dd></dl>
                 <label class="field" for="diagnostic-colour">Test colour<input type="color" id="diagnostic-colour" value="#ef4444" data-field="diagnostic-colour"></label>
                 <div class="operator-actions">
                     <button type="button" class="btn" id="diagnostic-colour-one" data-action="diagnostic-colour-one">Apply to tablet</button>
                     <button type="button" class="btn" id="diagnostic-colour-all" data-action="diagnostic-colour-all">Apply to all</button>
                     <button type="button" class="btn" id="diagnostic-colour-refresh" data-action="diagnostic-colour-refresh">Read colour</button>
                 </div>
+                <p class="hint" id="diagnostic-colour-reason">Select a tablet on the wall to apply a colour to one screen.</p>
                 <p id="diagnostic-colour-message" role="status"></p>
             </section>
 
@@ -928,13 +934,13 @@
             <div class="drawer-label">
             <div class="sec-head">
                 <h2 id="settings-evidence-title">Diagnostics<span class="sr-only"> and current evidence</span></h2>
-                <span class="chip sr-only" id="diag-state" data-kind="info">loading</span>
+                <span class="chip sr-only" id="diag-state" data-kind="info">loading</span><button type="button" class="btn btn-ghost icon-button" id="btn-diag-refresh" aria-label="Refresh diagnostics" data-action="btn-diag-refresh"><svg viewBox="0 0 16 16" width="16" height="16" fill="none" stroke="currentColor" stroke-width="1.5" aria-hidden="true"><path d="M13 6a5 5 0 1 0 .2 3M13 2v4H9"/></svg></button>
             </div>
 
             </div>
             <div class="drawer-body">
             <section class="field-card task-section" id="settings-diagnostics" aria-labelledby="field-title">
-                <div class="sec-head"><h3 class="sr-only" id="field-title">Report</h3><button type="button" class="btn btn-ghost icon-button" id="btn-diag-refresh" aria-label="Refresh diagnostics" data-action="btn-diag-refresh"><svg viewBox="0 0 16 16" width="16" height="16" fill="none" stroke="currentColor" stroke-width="1.5" aria-hidden="true"><path d="M13 6a5 5 0 1 0 .2 3M13 2v4H9"/></svg></button></div>
+                <h3 class="sr-only" id="field-title">Report</h3>
                 <div class="field-actions">
                     <button type="button" class="btn" id="btn-diag-verify" data-action="btn-diag-verify">Verify files</button>
                     <button type="button" class="btn" id="btn-diag-download" disabled data-action="btn-diag-download">Download report</button>
@@ -1145,19 +1151,19 @@
 <script src="operator-forms.js?v=3"></script>
 <script src="operator-stage.js?v=20261113-a"></script>
 <script src="operator-stage-viewport.js?v=2"></script>
-<script src="operator-content.js?v=20261113-a"></script>
-<script src="operator-grid.js?v=14"></script>
-<script src="operator-devices.js?v=20261113-c"></script>
+<script src="operator-content.js?v=20261113-b"></script>
+<script src="operator-grid.js?v=15"></script>
+<script src="operator-devices.js?v=20261113-d"></script>
 <script src="operator-readiness.js?v=20261113-a"></script>
 <script src="operator-sync.js?v=2"></script>
 <script src="operator-session.js?v=2"></script>
-<script src="operator-workspace.js?v=20261113-a"></script>
+<script src="operator-workspace.js?v=20261113-b"></script>
 <script src="physical-playback.js?v=3"></script>
 <script src="physical-sizing.js?v=3"></script>
-<script src="physical-stage.js?v=20261113-b"></script>
+<script src="physical-stage.js?v=20261113-c"></script>
 <script src="physical-calibration.js?v=1"></script>
 <script src="operator-measurements.js?v=3"></script>
-<script src="physical.js?v=20261113-c"></script>
+<script src="physical.js?v=20261113-d"></script>
 <dialog class="draft-resolution" id="draft-resolution" aria-labelledby="draft-resolution-title">
     <h2 id="draft-resolution-title">Resolve your preview</h2>
     <p id="draft-resolution-text"></p>

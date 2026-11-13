@@ -314,6 +314,13 @@ async function run() {
         }
     }
     state.rosterError = null;
+    state.roster.a.wake_lock = "released"; state.selectedId = "a"; devices.render();
+    assert.deepEqual(node("tablet-facts").children.map(child => child.textContent).slice(-2), ["Wake lock", "released"], "wake lock is a fact row in the tablet panel");
+    state.roster.a.wake_lock = "held"; state.roster.a.online = true; state.roster.a.caps = ["identify"]; state.etagState = "current"; state.selectedId = "a"; devices.render();
+    const receipt = devices.identify("a"); release({}); await receipt;
+    assert.match(node("tablet-action-message").textContent, /Identify requested for Tablet a/);
+    state.selectedId = "b"; devices.render(); state.selectedId = "a"; devices.render();
+    assert.equal(node("tablet-action-message").textContent, "", "a receipt does not outlive the selection that earned it");
     state.selectedId = null;
     devices.render();
     assert.equal(node("open-tablet-measurements").hidden, true, "no selected tablet hides measurements");

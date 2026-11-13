@@ -47,6 +47,21 @@
         const results = new Map();
         let nameReview = null;
         const message = text => { $("tablet-action-message").textContent = text; };
+        const flashTimers = new Map();
+        function expireFlash(id, text) {
+            clearTimeout(flashTimers.get(id)); flashTimers.delete(id);
+            if (results.get(id) !== text) return;
+            results.delete(id);
+            if (selectedId === id) message("");
+        }
+        function flash(id, text) {
+            results.set(id, text);
+            if (selectedId === id) message(text);
+            clearTimeout(flashTimers.get(id));
+            const timer = setTimeout(() => expireFlash(id, text), 8000);
+            if (timer && timer.unref) timer.unref();
+            flashTimers.set(id, timer);
+        }
         const path = (id, suffix = "") => "/api/v3/devices/" + encodeURIComponent(id) + suffix;
         function config() { return state.operatorConfig || { layout: state.base, scene: state.scene, runtime: { devices: state.roster }, revision: state.revision, generation: state.generation }; }
         function ensureReplacementPointer() {
@@ -87,6 +102,7 @@
             }
             const active = window.OperatorState.entries(state.base)[id];
             if (id !== selectedId) {
+                if (flashTimers.has(selectedId)) expireFlash(selectedId, results.get(selectedId));
                 selectedId = id; clearPlans(); snapshotsKey = "";
                 const form = tabletForms.observe(id, "name", { name: (state.deviceLabels || {})[id] || device && device.label || "" }, state.etag);
                 $("tablet-label").value = form.values.name;
@@ -164,7 +180,8 @@
                 const word = id && evidence ? window.OperatorState.rosterStatus(evidence, { stale: !!state.rosterError }).word : "";
                 const seen = device && device.last_seen ? Date.parse(device.last_seen) : NaN;
                 const rows = id ? [["Status", word],
-                    ["Last seen", tabletOnline ? "Now" : Number.isFinite(seen) ? new Date(seen).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }) : "Never"]] : [];
+                    ["Last seen", tabletOnline ? "Now" : Number.isFinite(seen) ? new Date(seen).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }) : "Never"],
+                    ...(power ? [["Wake lock", power.stale ? power.label.replace(/^Last known wake lock /, "Last known ") : power.label.replace(/^Wake lock: /, "")]] : [])] : [];
                 const signature = JSON.stringify(rows);
                 if (facts.dataset.signature !== signature) {
                     facts.dataset.signature = signature;
@@ -351,8 +368,7 @@
                 const result = await api("PATCH", path(id), { label: submitted.values.name.trim() || null }, { ifMatch: submitted.baseEtag });
                 tabletForms.saved(id, "name", submitted.version, submitted.values, result.etag);
                 ingestConfig(result, { preserveDraft: true });
-                const text = "Name saved for " + labelFor(id) + ".";
-                results.set(id, text); if (selectedId === id) message(text);
+                flash(id, "Name saved for " + labelFor(id) + ".");
             }, id);
         });
         const canIdentify = id => !busy && !!state.roster[id]?.online
@@ -366,7 +382,7 @@
             return run(async () => {
                 await api("POST", path(id, "/identify"), { duration_ms: 5000 }, { etag: true });
                 const text = "Identify requested for " + labelFor(id) + ". Delivery is unconfirmed until the tablet reports it.";
-                results.set(id, text); if (selectedId === id) message(text); announce(text);
+                flash(id, text); announce(text);
                 await refreshRoster();
             }, id);
         }
@@ -375,7 +391,7 @@
             const id = selectedId;
             run(async () => { await api("POST", path(id, "/" + action), undefined, { etag: true });
                 const text = action === "retry-image" ? "Image retry requested. Waiting for a fresh paint confirmation. This does not wake a sleeping tablet." : "Reconnect requested. The tablet keeps its identity. This does not wake a sleeping tablet.";
-                results.set(id, text); if (selectedId === id) message(text);
+                flash(id, text);
                 await refreshRoster(); });
         });
         $("tablet-participation").addEventListener("change", () => {

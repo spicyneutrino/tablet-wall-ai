@@ -36,6 +36,17 @@ window.OperatorWorkspace = {
             const empty = !state.base || !Object.keys(window.OperatorState.entries(state.base)).length;
             return empty && state.mode === "content" && state.configLoaded && view.mode === "live";
         }
+        function setupProgress() {
+            const empty = !state.base || !Object.keys(window.OperatorState.entries(state.base)).length;
+            const online = Object.values(state.roster).filter(device => device.online).length;
+            const done = [online > 0, !empty, !!(state.scene && state.scene.content && state.scene.content.type === "image")];
+            const current = done.indexOf(false);
+            return { empty, online, done, current, complete: current === -1 };
+        }
+        function land() {
+            if (!state.configLoaded || state.mode !== "content" || state.selectedId || arrangementDirty() || imageDirty()) return Promise.resolve(false);
+            return setupProgress().current === 1 ? open("arrange") : Promise.resolve(false);
+        }
         function openJoin(focus) {
             joinOpen = true; render();
             const target = $("copy-tablet-url");
@@ -177,7 +188,7 @@ window.OperatorWorkspace = {
             const ready = id => { const node = $(id); return !!node && !node.hidden && node.dataset.ready !== "false" && (id !== "tablet-label-save" || node.dataset.ready === "true"); };
             let owner = commit === "image" ? "show-image" : commit === "arrangement" ? "btn-apply" : commit === "test" ? "restore-image" : null;
             if (!owner && stripVisible) {
-                const step = ["first-wall-join", "first-wall-arrange", "first-wall-image"].find(id => $(id) && $(id).dataset.done !== "true");
+                const step = ["first-wall-join", "first-wall-arrange", "first-wall-image"].find(id => $(id) && $(id).dataset.state === "current");
                 owner = step ? step + "-action" : null;
             }
             if (!owner && sheet && !sheet.hidden) owner = ["tablet-arrange", "tablet-label-save"].find(ready) || null;
@@ -200,16 +211,21 @@ window.OperatorWorkspace = {
             body.dataset.outputDirty = String(arrangement || image);
             for (const item of document.querySelectorAll("#bottom-nav [data-workspace-mode]")) item.setAttribute("aria-pressed", String(body.dataset.view === "tools" && item.dataset.workspaceMode === state.mode));
             if ($("nav-tablets")) $("nav-tablets").setAttribute("aria-pressed", String(body.dataset.view === "tablets"));
-            const wallEmpty = !state.base || !Object.keys(window.OperatorState.entries(state.base)).length;
+            const progress = setupProgress(), wallEmpty = progress.empty;
             if ($("setup-strip")) {
-                $("setup-strip").hidden = !wallEmpty;
-                const online = state.rosterError ? 0 : Object.values(state.roster).filter(device => device.online).length;
-                setTextIfChanged($("first-wall-join-status"), online ? online + (online === 1 ? " tablet online" : " tablets online") : "No tablets yet");
-                setTextIfChanged($("first-wall-arrange-status"), "Not arranged yet");
-                setTextIfChanged($("first-wall-image-status"), "No image shown yet");
-                $("first-wall-join").dataset.done = String(online > 0);
-                $("first-wall-arrange").dataset.done = String(!wallEmpty);
-                $("first-wall-image").dataset.done = String(!!(state.scene && state.scene.content && state.scene.content.type === "image"));
+                $("setup-strip").hidden = !state.configLoaded || !!state.rosterError || progress.complete;
+                const { online, done, current } = progress;
+                const copy = [online ? online + (online === 1 ? " tablet online" : " tablets online") : "No tablets yet",
+                    done[1] ? "Wall arranged" : done[0] ? "Not arranged yet" : "After tablets join",
+                    done[2] ? "Image shown" : "No image shown yet"];
+                ["first-wall-join", "first-wall-arrange", "first-wall-image"].forEach((id, index) => {
+                    const step = $(id), stepState = done[index] ? "done" : index === current ? "current" : "blocked";
+                    setTextIfChanged($(id + "-status"), copy[index]);
+                    setTextIfChanged($(id + "-mark"), done[index] ? "✓" : String(index + 1));
+                    step.dataset.done = String(done[index]);
+                    step.dataset.state = stepState;
+                    step.setAttribute("aria-current", stepState === "current" ? "step" : "false");
+                });
             }
             const noTablets = !Object.keys(state.roster).length;
             if ($("first-wall-arrange-action")) $("first-wall-arrange-action").disabled = noTablets;
@@ -324,6 +340,6 @@ window.OperatorWorkspace = {
             $("image-addition").open = true;
             ($("upload-form").hidden ? $("image-addition").querySelector("summary") : $("upload-file")).focus();
         });
-        return { open, resolve, render, revealIssue, closeJoin, toggleJoin: () => joinOpen ? closeJoin() : openJoin(true), destroy() { if (pending) pending("stay"); $("draft-resolution").close(); } };
+        return { open, land, resolve, render, revealIssue, closeJoin, toggleJoin: () => joinOpen ? closeJoin() : openJoin(true), destroy() { if (pending) pending("stay"); $("draft-resolution").close(); } };
     }
 };

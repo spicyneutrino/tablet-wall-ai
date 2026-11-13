@@ -75,7 +75,25 @@
         let lockNote = null, blockerList = null;
         const LOCK_TEXT = "Wall shapes are paused while your placement draft is open. Apply it, or discard it to use a wall shape.";
         const named = value => order.reduce((line, id) => line.split(id).join(labelFor(id)), value);
-        const text = value => { $("grid-message").textContent = named(value); };
+        const text = value => { $("grid-message").textContent = named(value); if ($("grid-summary")) $("grid-summary").hidden = true; };
+        function showSummary(count, rows, columns, wall, kind, warnings, note) {
+            const facts = [["Tablets", String(count)], ["Grid", rows + " × " + columns],
+                ["Wall size", Number(wall.width.toFixed(1)) + " × " + Number(wall.height.toFixed(1)) + (kind === "physical" ? " mm" : " logical units")]];
+            $("grid-summary-facts").replaceChildren(...facts.flatMap(([term, value]) => {
+                const dt = document.createElement("dt"), dd = document.createElement("dd");
+                dt.textContent = term; dd.textContent = value;
+                return [dt, dd];
+            }));
+            const callout = $("grid-summary-warning"), line = $("grid-summary-note");
+            callout.hidden = !warnings.length;
+            if (warnings.length) {
+                $("grid-summary-warning-title").textContent = warnings.some(warning => /uneven/i.test(warning)) ? "Uneven edge" : "Check before applying";
+                $("grid-summary-warning-text").textContent = named(warnings.join(" "));
+            }
+            line.hidden = !note;
+            line.textContent = note;
+            $("grid-summary").hidden = false;
+        }
         function ensureLockNote() {
             if (lockNote) return lockNote;
             lockNote = $("grid-lock-note");
@@ -379,6 +397,8 @@
                     chip.append(detail); review.append(" ", chip);
                 }
                 if (review.textContent) $("grid-message").append(review);
+                showSummary(result.order.length, previewCommand.rows, previewCommand.columns, wall, kind, warnings.filter(warning => !/^estimated measurement/i.test(warning)).concat(estimated.length ? ["Estimated sizes: " + estimated.join(" ")] : []),
+                    result.previous_kind !== kind ? "Apply will request a named safety copy of the current arrangement." : "");
                 updateButtons(); syncDraftUi(); renderStage();
                 if ($("arrange-membership").dataset.required === "false") $("arrange-membership").open = false;
                 $("btn-apply").focus();

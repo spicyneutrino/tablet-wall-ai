@@ -13,7 +13,6 @@
     const HISTORY_LIMIT = 80;
     const MIN_DWELL_MS = 1000;
     const MAX_DWELL_MS = 600000;
-    const MODE_STORAGE_KEY = "tablet-wall-console-mode-v1";
     const SNAPSHOT_NAME_RULE = "Use letters, numbers, spaces, dots, underscores or hyphens. Start with a letter or number. 64 characters at most.";
     const COMPACT_MEDIA = typeof window.matchMedia === "function"
         ? window.matchMedia("(max-width: 47.99rem)") : null;
@@ -681,20 +680,6 @@
         ];
     }
 
-    function readStoredMode() {
-        try {
-            const stored = window.sessionStorage.getItem(MODE_STORAGE_KEY);
-            return window.OperatorComposition.MODES.indexOf(stored) === -1 ? null : stored;
-        } catch (error) {
-            return null;
-        }
-    }
-
-    function storeMode(name) {
-        try { window.sessionStorage.setItem(MODE_STORAGE_KEY, name); }
-        catch (error) { /* The current view still switches. */ }
-    }
-
     function compactView() {
         return Boolean(COMPACT_MEDIA && COMPACT_MEDIA.matches);
     }
@@ -723,7 +708,6 @@
         compositionState = window.OperatorComposition.reduce(compositionState, { type: "set-mode", mode: name });
         document.body.dataset.view = "tools";
         if (changed && el.railPanels) el.railPanels.scrollTop = state.modeScroll[name] || 0;
-        if (settings.persist) storeMode(name);
         if (settings.focus) target.tab.focus({ preventScroll: true });
         if (workspace) workspace.render();
         if (changed) renderStage();
@@ -746,7 +730,7 @@
         if (next === null) return;
 
         event.preventDefault();
-        Promise.resolve(showMode(entries[next].name, { persist: true })).then(opened => { if (opened) entries[next].tab.focus(); });
+        Promise.resolve(showMode(entries[next].name)).then(opened => { if (opened) entries[next].tab.focus(); });
     }
 
     function syncTabDots() {
@@ -802,6 +786,8 @@
         el.errorText.hidden = true;
     }
 
+    const MESSAGE_TTL_MS = 8000, msgTimers = new WeakMap();
+
     function setMsg(node, text, kind) {
         if (!node) return;
         if (!text) {
@@ -813,6 +799,8 @@
         node.textContent = text;
         node.dataset.kind = kind || "info";
         node.hidden = false;
+        clearTimeout(msgTimers.get(node));
+        if (kind === "ok") msgTimers.set(node, setTimeout(() => { if (node.textContent === text) setMsg(node, "", null); }, MESSAGE_TTL_MS));
     }
 
     function clearMsg(node) {
@@ -940,6 +928,8 @@
         await loadConfig();
     }
 
+    let landed = false;
+
     function renderAll() {
         if (operatorContent) operatorContent.update();
         if (operatorGrid) operatorGrid.update();
@@ -954,9 +944,18 @@
         if (operatorDevices) operatorDevices.render();
         if (operatorReadiness) operatorReadiness.render();
         if (workspace) workspace.render();
+        if (workspace && !landed && state.configLoaded) { landed = true; workspace.land(); }
         renderLogicalEditor();
         const colourSubject = document.getElementById("diagnostic-colour-subject");
-        if (colourSubject) colourSubject.textContent = state.selectedId ? numberedLabel(state.selectedId) : "Select a tablet on the wall to test one screen.";
+        if (colourSubject) colourSubject.textContent = state.selectedId ? numberedLabel(state.selectedId) : "None selected";
+        const colourReason = document.getElementById("diagnostic-colour-reason");
+        if (colourReason) colourReason.hidden = !!state.selectedId;
+        for (const id of ["diagnostic-colour-one", "diagnostic-colour-refresh"]) {
+            const button = document.getElementById(id);
+            if (!button) continue;
+            button.disabled = !state.selectedId;
+            if (button.disabled) button.setAttribute("aria-describedby", "diagnostic-colour-reason"); else button.removeAttribute("aria-describedby");
+        }
     }
 
     function syncMeta() {
@@ -1296,12 +1295,16 @@
     function logicalError() {
         return logicalInvalid.size ? logicalInvalid.values().next().value : "";
     }
+    function setGridMessage(text) {
+        const node = document.getElementById("grid-message"), summary = document.getElementById("grid-summary");
+        if (node) node.textContent = text;
+        if (summary) summary.hidden = true;
+    }
     function setLogicalError(input, message) {
         logicalInvalid.set(input, message);
         markInvalid(input, true);
         input.setAttribute("aria-describedby", "grid-message");
-        const node = document.getElementById("grid-message");
-        if (node) node.textContent = message;
+        setGridMessage(message);
         announce(message, "err");
         syncDraftUi();
     }
@@ -1310,8 +1313,7 @@
         logicalInvalid.delete(input);
         markInvalid(input, false);
         input.removeAttribute("aria-describedby");
-        const node = document.getElementById("grid-message");
-        if (node) node.textContent = logicalError();
+        setGridMessage(logicalError());
         if (!logicalInvalid.size) syncDraftUi();
     }
     function clearLogicalErrors() {
@@ -1321,8 +1323,7 @@
             input.removeAttribute("aria-describedby");
         }
         logicalInvalid.clear();
-        const node = document.getElementById("grid-message");
-        if (node) node.textContent = "";
+        setGridMessage("");
         syncDraftUi();
     }
     function reconcileLogicalErrors(draft) {
@@ -2418,7 +2419,7 @@
                     if (!await resolveOutput(verb + " saved content “" + entry.name + "”")) return;
                     if (!snapshotMatches(entry, "scenes")) { setMsg(document.getElementById("scene-message"), "The saved content changed. Refresh saved and review it again.", "err"); return; }
                     if (verb === "Preview content") {
-                        operatorContent.previewScene(entry, state.etag); await showMode("content", { focus: true, persist: true });
+                        operatorContent.previewScene(entry, state.etag); await showMode("content", { focus: true });
                         return;
                     }
                     if (!window.confirm("Delete saved content “" + entry.name + "”? Applied content is unchanged.")) return;
@@ -2517,7 +2518,7 @@
                     + ". Keeping your proposal adopts this reviewed guard only. Apply arrangement remains a separate command. Exact historical measurement pins remain in the proposal."
                     + (state.draft.kind !== current.layout.kind ? " Applying changes the sizing representation and requires a server-created return point." : "");
                 document.getElementById("manual-review-details").textContent = "Current geometry\n" + JSON.stringify(current.layout, null, 2) + "\nYour proposed geometry\n" + JSON.stringify(state.draft, null, 2);
-                if (!await showMode("arrange", { persist: true })) return;
+                if (!await showMode("arrange")) return;
                 document.getElementById("manual-arrangement-review").hidden = false;
                 document.getElementById("manual-review-summary").focus();
             } catch (error) { handleWriteError(error); }
@@ -2721,14 +2722,14 @@
         modeEntries().forEach(function (entry) {
             entry.tab.addEventListener("click", function () {
                 if (state.mode === entry.name) { clearSelection(); return; }
-                showMode(entry.name, { persist: true, focus: true });
+                showMode(entry.name, { focus: true });
             });
         });
         if (el.railTabs) el.railTabs.addEventListener("keydown", onTabKeyDown);
         for (const item of document.querySelectorAll("#bottom-nav [data-workspace-mode]")) {
             item.addEventListener("click", () => {
                 if (state.mode === item.dataset.workspaceMode && document.body.dataset.view === "tools") { clearSelection(); return; }
-                showMode(item.dataset.workspaceMode, { persist: true });
+                showMode(item.dataset.workspaceMode);
             });
         }
         document.getElementById("nav-tablets").addEventListener("click", () => {
@@ -3127,7 +3128,7 @@
             selectTablet: selectDevice,
             openArrange: async () => {
                 const id = state.selectedId;
-                if (await showMode("arrange", { persist: true }) && state.selectedId === id) addSelectedDevice();
+                if (await showMode("arrange") && state.selectedId === id) addSelectedDevice();
             }
         });
         for (const event of ["input", "click"]) document.getElementById("tablet-label-form").addEventListener(event, () => { syncTabDots(); if (workspace) workspace.render(); });
@@ -3174,8 +3175,6 @@
         window.addEventListener("resize", () => { renderDeviceHealth(); renderStage(); });
         window.addEventListener("pagehide", () => { stageViewport.destroy(); session.destroy(); operatorContent.destroy(); workspace.destroy(); clearInterval(state.playbackTimer); });
         operatorReadiness.load();
-        const storedMode = readStoredMode();
-        if (storedMode) showMode(storedMode, { persist: false });
         bindEvents();
         bindDiagnosticColours();
         bindTabletSetup();

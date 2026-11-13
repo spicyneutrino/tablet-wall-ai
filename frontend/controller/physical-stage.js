@@ -427,10 +427,12 @@ window.PhysicalStage = {
                 const paint = result.total
                     ? (stale ? "Current " + noun + " evidence unavailable" : result.showing + " of " + result.total + " showing " + (appliedName() || "the current " + noun))
                     : empty;
-                el.wallHealth.textContent = (stale ? (/Connection lost|Failed to fetch|NetworkError|timed out/i.test(state.rosterError) ? "Server unreachable · tablets keep their last image. " : "") + "Status stale · " : "") + paint;
-                el.btnWallHealth.dataset.kind = !stale && result.states.some(item => ["failed", "blocked", "invalid_mapping"].includes(item.status)) ? "err" : stale || result.states.some(item => !["displayed", "offline", "excluded"].includes(item.status)) ? "warn"
+                const unreachable = stale && /Connection lost|Failed to fetch|NetworkError|Load failed|aborted|timed out/i.test(state.rosterError);
+                el.wallHealth.textContent = unreachable ? "Server unreachable · tablets keep their last image" : (stale ? "Status stale · " : "") + paint;
+                el.btnWallHealth.dataset.state = unreachable ? "unreachable" : "";
+                el.btnWallHealth.dataset.kind = unreachable ? "err" : !stale && result.states.some(item => ["failed", "blocked", "invalid_mapping"].includes(item.status)) ? "err" : stale || result.states.some(item => !["displayed", "offline", "excluded"].includes(item.status)) ? "warn"
                     : result.total && result.showing === result.total ? "ok" : "info";
-                if ($("wall-health-short")) $("wall-health-short").textContent = (stale ? "Stale " : "") + (result.total ? result.showing + "/" + result.total : counts?.online ? counts.online + " online" : "No wall");
+                if ($("wall-health-short")) $("wall-health-short").textContent = unreachable ? "Server unreachable" : (stale ? "Stale " : "") + (result.total ? result.showing + "/" + result.total : counts?.online ? counts.online + " online" : "No wall");
                 el.btnWallHealth.setAttribute("aria-label", (stale ? "Status stale. " : "") + (result.total ? result.showing + "/" + result.total + ". " + result.showing + " of " + result.total + " tablets showing the current " + noun + "." : empty + "."));
                 el.deviceCount.textContent = rosterSummary(state.operatorConfig, stale);
                 el.rosterStatus.hidden = !stale;
@@ -523,7 +525,7 @@ window.PhysicalStage = {
                     const add = document.createElement("button"); add.type = "button"; add.className = "btn btn-sm dev-action"; add.textContent = "Place";
                     add.addEventListener("click", async () => {
                         selectDevice(entry.id);
-                        if (await showMode("arrange", { persist: true })) {
+                        if (await showMode("arrange")) {
                             if (state.draft.kind === "physical" && !validPair(entry.id)) announce("Confirm the model or save measurements in Arrange before placing this tablet.");
                             else addSelectedDevice();
                         }
