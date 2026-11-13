@@ -54,6 +54,17 @@ def task(page, name, keyboard=False):
         page.locator(refresh).click()
 
 
+OWNERS = {"server-drawer": "Server", "panel-content": "Content", "panel-show": "Arrange", "panel-test": "Test",
+          "panel-tablets": "Tablets"}
+
+
+def reveal(page, locator):
+    """Open the mode or drawer that owns a control, as an operator would."""
+    owner = locator.first.evaluate("e=>e.closest('#server-drawer,.inspector-pane')?.id||null")
+    if owner in OWNERS and not page.locator("#" + owner).is_visible():
+        task(page, OWNERS[owner])
+
+
 def pick(page, device):
     button = tablet_button(page, device)
     if button.get_attribute("aria-pressed") != "true":

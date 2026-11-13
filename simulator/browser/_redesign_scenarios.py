@@ -381,7 +381,6 @@ def parity(rig):
         lambda c: c["layout"]["kind"] == "logical",
         "Cross-kind quick arrangement succeeds with a real safety copy",
     )
-    page.locator(f'#stage-svg .slot[data-device-id="{ids[-1]}"]').click()
     rig.open_disclosures(page.locator("#logical-mode"))
     page.locator("#logical-mode").select_option("fixed")
     rig.open_disclosures(page.locator("#logical-width"))
@@ -390,6 +389,7 @@ def parity(rig):
     rig.open_disclosures(page.locator("#logical-height"))
     page.locator("#logical-height").fill("800")
     page.locator("#logical-height").press("Tab")
+    page.locator(f'#stage-svg .slot[data-device-id="{ids[-1]}"]').click()
     page.locator("#logical-w").fill("84")
     page.locator("#logical-w").press("Tab")
     page.locator("#logical-bezel-left").fill("2")
@@ -489,6 +489,7 @@ def parity(rig):
         config()["layout"] == relative_saved,
         "Saved custom relative geometry recalls after returning from a measured arrangement",
     )
+    task("Saved content")
     page.get_by_role("button", name="Preview content “Landscape”", exact=True).click()
     expect(page.locator("#show-image")).to_have_text("Show saved content")
     before = config()
@@ -498,6 +499,8 @@ def parity(rig):
         config()["layout"] == before["layout"],
         "Saved scene Show recalls content while retaining custom logical geometry",
     )
+    task("Tablets")
+    pick(ids[0])
     task("Test colour")
     page.locator("#diagnostic-colour").fill("#246344")
     with page.expect_response(
@@ -943,7 +946,7 @@ def edges(rig):
     expect(page.locator("#upload-message")).to_contain_text("added and selected")
     page.locator("#show-image").click()
     expect(page.locator("#wall-health")).to_contain_text(
-        "4 of 4 showing supplied.png", timeout=10000
+        "4 of 4 showing replacement.png", timeout=10000
     )
     check(True, "Missing image recovers through actual Add image, preview and Show")
     task("Saved arrangements")

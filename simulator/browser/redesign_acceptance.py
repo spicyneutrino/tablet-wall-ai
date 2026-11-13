@@ -24,7 +24,7 @@ from playwright.sync_api import expect, sync_playwright
 from _workspace_shell import select_tablet
 
 from _redesign_edge_cases import HeldResponse, save_name, second_operator, task_tab
-from _workspace_shell import task as workspace_task, tablet_button
+from _workspace_shell import reveal, task as workspace_task, tablet_button
 
 ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(ROOT))
@@ -483,11 +483,7 @@ class Rig:
 
     def open_disclosures(self, selector):
         locator = self.page.locator(selector) if isinstance(selector, str) else selector
-        pane = locator.evaluate("e=>e.closest('.inspector-pane')?.id || null")
-        if pane and not self.page.locator('#' + pane).is_visible():
-            mode = {"panel-content": "Images", "panel-show": "Arrange", "panel-test": "Test"}.get(pane)
-            if mode:
-                self.task(mode)
+        reveal(locator.page, locator)
         for detail in locator.locator("xpath=ancestor::details").all():
             if detail.get_attribute("open") is None:
                 summary = detail.locator(":scope > summary")
@@ -1365,7 +1361,7 @@ def image_negatives(rig):
         client.route("**/media/**", lambda route: route.abort("connectionreset"))
         rig.click("#show-image")
         expect(p.locator("#wall-health")).to_contain_text(
-            "3 of 4 showing the current image", timeout=15000
+            "3 of 4 showing retry-fresh.png", timeout=15000
         )
         failed = rig.config()
         rig.check(
@@ -1381,7 +1377,7 @@ def image_negatives(rig):
         rig.click(f':is(.dev-pick,.roster-pick):visible[data-device-id="{rig.manifest["clients"][0]["id"]}"]')
         rig.click("#tablet-retry-image")
         expect(p.locator("#wall-health")).to_contain_text(
-            "4 of 4 showing supplied.png", timeout=15000
+            "4 of 4 showing retry-fresh.png", timeout=15000
         )
         after = rig.config()
         rig.check(
@@ -1511,6 +1507,7 @@ def recovery(rig):
     p.locator("#layout-name").fill("Durable recovery arrangement")
     rig.click("#btn-layout-save")
     expect(p.locator("#layout-msg")).to_contain_text("saved")
+    rig.open_disclosures("#scene-name")
     p.locator("#scene-name").fill("Durable recovery scene")
     rig.click("#scene-save")
     expect(p.locator("#scene-message")).to_contain_text("Content saved")
@@ -1637,7 +1634,7 @@ def corrections(rig):
         p.keyboard.press("Home")
         expect(gallery.nth(0)).to_be_focused()
 
-    p.locator("#edit-current-image").click()
+    rig.click("#edit-current-image")
     expect(p.locator("#stage-mode-description")).to_have_text("Image preview, not shown")
     tree = p.locator("body").aria_snapshot()
     rig.check(
@@ -1698,7 +1695,7 @@ def corrections(rig):
 
     p.locator("#image-discard").click()
     p.set_viewport_size({"width": 1440, "height": 900})
-    p.locator("#edit-current-image").click()
+    rig.click("#edit-current-image")
     expect(p.locator("#show-image")).to_be_enabled()
     p.locator("#show-image").focus()
     p.locator("#show-image").press("Enter")
@@ -1760,6 +1757,7 @@ def corrections(rig):
     rig.check(True, "Inspector Identify recovers after authoritative reconciliation")
 
     p.set_viewport_size({"width": 390, "height": 844})
+    rig.task("Tablets")
     select_tablet(p.locator(":is(.dev-pick,.roster-pick):visible").first)
     rig.tablets[0].set_viewport_size({"width": 930, "height": 1280})
     expect(p.locator("#open-tablet-measurements")).to_be_visible()
@@ -1778,8 +1776,10 @@ def corrections(rig):
     select_tablet(p.locator(":is(.dev-pick,.roster-pick):visible").last)
     expect(p.locator("#tablet-arrange")).to_be_visible()
     p.locator("#tablet-arrange").click()
-    expect(p.locator("#panel-show")).to_be_visible()
+    expect(p.locator("body")).to_have_attribute("data-mode", "arrange")
     expect(p.locator("dialog:modal")).to_have_count(0)
+    rig.task("Arrange")
+    expect(p.locator("#panel-show")).to_be_visible()
     p.locator("#grid-1x4").click()
     p.locator("#btn-cancel").click()
     rig.check(True, "Phone Place in Arrange closes its modal and leaves the destination interactive")

@@ -2871,8 +2871,8 @@ def first_wall(rig: RenewalRig) -> None:
         page.click("#show-image")
     health = _soft_wait(
         page,
-        "() => /4 of 4 showing /.test("
-        "document.getElementById('wall-health').textContent)",
+        "() => document.getElementById('wall-health').textContent === "
+        "'4 of 4 showing ' + document.getElementById('image-title').textContent",
         timeout=35,
     )
     puts = _scene_write_rows(rig, show_start)

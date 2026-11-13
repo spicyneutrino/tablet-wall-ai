@@ -109,7 +109,10 @@ def native_keyboard(rig):
         fatal=False,
     )
     native_tab_task(p, "Arrange")
-    native_tab_to(p, "#btn-layout-save")
+    native_tab_to(p, "#btn-layout-save, #tablet-back")
+    if focus(p)["id"] == "tablet-back":
+        p.keyboard.press("Enter")
+        native_tab_to(p, "#btn-layout-save")
     p.keyboard.press("Enter")
     expect(p.locator("#layout-msg")).to_contain_text("Enter an arrangement name")
     rig.check(
@@ -118,6 +121,7 @@ def native_keyboard(rig):
         focus(p),
         fatal=False,
     )
+    native_tab_task(p, "Content")
     native_tab_to(p, "#scene-save")
     p.keyboard.press("Enter")
     expect(p.locator("#scene-message")).to_contain_text("Enter a content name")
@@ -468,9 +472,9 @@ STATE_CONTRAST = r"""() => {
  const lum=c=>rgb(c).map(v=>v/255).map(v=>v<=.04045?v/12.92:((v+.055)/1.055)**2.4).reduce((s,v,i)=>s+v*[.2126,.7152,.0722][i],0);
  const ratio=(a,b)=>{a=lum(a);b=lum(b);return (Math.max(a,b)+.05)/(Math.min(a,b)+.05)};
  const backdrop=e=>{for(let p=e;p;p=p.parentElement){const c=getComputedStyle(p).backgroundColor;if(c!=='rgba(0, 0, 0, 0)')return c}return '#fff'};
- return [...document.querySelectorAll('#stage-identities li,#stage-svg .operator-body-outline,#stage-svg .logical-resize,:focus-visible')].filter(e=>e.checkVisibility()).map(e=>{
+ return [...document.querySelectorAll('#stage-svg .operator-slot-label,#stage-svg .operator-body-outline,#stage-svg .logical-resize,:focus-visible')].filter(e=>e.checkVisibility()).map(e=>{
   const s=getComputedStyle(e),svg=e.closest('svg');
-  if(e.matches('#stage-identities li')){const bg=backdrop(e);return {kind:'svg-text',text:e.textContent,foreground:s.color,background:bg,ratio:ratio(s.color,bg),threshold:4.5};}
+  if(e.matches('.operator-slot-label')){const bg=getComputedStyle(e.parentElement.querySelector('.operator-slot-label-bg')).fill;return {kind:'svg-text',text:e.dataset.label,foreground:s.fill,background:bg,ratio:ratio(s.fill,bg),threshold:4.5};}
   if(e.matches('.operator-body-outline,.logical-resize'))return {kind:'svg-nontext',id:e.closest('.slot').dataset.deviceId,foreground:e.matches('.logical-resize')?s.fill:s.stroke,background:'#22252a',ratio:ratio(e.matches('.logical-resize')?s.fill:s.stroke,'#22252a'),threshold:3};
   if(e.matches('.slot')){const b=getComputedStyle(e.querySelector('.operator-body-outline'));return {kind:'svg-focus',foreground:b.stroke,background:backdrop(e),width:parseFloat(b.strokeWidth),ratio:ratio(b.stroke,backdrop(e)),threshold:3};}
   const outer=backdrop(e.parentElement);return {kind:'focus-ring',id:e.id,foreground:s.outlineColor,background:outer,width:parseFloat(s.outlineWidth),style:s.outlineStyle,ratio:ratio(s.outlineColor,outer),threshold:3};
@@ -536,7 +540,6 @@ def interaction_contrast(rig):
             p.locator("#device-sheet-close").click()
         task(p, "Arrange")
         tile = p.locator("#stage-svg .slot").first
-        rig.open_disclosures("#stage-identities li")
         native_tab_to(p, "#stage-svg .slot")
         tile.hover()
         rows = p.evaluate(STATE_CONTRAST)

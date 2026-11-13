@@ -1110,7 +1110,7 @@ def missing_live(rig):
         rig.tablets[0].route("**/assets/**", lambda route: route.continue_())
         rig.tablets[0].reload()
         expect(p.locator("#wall-health")).to_contain_text(
-            "3 of 4 showing the current image", timeout=15000
+            "3 of 4 showing supplied.png", timeout=15000
         )
         task(p, "Images")
         p.locator("#refresh-images").click()
@@ -1142,7 +1142,7 @@ def missing_live(rig):
         )
         p.locator("#show-image").click()
         expect(p.locator("#wall-health")).to_contain_text(
-            "4 of 4 showing supplied.png", timeout=15000
+            "4 of 4 showing live-replacement.png", timeout=15000
         )
         rig.check(
             rig.config()["layout"] == before["layout"]
@@ -1541,10 +1541,12 @@ def refused_grid(rig):
     tile.click()
     p.locator("#logical-w").fill("85")
     p.locator("#logical-w").press("Tab")
+    task(p, "Arrange")
     p.locator("#grid-preview").click()
     expect(p.locator("#grid-message")).to_contain_text(
         "Apply or cancel the manual draft"
     )
+    tile.click()
     p.locator("#logical-w").fill("95")
     p.locator("#logical-w").press("Tab")
     rendered = float(tile.locator(".operator-body-outline").get_attribute("width"))
