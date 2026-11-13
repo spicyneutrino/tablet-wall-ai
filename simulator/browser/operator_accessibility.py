@@ -494,6 +494,7 @@ def interaction_contrast(rig):
         for mode in ("hover", "focus"):
             target = p.locator("#tablet-label-save")
             if not target.is_visible():
+                task(p, "Tablets")
                 select_tablet(p.locator(":is(.dev-pick,.roster-pick):visible").first)
             if mode == "hover":
                 target.hover()
