@@ -423,7 +423,7 @@ window.PhysicalStage = {
                 const counts = window.OperatorState.registrationCounts(state.operatorConfig);
                 const empty = counts && counts.online ? counts.online + " online · none on the wall" : "No tablets on the wall";
                 const content = state.operatorConfig.scene && state.operatorConfig.scene.content || {};
-                const noun = content.type === "image" ? "image" : "scene";
+                const noun = window.OperatorState.shownSubject(content);
                 const paint = result.total
                     ? (stale ? "Current " + noun + " evidence unavailable" : result.showing + " of " + result.total + " showing " + (appliedName() || "the current " + noun))
                     : empty;
@@ -579,7 +579,7 @@ window.PhysicalStage = {
                 row.chipName.className = "dev-label" + (named && entry.label.length <= 12 ? "" : " sr-only");
                 row.chipName.textContent = entry.label;
                 row.chipPick.title = numberedLabel(entry.id) + " · " + roster.word;
-                row.chipPick.setAttribute("aria-label", numberedLabel(entry.id) + ", " + roster.word + (power ? ". " + power.label : ""));
+                row.chipPick.setAttribute("aria-label", numberedLabel(entry.id) + ", " + roster.word + (power && !(commonPower && power.state === commonPower && !power.stale) ? ". " + power.label : ""));
                 row.item.dataset.powerState = power ? power.state : "unknown";
                 row.item.dataset.powerWarning = String(!!power && power.warning);
                 row.item.dataset.powerStale = String(!!power && power.stale);

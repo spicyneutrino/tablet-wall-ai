@@ -145,12 +145,16 @@
             .map(([id, device]) => [id, observeDevice(device, nowMono)]));
         return { ...config, runtime: { ...config.runtime, devices } };
     }
+    function shownSubject(content) {
+        const type = content && content.type;
+        return type === "image" ? "image" : type === "color" ? "colour" : type === "calibration" ? "wall grid" : "content";
+    }
     function tabletState(config, id, nowMono) {
         const slot = entries(config.layout)[id];
         const device = config.runtime && config.runtime.devices && config.runtime.devices[id];
         const content = config.scene && config.scene.content || {};
         const image = content.type === "image";
-        const subject = image ? "image" : "scene";
+        const subject = shownSubject(content);
         const result = (status, text, showing = false) => ({ status, text, showing, online: !!device && device.online === true });
         if (!slot) return result("unplaced", "No placement");
         if (!device) return result("unknown", "Missing tablet · spot reserved");
@@ -176,9 +180,9 @@
                     || device.connection_id !== undefined && expected.connection_id !== device.connection_id) {
                 return result("stale", "Previous paint · current " + subject + " unconfirmed");
             }
-            return result("displayed", image ? "Reports current image" : "Current scene reported", true);
+            return result("displayed", "Reports current " + subject, true);
         }
-        const texts = { blocked: "Blocked", loading: "Loading " + subject, failed: image ? "Image failed" : "Scene failed", hidden: "Page hidden",
+        const texts = { blocked: "Blocked", loading: "Loading " + subject, failed: subject[0].toUpperCase() + subject.slice(1) + " failed", hidden: "Page hidden",
             stale: "Confirmation expired", unsupported: "Unsupported client or content", unplaced: "No placement", unknown: "Current " + subject + " unconfirmed" };
         return result(status in texts ? status : "unknown", (texts[status] || texts.unknown) + (render.reason ? " · " + render.reason : ""));
     }
@@ -206,7 +210,7 @@
         return { event() { epoch += 1; }, start() { return { epoch, sequence: ++issued }; }, current(ticket) { return ticket.epoch === epoch; },
             accept(ticket) { if (ticket.epoch !== epoch || ticket.sequence < accepted) return false; accepted = ticket.sequence; return true; } };
     }
-    const api = { stageEditable, stageView, layoutSignature, fitLogical, arrangeLogical, rotateLogical, clone, entries, registrationCounts, layoutDraft, bounds, fitTransform, compareIds, sameToken, observeDevice, observeConfig, tabletState, needsAttention, rosterStatus, aggregate, readFence };
+    const api = { shownSubject, stageEditable, stageView, layoutSignature, fitLogical, arrangeLogical, rotateLogical, clone, entries, registrationCounts, layoutDraft, bounds, fitTransform, compareIds, sameToken, observeDevice, observeConfig, tabletState, needsAttention, rosterStatus, aggregate, readFence };
     if (typeof module !== "undefined" && module.exports) module.exports = api;
     else root.OperatorState = api;
 }(typeof window !== "undefined" ? window : globalThis));

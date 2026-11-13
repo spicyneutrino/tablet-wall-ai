@@ -152,7 +152,7 @@
             if (statusDetails && (id !== statusDetails.dataset.deviceId || String(healthy) !== statusDetails.dataset.healthy)) statusDetails.open = !healthy;
             if (statusDetails) { statusDetails.dataset.deviceId = id; statusDetails.dataset.healthy = String(healthy); }
             const tabletOnline = !!device && device.online === true;
-            recovery.hidden = !tabletOnline || healthy;
+            recovery.hidden = !tabletOnline;
             recovery.dataset.powerState = power ? power.state : "";
             recovery.dataset.powerWarning = String(!!power && power.warning);
             for (const action of ["tablet-identify", "tablet-retry-image", "tablet-reconnect"]) {

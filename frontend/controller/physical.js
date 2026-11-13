@@ -2693,6 +2693,8 @@
         else if (key === "ArrowDown") deltaY = step;
         if (deltaX === 0 && deltaY === 0) return;
 
+        const focused = event.target.closest(".slot");
+        if (focused && focused.dataset.deviceId && focused.dataset.deviceId !== state.selectedId) selectDevice(focused.dataset.deviceId);
         if (!selectedSlot() && !(state.draft && state.draft.placements && state.draft.placements[state.selectedId])) return;
         event.preventDefault();
         nudgeSelected(deltaX, deltaY);
@@ -2885,11 +2887,6 @@
         el.stageSvg.addEventListener("pointercancel", onPointerCancel);
         el.stageSvg.addEventListener("lostpointercapture", function (event) {
             if (state.drag && event.pointerId === state.drag.pointerId) endDrag(true);
-        });
-        el.stageSvg.addEventListener("focusin", function (event) {
-            const group = event.target && event.target.closest
-                ? event.target.closest(".slot") : null;
-            if (group && group.dataset.deviceId) selectDevice(group.dataset.deviceId);
         });
         el.stageSvg.addEventListener("keydown", function (event) {
             if (event.key !== "Enter" && event.key !== " ") return;
