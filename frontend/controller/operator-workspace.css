@@ -476,7 +476,8 @@ dialog.server-drawer::backdrop { background: var(--backdrop); }
     #commit-bar #selected-image-controls { grid-column: 1; grid-row: auto; justify-content: stretch; flex-wrap: wrap; }
     #commit-bar .image-primary-actions { flex: 1; }
     #commit-bar .image-primary-actions .btn { flex: 1; }
-    #image-fit-field { flex: none; }
+    #image-fit-field { flex: 0 1 auto; }
+    .inspector { contain: size; }
     .inspector-scroll { padding-inline: var(--space-4); }
     .bottom-nav { grid-area: nav; display: flex; border-block-start: 1px solid var(--border-strong); background: var(--surface); padding-block-end: env(safe-area-inset-bottom); }
     .bottom-nav-item { position: relative; flex: 1; min-inline-size: 0; padding-inline: var(--space-1); font-size: var(--text-sm); min-block-size: 52px; border: 0; background: transparent; color: var(--muted); font-weight: 500; border-block-start: 2px solid transparent; }
