@@ -191,7 +191,8 @@ body[data-empty-wall="true"] .stage-well { place-content: center; justify-items:
 #commit-bar #selected-image-controls { grid-column: 2; grid-row: 1 / span 2; display: flex; align-items: center; justify-content: flex-end; gap: var(--space-3); }
 .image-actions, .image-action-row, .image-adjust-row { display: flex; flex-wrap: wrap; align-items: center; gap: var(--space-2); }
 .image-adjust-row:not(:has(> :not([hidden]))) { display: none; }
-#image-fit-field { display: flex; flex-wrap: wrap; align-items: center; gap: var(--space-2); min-inline-size: 0; font-size: var(--text-md); }
+#image-preview-controls { min-inline-size: 0; max-inline-size: 100%; }
+#image-fit-field { max-inline-size: 100%; display: flex; flex-wrap: wrap; align-items: center; gap: var(--space-2); min-inline-size: 0; font-size: var(--text-md); }
 #image-fit { inline-size: 6rem; max-inline-size: 100%; }
 .compact-label { display: none; }
 /* Commit bar content per state */
