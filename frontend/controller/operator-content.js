@@ -160,20 +160,20 @@ window.OperatorContent = {
             return image ? { type: "image", asset: image.id, url: image.url, intrinsicWidth: image.width,
                 intrinsicHeight: image.height, fit, background } : null;
         }
-        function select(id, nextFit = fit, nextBackground = background) {
+        function select(id, nextFit, nextBackground = background) {
             if (!selectionDirty) baseEtag = state.etag;
             if (!selectionDirty || id !== selected) {
                 const applied = state.scene && state.scene.content;
                 if (applied && applied.type === "image" && applied.asset === id) {
-                    nextFit = applied.fit || "cover";
+                    nextFit = nextFit ?? applied.fit ?? "cover";
                     nextBackground = applied.background;
                 } else nextBackground = "#0b1120";
             }
-            selected = id; fit = nextFit; background = normalizedBackground(nextBackground); savedScene = null;
+            selected = id; fit = nextFit ?? fit; background = normalizedBackground(nextBackground); savedScene = null;
             selectionDirty = true; selectionVersion += 1;
             state.viewLive = false; if (!retainMessage) message(""); updateAndRender(); renderStage();
         }
-        async function choose(id, nextFit = fit) {
+        async function choose(id, nextFit) {
             if (!id) return false;
             const version = selectionVersion;
             if (!await resolveOutput("Preview this image", "image") || version !== selectionVersion) { updateAndRender(); return false; }
@@ -611,7 +611,7 @@ window.OperatorContent = {
             const applied = state.scene && state.scene.content;
             const asset = selectionDirty ? selected : applied && applied.type === "image" && applied.asset;
             if (!asset) { event.target.value = fit; return; }
-            choose(asset, event.target.value);
+            return choose(asset, event.target.value);
         });
         $("image-search").addEventListener("input", renderGallery);
         $("image-gallery").addEventListener("keydown", event => {

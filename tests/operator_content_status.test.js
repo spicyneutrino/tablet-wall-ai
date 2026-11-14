@@ -136,6 +136,8 @@ const content = context.window.OperatorContent.create({ state, renderStage() {},
     assert.equal(buttonA.attrs["aria-describedby"], appliedNote.id, "the applied marker has an accessible description");
     assert.equal(content.stageNames().applied, "a");
 
+
+
     const confirm = "";
     const render = config.runtime.devices.t.render;
     Object.assign(render, { state: "displayed", current: true, expected_token: token, accepted_token: { ...token }, age_ms: 0, observed_mono: 100 });
@@ -206,6 +208,13 @@ const content = context.window.OperatorContent.create({ state, renderStage() {},
     assert.equal(state.previewContent.asset, "a");
     content.discard();
     assert.equal(content.dirty(), false);
+
+    await node("image-fit").change({ target: { value: "contain" } });
+    assert.equal(state.previewContent.fit, "contain", "the first Scaling choice is retained when opening an applied-image draft");
+    assert.equal(node("image-fit").value, "contain");
+    assert.equal(state.scene.content.fit, "cover", "changing Scaling only previews, without changing the applied image");
+    content.discard();
+    assert.equal(node("image-fit").value, "cover", "discard restores applied Scaling");
 
     state.scene = { content: { type: "image", asset: "a", fit: "contain" } };
     renderContent(content);
