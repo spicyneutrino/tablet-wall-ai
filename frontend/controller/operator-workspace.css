@@ -456,7 +456,7 @@ dialog.server-drawer::backdrop { background: var(--backdrop); }
 /* Below 64rem: stage and commit bar stay pinned; the inspector scrolls inside the remaining space */
 @media (max-width: 63.99rem) {
     .topbar:has(.problem-chip) { flex-wrap: wrap; }
-    .topbar:has(.problem-chip) .wall-summary { display: contents; }
+    .topbar:has(.problem-chip) .wall-summary { display: flex; }
     .topbar:has(.problem-chip) .problem-chips { order: 1; flex-basis: 100%; flex-wrap: wrap; padding-block-end: var(--space-1); }
     .workspace { grid-template-columns: minmax(0, 1fr); grid-template-rows: auto auto minmax(0, 1fr); grid-template-areas: "notices" "stage" "inspector"; }
     .stage-column { padding-block-end: var(--space-2); }
@@ -467,18 +467,18 @@ dialog.server-drawer::backdrop { background: var(--backdrop); }
 /* Phone */
 @media (max-width: 47.99rem) {
     :root { --page-pad: 16px; --tool-h: 44px; --control-primary: 44px; --control-min: 44px; --control-form: 44px; --control-compact: 44px; --commit-h: auto; }
-    body.physical { grid-template-rows: auto minmax(min-content, 1fr); overflow-y: auto; }
+    body.physical { grid-template-rows: minmax(min-content, auto) minmax(min-content, 1fr); overflow-y: auto; }
     .topbar-actions { flex-wrap: wrap; justify-content: flex-end; min-inline-size: 0; }
-    .topbar { display: grid; grid-template-columns: auto minmax(0, 1fr) auto; grid-template-areas: "brand summary actions"; gap: 0 var(--space-2); padding: 0 var(--space-2); }
+    .topbar { display: flex; flex-wrap: wrap; gap: 0 var(--space-2); padding: 0 var(--space-2); }
     .brand { grid-area: brand; font-size: 0; gap: 0; }
-    .topbar-actions { grid-area: actions; }
-    .wall-summary { grid-area: summary; flex-wrap: wrap; gap: var(--space-1) var(--space-3); min-block-size: 28px; }
+    .topbar-actions { grid-area: actions; flex: 0 1 auto; }
+    .wall-summary { grid-area: summary; flex: 1 1 10rem; flex-wrap: wrap; gap: var(--space-1) var(--space-3); min-block-size: 28px; }
     .wall-health[data-state="unreachable"] #wall-health { display: none; }
     .wall-health[data-state="unreachable"] #wall-health-short { display: inline; }
     #wall-health { display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2; white-space: normal; line-height: 1.25; }
     #wall-health-short { display: none; }
     .topbar:has(.problem-chip) { grid-template-areas: "brand summary actions" "problems problems problems"; }
-    .topbar:has(.problem-chip) .wall-summary { display: contents; }
+    .topbar:has(.problem-chip) .wall-summary { display: flex; }
     .topbar:has(.problem-chip) .wall-health { grid-area: summary; }
     .arrangement-history .btn { min-inline-size: 44px; }
     .problem-chips { grid-area: problems; padding-block-end: var(--space-1); }

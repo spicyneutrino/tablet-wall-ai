@@ -156,8 +156,10 @@
             const scale = Math.hypot(matrix.a, matrix.b);
             if (!scale) return;
             const width = Number(label.dataset.width) * scale, height = Number(label.dataset.height) * scale;
-            const text = label.dataset.label || "";
+            let text = label.dataset.label || "";
             const offline = label.dataset.status === "offline";
+            if (offline && (width - 12) / (Math.max(1, text.length) * 0.6) < 9) text = "Offline";
+            label.textContent = text;
             const size = Math.min(offline ? LABEL_MAX : 10, height - 10, (width - 12) / (Math.max(1, text.length) * 0.6));
             const room = Math.max(1, Math.floor((width - 12) / (Math.max(1, size) * 0.6)));
             const fits = size >= 9 && text.length <= room;

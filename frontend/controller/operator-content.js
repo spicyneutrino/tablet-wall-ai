@@ -436,9 +436,10 @@ window.OperatorContent = {
                 : baseEtag !== state.etag ? "Rebuild this preview before showing it."
                 : "";
             $("image-title").dataset.empty = String(!["image", "color", "calibration"].includes(content.type));
-            $("image-title").textContent = selectionDirty && !state.viewLive ? pendingName()
+            const title = selectionDirty && !state.viewLive ? pendingName()
                 : appliedUnavailable() ? "Unavailable image" : active ? active.name : content.type === "image" ? content.name || "Image"
                     : ({ color: "Tablet colours", calibration: "Calibration grid" }[content.type] || "Nothing shown");
+            $("image-title").textContent = /^wall-pattern-/.test(title || "") ? "Test pattern" : title;
             $("image-details").textContent = selectionDirty && selected && !image
                 ? "Selected image unavailable. Refresh images or choose a replacement." : "";
             $("image-preview-controls").hidden = !selectionDirty && !active;
