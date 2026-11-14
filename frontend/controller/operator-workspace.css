@@ -456,7 +456,7 @@ dialog.server-drawer::backdrop { background: var(--backdrop); }
 /* Below 64rem: stage and commit bar stay pinned; the inspector scrolls inside the remaining space */
 @media (max-width: 63.99rem) {
     .topbar:has(.problem-chip) { flex-wrap: wrap; }
-    .topbar:has(.problem-chip) .wall-summary { display: flex; }
+    .topbar:has(.problem-chip) .wall-summary { display: contents; }
     .topbar:has(.problem-chip) .problem-chips { order: 1; flex-basis: 100%; flex-wrap: wrap; padding-block-end: var(--space-1); }
     .workspace { grid-template-columns: minmax(0, 1fr); grid-template-rows: auto auto minmax(0, 1fr); grid-template-areas: "notices" "stage" "inspector"; }
     .stage-column { padding-block-end: var(--space-2); }
