@@ -1,3 +1,4 @@
 - U09 follow-up: port skipped operator_grid.test.js lines 31,37,39-43,45-47,87 once U05/U07 land; swap local clone/layoutEntries for U06 layout.ts. Fold into U10.
 - U07 follow-up: port operator_stage_fit.test.js lines 120,121,124,125,133,137,140,147,150 (fitTransform) in U10; replace private entries/rosterStatus copies in stagePanels.ts with U06 imports. draw/create assertions (68,93,100,101,111-115,162-167,179) are covered by U12 WallSvg tests instead.
 - U06 follow-up: operator_state.test.js stageView/stageEditable assertions (18) go to U11/U12; readFence (2) to U04. U06 met the count floor with 39 extra characterization assertions, not the deferred ones.
+- U04 follow-up (fold into U11): replace session local guards with src/api schemas; port operator_late_join.test.js lines 26,27,30,31,37,46,47,48 (grid/draft).
