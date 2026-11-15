@@ -151,7 +151,7 @@
                 : "Current matching reports are separate from connection status. Reconnect keeps this browser identity.";
             const powerGuidance = power && (power.warning || power.stale || !evidence || !evidence.showing) ? power.guidance : "";
             const recoveryText = device?.online === false
-                ? "Tablet is offline; this is the last known report. On the tablet, check power, keep its screen awake, join the wall network and reopen the tablet page in its existing browser. Check Auto-Lock, charging, kiosk settings and the trusted HTTPS origin. The server cannot wake a sleeping tablet. Wake lock is not proof of screen or paint. Insecure origins cannot take a wake lock."
+                ? "Tablet is offline; this is the last known report. On the tablet, check power, keep its screen awake, join the wall network and reopen the tablet page in its existing browser. Check Auto-Lock, charging, kiosk settings and the trusted HTTPS origin. The server cannot wake a sleeping tablet or force a denied wake lock. Wake lock is not proof of screen or paint. Insecure origins cannot take a wake lock."
                 : [paintGuidance, powerGuidance].filter(Boolean).join(" ");
             const offline = !!device && device.online === false;
             const recoveryLabels = ["What the server last knew", "At the tablet", "What the server cannot do"];

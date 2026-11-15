@@ -163,12 +163,15 @@ async function run() {
         "Tablet is offline; this is the last known report.",
         "On the tablet, check power, keep its screen awake, join the wall network and reopen the tablet page in its existing browser.",
         "Check Auto-Lock, charging, kiosk settings and the trusted HTTPS origin.",
-        "The server cannot wake a sleeping tablet.",
+        "The server cannot wake a sleeping tablet or force a denied wake lock.",
         "Wake lock is not proof of screen or paint.",
         "Insecure origins cannot take a wake lock."
     ];
     assert.deepEqual(node("tablet-recovery").children.map(block => block.children[0].textContent),
         ["What the server last knew", "At the tablet", "What the server cannot do"]);
+    assert.equal(node("tablet-recovery").children[2].children.length, 4, "server limits keep three short sentences under their heading");
+    assert.match(node("tablet-recovery").children[2].textContent, /cannot wake.*denied/,
+        "offline guidance keeps both the sleeping-tablet and denied wake-lock limits");
     assert.deepEqual(sentences(node("tablet-recovery").children.flatMap(block => block.children.slice(1)).map(p => p.textContent).join(" ")), offlineSentences.slice().sort(),
         "offline guidance retains the concise physical actions and server limits");
     state.roster.a.online = true;

@@ -1450,7 +1450,9 @@ def pattern_grouping(rig: RenewalRig) -> None:
                 .find(node => node.children.length === 0 && node.textContent.trim() === 'Test pattern');
             return {
                 assetId: item.dataset.assetId || '',
-                name: name ? name.textContent : '',
+                name: button ? button.title : '',
+                displayName: name ? name.textContent : '',
+                nameTitle: name ? name.title : '',
                 text: item.textContent,
                 tag: tag ? {present: true, visible: tag.getClientRects().length > 0} : {present: false},
                 ariaLabel: button ? button.getAttribute('aria-label') : null,
@@ -1464,8 +1466,14 @@ def pattern_grouping(rig: RenewalRig) -> None:
     expected_name = "wall-pattern-" + last["assetId"][len("sha256:"):] + ".png"
     rig.check(
         "The generated pattern sorts last and keeps its exact published name",
-        last["assetId"].startswith("sha256:") and last["name"] == expected_name,
-        {"assetId": last["assetId"], "name": last["name"], "position": last["buttons"]},
+        last["assetId"].startswith("sha256:")
+        and last["name"] == expected_name
+        and last["nameTitle"] == expected_name
+        and last["ariaLabel"] == "Preview " + expected_name + ", test pattern"
+        and last["displayName"] == expected_name[:8] + "…" + expected_name[-13:],
+        {"assetId": last["assetId"], "name": last["name"], "position": last["buttons"],
+         "ariaLabel": last["ariaLabel"], "nameTitle": last["nameTitle"],
+         "displayName": last["displayName"]},
         {"assetId": "sha256:…", "name": expected_name, "last": True},
         obligation="D7",
     )
@@ -1856,12 +1864,20 @@ def _gallery_metrics(page: Any, *, reset_scroll: bool = True) -> dict[str, Any]:
                 const img = li.querySelector('img');
                 const rect = li.getBoundingClientRect();
                 const imageRect = img ? img.getBoundingClientRect() : null;
+                const nameRect = name ? name.getBoundingClientRect() : null;
+                const sizeRect = size ? size.getBoundingClientRect() : null;
                 return {
                     assetId: li.dataset.assetId || '',
-                    name: name ? name.textContent : null,
+                    name: button ? button.title : null,
+                    displayName: name ? name.textContent : null,
+                    nameTitle: name ? name.title : null,
                     buttonText: button ? button.textContent.trim() : null,
                     ariaLabel: button ? button.getAttribute('aria-label') : null,
                     imageSize: size ? size.textContent.trim() : null,
+                    sizeBelowName: !!nameRect && !!sizeRect && size.checkVisibility()
+                        && sizeRect.width > 1 && sizeRect.height > 1
+                        && sizeRect.top >= nameRect.bottom - 1
+                        && sizeRect.bottom <= rect.bottom + 1,
                     rect: {top: rect.top, bottom: rect.bottom, left: rect.left, right: rect.right},
                     img: imageRect ? {
                         width: imageRect.width,
@@ -2197,7 +2213,7 @@ def images_workbench(rig: RenewalRig) -> None:
         page,
         "(names) => names.every(name => {"
         " const li = [...document.querySelectorAll('#image-gallery > li')]"
-        "   .find(item => item.querySelector('.image-choice-name')?.textContent === name);"
+        "   .find(item => item.querySelector('button')?.getAttribute('aria-label') === 'Preview ' + name);"
         " const img = li?.querySelector('img');"
         " return !!img && img.complete && img.naturalWidth > 0 && img.naturalHeight > 0; })",
         arg=shape_names,
@@ -2265,24 +2281,38 @@ def images_workbench(rig: RenewalRig) -> None:
         obligation="C-WORKBENCH",
     )
     rig.check(
-        "Gallery tile buttons keep the plain image name so gallery-focus still reads it",
+        "Gallery tile buttons expose the exact image name and a matching label with its ending visible",
         bool(gallery["tiles"])
-        and all(tile["name"] and tile["buttonText"] == tile["name"] for tile in gallery["tiles"]),
-        [{"name": tile["name"], "buttonText": tile["buttonText"]} for tile in gallery["tiles"]],
-        {"buttonText": "equals the image name"},
+        and all(
+            tile["name"] in inventory
+            and tile["ariaLabel"] == "Preview " + tile["name"]
+            and tile["nameTitle"] == tile["name"]
+            and tile["buttonText"] == tile["displayName"]
+            and tile["displayName"] == (
+                tile["name"][:8] + "…" + tile["name"][-13:]
+                if len(tile["name"]) > 22 else tile["name"]
+            )
+            for tile in gallery["tiles"]
+        ),
+        [{"name": tile["name"], "ariaLabel": tile["ariaLabel"],
+          "nameTitle": tile["nameTitle"], "displayName": tile["displayName"],
+          "buttonText": tile["buttonText"]} for tile in gallery["tiles"]],
+        {"accessibleName": "Preview followed by the exact published name",
+         "titles": "exact published name", "displayName": "filename with its ending visible"},
         obligation="C-GALLERY",
     )
     sized = [tile for tile in gallery["tiles"] if tile["imageSize"]]
     sizes_ok = len(sized) == len(gallery["tiles"]) and all(
         tile["name"] in inventory
-        and str(inventory[tile["name"]]["width"]) in tile["imageSize"]
-        and str(inventory[tile["name"]]["height"]) in tile["imageSize"]
+        and tile["imageSize"] == f'{inventory[tile["name"]]["width"]} × {inventory[tile["name"]]["height"]}'
+        and tile["sizeBelowName"]
         for tile in sized
     )
     rig.check(
         "Each gallery tile states its pixel size under the name",
         sizes_ok,
-        [{"name": tile["name"], "size": tile["imageSize"]} for tile in gallery["tiles"]],
+        [{"name": tile["name"], "size": tile["imageSize"],
+          "sizeBelowName": tile["sizeBelowName"]} for tile in gallery["tiles"]],
         {"size": "width and height shown for every tile"},
         obligation="C-WORKBENCH",
     )
