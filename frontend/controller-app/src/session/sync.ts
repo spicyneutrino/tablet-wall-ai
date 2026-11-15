@@ -1,3 +1,6 @@
+import { ConfigSchema } from '../api/config';
+import { DevicesSchema } from '../api/devices';
+import { ControllerFrameSchema } from '../api/frames';
 import { ApiError, isRecord } from './outcome';
 import type { Device, SessionState } from './session';
 
@@ -16,7 +19,7 @@ type Dependencies = SyncDependencies & {
 
 export function observeDevice(device: Device, now: number): Device {
   const render = device.render;
-  if (!isRecord(render)) return { ...device };
+  if (!render) return { ...device };
   const elapsed = typeof render.observed_mono === 'number' && Number.isFinite(render.observed_mono)
     ? Math.max(0, now - render.observed_mono) : 0;
   return { ...device, render: { ...render,
@@ -24,8 +27,8 @@ export function observeDevice(device: Device, now: number): Device {
 }
 
 export function deviceMap(value: unknown): Record<string, Device> | null {
-  if (!isRecord(value) || !Object.values(value).every(isRecord)) return null;
-  return value as Record<string, Device>;
+  const result = ConfigSchema.shape.runtime.shape.devices.safeParse(value);
+  return result.success ? result.data : null;
 }
 
 export function createSync(deps: Dependencies) {
@@ -42,16 +45,19 @@ export function createSync(deps: Dependencies) {
     fetching = true; queued = false;
     const ticket = fence.start();
     try {
-      const config = await deps.api();
+      let config = await deps.api();
       if (stopped) return;
       if (!fence.accept(ticket)) { queued ||= state.etagState === 'stale'; return; }
-      if (!isRecord(config) || !isRecord(config.runtime) || !deviceMap(config.runtime.devices)) {
+      if (isRecord(config) && (!isRecord(config.runtime) || !Object.hasOwn(config.runtime, 'devices'))
+        && ConfigSchema.omit({ runtime: true }).safeParse(config).success) {
         const roster = await deps.roster();
         if (stopped) return;
         if (!fence.accept(ticket)) { queued ||= state.etagState === 'stale'; return; }
-        const devices = deviceMap(roster);
+        const devices = DevicesSchema.safeParse(roster).data;
         if (!devices) throw new Error('Invalid tablet roster. Refresh status to reconcile.');
         state.roster = devices;
+        config = { ...config, runtime: { observed_at: null, presentation: { owner: 'static', state: 'static' },
+          ...(isRecord(config.runtime) ? config.runtime : {}), devices } };
       }
       deps.ingest(config, { preserveDraft: true, remote: true });
       state.rosterError = null;
@@ -85,47 +91,34 @@ export function createSync(deps: Dependencies) {
       let frame: unknown;
       try { frame = JSON.parse(String(event.data)); } catch { malformed(); return; }
       if (!isRecord(frame) || typeof frame.type !== 'string') { malformed(); return; }
+      if (!['snapshot', 'config_updated', 'device_online', 'device_updated', 'device_offline', 'device_removed', 'device_status', 'playback_status'].includes(frame.type)) return;
+      const parsed = ControllerFrameSchema.safeParse(frame);
+      if (!parsed.success) { malformed(); return; }
+      const update = parsed.data;
       fence.event();
-      if (frame.type === 'snapshot') {
-        if (!isRecord(frame.config)) { malformed(); return; }
-        if (!frame.config.runtime && Array.isArray(frame.devices)) {
-          const devices: Record<string, Record<string, unknown>> = {};
-          for (const device of frame.devices) {
-            if (!isRecord(device)) { malformed(); return; }
-            const id = device.id || device.device_id;
-            if (typeof id !== 'string') { malformed(); return; }
-            devices[id] = device;
-          }
-          state.roster = devices;
-        }
-        try { deps.ingest(frame.config, { preserveDraft: true, remote: true }); } catch { malformed(); return; }
+      if (update.type === 'snapshot') {
+        try { deps.ingest(update.config, { preserveDraft: true, remote: true }); } catch { malformed(); return; }
         state.rosterCheckedAt = new Date().toISOString(); state.rosterError = null;
         status('Live operator updates connected. Last snapshot ' + new Date().toLocaleTimeString() + '.');
-      } else if (frame.type === 'config_updated') {
-        if (!state.busy && frame.etag !== state.etag) { state.etagState = 'stale'; deps.publish(); }
-        if (deps.isDirty() && frame.etag && frame.etag !== state.etag) {
+      } else if (update.type === 'config_updated') {
+        if (!state.busy && update.etag !== state.etag) { state.etagState = 'stale'; deps.publish(); }
+        if (deps.isDirty() && update.etag && update.etag !== state.etag) {
           deps.onConflict('The server changed while this draft was being edited. Keep the draft and reload when ready.');
         }
         void reconcile();
-      } else if (['device_online', 'device_offline', 'device_removed', 'device_updated', 'device_status'].includes(frame.type)) {
+      } else if (update.type === 'device_online' || update.type === 'device_offline'
+        || update.type === 'device_removed' || update.type === 'device_updated') {
         if (fetching) queued = true;
-        const device = isRecord(frame.device) ? frame.device : null;
-        const deviceStatus = isRecord(frame.status) ? frame.status : null;
-        const id = frame.device_id || frame.id || device && (device.id || device.device_id);
-        if (typeof id !== 'string') { malformed(); return; }
-        if (['device_online', 'device_offline', 'device_removed'].includes(frame.type)) {
-          state.connectionVersions[id] = (state.connectionVersions[id] || 0) + 1;
-        }
-        if (frame.type === 'device_removed') delete state.roster[id];
-        else if (device || deviceStatus) state.roster[id] = { ...state.roster[id], ...device, ...deviceStatus };
-        else if (frame.type === 'device_offline' && state.roster[id]) state.roster[id] = { ...state.roster[id], online: false };
-        const current = state.roster[id];
-        if ((device?.render || deviceStatus?.render) && current) state.roster[id] = observeDevice(current, deps.now());
+        const id = update.type === 'device_online' || update.type === 'device_updated' ? update.device.device_id : update.device_id;
+        if (update.type !== 'device_updated') state.connectionVersions[id] = (state.connectionVersions[id] || 0) + 1;
+        if (update.type === 'device_removed') delete state.roster[id];
+        else if (update.type === 'device_online' || update.type === 'device_updated') {
+          const merged = { ...state.roster[id], ...update.device };
+          state.roster[id] = update.device.render ? observeDevice(merged, deps.now()) : merged;
+        } else if (state.roster[id]) state.roster[id] = { ...state.roster[id], online: false };
         state.rosterCheckedAt = new Date().toISOString(); state.rosterError = null;
         if (state.operatorConfig) {
-          state.operatorConfig = { ...state.operatorConfig, runtime: {
-            ...(isRecord(state.operatorConfig.runtime) ? state.operatorConfig.runtime : {}), devices: state.roster,
-          } };
+          state.operatorConfig = { ...state.operatorConfig, runtime: { ...state.operatorConfig.runtime, devices: state.roster } };
         }
         deps.publish();
       }
