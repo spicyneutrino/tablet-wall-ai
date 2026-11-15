@@ -20,13 +20,15 @@ for (const status of ["offline", "stale", "failed", "unplaced"]) assert.equal(mo
 assert.equal(model.needsAttention({ status: "displayed", showing: true }), false);
 assert.equal(model.needsAttention({ status: "excluded", showing: false }), false);
 
-const document = { activeElement: null, createElement: () => node() };
+const document = { activeElement: null, body: { dataset: { view: "tools" } }, createElement: () => node() };
 const focusCalls = [];
 function node() {
-    return { children: [], dataset: {}, attrs: {}, textContent: "", hidden: false, isConnected: true,
+    return { children: [], dataset: {}, attrs: {}, listeners: {}, textContent: "", hidden: false, isConnected: true,
         append(...children) { for (const child of children) { this.children.push(child); child.parent = this; } },
         contains(child) { return !!child && (child === this || this.children.some(item => item.contains(child))); },
-        setAttribute(key, value) { this.attrs[key] = value; }, addEventListener() {},
+        setAttribute(key, value) { this.attrs[key] = value; },
+        addEventListener(event, listener) { this.listeners[event] = listener; },
+        click() { if (this.listeners.click) this.listeners.click(); },
         insertBefore(child, before) {
             if (child.parent) {
                 if (child.contains(document.activeElement)) document.activeElement = null;
@@ -45,7 +47,7 @@ $("wall-health").textContent = "1 of 3 showing the current image";
 const state = { operatorConfig: { layout: { placements: { a: {}, b: {}, c: {} } } }, roster: { a: { number: 1, online: true, wake_lock: "denied" },
     b: { number: 2, online: true, wake_lock: "denied" }, c: { number: 3, online: false, wake_lock: "released" } }, deviceLabels: {} };
 const context = { document, state, window: { OperatorState: model, OperatorStage: stage }, $, setTextIfChanged: (node, text) => { node.textContent = text; },
-    problemRows: new Map(), labelFor: id => "Tablet " + state.roster[id].number, revealRow() {},
+    phone: { matches: false }, problemRows: new Map(), labelFor: id => "Tablet " + state.roster[id].number, revealRow() {},
     powerFor: id => stage.powerReadiness(state.roster[id], { stale: !!state.rosterError }) };
 const source = fs.readFileSync(require.resolve("../frontend/controller/operator-workspace.js"), "utf8");
 vm.createContext(context);
@@ -78,4 +80,25 @@ evidence.set("c", { showing: false, status: "excluded", text: "Excluded" });
 render(); assert.equal($("wall-status-summary").textContent, "Content report issues: 1");
 evidence.set("b", { showing: true, status: "displayed", text: "Reports current image" });
 render(); assert.equal($("wall-status-summary").textContent, "Content report issues: 0");
-console.log("Failure-only header chips, retained focus and Tablet-panel-only wake reports passed");
+for (const id of ["a", "b", "c"]) evidence.set(id, { status: "offline", showing: false, text: "Offline" });
+context.phone.matches = true;
+render();
+assert.deepEqual(order(), ["a", "b"], "phone shows the first failure and a count for the rest");
+assert.equal(rows.get("+more").button.textContent, "+2");
+assert.match(rows.get("+more").button.attrs["aria-label"], /Open Tablets to review all/);
+let tabletNavigations = 0;
+$("nav-tablets").addEventListener("click", () => { tabletNavigations++; document.body.dataset.view = "tablets"; });
+rows.get("+more").button.click(); rows.get("+more").button.click();
+assert.equal(document.body.dataset.view, "tablets", "every failing tablet remains reachable from the count");
+assert.equal(tabletNavigations, 1, "repeated count activation keeps Tablets open");
+const firstPhoneButton = rows.get("a").button;
+firstPhoneButton.focus();
+const focusCount = focusCalls.length;
+render(); render();
+assert.equal(document.activeElement, firstPhoneButton, "phone polling retains the exact first failure button");
+assert.equal(focusCalls.length, focusCount, "phone polling does not move focus");
+context.phone.matches = false; render();
+assert.deepEqual(order(), ["a", "b", "c"], "desktop restores two named failures plus the remaining count");
+assert.equal(rows.get("+more").button.textContent, "+1");
+assert.equal(document.activeElement, firstPhoneButton, "responsive failure compaction retains the first failure focus");
+console.log("Failure-only header chips, phone failure counts, retained focus and Tablet-panel-only wake reports passed");
