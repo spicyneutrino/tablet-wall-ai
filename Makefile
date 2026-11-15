@@ -9,7 +9,7 @@ HOST ?= 127.0.0.1
 
 .DEFAULT_GOAL := help
 
-.PHONY: help sync dev run hotspot test lint typecheck coverage sim guide clean
+.PHONY: help sync dev run hotspot test lint typecheck coverage sim guide clean app app-check app-e2e
 
 help: ## Show this help
 	@echo "tablet-wall-ai:"
@@ -52,3 +52,13 @@ guide: ## Rebuild the field guide from GUIDE.md
 clean: ## Remove the virtualenv and Python caches
 	@cd "$(ROOT)" && rm -rf .venv .pytest_cache
 	@find "$(ROOT)" -name __pycache__ -type d -prune -exec rm -rf {} +
+
+app: ## Build the new controller into frontend/controller/app
+	@cd "$(ROOT)frontend/controller-app" && npm ci && npm run build
+
+app-check: ## Typecheck, unit tests, and prove the committed build is reproducible
+	@cd "$(ROOT)frontend/controller-app" && npm ci && npm run typecheck && npm run test && npm run build \
+		&& test -z "$$(git status --porcelain -- ../controller/app)"
+
+app-e2e: ## Build, then run end-to-end tests against the FastAPI-served build
+	@cd "$(ROOT)frontend/controller-app" && npm run build && npm run build:e2e && npx playwright test

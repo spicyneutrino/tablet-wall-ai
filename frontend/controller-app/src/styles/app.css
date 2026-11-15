@@ -1,0 +1,21 @@
+@import "tailwindcss";
+@import "./tokens.css";
+
+@font-face {
+  font-family: "Atkinson Hyperlegible Next";
+  font-style: normal;
+  font-weight: 200 800;
+  font-display: swap;
+  src: url("@fontsource-variable/atkinson-hyperlegible-next/files/atkinson-hyperlegible-next-latin-wght-normal.woff2") format("woff2");
+}
+
+@theme inline {
+  --font-sans: "Atkinson Hyperlegible Next", system-ui, sans-serif;
+  --color-primary: var(--primary);
+  --color-muted: var(--muted);
+}
+
+html { background: var(--bg); color: var(--text); }
+body { margin: 0; font-family: var(--font-sans); font-size: 1rem; font-size-adjust: from-font; line-height: 1.5; }
+::selection { background: var(--sel-bg); color: var(--sel-text); }
+.t-title { font-size: 1.375rem; line-height: 1.75rem; font-weight: 700; letter-spacing: -0.01em; text-wrap: balance; }

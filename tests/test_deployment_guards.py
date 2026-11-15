@@ -118,7 +118,10 @@ def test_tablet_ingress_allows_only_the_exact_app_auth_entry_points():
 
 
 def test_frontend_declares_no_external_static_resources():
+    build_inputs = ROOT / "frontend" / "controller-app"
     for page in (ROOT / "frontend").rglob("*.html"):
+        if page.is_relative_to(build_inputs):
+            continue
         parser = ResourceParser()
         parser.feed(page.read_text())
         for resource in parser.urls:
@@ -126,6 +129,8 @@ def test_frontend_declares_no_external_static_resources():
             assert not parsed.scheme and not parsed.netloc, (page, resource)
 
     for stylesheet in (ROOT / "frontend").rglob("*.css"):
+        if stylesheet.is_relative_to(build_inputs):
+            continue
         css = stylesheet.read_text()
         # Fetchable CSS resources only; a URL in a comment is not a request.
         css = re.sub(r"/\*.*?\*/", "", css, flags=re.DOTALL)
