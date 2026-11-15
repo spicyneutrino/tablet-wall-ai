@@ -1,0 +1,1 @@
+- U09 follow-up: port skipped operator_grid.test.js lines 31,37,39-43,45-47,87 once U05/U07 land; swap local clone/layoutEntries for U06 layout.ts. Fold into U10.

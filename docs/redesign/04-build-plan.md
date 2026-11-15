@@ -370,7 +370,7 @@ Every unit runs in its own git worktree from the latest integration branch. "Fil
 3. `npm run test`
 4. `npm run build && npm run build:e2e`
 5. The unit's own e2e commands from its **Accept** line. They run here, after step 4, so they test this unit's code and not the last committed build.
-6. `git checkout -- ../controller/app`. This is always the last change to the tree.
+6. `git clean -fdq ../controller/app && git checkout -- ../controller/app`. This is always the last change to the tree (the clean removes newly hashed build files).
 7. `git diff --name-only <base>...HEAD` lists only files named in the unit's **Files** line
 
 **Parallel lanes** (no shared files inside a lane step):
