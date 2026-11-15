@@ -1,34 +1,160 @@
-  :root {
-    color-scheme: light dark;
-    --bg: #f3f4f6; --surface: #ffffff; --surface-2: #e9ebef;
-    --text: #14161b; --muted: #555b69; --border: #d6d9e0; --control: #767d90;
-    --primary: #3242c0; --on-primary: #ffffff; --primary-hover: #26339c;
-    --sel-bg: #e5e8fb; --sel-text: #26339c;
-    --live: #c4221a; --live-bg: #fdecea; --draft: #11733b; --draft-bg: #e4f4ea;
-    --warn: #875000; --warn-bg: #fff3dc; --err: #b3261e; --err-bg: #fdeceb;
-    --disabled: #646a7b; --disabled-bg: #eceef2;
-    --stage: #08090c; --stage-body: #1b1e25; --stage-line: #6d7588; --stage-text: #eef0f4;
-    --stage-sel: #93a3ff; --stage-warn: #f0b44a; --stage-draft: #52d18d; --stage-live: #ff6b5f; --stage-hatch: #2a2e37;
-    --shadow-float: 0 12px 32px rgb(8 9 12 / 0.22);
-    --radius-control: 6px; --radius-panel: 10px;
+/* Tablet wall controller: design tokens. Single source for the final mockup (final.html)
+   and for the React build (Tailwind v4 @theme + shadcn/ui variables, mapping at the end).
+   Rules: colour roles carry no alpha, so every contrast ratio is fixed (computed by
+   contrast.py from this file). Only shadows and the scrim use alpha.
+   Dark values live in two identical blocks: the system preference (unless the page is
+   forced light) and an explicit data-theme="dark". */
+
+:root {
+  color-scheme: light;
+
+  /* Surfaces, lowest to highest. Regions are separated by tone, space and shadow, not lines. */
+  --bg: #f1f2f5;            /* page: the desk everything sits on */
+  --surface: #ffffff;       /* raised: the side column, sheets' content */
+  --well: #e8ebf0;          /* sunken: thumbnail wells, skeletons, track of a meter */
+  --field: #ffffff;         /* text-input fill */
+  --overlay: #ffffff;       /* floating: popovers, canvas toolbar, dialogs (with --shadow-float/modal) */
+  --tonal: #e3e6ec;         /* secondary button and hover fill */
+  --tonal-hover: #d6dae2;
+
+  /* Text */
+  --text: #14161b;
+  --text-muted: #535a68;
+  --on-primary: #ffffff;
+
+  /* Lines that carry meaning */
+  --control: #767d90;       /* text-input border, checkbox/switch off-state: >= 3:1 on surface */
+  --divider: #e1e4ea;       /* hairline inside dense lists only; decorative, no contrast claim */
+
+  /* Action, focus and selection: one indigo */
+  --primary: #3242c0;
+  --primary-hover: #26339c;
+  --sel-bg: #e7e9fb;
+  --sel-text: #26339c;
+  --focus: #3242c0;
+
+  /* Monitors (broadcast tally). Preview uses the action colour; On wall is red. */
+  --tally-preview: #3242c0;
+  --tally-live: #c4221a;
+
+  /* Status. Green only ever means healthy. */
+  --ok: #11733b;      --ok-bg: #e2f3e8;
+  --warn: #875000;    --warn-bg: #fcefd6;
+  --err: #b3261e;     --err-bg: #fbe9e7;
+  --err-hover: #8f1d17;
+
+  /* Disabled (held to 4.5:1 although WCAG exempts it) */
+  --disabled: #5f6676;
+  --disabled-bg: #e3e6ec;
+
+  /* Stage: the physical wall is black, so the stage stays dark in both themes */
+  --stage: #0a0b0e;
+  --stage-body: #1b1e25;
+  --stage-line: #6d7588;
+  --stage-text: #eef0f4;
+  --stage-pill: #08090c;
+  --stage-screen: #0d0f13;
+  --stage-hatch: #2a2e37;
+  --stage-sel: #93a3ff;       /* selection ring, handles, measure dimensions, preview outline */
+  --stage-handle: #ffffff;
+  --stage-warn: #f0b44a;
+
+  /* Elevation. Declared once per surface: a surface gets a shadow or a tone step, never a border. */
+  --shadow-raised: 0 1px 2px rgb(16 20 30 / 0.06), 0 2px 8px rgb(16 20 30 / 0.04);
+  --shadow-float: 0 2px 6px rgb(16 20 30 / 0.08), 0 10px 28px rgb(16 20 30 / 0.14);
+  --shadow-modal: 0 4px 12px rgb(16 20 30 / 0.08), 0 28px 72px rgb(16 20 30 / 0.24);
+  --scrim: rgb(10 12 16 / 0.44);
+
+  /* Shape */
+  --radius-sm: 6px;        /* tags, handles, step dots' inner marks */
+  --radius-control: 8px;   /* buttons, inputs, thumbnails */
+  --radius-surface: 12px;  /* stage wells, tinted blocks */
+  --radius-sheet: 16px;    /* side column, sheets, dialogs */
+  --radius-pill: 999px;    /* status summary, counters */
+
+  /* Space: 4 px base. Tailwind steps 1, 2, 3, 4, 6, 8, 12. */
+  --space-1: 4px; --space-2: 8px; --space-3: 12px; --space-4: 16px;
+  --space-6: 24px; --space-8: 32px; --space-12: 48px;
+
+  /* Type: one family, five roles, fixed rem. Body is 16 px. */
+  --font-sans: "Atkinson Hyperlegible Next", system-ui, sans-serif;
+  --text-title: 1.375rem;   --leading-title: 1.75rem;   --weight-title: 700;
+  --text-heading: 1.125rem; --leading-heading: 1.5rem;  --weight-heading: 700;
+  --text-body: 1rem;        --leading-body: 1.5rem;     --weight-body: 400;
+  --text-label: 0.875rem;   --leading-label: 1.25rem;   --weight-label: 600;
+  --text-caption: 0.8125rem; --leading-caption: 1.125rem; --weight-caption: 400;
+
+  /* Size */
+  --control-h: 36px;       /* 44px under pointer: coarse */
+  --control-h-lg: 44px;
+  --side-w: 400px;
+
+  /* Motion: state changes only */
+  --ease-out: cubic-bezier(0.2, 0.8, 0.2, 1);
+  --dur-fast: 120ms;
+  --dur: 180ms;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    color-scheme: dark;
+    --bg: #0f1115; --surface: #171a20; --well: #0b0d10; --field: #111419; --overlay: #1f232b;
+    --tonal: #262b34; --tonal-hover: #313744;
+    --text: #e8ebf1; --text-muted: #a3aab9; --on-primary: #0e1014;
+    --control: #7c8497; --divider: #242932;
+    --primary: #93a3ff; --primary-hover: #b3beff; --sel-bg: #252c4c; --sel-text: #c9d0ff; --focus: #93a3ff;
+    --tally-preview: #93a3ff; --tally-live: #ff6b5f;
+    --ok: #52d18d; --ok-bg: #11301f; --warn: #f0b44a; --warn-bg: #33270e; --err: #ff7b6e; --err-bg: #3a1b19; --err-hover: #ffa196;
+    --disabled: #8f96a6; --disabled-bg: #20242b;
+    --stage: #000000;
+    --shadow-raised: 0 1px 2px rgb(0 0 0 / 0.4), 0 2px 8px rgb(0 0 0 / 0.24);
+    --shadow-float: 0 2px 6px rgb(0 0 0 / 0.4), 0 12px 32px rgb(0 0 0 / 0.5);
+    --shadow-modal: 0 4px 12px rgb(0 0 0 / 0.4), 0 32px 80px rgb(0 0 0 / 0.6);
+    --scrim: rgb(0 0 0 / 0.6);
   }
-  @media (prefers-color-scheme: dark) {
-    :root:not([data-theme="light"]) {
-      --bg: #0e1014; --surface: #161920; --surface-2: #1d2129;
-      --text: #e8ebf1; --muted: #a2a9b8; --border: #2b303a; --control: #737b8f;
-      --primary: #93a3ff; --on-primary: #0e1014; --primary-hover: #b3beff;
-      --sel-bg: #262d4d; --sel-text: #c7cfff;
-      --live: #ff6b5f; --live-bg: #3a1a17; --draft: #52d18d; --draft-bg: #11301f;
-      --warn: #f0b44a; --warn-bg: #33270e; --err: #ff7b6e; --err-bg: #3a1b19;
-      --disabled: #8f96a6; --disabled-bg: #1d2129; --stage: #000000;
-    }
-  }
-  :root[data-theme="dark"] {
-    --bg: #0e1014; --surface: #161920; --surface-2: #1d2129;
-    --text: #e8ebf1; --muted: #a2a9b8; --border: #2b303a; --control: #737b8f;
-    --primary: #93a3ff; --on-primary: #0e1014; --primary-hover: #b3beff;
-    --sel-bg: #262d4d; --sel-text: #c7cfff;
-    --live: #ff6b5f; --live-bg: #3a1a17; --draft: #52d18d; --draft-bg: #11301f;
-    --warn: #f0b44a; --warn-bg: #33270e; --err: #ff7b6e; --err-bg: #3a1b19;
-    --disabled: #8f96a6; --disabled-bg: #1d2129; --stage: #000000;
-  }
+}
+:root[data-theme="dark"] {
+  color-scheme: dark;
+  --bg: #0f1115; --surface: #171a20; --well: #0b0d10; --field: #111419; --overlay: #1f232b;
+  --tonal: #262b34; --tonal-hover: #313744;
+  --text: #e8ebf1; --text-muted: #a3aab9; --on-primary: #0e1014;
+  --control: #7c8497; --divider: #242932;
+  --primary: #93a3ff; --primary-hover: #b3beff; --sel-bg: #252c4c; --sel-text: #c9d0ff; --focus: #93a3ff;
+  --tally-preview: #93a3ff; --tally-live: #ff6b5f;
+  --ok: #52d18d; --ok-bg: #11301f; --warn: #f0b44a; --warn-bg: #33270e; --err: #ff7b6e; --err-bg: #3a1b19; --err-hover: #ffa196;
+  --disabled: #8f96a6; --disabled-bg: #20242b;
+  --stage: #000000;
+  --shadow-raised: 0 1px 2px rgb(0 0 0 / 0.4), 0 2px 8px rgb(0 0 0 / 0.24);
+  --shadow-float: 0 2px 6px rgb(0 0 0 / 0.4), 0 12px 32px rgb(0 0 0 / 0.5);
+  --shadow-modal: 0 4px 12px rgb(0 0 0 / 0.4), 0 32px 80px rgb(0 0 0 / 0.6);
+  --scrim: rgb(0 0 0 / 0.6);
+}
+
+@media (pointer: coarse) {
+  :root { --control-h: 44px; }
+}
+
+/* shadcn/ui variable names, aliased so generated components pick up the system unchanged.
+   --card is the raised surface; --secondary is the tonal button; --accent is hover.
+   --border stays the hairline divider: shadcn Card/Separator borders are removed in the build,
+   only Input keeps a border (--input = --control). */
+:root {
+  --background: var(--bg);
+  --foreground: var(--text);
+  --card: var(--surface);
+  --card-foreground: var(--text);
+  --popover: var(--overlay);
+  --popover-foreground: var(--text);
+  --primary-foreground: var(--on-primary);
+  --secondary: var(--tonal);
+  --secondary-foreground: var(--text);
+  --muted: var(--well);
+  --muted-foreground: var(--text-muted);
+  --accent: var(--tonal);
+  --accent-foreground: var(--text);
+  --destructive: var(--err);
+  --border: var(--divider);
+  --input: var(--control);
+  --ring: var(--focus);
+  --radius: var(--radius-control);
+}
