@@ -3,6 +3,7 @@ import { SceneSchema } from '../api/scene';
 import { WallSvg } from '../stage/WallSvg';
 import type { WallStatus } from '../stage/WallSvg';
 import { walls } from '../../e2e/fixtures/walls';
+import EditableStageFixture from './EditableStageFixture';
 
 export default function StageFixture() {
   const query = new URLSearchParams(location.search);
@@ -17,6 +18,8 @@ export default function StageFixture() {
   const ids = Object.keys(fixture.layout.kind === 'physical' ? fixture.layout.slots ?? {} : fixture.layout.placements ?? {});
   const statuses = Object.fromEntries(ids.map((id, index): [string, WallStatus] =>
     [id, { status, text: status === 'offline' ? 'Offline' : 'Displayed', label: `Tablet ${index + 1}`, number: index + 1 }]));
+
+  if (query.has('edit')) return <EditableStageFixture fixture={fixture} content={content} />;
 
   return (
     <main aria-label="Stage fixture" style={{ padding: '1rem', display: 'grid', gap: '1rem', gridTemplateColumns: 'minmax(0, 1fr)' }}>
@@ -34,6 +37,7 @@ export default function StageFixture() {
         <button onClick={() => setSelected(selected ? undefined : ids[0])}>Toggle selection</button>
         <button onClick={() => setNotice(!notice)}>Toggle alert</button>
         <button onClick={() => setMode(mode === 'Preview' ? 'On wall' : 'Preview')}>{mode}</button>
+        <button onClick={() => { query.set('edit', ''); location.search = query.toString(); }}>Edit fixture</button>
       </nav>
       <div data-stage="preview" style={{ display: 'grid', gridTemplateColumns: 'minmax(0, 1fr)',
         aspectRatio: '16 / 9', inlineSize: '100%', maxBlockSize: '70dvh', minBlockSize: 0 }}>
