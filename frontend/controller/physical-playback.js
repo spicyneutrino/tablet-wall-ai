@@ -386,9 +386,6 @@ window.PhysicalPlayback = {
             } finally {
                 state.playbackFetching = false;
                 renderPlaybackPollNote();
-                if (!state.playbackSettled) {
-                    state.playbackSettled = true;
-                }
             }
         }
 

@@ -428,7 +428,7 @@ window.PhysicalStage = {
                 const paint = result.total && !appliedName() && content.type === "color" ? (counts?.online || 0) + " online · no image yet" : result.total
                     ? (stale ? "Current " + noun + " evidence unavailable" : result.showing + " of " + result.total + " showing " + (/^wall-pattern-/.test(appliedName()) ? "Test pattern" : appliedName() || "the current image"))
                     : empty;
-                const unreachable = stale && /Connection lost|Failed to fetch|NetworkError|Load failed|aborted|timed out/i.test(state.rosterError);
+                const unreachable = stale && !!state.rosterUnreachable;
                 el.wallHealth.textContent = unreachable ? "Server unreachable · tablets keep their last image" : (stale ? "Status stale · " : "") + paint;
                 el.btnWallHealth.dataset.state = unreachable ? "unreachable" : "";
                 el.btnWallHealth.dataset.kind = unreachable ? "err" : !stale && result.states.some(item => ["failed", "blocked", "invalid_mapping"].includes(item.status)) ? "err" : stale || result.states.some(item => !["displayed", "offline", "excluded"].includes(item.status)) ? "warn"

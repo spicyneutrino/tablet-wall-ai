@@ -16,7 +16,7 @@ window.OperatorWorkspace = {
         commitMode, renderStage, stageNames, onViewChange = () => {}, selectTablet, canCommit, clearSelection = () => {}, lookup = window.OperatorDom.$, arrangeElement = null }) {
         const $ = lookup;
         const { setTextIfChanged } = window.OperatorDom;
-        let pending = null, resolving = false, issueRequest = 0, joinOpen = false;
+        let pending = null, resolving = false, joinOpen = false;
         const issues = new Map(), problemRows = new Map();
         const arrangeTools = arrangeElement || document.querySelector(".arrange-tools");
         const modeTab = { content: "tab-content", arrange: "tab-show", test: "tab-test" };
@@ -197,8 +197,7 @@ window.OperatorWorkspace = {
             return !!config && !!window.OperatorState.entries(config.layout)[id];
         }
         function revealIssue(id, row, trigger) {
-            const request = ++issueRequest;
-            if (request !== issueRequest || !row || row.isConnected === false || !issuePresent(id)) return Promise.resolve(false);
+            if (!row || row.isConnected === false || !issuePresent(id)) return Promise.resolve(false);
             return Promise.resolve(selectTablet(id, { reveal: true, trigger: trigger || row.firstElementChild })).then(() => true);
         }
         function syncPrimary(commit, stripVisible) {
@@ -340,7 +339,7 @@ window.OperatorWorkspace = {
             if ($("wall-issues-panel")) {
                 const hasIssues = [...issues.values()].some(row => !row.hidden);
                 if (hasIssues !== ($("wall-issues-panel").dataset.hasIssues === "true")) {
-                    if (!hasIssues && $("wall-issues-panel").contains(document.activeElement)) $("issues-title").focus({ preventScroll: true });
+                    if (!hasIssues && $("wall-issues-panel").contains(document.activeElement)) $("stage-scroll").focus({ preventScroll: true });
                     $("wall-issues-panel").open = hasIssues;
                 }
                 $("wall-issues-panel").dataset.hasIssues = String(hasIssues);

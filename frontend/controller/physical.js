@@ -236,8 +236,7 @@
         diagnosticsState: "pending",
         diagnosticsError: null,
         diagnosticsLoading: false,
-        modeScroll: {},
-        playbackSettled: false
+        modeScroll: {}
     };
 
     let confirmingModels = false, modelBatchReview = null, modelReviewVersion = 0;
@@ -253,6 +252,7 @@
         snapshots: view => view.config && view.config.snapshots || {},
         roster: view => view.roster,
         rosterError: view => view.rosterError,
+        rosterUnreachable: view => view.rosterUnreachable,
         connectionText: view => view.transportText,
         connectionVersions: view => view.connectionVersions,
         rosterCheckedAt: view => view.rosterCheckedAt,
