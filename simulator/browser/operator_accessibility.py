@@ -354,8 +354,11 @@ def visual_states(rig):
             rig.check(
                 button.is_visible()
                 and button.is_enabled()
-                and button.inner_text().find(long_name) >= 0,
-                f"Missing thumbnail retains full native image name dimensions and selection action at {width}",
+                and button.locator(".image-choice-name").inner_text() == (long_name[:8] + "…" + long_name[-13:] if len(long_name) > 22 else long_name)
+                and button.get_attribute("title") == long_name
+                and button.locator("..").locator(".image-size").is_visible()
+                and "×" in button.locator("..").locator(".image-size").inner_text(),
+                f"Missing thumbnail retains full accessible name, visible filename ending, dimensions and selection action at {width}",
                 button.inner_text(),
             )
             rig.shot(p, "missing-thumbnail")

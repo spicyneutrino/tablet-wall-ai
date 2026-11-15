@@ -8,8 +8,8 @@
     <title>Tablet wall · tablet-wall-ai</title>
     <link rel="icon" href="favicon.svg" type="image/svg+xml">
     <link rel="stylesheet" href="operator-tokens.css?v=20261113-a">
-    <link rel="stylesheet" href="operator-workspace.css?v=20261115-m13-merged">
-    <link rel="stylesheet" href="operator-stage.css?v=20261113-a">
+    <link rel="stylesheet" href="operator-workspace.css?v=20261115-m13-final">
+    <link rel="stylesheet" href="operator-stage.css?v=m13c-4">
     <script src="operator-theme.js?v=20261113-a"></script>
 </head>
 <body class="physical" data-view-zoom="fit" data-mode="content">
@@ -505,7 +505,7 @@
             <details class="technical-details" id="tablet-status-details"><summary>Details</summary>            <p id="tablet-evidence"></p>
             <div class="tablet-recovery" id="tablet-recovery"></div>
 </details>
-            <details id="tablet-recovery-actions" class="task-section" hidden><summary>Recovery</summary>
+            <details id="tablet-recovery-actions" class="task-section" hidden><summary id="tablet-recovery-title">Details</summary>
                 <div class="operator-actions">
                     <button class="btn" id="tablet-retry-image" type="button" data-action="tablet-retry-image">Retry image</button>
                     <button class="btn" id="tablet-reconnect" type="button" data-action="tablet-reconnect">Reconnect</button>
@@ -1146,28 +1146,28 @@
 <script src="operator-composition.js?v=2"></script>
 <script src="operator-state.js?v=20261113-b"></script>
 <script src="operator-forms.js?v=3"></script>
-<script src="operator-stage.js?v=20261114-m13-b-recovery"></script>
+<script src="operator-stage.js?v=m13c-1"></script>
 <script src="operator-stage-viewport.js?v=2"></script>
-<script src="operator-content.js?v=20261113-first-fit"></script>
+<script src="operator-content.js?v=m13c-1"></script>
 <script src="operator-grid.js?v=20261114-m13-b-flow"></script>
-<script src="operator-devices.js?v=20261114-m13-b-recovery"></script>
+<script src="operator-devices.js?v=m13c-1"></script>
 <script src="operator-readiness.js?v=20261113-a"></script>
 <script src="operator-sync.js?v=2"></script>
 <script src="operator-session.js?v=2"></script>
-<script src="operator-workspace.js?v=20261114-m13-merged"></script>
+<script src="operator-workspace.js?v=m13c-1"></script>
 <script src="physical-playback.js?v=3"></script>
 <script src="physical-sizing.js?v=3"></script>
-<script src="physical-stage.js?v=20261114-m13-b-recovery"></script>
+<script src="physical-stage.js?v=m13c-3"></script>
 <script src="physical-calibration.js?v=1"></script>
 <script src="operator-measurements.js?v=3"></script>
-<script src="physical.js?v=20261113-g"></script>
+<script src="physical.js?v=m13c-1"></script>
 <dialog class="draft-resolution" id="draft-resolution" aria-labelledby="draft-resolution-title">
     <h2 id="draft-resolution-title">Resolve your preview</h2>
     <p id="draft-resolution-text"></p>
     <div class="operator-actions">
         <button type="button" class="btn" id="resolve-commit" data-action="resolve-commit">Apply arrangement</button>
-        <button type="button" class="btn" id="resolve-discard" data-action="resolve-discard">Discard</button>
-        <button type="button" class="btn btn-primary" id="resolve-stay" autofocus data-action="resolve-stay">Stay</button>
+        <button type="button" class="btn" id="resolve-discard" data-action="resolve-discard">Discard preview</button>
+        <button type="button" class="btn btn-primary" id="resolve-stay" autofocus data-action="resolve-stay">Keep editing</button>
     </div>
 </dialog>
 </body>

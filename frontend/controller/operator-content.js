@@ -329,7 +329,7 @@ window.OperatorContent = {
                 if (row.thumbnail.getAttribute("src") !== image.thumbnail_url) row.thumbnail.src = image.thumbnail_url;
                 const thumbnailScale = Math.min(160 / image.width, 160 / image.height);
                 row.thumbnail.width = Math.max(1, Math.round(image.width * thumbnailScale)); row.thumbnail.height = Math.max(1, Math.round(image.height * thumbnailScale));
-                row.name.textContent = image.name;
+                row.name.textContent = image.name.length > 22 ? image.name.slice(0, 8) + "…" + image.name.slice(-13) : image.name;
                 setTextIfChanged(row.size, image.width + " × " + image.height);
             });
             let cursor = list.firstElementChild;

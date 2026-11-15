@@ -3,7 +3,8 @@
 .stage-svg.is-dragging, .stage-svg.is-dragging .operator-slot { cursor: grabbing; }
 .operator-body-outline, .operator-active-outline { stroke: var(--stage-line); }
 .operator-slot-label { fill: var(--stage-text); paint-order: stroke; stroke: var(--stage); stroke-linejoin: round; font-weight: 600; pointer-events: none; }
-.operator-slot[aria-pressed="true"] .operator-body-outline { stroke: var(--stage-selected); }
+.operator-selection-halo { stroke: #000; stroke-width: 8px; vector-effect: non-scaling-stroke; pointer-events: none; }
+.operator-slot[aria-pressed="true"] .operator-body-outline { stroke: #fff; stroke-width: 4px; vector-effect: non-scaling-stroke; }
 .operator-slot[aria-pressed="true"] .operator-slot-label { fill: var(--stage-selected); }
 .operator-slot[data-preview="true"] .operator-body-outline { stroke-dasharray: 5 3; }
 .operator-slot[data-preview="true"][aria-pressed="true"] .operator-body-outline { stroke-dasharray: none; }

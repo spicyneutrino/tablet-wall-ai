@@ -346,7 +346,8 @@ window.PhysicalStage = {
             state.sheetTrigger = trigger || document.activeElement;
             const heading = $("tablet-action-name");
             if (!focusNode(heading)) return false;
-            if (typeof heading.scrollIntoView === "function") heading.scrollIntoView({ block: "nearest" });
+            const back = $("tablet-back") || heading;
+            if (typeof back.scrollIntoView === "function") back.scrollIntoView({ block: "start" });
             return true;
         }
         function revealInspector() {
@@ -424,8 +425,8 @@ window.PhysicalStage = {
                 const empty = counts && counts.online ? counts.online + " online · none on the wall" : "No tablets on the wall";
                 const content = state.operatorConfig.scene && state.operatorConfig.scene.content || {};
                 const noun = window.OperatorState.shownSubject(content);
-                const paint = result.total
-                    ? (stale ? "Current " + noun + " evidence unavailable" : result.showing + " of " + result.total + " showing " + (/^wall-pattern-/.test(appliedName()) ? "Test pattern" : appliedName() || "the current " + noun))
+                const paint = result.total && !appliedName() && content.type === "color" ? (counts?.online || 0) + " online · no image yet" : result.total
+                    ? (stale ? "Current " + noun + " evidence unavailable" : result.showing + " of " + result.total + " showing " + (/^wall-pattern-/.test(appliedName()) ? "Test pattern" : appliedName() || "the current image"))
                     : empty;
                 const unreachable = stale && /Connection lost|Failed to fetch|NetworkError|Load failed|aborted|timed out/i.test(state.rosterError);
                 el.wallHealth.textContent = unreachable ? "Server unreachable · tablets keep their last image" : (stale ? "Status stale · " : "") + paint;
@@ -433,7 +434,9 @@ window.PhysicalStage = {
                 el.btnWallHealth.dataset.kind = unreachable ? "err" : !stale && result.states.some(item => ["failed", "blocked", "invalid_mapping"].includes(item.status)) ? "err" : stale || result.states.some(item => !["displayed", "offline", "excluded"].includes(item.status)) ? "warn"
                     : result.total && result.showing === result.total ? "ok" : "info";
                 if ($("wall-health-short")) $("wall-health-short").textContent = unreachable ? "Server unreachable" : (stale ? "Stale " : "") + (result.total ? result.showing + "/" + result.total : counts?.online ? counts.online + " online" : "No wall");
-                el.btnWallHealth.setAttribute("aria-label", unreachable ? el.wallHealth.textContent : (stale ? "Status stale. " : "") + (result.total ? result.showing + "/" + result.total + ". " + result.showing + " of " + result.total + " tablets showing the current " + noun + "." : empty + "."));
+                el.btnWallHealth.setAttribute("aria-label", content.type === "image" && result.total && !unreachable
+                    ? (stale ? "Status stale. " : "") + result.showing + "/" + result.total + ". " + result.showing + " of " + result.total + " tablets showing the current image."
+                    : el.wallHealth.textContent);
                 el.deviceCount.textContent = rosterSummary(state.operatorConfig, stale);
                 el.rosterStatus.hidden = !stale;
                 el.rosterStatus.textContent = stale ? "Status stale. " + state.rosterError + ". Refresh status to retry." : "";

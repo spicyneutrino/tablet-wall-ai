@@ -154,9 +154,9 @@ window.OperatorWorkspace = {
             document.addEventListener("keydown", containFocus);
             try {
                 for (let kind = nextKind(); kind; kind = nextKind()) {
-                    $("draft-resolution-text").textContent = reason + ". " + (kind === "arrangement"
-                        ? "Your arrangement preview has not been applied. Applying changes geometry only."
-                        : "Your image preview has not been shown. Showing changes content only.");
+                    $("draft-resolution-text").textContent = (kind === "arrangement"
+                        ? "You have an arrangement preview that is not on the wall yet."
+                        : "You have an image preview that is not on the wall yet.");
                     $("resolve-commit").textContent = kind === "arrangement" ? "Apply arrangement" : "Show image";
                     $("resolve-commit").disabled = !canCommit(kind);
                     dialog.showModal();
@@ -223,7 +223,7 @@ window.OperatorWorkspace = {
             const mode = view.mode, body = document.body;
             if ($("tally-preview")) setTextIfChanged($("tally-preview"), mode === "image-preview" ? "Image preview · not on wall" : "Arrangement preview · not applied");
             const subject = state.selectedId ? "tablet" : "tools";
-            if ($("mode-title")) setTextIfChanged($("mode-title"), { content: "Content", arrange: "Arrange", test: "Test" }[state.mode]);
+            if ($("mode-title")) setTextIfChanged($("mode-title"), body.dataset.view === "tablets" ? "Tablets" : { content: "Content", arrange: "Arrange", test: "Test" }[state.mode]);
             body.dataset.mode = state.mode;
             body.dataset.stageMode = mode;
             body.dataset.subject = subject;

@@ -2353,6 +2353,7 @@
         try {
             const result = await api("PUT", (kind === "logical" ? "/api/v3/logical-layouts" : API_LAYOUTS) + "/" + encodeURIComponent(name) + (existing ? "?replace=true" : ""), undefined, { ifMatch: guard });
             ingestConfig(result, { preserveDraft: true });
+            if (el.layoutName.value.trim() === name) el.layoutName.value = "";
             setMsg(el.layoutMsg, "Arrangement “" + result.name + "” saved.", "ok");
             await loadLayouts();
         } catch (error) { handleWriteError(error, el.layoutMsg); }
@@ -2644,7 +2645,9 @@
             if (existing && !window.confirm("Overwrite saved content “" + name + "” with the applied content? Geometry is excluded.")) return;
             try {
                 const result = await api("PUT", "/api/v3/scenes/" + encodeURIComponent(name) + (existing ? "?replace=true" : ""), undefined, { etag: true });
-                ingestConfig(result, { preserveDraft: true }); await loadScenes(); setMsg(message, "Content saved.", "ok");
+                ingestConfig(result, { preserveDraft: true });
+                if (input.value.trim() === name) input.value = "";
+                await loadScenes(); setMsg(message, "Content saved.", "ok");
             } catch (error) { setMsg(message, error.message, "err"); }
         });
     }

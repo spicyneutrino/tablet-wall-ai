@@ -130,7 +130,7 @@
             const paintText = keepEvidence ? evidence.text : "";
             const staleText = state.rosterError ? "Status stale" : "";
             const powerText = power ? power.label : "";
-            $("tablet-evidence").hidden = !id || (!staleText && !paintText && !powerText);
+            $("tablet-evidence").hidden = !id || device?.online === false || (!staleText && !paintText && !powerText);
             $("tablet-evidence").textContent = !id ? "" : [staleText, paintText, powerText].filter(Boolean).join("\n");
             $("tablet-evidence").dataset.status = state.rosterError ? "stale" : evidence ? evidence.status : "";
             $("tablet-evidence").dataset.powerState = power ? power.state : "";
@@ -150,7 +150,9 @@
                 : ["blocked", "invalid", "stale_calibration", "needs_calibration", "needs_profile", "viewport_mismatch", "zoom_changed", "missing_profile", "missing_calibration", "invalid_mapping"].includes(evidence.status) ? "Return the tablet to its calibrated rotation, 100% zoom and launch mode, or review its measurements."
                 : "Current matching reports are separate from connection status. Reconnect keeps this browser identity.";
             const powerGuidance = power && (power.warning || power.stale || !evidence || !evidence.showing) ? power.guidance : "";
-            const recoveryText = [paintGuidance, powerGuidance].filter(Boolean).join(" ");
+            const recoveryText = device?.online === false
+                ? "Tablet is offline; this is the last known report. On the tablet, check power, keep its screen awake, join the wall network and reopen the tablet page in its existing browser. Check Auto-Lock, charging, kiosk settings and the trusted HTTPS origin. The server cannot wake a sleeping tablet. Wake lock is not proof of screen or paint. Insecure origins cannot take a wake lock."
+                : [paintGuidance, powerGuidance].filter(Boolean).join(" ");
             const offline = !!device && device.online === false;
             const recoveryLabels = ["What the server last knew", "At the tablet", "What the server cannot do"];
             $("tablet-recovery").replaceChildren(...recoveryParagraphs(recoveryText).map((part, index) => {
@@ -173,6 +175,7 @@
             $("tablet-recovery").dataset.powerStale = String(!!power && power.stale);
             $("tablet-recovery").hidden = !state.rosterError && !!evidence?.showing && !(power && (power.warning || power.stale));
             const recovery = $("tablet-recovery-actions");
+            $("tablet-recovery-title").textContent = evidence?.showing ? "Details" : "Recovery";
             const healthy = !!evidence?.showing && !state.rosterError && state.etagState === "current";
             if (id !== recovery.dataset.deviceId || String(healthy) !== recovery.dataset.healthy) recovery.open = !healthy;
             recovery.dataset.deviceId = id; recovery.dataset.healthy = String(healthy);
