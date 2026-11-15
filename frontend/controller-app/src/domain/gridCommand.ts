@@ -1,5 +1,8 @@
 // Ported from frontend/controller/operator-grid.js (`command`, `membership`).
 // Local shapes stand in for src/api/config.ts until U02 merges; field names follow §4.1.
+import { clone, entries } from "./layout";
+import type { Layout as LayoutDoc } from "./layout";
+
 export type GridKind = "logical" | "physical";
 export type GridSizing = "fixed" | "tablets";
 export type GridOrientation = "preserve" | "auto" | "portrait" | "landscape";
@@ -61,19 +64,15 @@ export type Membership = {
     view(): Record<string, Member>;
 };
 
-const clone = <T>(value: T): T => JSON.parse(JSON.stringify(value));
-const layoutEntries = (layout: LayoutLike | null | undefined): Record<string, unknown> =>
-    layout && (layout.kind === "physical" ? layout.slots : layout.placements) || {};
-
 export function membership(): Membership {
     const members: Record<string, Member> = {};
     let frozen = false;
     return {
         observe(roster, layout, { refreshSaved = false } = {}) {
-            const entries = layoutEntries(layout);
-            for (const id of new Set([...Object.keys(roster), ...Object.keys(entries)])) {
+            const layoutEntries = entries(layout as unknown as LayoutDoc);
+            for (const id of new Set([...Object.keys(roster), ...Object.keys(layoutEntries)])) {
                 const device = roster[id] || {}, saved = layout.placements && layout.placements[id];
-                const member = members[id] ||= { included: !!entries[id], membershipSource: "automatic",
+                const member = members[id] ||= { included: !!layoutEntries[id], membershipSource: "automatic",
                     size: saved ? { w: saved.w, h: saved.h } : { w: 100, h: 100 }, sizeSource: saved ? "saved" : "fallback" };
                 if (!frozen && member.membershipSource === "automatic" && device.online) member.included = true;
                 if (refreshSaved && saved && member.sizeSource === "saved") member.size = { w: saved.w, h: saved.h };

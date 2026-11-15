@@ -1,4 +1,5 @@
 import { expect, it } from "vitest";
+import { fitTransform } from "./layout";
 import { fit as fitMeasured, measureWell } from "./stagePanels";
 import type { FitResult } from "./stagePanels";
 
@@ -68,4 +69,39 @@ it("operator_stage_fit.test.js", () => {
     expect(measured!.width).toBe(300 * (720 / 370));
     well.getClientRects = () => [];
     expect(fit()).toBe(null);
+
+    const cover = fitTransform({ kind: "logical", width: 200, height: 200 }, { intrinsicWidth: 1600, intrinsicHeight: 1000, fit: "cover" })!;
+    expect(cover.cropX, "1600x1000 on a 200x200 wall crops 37.5% of source width").toBe(0.375);
+    expect(cover.cropY, "the fitted source height is fully visible").toBe(0);
+    const contain = fitTransform({ kind: "logical", width: 200, height: 200 }, { intrinsicWidth: 1600, intrinsicHeight: 1000, fit: "contain" })!;
+    expect(1 - contain.width / 200, "Fit leaves no wall width uncovered").toBe(0);
+    expect(1 - contain.height / 200, "Fit leaves 37.5% of wall height uncovered").toBe(0.375);
+    const aspects: Record<string, [number, number]> = { wide: [1600, 1000], tall: [1000, 1600], square: [1000, 1000] };
+    const walls: Record<string, [number, number]> = { wide: [200, 100], tall: [100, 200], square: [200, 200] };
+    for (const [sourceName, [sourceWidth, sourceHeight]] of Object.entries(aspects)) {
+        for (const [wallName, [wallWidth, wallHeight]] of Object.entries(walls)) {
+            for (const fitMode of ["cover", "contain"]) {
+                const transform = fitTransform({ kind: "logical", width: wallWidth, height: wallHeight },
+                    { intrinsicWidth: sourceWidth, intrinsicHeight: sourceHeight, fit: fitMode });
+                expect(transform, sourceName + " source in a " + wallName + " wall with " + fitMode).toBeTruthy();
+                const cropX = transform!.cropX, cropY = transform!.cropY;
+                const uncoveredX = 1 - transform!.width / wallWidth, uncoveredY = 1 - transform!.height / wallHeight;
+                if (fitMode === "cover") {
+                    expect(cropX >= 0 && cropY >= 0 && (cropX === 0 || cropY === 0),
+                        "Fill crops at most one source axis: " + sourceName + "/" + wallName).toBeTruthy();
+                } else {
+                    expect(uncoveredX >= 0 && uncoveredY >= 0 && (uncoveredX === 0 || uncoveredY === 0),
+                        "Fit leaves bands on at most one wall axis: " + sourceName + "/" + wallName).toBeTruthy();
+                }
+            }
+        }
+    }
+    for (const invalid of [undefined, null, 0, -1, NaN, Infinity, "1600", true] as unknown[]) {
+        expect(fitTransform({ kind: "logical", width: 200, height: 200 },
+            { intrinsicWidth: invalid, intrinsicHeight: 1000, fit: "cover" }),
+        "missing or invalid source dimensions never produce a zero estimate").toBe(null);
+        expect(fitTransform({ kind: "physical", bounds: { x: 0, y: 0, width: invalid as number, height: 200 } },
+            { intrinsicWidth: 1600, intrinsicHeight: 1000, fit: "cover" }),
+        "missing or invalid wall bounds never produce a zero estimate").toBe(null);
+    }
 });

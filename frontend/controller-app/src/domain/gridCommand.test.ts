@@ -1,5 +1,7 @@
 import { describe, it, expect } from 'vitest';
 import { command, membership, type GridCommandInput } from './gridCommand';
+import { matchScreenShape, nextPosition, type Slot } from './physicalSizing';
+import { panels, resolution, type Layout as StageLayout, type MissingPanel, type PlacedPanel } from './stagePanels';
 
 describe('tests/operator_grid.test.js', () => {
     it('operator_grid', () => {
@@ -24,6 +26,31 @@ describe('tests/operator_grid.test.js', () => {
         expect(physical.logical_sizes).toBe(undefined);
         expect(physical.mount_angles).toEqual({ one: 90 });
         expect(() => command({ ...source, kind: "physical", revisions: {}, angles: {} })).toThrow(/measurements/);
+
+        const profile = { active_width_mm: 100, active_height_mm: 60, bezels: { top: 5, right: 9, bottom: 11, left: 7 }, panel_pixels_width: 2048 };
+        const slots: Record<string, Slot> = {};
+        for (const id of ["one", "two", "three", "four"]) {
+            const next = nextPosition(slots, () => profile, profile, { x: -10, y: -20, width: 100, height: 60 });
+            expect(!next.error).toBeTruthy();
+            slots[id] = { center_x_mm: next.x!, center_y_mm: next.y!, profile_revision: 1, calibration_revision: 2, mount_angle: 0, nudge_x_mm: 0, nudge_y_mm: 0 };
+        }
+        const arranged = panels({ kind: "physical", slots }, () => profile) as PlacedPanel[];
+        for (let i = 0; i < arranged.length; i += 1) for (let j = i + 1; j < arranged.length; j += 1) {
+            const a = arranged[i]!.body, b = arranged[j]!.body;
+            expect(a.x + a.width <= b.x || b.x + b.width <= a.x || a.y + a.height <= b.y || b.y + b.height <= a.y, "manual adds must not overlap").toBeTruthy();
+        }
+        expect(arranged[0]!.body.y).toBe(arranged[1]!.body.y);
+        expect(arranged[2]!.body.y).toBe(arranged[3]!.body.y);
+        expect(arranged[0]!.body.x, "four manual adds suggest a 2 by 2").toBe(arranged[2]!.body.x);
+        expect(arranged[0]!.active.x - arranged[0]!.body.x, "asymmetric left bezel moves the active clip").toBe(7);
+        expect(arranged[0]!.body.width, "body includes bezels exactly once").toBe(116);
+        const crop = panels({ kind: "logical", placements: { one: { x: 20, y: 30, w: 100, h: 70, bezel: { top: 3, right: 5, bottom: 7, left: 11 } } } } as unknown as StageLayout, () => null)[0] as PlacedPanel;
+        expect(crop.active).toEqual({ x: 31, y: 33, width: 84, height: 60 });
+        expect((panels({ kind: "physical", slots }, () => null)[0] as MissingPanel).missing, "missing pinned records cannot borrow the latest profile").toBe(true);
+        expect(resolution(arranged[0]!, { scale: 0.2 }, { intrinsicWidth: 2000 }, null)).toEqual({ pixels: 500, target: 2048, upscale: 4.096 });
+
+        const matched = matchScreenShape({ x: 0, y: 0, w: 100, h: 70, bezel: { top: 3, right: 5, bottom: 7, left: 11 } }, { width: 1600, height: 1000 });
+        expect(Number.isInteger(matched.placement!.h), "Match keeps logical grid sizes integral").toBe(true);
 
         const emptyLogical = { kind: "logical", placements: {} };
         const live = membership();
