@@ -151,7 +151,19 @@
                 : "Current matching reports are separate from connection status. Reconnect keeps this browser identity.";
             const powerGuidance = power && (power.warning || power.stale || !evidence || !evidence.showing) ? power.guidance : "";
             const recoveryText = [paintGuidance, powerGuidance].filter(Boolean).join(" ");
-            $("tablet-recovery").replaceChildren(...recoveryParagraphs(recoveryText).map(part => {
+            const offline = !!device && device.online === false;
+            const recoveryLabels = ["What the server last knew", "At the tablet", "What the server cannot do"];
+            $("tablet-recovery").replaceChildren(...recoveryParagraphs(recoveryText).map((part, index) => {
+                if (offline) {
+                    const block = document.createElement("section"), heading = document.createElement("h4");
+                    heading.textContent = recoveryLabels[index];
+                    block.append(heading, ...part.match(/[^.!?]+[.!?]+/g).map(sentence => {
+                        const paragraph = document.createElement("p");
+                        paragraph.textContent = sentence.trim();
+                        return paragraph;
+                    }));
+                    return block;
+                }
                 const paragraph = document.createElement("p");
                 paragraph.textContent = part;
                 return paragraph;
@@ -181,7 +193,7 @@
                 const seen = device && device.last_seen ? Date.parse(device.last_seen) : NaN;
                 const rows = id ? [["Status", word],
                     ["Last seen", tabletOnline ? "Now" : Number.isFinite(seen) ? new Date(seen).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }) : "Never"],
-                    ...(power ? [["Wake lock", power.stale ? power.label.replace(/^Last known wake lock /, "Last known ") : power.label.replace(/^Wake lock: /, "")]] : [])] : [];
+                    ...(power ? [["Screen wake lock", power.report]] : [])] : [];
                 const signature = JSON.stringify(rows);
                 if (facts.dataset.signature !== signature) {
                     facts.dataset.signature = signature;
@@ -208,7 +220,7 @@
             suggestedOld = offlineSlots.length === 1 ? offlineSlots[0] : null;
             const suggestion = $("replacement-suggestion");
             if (suggestion) {
-                suggestion.hidden = !offlineSlots.length || !replacementCandidate || !!state.rosterError
+                suggestion.hidden = offline || !offlineSlots.length || !replacementCandidate || !!state.rosterError
                     || !(offlineSlots.includes(id) || onlineUnplaced.includes(id));
                 if (!suggestion.hidden) $("replacement-suggestion-text").textContent = (offlineSlots.length === 1 ? labelFor(offlineSlots[0]) : offlineSlots.length + " tablets") + " offline, " + labelFor(replacementCandidate) + " not placed.";
             }

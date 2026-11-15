@@ -113,6 +113,8 @@ async function run() {
     const beforeAnnouncements = announcements.length;
     devices.render();
     assert.equal(node("tablet-evidence").textContent, "Wake lock: denied");
+    assert.deepEqual(node("tablet-facts").children.map(child => child.textContent).slice(-2),
+        ["Screen wake lock", "Denied by browser"], "the visible fact labels the browser report");
     assert.equal(node("tablet-evidence").dataset.powerWarning, "true");
     assert.equal(node("tablet-recovery").hidden, false, "a painted tablet still warns denied power");
     assert.equal(node("tablet-recovery").children.length, 3, "recovery guidance is three readable parts");
@@ -163,10 +165,13 @@ async function run() {
         stamp,
         "Last known browser wake-lock state: held.",
         "Screen wake locks are browser reports, not proof the operating system will keep the screen on.",
-        "Check Auto-Lock, charging and kiosk settings; an insecure origin cannot take a wake lock, so open the wall over its trusted HTTPS origin.",
+        "Check Auto-Lock, charging and kiosk settings.",
+        "An insecure origin cannot take a wake lock, so open the wall over its trusted HTTPS origin.",
         "The operator cannot wake a sleeping tablet remotely."
     ];
-    assert.deepEqual(sentences(node("tablet-recovery").textContent), offlineSentences.slice().sort(),
+    assert.deepEqual(node("tablet-recovery").children.map(block => block.children[0].textContent),
+        ["What the server last knew", "At the tablet", "What the server cannot do"]);
+    assert.deepEqual(sentences(node("tablet-recovery").children.flatMap(block => block.children.slice(1)).map(p => p.textContent).join(" ")), offlineSentences.slice().sort(),
         "splitting the stale offline guidance loses no sentence and rewords none");
     state.roster.a.online = true;
 
@@ -315,7 +320,7 @@ async function run() {
     }
     state.rosterError = null;
     state.roster.a.wake_lock = "released"; state.selectedId = "a"; devices.render();
-    assert.deepEqual(node("tablet-facts").children.map(child => child.textContent).slice(-2), ["Wake lock", "released"], "wake lock is a fact row in the tablet panel");
+    assert.deepEqual(node("tablet-facts").children.map(child => child.textContent).slice(-2), ["Screen wake lock", "Released"], "wake lock is a fact row in the tablet panel");
     state.roster.a.wake_lock = "held"; state.roster.a.online = true; state.roster.a.caps = ["identify"]; state.etagState = "current"; state.selectedId = "a"; devices.render();
     const receipt = devices.identify("a"); release({}); await receipt;
     assert.match(node("tablet-action-message").textContent, /Identify requested for Tablet a/);

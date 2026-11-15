@@ -47,14 +47,14 @@ window.OperatorWorkspace = {
             const target = [gallery.querySelector("button[tabindex=\"0\"]"), $("image-search"), $("add-image")]
                 .find(node => node && !node.disabled && (typeof node.getClientRects !== "function" || node.getClientRects().length));
             if (target) {
-                target.scrollIntoView({ block: "start" });
+                target.scrollIntoView({ block: "nearest" });
                 target.focus({ preventScroll: true });
             }
         }
         function joinCard() {
             const view = window.OperatorState.stageView(state);
             const empty = !state.base || !Object.keys(window.OperatorState.entries(state.base)).length;
-            return empty && state.mode === "content" && state.configLoaded && view.mode === "live";
+            return empty && !Object.keys(state.roster).length && state.configLoaded && view.mode === "live";
         }
         function setupProgress() {
             const empty = !state.base || !Object.keys(window.OperatorState.entries(state.base)).length;
@@ -68,7 +68,7 @@ window.OperatorWorkspace = {
             return setupProgress().current === 1 ? open("arrange") : Promise.resolve(false);
         }
         function openJoin(focus) {
-            joinOpen = true; render();
+            joinOpen = !joinCard(); render();
             const target = $("copy-tablet-url");
             if (focus && target && target.getClientRects().length) target.focus({ preventScroll: true });
         }
@@ -81,9 +81,11 @@ window.OperatorWorkspace = {
         }
         if ($("first-wall-join-action")) $("first-wall-join-action").addEventListener("click", () => openJoin(true));
         if ($("first-wall-arrange-action")) $("first-wall-arrange-action").addEventListener("click", async () => {
-            if (await open("arrange")) $("grid-2x2").focus();
+            clearSelection();
+            if (await open("arrange")) $("grid-preview").focus();
         });
         if ($("first-wall-image-action")) $("first-wall-image-action").addEventListener("click", async () => {
+            clearSelection();
             if (await open("content")) focusGallery();
         });
         document.addEventListener("click", event => {
@@ -206,9 +208,10 @@ window.OperatorWorkspace = {
             if (!owner && stripVisible) {
                 const step = ["first-wall-join", "first-wall-arrange", "first-wall-image"].find(id => $(id) && $(id).dataset.state === "current");
                 owner = step ? step + "-action" : null;
+                if (step === "first-wall-arrange" && state.mode === "arrange" && !state.selectedId) owner = "grid-preview";
             }
             if (!owner && sheet && !sheet.hidden) owner = ["tablet-arrange", "tablet-label-save"].find(ready) || null;
-            for (const id of ["show-image", "btn-apply", "restore-image", "first-wall-join-action", "first-wall-arrange-action", "first-wall-image-action", "tablet-arrange", "tablet-label-save"]) {
+            for (const id of ["show-image", "btn-apply", "restore-image", "grid-preview", "first-wall-join-action", "first-wall-arrange-action", "first-wall-image-action", "tablet-arrange", "tablet-label-save"]) {
                 if ($(id)) $(id).classList.toggle("btn-primary", id === owner);
             }
         }
@@ -267,7 +270,7 @@ window.OperatorWorkspace = {
             if ($("commit-draft-name")) setTextIfChanged($("commit-draft-name"), "Draft: " + (image && names.pending || "None"));
             if ($("commit-applied-name")) setTextIfChanged($("commit-applied-name"), "On wall: " + (names.unavailable ? "Unavailable image" : names.applied || "No image"));
             const shownType = state.scene && state.scene.content && state.scene.content.type;
-            const testLive = mode === "live" && !wallEmpty && (shownType === "color" || shownType === "calibration" || isPattern);
+            const testLive = mode === "live" && !wallEmpty && (shownType === "calibration" || isPattern);
             const commit = image ? "image" : arrangement ? "arrangement" : testLive ? "test" : "idle";
             body.dataset.testLive = String(testLive);
             $("commit-bar").dataset.commit = commit;
@@ -282,8 +285,10 @@ window.OperatorWorkspace = {
                 $("stage-draft-chip").hidden = !image || !names.pending;
                 $("stage-draft-chip").textContent = image && names.pending ? "Draft: " + names.pending : "";
             }
+            const noImage = !testLive && !names.applied && !names.unavailable;
+            body.dataset.noImage = String(noImage);
             const idleLabel = wallEmpty ? "Nothing on the wall" : testLive ? "Test pattern on the wall"
-                : "On wall · " + (names.unavailable ? "Unavailable image" : names.applied || "no image");
+                : noImage ? "No image yet · tablet colours" : "On wall · " + (names.unavailable ? "Unavailable image" : names.applied);
             if ($("draft-state")) {
                 setTextIfChanged($("draft-state"), commit === "image" ? "Preview · " + (names.pending || "image") + " · not on wall"
                     : commit === "arrangement" ? "Arrangement preview · not applied" : idleLabel);
@@ -303,7 +308,9 @@ window.OperatorWorkspace = {
             $("view-toggle").textContent = state.viewLive ? "Preview" : "On wall";
             $("view-toggle").setAttribute("aria-label", state.viewLive ? "Preview" : "On wall");
             $("btn-cancel").hidden = !arrangement;
-            $("wall-empty").hidden = state.mode !== "content" || !state.configLoaded || hasPreview || !wallEmpty;
+            $("wall-empty").hidden = !state.configLoaded || hasPreview || !wallEmpty;
+            setTextIfChanged($("empty-title"), noTablets ? "Build your first wall" : Object.keys(state.roster).length + (Object.keys(state.roster).length === 1 ? " tablet waiting to be arranged" : " tablets waiting to be arranged"));
+            setTextIfChanged($("empty-hint"), noTablets ? "Open the tablet address on each tablet. They appear here as they join." : "Preview an arrangement to place the joined tablets on the wall.");
             const config = state.operatorConfig;
             if (config) {
                 const ids = Object.keys(window.OperatorState.entries(config.layout));

@@ -880,7 +880,8 @@ class Rig:
         self.task("Images")
         expect(self.page.locator("#wall-empty")).to_be_visible()
         self.click("#first-wall-arrange-action", "Arrange joined tablets")
-        expect(self.page.locator("#wall-empty")).to_be_hidden()
+        expect(self.page.locator("#wall-empty")).to_contain_text("4 tablets waiting to be arranged")
+        expect(self.page.locator("#join-strip")).to_be_hidden()
         expect(
             self.page.locator("#grid-order input[type=checkbox]:checked")
         ).to_have_count(4)

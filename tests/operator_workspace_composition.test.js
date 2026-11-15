@@ -27,6 +27,7 @@ vm.runInContext(fs.readFileSync(require.resolve("../frontend/controller/operator
 vm.runInContext(fs.readFileSync(require.resolve("../frontend/controller/operator-workspace.js"), "utf8"), context);
 const workspace = context.window.OperatorWorkspace.create({ state, arrangementDirty: () => arrangement, arrangementPreview: () => arrangement,
     imageDirty: () => dirty, canCommit: () => true, stageNames: () => ({ applied, pending: "b.png", unavailable }),
+    clearSelection: () => { state.selectedId = null; },
     commitMode: name => { state.mode = name; return true; } });
 workspace.render();
 assert.equal(node("commit-applied-name").textContent, "On wall: a.png");
@@ -57,15 +58,18 @@ assert.equal(node("image-addition").open, true);
 assert.equal(document.activeElement, node("image-addition-summary"), "unadmitted uploads focus the explanation");
 node("upload-form").hidden = false; node("add-image").listeners.click();
 assert.equal(document.activeElement, node("upload-file"));
-dirty = false; state.previewContent = null; applied = null; state.scene = { content: { type: "color" } }; workspace.render();
+dirty = false; state.rosterError = false; state.previewContent = null; applied = null; state.scene = { content: { type: "color" } }; workspace.render();
 assert.equal(node("stage-mode-label").textContent, "Showing tablet colours");
-assert.equal(node("commit-bar").dataset.commit, "test");
-assert.equal(node("restore-image").classList.values.has("btn-primary"), true, "test restore precedes the selected tablet");
+assert.equal(node("commit-bar").dataset.commit, "idle");
+assert.equal(document.body.dataset.noImage, "true");
+assert.equal(node("draft-state").textContent, "No image yet · tablet colours");
+assert.equal(node("first-wall-image-action").classList.values.has("btn-primary"), true);
 state.scene = { content: { type: "calibration" } }; workspace.render();
 assert.equal(node("stage-mode-label").textContent, "Showing calibration pattern");
+assert.equal(node("restore-image").classList.values.has("btn-primary"), true, "test restore precedes the selected tablet");
 state.base = { placements: {} }; state.rosterError = false; workspace.render();
 assert.equal(node("stage-mode-label").textContent, "Nothing shown", "a scene without wall positions cannot claim to be showing");
-assert.equal(node("join-strip").dataset.presentation, "card");
+assert.equal(node("join-strip").hidden, true, "joined tablets replace the join card");
 assert.equal(node("setup-strip").hidden, false);
 assert.equal(node("first-wall-join").dataset.done, "true");
 assert.deepEqual(["first-wall-join", "first-wall-arrange", "first-wall-image"].map(id => node(id).dataset.state), ["done", "current", "blocked"]);
@@ -73,7 +77,10 @@ assert.equal(node("first-wall-arrange-action").classList.values.has("btn-primary
 assert.equal(node("first-wall-image-action").classList.values.has("btn-primary"), false);
 await node("first-wall-arrange-action").listeners.click();
 assert.equal(state.mode, "arrange");
-assert.equal(document.activeElement, node("grid-2x2"));
+workspace.render();
+assert.equal(node("grid-preview").classList.values.has("btn-primary"), true);
+assert.equal(node("first-wall-arrange-action").classList.values.has("btn-primary"), false);
+assert.equal(document.activeElement, node("grid-preview"));
 await node("first-wall-image-action").listeners.click();
 assert.equal(state.mode, "content");
 node("first-wall-join-action").listeners.click();
