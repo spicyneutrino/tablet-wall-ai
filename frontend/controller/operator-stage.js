@@ -9,18 +9,13 @@
         unsupported: { label: "unsupported", warning: false, guidance: "This browser does not report a screen wake lock. Keep the tablet charging and check Auto-Lock and kiosk settings. The operator cannot wake the tablet remotely." },
         unknown: { label: "unknown", warning: false, guidance: "The tablet has not reported a screen wake-lock state. Check the current tablet page, Auto-Lock, charging and kiosk settings. The operator cannot wake the tablet remotely." }
     };
-    const EXCEPTION_LABELS = { loading: "Loading", blocked: "Blocked", unknown: "Unconfirmed", stale: "Stale paint",
-        hidden: "Hidden", offline: "Offline", excluded: "Excluded", identifying: "Identify", playback: "Playback",
-        unplaced: "Unplaced", unsupported: "Unsupported" };
-    const MAPPING_STATUSES = new Set(["invalid", "stale_calibration", "needs_calibration", "needs_profile",
-        "viewport_mismatch", "zoom_changed", "missing_profile", "missing_calibration", "invalid_mapping",
-        "unsupported_client", "unsupported_content"]);
-    function exceptionLabel(status, text) {
+    const EXCEPTION_LABELS = { loading: "Loading", unknown: "Unconfirmed", excluded: "Excluded", identifying: "Identify", playback: "Playback" };
+    function exceptionLabel(status) {
         if (!status || status === "displayed" || status === "preview") return "";
-        if (status === "stale" && text === "Active mapping revisions differ from the pinned slot") return "Mapping mismatch";
-        if (status === "failed") return String(text || "").split(" · ")[0] || "Failed";
+        const roster = model.rosterStatus({ status, online: status !== "offline" });
+        if (roster.key !== "connected") return roster.word;
         if (EXCEPTION_LABELS[status]) return EXCEPTION_LABELS[status];
-        return MAPPING_STATUSES.has(status) ? "Blocked" : "Needs review";
+        return "Needs review";
     }
     function powerReadiness(device, options = {}) {
         const state = device && typeof device.wake_lock === "string" && Object.prototype.hasOwnProperty.call(WAKE_STATES, device.wake_lock)
@@ -33,7 +28,8 @@
         const stamp = stale && Number.isFinite(checked)
             ? " Last checked " + new Date(checked).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }) + "." : "";
         const label = stale ? "Last known wake lock " + entry.label + " · status stale" : "Wake lock: " + entry.label;
-        return { state, stale, warning: entry.warning, label,
+        const report = state === "denied" ? "Denied by browser" : entry.label[0].toUpperCase() + entry.label.slice(1);
+        return { state, stale, warning: entry.warning, label, report: (stale ? "Last known · " : "") + report,
             short: stale ? "Last known wake lock " + entry.label : "Wake lock " + entry.label,
             fact: stale ? "Last known browser wake-lock state: " + entry.label + "." : entry.guidance,
             guidance: stale ? (offline ? "Tablet is offline; this is the last known report." : "Status is stale; this is the last known report.")
@@ -49,7 +45,7 @@
         return { state: power.state, label: WAKE_STATES[power.state].label, count: online.length };
     }
     const powerHelp = "Screen wake locks are browser reports, not proof the operating system will keep the screen on. "
-        + "Check Auto-Lock, charging and kiosk settings; an insecure origin cannot take a wake lock, so open the wall over its trusted HTTPS origin. "
+        + "Check Auto-Lock, charging and kiosk settings. An insecure origin cannot take a wake lock, so open the wall over its trusted HTTPS origin. "
         + "The operator cannot wake a sleeping tablet remotely.";
     function panels(layout, profileFor) {
         return Object.entries(model.entries(layout)).map(([id, slot]) => {
@@ -149,7 +145,7 @@
                 bg.setAttribute("rx", 2 / scale);
             }
         });
-        svg.querySelectorAll(".operator-slot-status").forEach(label => {
+        const statusLabels = [...svg.querySelectorAll(".operator-slot-status")].map(label => {
             if (!label.classList || !label.classList.contains("operator-slot-status")) return;
             const matrix = label.getScreenCTM();
             if (!matrix) return;
@@ -159,8 +155,13 @@
             let text = label.dataset.label || "";
             const offline = label.dataset.status === "offline";
             if (offline && (width - 12) / (Math.max(1, text.length) * 0.6) < 9) text = "Offline";
+            const fit = Math.min(LABEL_MAX, height - 10, (width - 12) / (Math.max(1, text.length) * 0.6));
+            return { label, scale, width, height, text, offline, fit };
+        }).filter(Boolean);
+        const statusSize = Math.min(LABEL_MAX, ...statusLabels.map(item => item.fit).filter(fit => fit >= 9));
+        statusLabels.forEach(({ label, scale, width, height, text, offline, fit }) => {
             label.textContent = text;
-            const size = Math.min(offline ? LABEL_MAX : 10, height - 10, (width - 12) / (Math.max(1, text.length) * 0.6));
+            const size = Math.min(statusSize, fit);
             const room = Math.max(1, Math.floor((width - 12) / (Math.max(1, size) * 0.6)));
             const fits = size >= 9 && text.length <= room;
             label.style.display = fits ? "" : "none";

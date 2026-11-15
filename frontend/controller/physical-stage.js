@@ -552,26 +552,16 @@ window.PhysicalStage = {
                     : online ? "Connected"
                     : Number.isFinite(seen) ? "Offline · last seen " + new Date(seen).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })
                     : "Offline";
-                const image = current ? (current.status === "unplaced" ? "Not on the wall" : current.text)
-                    : state.rosterError ? "Current image evidence unavailable"
-                    : "Status unknown";
                 row.number.textContent = numberTag(entry.id);
                 row.name.textContent = entry.label;
                 row.facts.connection.textContent = connection;
                 row.facts.connection.className = "dev-fact sr-only";
-                row.facts.image.textContent = state.rosterError ? "Status stale" : !online ? "Offline" : current?.showing ? "Reports current image" : image;
+                const roster = window.OperatorState.rosterStatus(current || { status: online ? "unknown" : "offline", online }, { stale: !!state.rosterError });
+                row.facts.image.textContent = roster.word;
                 row.facts.power.textContent = power ? power.short : "";
-                if (typeof row.facts.power.replaceChildren === "function") {
-                    const powerPrefix = document.createElement("span"); powerPrefix.className = "sr-only";
-                    powerPrefix.textContent = power ? (power.short.match(/^(?:Last known wake lock|Wake lock) /) || [""])[0] : "";
-                    const powerValue = document.createElement("span");
-                    powerValue.textContent = power ? power.short.slice(powerPrefix.textContent.length) : "";
-                    row.facts.power.replaceChildren(powerPrefix, powerValue);
-                }
                 row.facts.power.title = power ? power.label : "";
                 row.facts.power.className = "dev-fact" + (commonPower && power?.state === commonPower && !power.stale ? " sr-only" : "");
                 row.item.dataset.status = state.rosterError ? "stale" : current ? current.status : online ? "online" : "offline";
-                const roster = window.OperatorState.rosterStatus(current || { status: online ? "unknown" : "offline", online }, { stale: !!state.rosterError });
                 row.chip.dataset.status = roster.key; row.chip.dataset.tone = roster.tone;
                 row.chip.dataset.powerState = power ? power.state : "unknown";
                 row.chipNumber.textContent = String(deviceNumber(entry.id) || numberTag(entry.id).replace(/^#/, ""));

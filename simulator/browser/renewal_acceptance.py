@@ -673,6 +673,20 @@ def _close_client(rig: RenewalRig, page: Any, device_id: str) -> None:
     )
 
 
+def _tablet_power_reports(rig: RenewalRig, ids: list[str]) -> dict[str, str]:
+    page = rig.page
+    reports = {}
+    for device_id in ids:
+        select_tablet(page.locator(f':is(.dev-pick,.roster-pick):visible[data-device-id="{device_id}"]').first)
+        wait_until(page, "id => document.querySelector('#tablet-label-form')?.dataset.deviceId === id", arg=device_id)
+        reports[device_id] = page.locator("#tablet-facts").evaluate("""e => {
+            const term = [...e.querySelectorAll('dt')].find(n => n.textContent === 'Screen wake lock');
+            return term?.nextElementSibling?.textContent || '';
+        }""")
+    page.locator("#tablet-back").click()
+    return reports
+
+
 def _scene_scene_puts(rig: RenewalRig) -> int:
     return len([row for row in rig.requests
                 if row["method"] == "PUT" and row["url"].split("?")[0].endswith("/api/v3/scene")])
@@ -854,16 +868,19 @@ def status_truth(rig: RenewalRig) -> None:
                 .filter(slot => slot.dataset.powerWarning === 'true');
             return {
                 count: slots.length,
-                missing: slots.filter(slot => !/denied/i.test(slot.textContent))
+                missing: slots.filter(slot => !/denied/i.test(slot.getAttribute('aria-label')))
                     .map(slot => slot.dataset.deviceId),
+                ids: slots.map(slot => slot.dataset.deviceId),
             };
         }"""
     )
+    reports = _tablet_power_reports(rig, warnings["ids"])
     rig.check(
-        "Mixed wake-lock states keep every warning tile's power text",
-        warnings["count"] >= 6 and warnings["missing"] == [],
-        warnings,
-        {"count": ">= 6", "missing": []},
+        "Mixed wake-lock states keep every warning tile's accessible power and labelled Tablet report",
+        warnings["count"] >= 6 and warnings["missing"] == []
+        and all("Denied by browser" in report for report in reports.values()),
+        {**warnings, "tablet_reports": reports},
+        {"count": ">= 6", "missing": [], "tablet_reports": "Denied by browser for each warning tablet"},
         obligation="D2",
     )
     mixed_summary = page.locator("#wall-power-summary")
@@ -2735,15 +2752,15 @@ def first_wall(rig: RenewalRig) -> None:
             step_two.click()
             _wait_task_panel(rig, "Arrange")
             focused_preset = _soft_wait(
-                page, "() => document.activeElement?.id === 'grid-2x2'", timeout=10
+                page, "() => document.activeElement?.id === 'grid-preview'", timeout=10
             )
     rig.check(
-        "Step 2 opens Arrange and lands focus on the 2 by 2 preset",
+        "Step 2 opens Arrange and lands focus on the recommended preset's Preview",
         focused_preset,
         page.evaluate(
             "() => ({active: document.activeElement?.id, panel: document.querySelector('.inspector-pane:not([hidden])')?.id})"
         ),
-        {"active": "grid-2x2"},
+        {"active": "grid-preview"},
         obligation="D11",
     )
 
@@ -2954,8 +2971,6 @@ def first_wall(rig: RenewalRig) -> None:
         obligation="D11",
     )
 
-    # Arrange with a mixed wake-lock fleet: the shared stage must keep each
-    # tablet's own power fact instead of depending on the Images fleet line.
     _task(rig, "Arrange")
     wait_until(
         page, "() => document.querySelectorAll('#stage-svg .slot').length === 4", timeout=20
@@ -2971,19 +2986,20 @@ def first_wall(rig: RenewalRig) -> None:
         }))"""
     )
     expected_power = expected_wake
+    reports = _tablet_power_reports(rig, list(expected_power))
     by_id = {slot["id"]: slot for slot in slots}
     mixed_ok = len(slots) == 4 and all(
         by_id.get(device_id)
         and by_id[device_id]["powerState"] == state
         and state in by_id[device_id]["label"].lower()
-        and (state != "denied" or state in by_id[device_id]["text"].lower())
+        and state in reports[device_id].lower()
         for device_id, state in expected_power.items()
     )
     rig.check(
-        "Arrange (mixed wake locks): every stage slot keeps its own per-tablet power text",
+        "Arrange (mixed wake locks): every stage slot keeps accessible power and its own labelled Tablet report",
         mixed_ok,
-        {"slots": slots, "expected": expected_power},
-        {"powerState": expected_power, "denied": "visible text on Arrange"},
+        {"slots": slots, "expected": expected_power, "tablet_reports": reports},
+        {"powerState": expected_power, "tablet_reports": "matching browser report for every tablet"},
         obligation="C-POWER",
     )
 
@@ -3049,13 +3065,13 @@ def tablet_facts(rig: RenewalRig) -> None:
     rows = {row["id"]: row for row in _tablet_rows(page)}
     expected = {
         ids[0]: {"status": "displayed", "connection": "Connected",
-                 "image": "Reports current image", "power": "Wake lock denied"},
+                 "image": "Connected", "power": "Wake lock denied"},
         ids[1]: {"status": "displayed", "connection": "Connected",
-                 "image": "Reports current image", "power": "Wake lock denied"},
+                 "image": "Connected", "power": "Wake lock denied"},
         ids[2]: {"status": "unplaced", "connection": "Connected",
-                 "image": None, "power": "Wake lock denied"},
+                 "image": "Not placed", "power": "Wake lock denied"},
         ids[3]: {"status": "offline", "connection": None,
-                 "image": None, "power": "Last known wake lock denied"},
+                 "image": "Offline", "power": "Last known wake lock denied"},
     }
     for device_id, want in expected.items():
         row = rows.get(device_id)
@@ -3120,8 +3136,6 @@ def tablet_facts(rig: RenewalRig) -> None:
         obligation="C-POWER",
     )
 
-    # Arrange with a uniform denied fleet: the shared stage must still show the
-    # per-tablet power text instead of relying on the Images-only fleet line.
     _task(rig, "Arrange")
     wait_until(
         page, "() => document.querySelectorAll('#stage-svg .slot').length === 3", timeout=20
@@ -3136,17 +3150,18 @@ def tablet_facts(rig: RenewalRig) -> None:
             label: slot.getAttribute('aria-label') || '',
         }))"""
     )
+    reports = _tablet_power_reports(rig, [slot["id"] for slot in arrange_slots])
     uniform_ok = len(arrange_slots) == 3 and all(
         slot["powerState"] == "denied"
         and "denied" in slot["label"].lower()
-        and "denied" in slot["text"].lower()
+        and "Denied by browser" in reports[slot["id"]]
         for slot in arrange_slots
     )
     rig.check(
-        "Arrange (uniform denied): every stage slot keeps its per-tablet power text",
+        "Arrange (uniform denied): every stage slot keeps accessible power and its own labelled Tablet report",
         uniform_ok,
-        arrange_slots,
-        {"powerState": "denied", "denied": "visible text on Arrange"},
+        {"slots": arrange_slots, "tablet_reports": reports},
+        {"powerState": "denied", "tablet_reports": "Denied by browser for every tablet"},
         obligation="C-POWER",
     )
     _task(rig, "Tablets")
@@ -3215,6 +3230,7 @@ def tablet_facts(rig: RenewalRig) -> None:
             return {
                 present: true,
                 hidden: node.hidden,
+                blocks: [...node.querySelectorAll('section > h4')].map(n => n.textContent),
                 paragraphs: node.querySelectorAll('p').length,
                 text: node.textContent,
             };
@@ -3222,15 +3238,15 @@ def tablet_facts(rig: RenewalRig) -> None:
     )
     recovery_text = (recovery.get("text") or "").lower()
     rig.check(
-        "The offline recovery guidance is three paragraphs that still say power, denied and cannot wake",
+        "The offline recovery guidance has three labelled blocks that still say power, denied and cannot wake",
         recovery["present"]
         and not recovery["hidden"]
-        and recovery["paragraphs"] == 3
+        and recovery["blocks"] == ["What the server last knew", "At the tablet", "What the server cannot do"]
         and "power" in recovery_text
         and "denied" in recovery_text
         and "cannot wake" in recovery_text,
         recovery,
-        {"paragraphs": 3, "words": ["power", "denied", "cannot wake"]},
+        {"blocks": 3, "words": ["power", "denied", "cannot wake"]},
         obligation="C-RECOVERY",
     )
 

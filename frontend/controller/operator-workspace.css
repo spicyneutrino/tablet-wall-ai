@@ -27,7 +27,7 @@ input[type="checkbox"], input[type="radio"] { inline-size: 1.25rem; block-size: 
 input[type="color"] { border-radius: var(--radius); padding: .25rem; min-inline-size: 4rem; min-block-size: 2.75rem; border: 1px solid var(--control); background: var(--surface); }
 ::placeholder { color: var(--muted); opacity: 1; }
 .num, #grid-rows, #grid-columns, #logical-tile-rows, #logical-tile-columns, #wall-revision, #cal-profile-revision { font-variant-numeric: tabular-nums; }
-.sr-only, #grid-message:has(~ #grid-summary:not([hidden])), #stage-mode-label, #stage-draft-chip, .name-rule, .image-size, #readiness-message, :where([role="status"], [aria-live="polite"]):empty:not([hidden]) { position: absolute; inline-size: 1px; block-size: 1px; padding: 0; margin: -1px; overflow: hidden; clip: rect(0, 0, 0, 0); white-space: nowrap; border: 0; }
+.sr-only, #image-title, #grid-message:has(~ #grid-summary:not([hidden])), #stage-mode-label, #stage-draft-chip, .name-rule, .image-size, #readiness-message, :where([role="status"], [aria-live="polite"]):empty:not([hidden]) { position: absolute; inline-size: 1px; block-size: 1px; padding: 0; margin: -1px; overflow: hidden; clip: rect(0, 0, 0, 0); white-space: nowrap; border: 0; }
 .skip { position: fixed; inset: .75rem auto auto 1rem; z-index: 100; padding: .6rem .8rem; background: var(--surface); color: var(--text); border: 1px solid var(--control); clip-path: inset(100%); }
 .skip:focus { clip-path: none; }
 .skip-nav { inset-inline-start: min(12rem, 50vw); }
@@ -359,6 +359,9 @@ dialog.tablet-selection > * + *, #operator-device-actions > * + * { margin-block
 .tablet-actions { display: grid; gap: var(--space-3); }
 #tablet-action-name { font-size: 1.125rem; }
 #tablet-evidence { white-space: pre-line; }
+.tablet-recovery { display: grid; gap: var(--space-3); font-size: var(--text-label); }
+.tablet-recovery section { display: grid; gap: var(--space-1); }
+.tablet-recovery h4 { font-size: inherit; }
 .tablet-details { display: grid; gap: var(--space-3); }
 .selected-tablet-name { font-weight: 500; }
 .replacement-offer, .field-review { padding: var(--space-3); border: 1px solid var(--border-strong); border-radius: var(--radius); background: var(--selected); display: grid; gap: var(--space-3); }

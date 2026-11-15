@@ -27,14 +27,14 @@ window.OperatorWorkspace = {
             const target = [gallery.querySelector("button[tabindex=\"0\"]"), $("image-search"), $("add-image")]
                 .find(node => node && !node.disabled && (typeof node.getClientRects !== "function" || node.getClientRects().length));
             if (target) {
-                target.scrollIntoView({ block: "start" });
+                target.scrollIntoView({ block: "nearest" });
                 target.focus({ preventScroll: true });
             }
         }
         function joinCard() {
             const view = window.OperatorState.stageView(state);
             const empty = !state.base || !Object.keys(window.OperatorState.entries(state.base)).length;
-            return empty && !Object.keys(state.roster).length && state.mode === "content" && state.configLoaded && view.mode === "live";
+            return empty && !Object.keys(state.roster).length && state.configLoaded && view.mode === "live";
         }
         function setupProgress() {
             const empty = !state.base || !Object.keys(window.OperatorState.entries(state.base)).length;
