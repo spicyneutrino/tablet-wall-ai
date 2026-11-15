@@ -91,7 +91,7 @@ body:not([data-mode="arrange"]) #arrange-selection { display: none; }
 .rail-tab:not([aria-selected="true"]):hover { background: var(--border); }
 .rail-tab[aria-selected="true"] { background: var(--surface); color: var(--text); box-shadow: 0 0 0 1px var(--border-strong); }
 .roster-strip { display: flex; align-items: center; gap: var(--space-2); flex: 1 1 14rem; min-inline-size: 0; }
-.roster { display: flex; flex-wrap: wrap; max-block-size: 76px; overflow-y: auto; scrollbar-width: thin; gap: var(--space-1); list-style: none; padding: 3px; margin: -3px; min-inline-size: 0; }
+.roster { display: flex; flex-wrap: nowrap; overflow-x: auto; scrollbar-width: thin; gap: var(--space-1); list-style: none; padding: 3px; margin: -3px; min-inline-size: 0; }
 .roster-chip { flex: none; }
 .roster-pick { display: inline-flex; align-items: center; gap: var(--space-1); min-block-size: var(--tool-h); padding: 0 var(--space-3); border: 1px solid var(--border-strong); border-radius: var(--chip-radius); background: var(--surface); font-size: var(--text-label); white-space: nowrap; }
 .roster-pick .dev-number { display: inline; min-inline-size: 0; color: var(--text); font-weight: 600; }
@@ -450,9 +450,9 @@ dialog.server-drawer::backdrop { background: var(--backdrop); }
 
 /* 1024 to 1279: narrower inspector */
 @media (max-width: 79.99rem) { :root { --inspector-w: 20rem; } .stage-toolbar { grid-template-columns: minmax(0, 1fr) auto; } .roster-strip { grid-row: 2; grid-column: 1 / -1; min-block-size: 44px; } .roster-add { margin-inline-start: auto; } }
-.stage-toolbar:has(.roster-chip:nth-child(7)) { grid-template-columns: minmax(0, 1fr) auto; }
-.stage-toolbar:has(.roster-chip:nth-child(7)) .roster-strip { grid-row: 2; grid-column: 1 / -1; min-block-size: 44px; }
-.stage-toolbar:has(.roster-chip:nth-child(7)) .roster-add { margin-inline-start: auto; }
+.stage-toolbar[data-roster-row="true"] { grid-template-columns: minmax(0, 1fr) auto; }
+.stage-toolbar[data-roster-row="true"] .roster-strip { grid-row: 2; grid-column: 1 / -1; min-block-size: 44px; }
+.stage-toolbar[data-roster-row="true"] .roster-add { margin-inline-start: auto; }
 
 /* Below 64rem: stage and commit bar stay pinned; the inspector scrolls inside the remaining space */
 @media (max-width: 63.99rem) {
@@ -468,39 +468,40 @@ dialog.server-drawer::backdrop { background: var(--backdrop); }
 /* Phone */
 @media (max-width: 47.99rem) {
     :root { --page-pad: 16px; --tool-h: 44px; --control-primary: 44px; --control-min: 44px; --control-form: 44px; --control-compact: 44px; --commit-h: auto; }
-    body.physical { grid-template-rows: auto minmax(0, 1fr); overflow-y: auto; }
+    body.physical { grid-template-rows: minmax(min-content, auto) minmax(min-content, 1fr); overflow-y: auto; }
     .topbar-actions { flex-wrap: wrap; justify-content: flex-end; min-inline-size: 0; }
-    .topbar { display: flex; flex-wrap: wrap; gap: 0 var(--space-2); padding: 0 var(--space-2); }
+    .topbar { display: grid; grid-template-columns: auto minmax(3rem, 1fr) auto; grid-template-areas: "brand summary actions"; gap: 0 var(--space-2); padding: 0 var(--space-2); }
     .brand { grid-area: brand; font-size: 0; gap: 0; }
     .topbar-actions { grid-area: actions; flex: 0 1 auto; }
-    .wall-summary { grid-area: summary; flex: 1 1 10rem; flex-wrap: wrap; gap: var(--space-1) var(--space-3); min-block-size: 28px; }
+    .wall-summary, .topbar:has(.problem-chip) .wall-summary { display: contents; }
+    .wall-health { grid-area: summary; }
     .wall-health[data-state="unreachable"] #wall-health { display: none; }
     .wall-health[data-state="unreachable"] #wall-health-short { display: inline; }
     #wall-health { display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2; white-space: normal; line-height: 1.25; }
     #wall-health-short { display: none; }
     .topbar:has(.problem-chip) { grid-template-areas: "brand summary actions" "problems problems problems"; }
-    .topbar:has(.problem-chip) .wall-summary { display: flex; }
     .topbar:has(.problem-chip) .wall-health { grid-area: summary; }
     .arrangement-history .btn { min-inline-size: 44px; }
-    .problem-chips { grid-area: problems; padding-block-end: var(--space-1); }
+    .topbar:has(.problem-chip) .problem-chips { grid-area: problems; flex-wrap: nowrap; padding-block-end: var(--space-1); }
     .problem-chips li { min-inline-size: 0; max-inline-size: 100%; }
-    .problem-chip { min-block-size: 44px; white-space: normal; overflow-wrap: anywhere; }
+    .problem-chip { display: block; min-block-size: 44px; max-inline-size: 100%; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
     .topbar .btn, .icon-button, .theme-toggle { min-block-size: 44px; min-inline-size: 44px; }
     .workspace { grid-template-rows: auto auto minmax(12rem, 1fr) auto; grid-template-areas: "notices" "stage" "inspector" "nav"; }
     .stage-well { block-size: 30dvh; }
     body[data-empty-wall="true"] .stage-well { block-size: auto; max-block-size: 30dvh; overflow-y: auto; place-content: start center; }
     .well-tally { display: none; }
     .wall-stage { grid-template-rows: minmax(0, 1fr); }
-    .stage-toolbar { display: flex; min-block-size: 44px; }
+    .stage-toolbar { display: flex; gap: 0 var(--space-2); min-block-size: 44px; }
     .mode-switch, #roster { display: none; }
     .roster-strip { display: flex; flex: none; order: 2; }
     .roster-add { min-block-size: 44px; min-inline-size: 44px; }
     .mode-title { display: inline; }
-    .toolbar-tools { inline-size: auto; flex: 1; flex-wrap: wrap; min-inline-size: 0; margin: 0; }
+    .toolbar-tools { inline-size: auto; flex: 1; flex-wrap: wrap; gap: var(--space-1); min-inline-size: 0; margin: 0; }
     .toolbar-tools .mode-title { margin-inline-end: auto; }
     #commit-bar { block-size: auto; min-block-size: 56px; grid-template-columns: minmax(0, 1fr); padding: var(--space-2) var(--space-3); gap: var(--space-2); }
-    #commit-bar #selected-image-controls { grid-column: 1; grid-row: auto; justify-content: stretch; flex-wrap: wrap; }
+    #commit-bar #selected-image-controls { grid-column: 1; grid-row: auto; justify-content: stretch; flex-wrap: wrap; gap: var(--space-2); }
     #commit-bar .image-primary-actions { flex: 1; }
+    #commit-bar:is([data-commit="image"], [data-commit="arrangement"]) .image-primary-actions { flex-basis: 100%; }
     #commit-bar .image-primary-actions .btn { flex: 1; }
     #image-fit-field { flex: 0 1 auto; }
     .inspector { contain: size; }

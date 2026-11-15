@@ -21,6 +21,26 @@ window.OperatorWorkspace = {
         const arrangeTools = arrangeElement || document.querySelector(".arrange-tools");
         const modeTab = { content: "tab-content", arrange: "tab-show", test: "tab-test" };
         const patternName = /^wall-pattern-/;
+        const phone = window.matchMedia && window.matchMedia("(max-width: 47.99rem)");
+        const onPhoneChange = () => render();
+        if (phone) phone.addEventListener("change", onPhoneChange);
+        const toolbar = document.querySelector(".stage-toolbar");
+        const roster = $("roster");
+        function fitRoster() {
+            const mode = toolbar.querySelector(".mode-switch"), tools = toolbar.querySelector(".toolbar-tools");
+            const strip = toolbar.querySelector(".roster-strip"), add = $("add-tablet");
+            const gap = node => parseFloat(window.getComputedStyle(node).columnGap) || 0;
+            const chips = [...roster.children];
+            const chipsWidth = chips.reduce((width, chip) => width + chip.getBoundingClientRect().width, 0)
+                + Math.max(0, chips.length - 1) * gap(roster);
+            const required = mode.getBoundingClientRect().width + tools.getBoundingClientRect().width
+                + chipsWidth + add.getBoundingClientRect().width + gap(strip) + 2 * gap(toolbar);
+            toolbar.dataset.rosterRow = String(chips.length > 6 || required > toolbar.clientWidth);
+        }
+        const rosterObserver = window.ResizeObserver && new window.ResizeObserver(fitRoster);
+        if (rosterObserver) {
+            for (const node of [toolbar, roster, toolbar.querySelector(".mode-switch"), toolbar.querySelector(".toolbar-tools")]) rosterObserver.observe(node);
+        }
         let joiningHasTablets = null;
         function focusGallery() {
             const gallery = $("image-gallery");
@@ -76,8 +96,9 @@ window.OperatorWorkspace = {
             const attention = ids.filter(id => window.OperatorState.needsAttention(evidence.get(id)));
             const failures = state.rosterError ? [] : ids.filter(id => window.OperatorState.rosterStatus(evidence.get(id)).tone === "failure");
             const strip = $("exception-strip");
-            const shown = failures.slice(0, 2);
-            const wanted = shown.concat(failures.length > 2 ? ["+more"] : []);
+            const limit = phone && phone.matches ? 1 : 2;
+            const shown = failures.slice(0, limit);
+            const wanted = shown.concat(failures.length > limit ? ["+more"] : []);
             for (const [id, row] of problemRows) if (!wanted.includes(id)) { row.remove(); problemRows.delete(id); }
             wanted.forEach((id, index) => {
                 let row = problemRows.get(id);
@@ -86,16 +107,21 @@ window.OperatorWorkspace = {
                     row.button = document.createElement("button");
                     row.button.type = "button";
                     row.button.className = "problem-chip";
-                    row.button.addEventListener("click", () => revealRow(row.button.dataset.problemDevice, row.button));
+                    row.button.addEventListener("click", () => {
+                        if (id === "+more" && phone && phone.matches) {
+                            if (document.body.dataset.view !== "tablets") $("nav-tablets").click();
+                        }
+                        else revealRow(row.button.dataset.problemDevice, row.button);
+                    });
                     row.append(row.button);
                     problemRows.set(id, row);
                 }
                 if (id === "+more") {
-                    const rest = failures.slice(2);
+                    const rest = failures.slice(limit);
                     row.dataset.status = "more";
                     row.button.dataset.problemDevice = rest[0];
                     setTextIfChanged(row.button, "+" + rest.length);
-                    row.button.setAttribute("aria-label", rest.length + " more tablets need attention. Review the first.");
+                    row.button.setAttribute("aria-label", rest.length + (phone && phone.matches ? " more tablets need attention. Open Tablets to review all." : " more tablets need attention. Review the first."));
                 } else {
                     const item = evidence.get(id), word = window.OperatorState.rosterStatus(item).word.toLowerCase();
                     const name = labelFor ? labelFor(id) : id;
@@ -187,6 +213,7 @@ window.OperatorWorkspace = {
             }
         }
         function render(view = window.OperatorState.stageView(state)) {
+            if (rosterObserver) fitRoster();
             const arrangement = arrangementDirty(), image = imageDirty();
             if ($("operator-connection")) $("operator-connection").textContent = state.connectionText || "Connecting to the wall…";
             const hasPreview = arrangementPreview();
@@ -332,6 +359,6 @@ window.OperatorWorkspace = {
             $("image-addition").open = true;
             ($("upload-form").hidden ? $("image-addition").querySelector("summary") : $("upload-file")).focus();
         });
-        return { open, land, resolve, render, revealIssue, closeJoin, toggleJoin: () => joinOpen ? closeJoin() : openJoin(true), destroy() { if (pending) pending("stay"); $("draft-resolution").close(); } };
+        return { open, land, resolve, render, revealIssue, closeJoin, toggleJoin: () => joinOpen ? closeJoin() : openJoin(true), destroy() { if (phone) phone.removeEventListener("change", onPhoneChange); if (rosterObserver) rosterObserver.disconnect(); if (pending) pending("stay"); $("draft-resolution").close(); } };
     }
 };
