@@ -343,7 +343,8 @@ def new_tablet(browser, base: str):
 def confirm_model(page, device_id: str) -> None:
     select_tablet(page, device_id)
     tab(page, "Settings")
-    page.locator("#measurement-details").evaluate("node => node.open = true")
+    from simulator.browser._workspace_shell import open_measure
+    open_measure(page)
     page.locator("#tablet-model").select_option("google-pixel-c")
     dialogs_before = len(dialogs)
     page.locator("#apply-tablet-model").click()
@@ -566,7 +567,8 @@ def phase_tablets():
     first = tablets[0]
     select_tablet(page, first["id"])
     tab(page, "Settings")
-    page.locator("#measurement-details").evaluate("node => node.open = true")
+    from simulator.browser._workspace_shell import open_measure
+    open_measure(page)
     wait_until(lambda: "Looks like Google Pixel C" in page.locator("#tablet-model-status").inner_text(),
                "the authoritative model suggestion did not render", timeout=5)
     status_text = page.locator("#tablet-model-status").inner_text()

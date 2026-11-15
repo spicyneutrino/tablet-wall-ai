@@ -20,6 +20,9 @@ def clear_selection(page):
 
 
 def task(page, name, keyboard=False):
+    measure = page.locator("#measurement-details")
+    if name != "Measure" and measure.is_visible():
+        measure.get_by_role("button", name="Close measurements").click()
     drawer = page.locator("#server-drawer")
     if name == "Server":
         if not drawer.is_visible():
@@ -60,8 +63,21 @@ OWNERS = {"server-drawer": "Server", "panel-content": "Content", "panel-show": "
           "panel-tablets": "Tablets"}
 
 
+def open_measure(page, step=None):
+    """Open the selected tablet's Measure dialog and, when given, one of its steps."""
+    if not page.locator("#measurement-details").is_visible():
+        page.locator("#open-tablet-measurements").click()
+    if step:
+        page.locator(f'#measurement-details [data-measure-step="{step}"]').click()
+
+
 def reveal(page, locator):
-    """Open the mode or drawer that owns a control, as an operator would."""
+    """Open the mode, drawer or Measure step that owns a control, as an operator would."""
+    panel = locator.first.evaluate("e=>e.closest('#measurement-details') ? (e.closest('[data-step-panel]')?.dataset.stepPanel || '') : null")
+    if panel is not None:
+        if not locator.first.is_visible():
+            open_measure(page, panel.split()[0] if panel else None)
+        return
     owner = locator.first.evaluate("e=>e.closest('#server-drawer,.inspector-pane')?.id||null")
     if owner in OWNERS and not page.locator("#" + owner).is_visible():
         task(page, OWNERS[owner])

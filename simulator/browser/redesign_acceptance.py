@@ -21,7 +21,7 @@ import urllib.request
 
 from PIL import Image, ImageDraw
 from playwright.sync_api import expect, sync_playwright
-from _workspace_shell import select_tablet
+from _workspace_shell import open_measure, select_tablet
 
 from _redesign_edge_cases import HeldResponse, save_name, second_operator, task_tab
 from _workspace_shell import reveal, task as workspace_task, tablet_button
@@ -1400,7 +1400,7 @@ def precise_measurement(rig):
     rig.task("Tablets")
     rig.click(f':is(.dev-pick,.roster-pick):visible[data-device-id="{id}"]')
     rig.task("Measure")
-    p.locator("#measurement-details").evaluate("e=>e.open=true")
+    open_measure(p, "ruler")
     p.locator("#cal-use-ruler").scroll_into_view_if_needed()
     before = rig.config()
     for axis in ["x", "y"]:
@@ -1765,10 +1765,12 @@ def corrections(rig):
     p.locator("#open-tablet-measurements").click()
     expect(p.locator("#measurement-details")).to_be_visible()
     expect(p.locator("#tablet-model")).to_be_focused()
+    expect(p.locator("dialog:modal")).to_have_count(1)
+    expect(p.locator("#measurement-details")).to_have_js_property("open", True)
+    p.get_by_role("button", name="Close measurements").click()
     expect(p.locator("dialog:modal")).to_have_count(0)
-    p.locator("#tablet-model").click()
-    p.locator("#tablet-model").press("Escape")
-    rig.check(True, "Phone measurement recovery closes its modal and focuses an interactive destination")
+    expect(p.locator("#open-tablet-measurements")).to_be_focused()
+    rig.check(True, "Phone measurement opens one modal Measure dialog; closing it returns focus to the Measure trigger")
     rig.shot(p, "measurement-destination")
 
     rig.tablets[0].set_viewport_size({"width": 900, "height": 1280})

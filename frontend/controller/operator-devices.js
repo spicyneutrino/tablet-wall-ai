@@ -175,7 +175,7 @@
             $("tablet-recovery").dataset.powerStale = String(!!power && power.stale);
             $("tablet-recovery").hidden = !state.rosterError && !!evidence?.showing && !(power && (power.warning || power.stale));
             const recovery = $("tablet-recovery-actions");
-            $("tablet-recovery-title").textContent = evidence?.showing ? "Details" : "Recovery";
+            $("tablet-recovery-title").textContent = evidence?.showing ? "Retry or reconnect" : "Recovery";
             const healthy = !!evidence?.showing && !state.rosterError && state.etagState === "current";
             if (id !== recovery.dataset.deviceId || String(healthy) !== recovery.dataset.healthy) recovery.open = !healthy;
             recovery.dataset.deviceId = id; recovery.dataset.healthy = String(healthy);
@@ -207,10 +207,7 @@
                     }));
                 }
             }
-            const mapped = mappingStale || ["blocked", "invalid", "stale_calibration", "needs_calibration", "needs_profile", "viewport_mismatch", "zoom_changed", "missing_profile", "missing_calibration", "invalid_mapping"].includes(evidence?.status);
-            const measured = state.layoutKind === "physical" || !!(state.base && state.base.kind === "physical")
-                || !!$("grid-kind") && $("grid-kind").value === "physical";
-            $("open-tablet-measurements").hidden = !id || !(measured || mapped);
+            $("open-tablet-measurements").hidden = !id;
             $("tablet-arrange").hidden = !id || evidence?.status !== "unplaced";
             const applied = state.base ? window.OperatorState.entries(state.base) : {};
             const onlineUnplaced = Object.keys(state.roster)

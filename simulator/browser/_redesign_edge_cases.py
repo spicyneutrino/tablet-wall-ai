@@ -13,9 +13,9 @@ def ids(rig):
 
 
 try:
-    from ._workspace_shell import MODES, mode_button, tablet_button, task, pick
+    from ._workspace_shell import MODES, mode_button, tablet_button, task, pick, open_measure
 except ImportError:
-    from _workspace_shell import MODES, mode_button, tablet_button, task, pick
+    from _workspace_shell import MODES, mode_button, tablet_button, task, pick, open_measure
 
 
 def task_tab(page, name):
@@ -414,7 +414,7 @@ def mixed_models(rig):
     task(p, "Tablets")
     pick(p, subjects[0])
     task(p, "Measure")
-    p.locator("#measurement-details > summary").click()
+    open_measure(p)
     rig.open_disclosures(p.locator("#tablet-model"))
     p.locator("#tablet-model").select_option("ipad-air-2")
     rig.open_disclosures(p.locator("#apply-tablet-model"))
@@ -1189,7 +1189,7 @@ def different_hardware(rig):
     task(p, "Tablets")
     pick(p, target)
     task(p, "Measure")
-    p.locator("#measurement-details > summary").click()
+    open_measure(p)
     rig.open_disclosures(p.locator("#tablet-model"))
     p.locator("#tablet-model").select_option("ipad-air-2")
     rig.open_disclosures(p.locator("#apply-tablet-model"))

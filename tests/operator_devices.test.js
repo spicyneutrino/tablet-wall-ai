@@ -76,7 +76,7 @@ async function run() {
     assert.equal((node("tablet-label-save").dataset.ready === "true"), false, "discard restores the clean treatment");
     assert.equal(node("tablet-identify").disabled, false);
     assert.equal(node("tablet-recovery-actions").open, false, "healthy current reports collapse recovery");
-    assert.equal(node("tablet-recovery-title").textContent, "Details");
+    assert.equal(node("tablet-recovery-title").textContent, "Retry or reconnect");
     node("tablet-recovery-actions").open = true; devices.render();
     assert.equal(node("tablet-recovery-actions").open, true, "polls preserve operator disclosure choice");
     state.roster.a.online = false;
@@ -287,7 +287,7 @@ async function run() {
     node("grid-kind").value = "logical";
     evidence = { status: "displayed", text: "Reports current image", showing: true };
     devices.render();
-    assert.equal(node("open-tablet-measurements").hidden, true, "a logical wall hides measurements for a healthy selected tablet");
+    assert.equal(node("open-tablet-measurements").hidden, false, "Measure stays reachable for any selected tablet, including on a logical wall");
     state.layoutKind = "physical";
     devices.render();
     assert.equal(node("open-tablet-measurements").hidden, false, "an applied measured layout keeps measurements reachable");

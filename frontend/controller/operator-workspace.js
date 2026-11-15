@@ -58,10 +58,11 @@ window.OperatorWorkspace = {
         }
         function setupProgress() {
             const empty = !state.base || !Object.keys(window.OperatorState.entries(state.base)).length;
+            const joined = Object.keys(state.roster).length;
             const online = Object.values(state.roster).filter(device => device.online).length;
-            const done = [online > 0, !empty, !!(state.scene && state.scene.content && state.scene.content.type === "image")];
+            const done = [joined > 0, !empty, !!(state.scene && state.scene.content && state.scene.content.type === "image")];
             const current = done.indexOf(false);
-            return { empty, online, done, current, complete: current === -1 };
+            return { empty, joined, online, done, current, complete: current === -1 };
         }
         function land() {
             if (!state.configLoaded || state.mode !== "content" || state.selectedId || arrangementDirty() || imageDirty()) return Promise.resolve(false);
@@ -98,42 +99,39 @@ window.OperatorWorkspace = {
             const attention = ids.filter(id => window.OperatorState.needsAttention(evidence.get(id)));
             const failures = state.rosterError ? [] : ids.filter(id => window.OperatorState.rosterStatus(evidence.get(id)).tone === "failure");
             const strip = $("exception-strip");
-            const limit = phone && phone.matches ? 1 : 2;
-            const shown = failures.slice(0, limit);
-            const wanted = shown.concat(failures.length > limit ? ["+more"] : []);
-            for (const [id, row] of problemRows) if (!wanted.includes(id)) { row.remove(); problemRows.delete(id); }
-            wanted.forEach((id, index) => {
-                let row = problemRows.get(id);
+            // One persistent summary row, so a focused keyboard user keeps focus as the failure count changes.
+            let row = problemRows.get("summary");
+            if (!failures.length) {
+                if (row) { row.remove(); problemRows.delete("summary"); }
+            } else {
                 if (!row) {
                     row = document.createElement("li");
                     row.button = document.createElement("button");
                     row.button.type = "button";
                     row.button.className = "problem-chip";
                     row.button.addEventListener("click", () => {
-                        if (id === "+more" && phone && phone.matches) {
+                        if (row.dataset.status === "more" && phone && phone.matches) {
                             if (document.body.dataset.view !== "tablets") $("nav-tablets").click();
                         }
                         else revealRow(row.button.dataset.problemDevice, row.button);
                     });
                     row.append(row.button);
-                    problemRows.set(id, row);
+                    problemRows.set("summary", row);
+                    strip.append(row);
                 }
-                if (id === "+more") {
-                    const rest = failures.slice(limit);
+                row.button.dataset.problemDevice = failures[0];
+                if (failures.length > 1) {
                     row.dataset.status = "more";
-                    row.button.dataset.problemDevice = rest[0];
-                    setTextIfChanged(row.button, "+" + rest.length);
-                    row.button.setAttribute("aria-label", rest.length + (phone && phone.matches ? " more tablets need attention. Open Tablets to review all." : " more tablets need attention. Review the first."));
+                    setTextIfChanged(row.button, "▲ " + failures.length + " tablets need attention");
+                    row.button.setAttribute("aria-label", failures.length + (phone && phone.matches ? " tablets need attention. Open Tablets to review all." : " tablets need attention. Review the first."));
                 } else {
-                    const item = evidence.get(id), word = window.OperatorState.rosterStatus(item).word.toLowerCase();
-                    const name = labelFor ? labelFor(id) : id;
-                    row.dataset.status = window.OperatorState.rosterStatus(item).key;
-                    row.button.dataset.problemDevice = id;
-                    setTextIfChanged(row.button, "▲ " + name + " " + word);
+                    const item = evidence.get(failures[0]), status = window.OperatorState.rosterStatus(item);
+                    const name = labelFor ? labelFor(failures[0]) : failures[0];
+                    row.dataset.status = status.key;
+                    setTextIfChanged(row.button, "▲ " + name + " " + status.word.toLowerCase());
                     row.button.setAttribute("aria-label", name + ", " + item.text + ". Review recovery.");
                 }
-                if (strip.children[index] !== row) strip.insertBefore(row, strip.children[index] || null);
-            });
+            }
             if ($("issues-description")) setTextIfChanged($("issues-description"), attention.length + " current content report issue" + (attention.length === 1 ? "" : "s"));
             $("btn-wall-health").dataset.issues = String(attention.length);
             if ($("wall-status-summary")) setTextIfChanged($("wall-status-summary"), "Content report issues: " + attention.length);
@@ -233,8 +231,9 @@ window.OperatorWorkspace = {
             const progress = setupProgress(), wallEmpty = progress.empty;
             if ($("setup-strip")) {
                 $("setup-strip").hidden = !state.configLoaded || !!state.rosterError || progress.complete;
-                const { online, done, current } = progress;
-                const copy = [online ? online + (online === 1 ? " tablet online" : " tablets online") : "No tablets yet",
+                const { joined, online, done, current } = progress;
+                const copy = [online ? online + (online === 1 ? " tablet online" : " tablets online")
+                    : joined ? joined + (joined === 1 ? " tablet joined" : " tablets joined") : "No tablets yet",
                     done[1] ? "Wall arranged" : done[0] ? "Not arranged yet" : "After tablets join",
                     done[2] ? "Image shown" : "No image shown yet"];
                 ["first-wall-join", "first-wall-arrange", "first-wall-image"].forEach((id, index) => {

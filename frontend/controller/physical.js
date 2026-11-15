@@ -2719,9 +2719,25 @@
     }
 
     function openMeasurements(id) {
-        if (id) selectDevice(id, { reveal: true });
-        document.getElementById("measurement-details").open = true;
+        if (id && id !== state.selectedId) selectDevice(id, { reveal: true });
+        const dialog = document.getElementById("measurement-details");
+        setMeasureStep("model");
+        setTextIfChanged(document.getElementById("measure-title"), "Measure " + (id ? deviceLabel(id) : "tablet"));
+        if (!dialog.open) dialog.showModal();
         document.getElementById("tablet-model").focus();
+    }
+
+    const measureSteps = ["model", "profile", "ruler", "advanced"];
+    function setMeasureStep(step) {
+        const dialog = document.getElementById("measurement-details");
+        dialog.dataset.step = step;
+        const index = measureSteps.indexOf(step);
+        for (const button of dialog.querySelectorAll("[data-measure-step]")) {
+            button.setAttribute("aria-current", String(button.dataset.measureStep === step && "step"));
+            button.dataset.done = String(measureSteps.indexOf(button.dataset.measureStep) < index);
+        }
+        document.getElementById("measure-back").disabled = index === 0;
+        document.getElementById("measure-next").hidden = index === measureSteps.length - 1;
     }
 
     function openServer() {
@@ -3185,6 +3201,18 @@
             if (hasUnsavedEdits()) { event.preventDefault(); event.returnValue = ""; }
         });
         document.getElementById("open-tablet-measurements").addEventListener("click", () => openMeasurements(state.selectedId));
+        const measureDialog = document.getElementById("measurement-details");
+        measureDialog.addEventListener("click", event => {
+            const step = event.target.closest("[data-measure-step]"), nav = event.target.closest("[data-measure-nav]");
+            if (step) setMeasureStep(step.dataset.measureStep);
+            else if (nav) setMeasureStep(measureSteps[measureSteps.indexOf(measureDialog.dataset.step) + Number(nav.dataset.measureNav)]);
+        });
+        // Validation can flag a field on another step; show that step so focus lands on it.
+        measureDialog.addEventListener("submit", event => queueMicrotask(() => {
+            const invalid = event.target.querySelector('[aria-invalid="true"]');
+            const panel = invalid && !invalid.getClientRects().length && invalid.closest("[data-step-panel]");
+            if (panel) { setMeasureStep(panel.dataset.stepPanel.split(" ")[0]); invalid.focus(); }
+        }));
         state.onParticipation = (id, participating) => mutateDraft(draft => { draft.slots[id].participating = participating; });
         document.getElementById("experimental-opt-in").addEventListener("change", event => {
             document.getElementById("experimental-controls").hidden = !event.target.checked;

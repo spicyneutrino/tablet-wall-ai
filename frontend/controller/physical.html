@@ -8,7 +8,7 @@
     <title>Tablet wall · tablet-wall-ai</title>
     <link rel="icon" href="favicon.svg" type="image/svg+xml">
     <link rel="stylesheet" href="operator-tokens.css?v=20261113-a">
-    <link rel="stylesheet" href="operator-workspace.css?v=20261115-m13-final">
+    <link rel="stylesheet" href="operator-workspace.css?v=20261115-b2">
     <link rel="stylesheet" href="operator-stage.css?v=m13c-4">
     <script src="operator-theme.js?v=20261113-a"></script>
 </head>
@@ -191,8 +191,8 @@
       </div>
         <ul id="image-gallery" class="image-gallery" aria-label="Image library"></ul>
       <p id="image-search-empty" class="empty-note" role="status" hidden>No images match your search.</p>
-
       <p id="library-status" class="form-msg" role="status" aria-live="polite"></p>
+
     </div>
 
 
@@ -501,6 +501,7 @@
             <button type="button" class="btn" id="tablet-arrange" hidden>Place in Arrange</button>
             <div class="operator-actions">
                 <button class="btn" id="tablet-identify" type="button" data-action="tablet-identify">Identify</button>
+                <button class="btn" id="open-tablet-measurements" type="button" data-action="open-tablet-measurements" hidden>Measure…</button>
             </div>
             <details class="technical-details" id="tablet-status-details"><summary>Details</summary>            <p id="tablet-evidence"></p>
             <div class="tablet-recovery" id="tablet-recovery"></div>
@@ -605,237 +606,6 @@
                 <p class="hint" id="tablet-provenance"></p>
                 <label class="check-label" id="tablet-participation-label"><input type="checkbox" id="tablet-participation" data-field="tablet-participation"> Include this slot in the show (draft)</label>
             </details>
-            <button class="btn btn-sm" id="open-tablet-measurements" type="button" data-action="open-tablet-measurements" hidden>Review measurements</button>
-        <details class="measure-entry" id="measurement-details">
-            <summary><svg class="disclosure-icon" viewBox="0 0 16 16" width="16" height="16" fill="none" stroke="currentColor" stroke-width="1.5" aria-hidden="true"><path d="m6 4 4 4-4 4"/></svg>Measure</summary>
-            <div class="measure-body">
-            <section class="field-review" id="measurement-review" hidden>
-                <h3>Review changed saved fields</h3>
-                <pre class="form-comparison" id="measurement-comparison"></pre>
-                <button type="button" class="btn" id="measurement-keep" data-action="measurement-keep">Use my edited measurements</button>
-            </section>
-            <section class="device-card task-section" aria-labelledby="device-card-title">
-            <h3 id="device-card-title">Measurements</h3>
-            <p class="empty-note" id="device-card-empty">Select a tablet to edit its measurements.</p>
-
-            <div id="device-card-body" hidden>
-                <div class="device-card-head">
-                    <p class="device-card-subject" id="device-card-name">–</p>
-                    <span class="chip" id="device-card-cal" data-kind="info">–</span>
-                </div>
-
-                <div class="field">
-                    <label class="label" for="tablet-model">Tablet model</label>
-<div class="select-control">                    <select class="inp" id="tablet-model" data-field="tablet-model"></select><svg class="select-icon" viewBox="0 0 16 16" width="16" height="16" fill="none" stroke="currentColor" stroke-width="1.5" aria-hidden="true"><path d="m4 6 4 4 4-4"/></svg></div>
-                    <p class="hint" id="tablet-model-status" role="status"></p>
-                    <div class="operator-actions">
-                        <button class="btn" type="button" id="apply-tablet-model" data-action="apply-tablet-model">Confirm model choice</button>
-                        <button type="button" class="btn" id="review-model" data-action="review-model">Compare current saved model</button>
-                        <button type="button" class="btn" id="discard-model" data-action="discard-model">Discard model choice</button>
-                    </div>
-                    <p class="hint">Turning the tablet updates its browser mapping. Use the wall rotation controls to match how it is mounted. Fullscreen assumes no browser inset; other modes are approximate.</p>
-                </div>
-                <form class="measure-form" id="profile-form" novalidate data-form="profile-form">
-                    <h3>Profile</h3>
-                    <p class="current" id="profile-current"></p>
-
-                    <div class="form-grid">
-                        <div class="field">
-                            <label class="label" for="profile-active-width">Active width (mm)</label>
-                            <input class="inp" id="profile-active-width" type="number" min="0" step="any" inputmode="decimal" autocomplete="off" data-field="profile-active-width" aria-describedby="profile-msg">
-                        </div>
-                        <div class="field">
-                            <label class="label" for="profile-active-height">Active height (mm)</label>
-                            <input class="inp" id="profile-active-height" type="number" min="0" step="any" inputmode="decimal" autocomplete="off" data-field="profile-active-height" aria-describedby="profile-msg">
-                        </div>
-                        <div class="field">
-                            <label class="label" for="profile-bezel-top">Bezel top (mm)</label>
-                            <input class="inp" id="profile-bezel-top" type="number" min="0" step="any" inputmode="decimal" autocomplete="off" data-field="profile-bezel-top" aria-describedby="profile-msg">
-                        </div>
-                        <div class="field">
-                            <label class="label" for="profile-bezel-right">Bezel right (mm)</label>
-                            <input class="inp" id="profile-bezel-right" type="number" min="0" step="any" inputmode="decimal" autocomplete="off" data-field="profile-bezel-right" aria-describedby="profile-msg">
-                        </div>
-                        <div class="field">
-                            <label class="label" for="profile-bezel-bottom">Bezel bottom (mm)</label>
-                            <input class="inp" id="profile-bezel-bottom" type="number" min="0" step="any" inputmode="decimal" autocomplete="off" data-field="profile-bezel-bottom" aria-describedby="profile-msg">
-                        </div>
-                        <div class="field">
-                            <label class="label" for="profile-bezel-left">Bezel left (mm)</label>
-                            <input class="inp" id="profile-bezel-left" type="number" min="0" step="any" inputmode="decimal" autocomplete="off" data-field="profile-bezel-left" aria-describedby="profile-msg">
-                        </div>
-                        <div class="field field-wide">
-                            <label class="label" for="profile-label">Label</label>
-                            <input class="inp" id="profile-label" type="text" maxlength="80" autocomplete="off" spellcheck="false" data-field="profile-label" aria-describedby="profile-msg">
-                        </div>
-                        <div class="field field-wide">
-                            <label class="label" for="profile-provenance">Provenance</label>
-                            <input class="inp" id="profile-provenance" type="text" maxlength="40" autocomplete="off" spellcheck="false" placeholder="manual, datasheet" data-field="profile-provenance" aria-describedby="profile-msg">
-                        </div>
-                        <div class="field">
-                            <label class="label" for="profile-pixel-width">Panel pixels wide (optional)</label>
-                            <input class="inp" id="profile-pixel-width" type="number" min="1" step="1" inputmode="numeric" autocomplete="off" data-field="profile-pixel-width" aria-describedby="profile-msg">
-                        </div>
-                        <div class="field">
-                            <label class="label" for="profile-pixel-height">Panel pixels high (optional)</label>
-                            <input class="inp" id="profile-pixel-height" type="number" min="1" step="1" inputmode="numeric" autocomplete="off" data-field="profile-pixel-height" aria-describedby="profile-msg">
-                        </div>
-                    </div>
-
-                    <p class="form-msg" id="profile-msg" role="status" aria-live="polite" hidden></p>
-                    <div class="operator-actions">
-                        <button type="submit" class="btn" id="btn-profile-save" data-action="btn-profile-save">Save profile</button>
-                        <button type="button" class="btn" id="review-profile" data-action="review-profile">Compare current saved profile</button>
-                        <button type="button" class="btn" id="discard-profile" data-action="discard-profile">Discard profile fields</button>
-                    </div>
-                </form>
-
-                <form class="measure-form" id="calibration-form" novalidate data-form="calibration-form">
-                    <h3>Calibration</h3>
-                    <p class="current" id="calibration-current"></p>
-                    <fieldset class="task-section">
-                        <legend>Optional advanced ruler measurement</legend>
-                        <p>Confirmed known models can already use the physical wall. New measurements are optional. Keep supplied measurements unless you choose a new ruler calibration.</p>
-                        <p id="cal-live-viewport" role="status" aria-live="polite">Waiting for tablet viewport.</p>
-                        <button class="btn" id="cal-use-viewport" type="button" data-action="cal-use-viewport">Use tablet viewport</button>
-                        <p id="cal-ruler-address-note">Loading tablet address…</p>
-                        <a id="cal-ruler-link" hidden></a>
-                        <button class="btn" id="cal-copy-ruler" type="button" hidden data-action="cal-copy-ruler">Copy ruler address</button>
-                        <p>On the selected tablet, measure each ruler line with a physical ruler. Copy the full current labelled CSS span for each line. Long spans reduce extrapolation. The 200 px short-span option remains available on the tablet.</p>
-                        <div class="form-grid">
-                            <div class="field">
-                                <label class="label" for="cal-ruler-mm-x">Horizontal measured length (mm)</label>
-                                <input class="inp" id="cal-ruler-mm-x" type="number" min="0" step="any" inputmode="decimal" data-field="cal-ruler-mm-x" aria-describedby="calibration-msg">
-                            </div>
-                            <div class="field">
-                                <label class="label" for="cal-ruler-mm-y">Vertical measured length (mm)</label>
-                                <input class="inp" id="cal-ruler-mm-y" type="number" min="0" step="any" inputmode="decimal" data-field="cal-ruler-mm-y" aria-describedby="calibration-msg">
-                            </div>
-                            <div class="field">
-                                <label class="label" for="cal-ruler-span-x">Horizontal line span (CSS px)</label>
-                                <input class="inp" id="cal-ruler-span-x" type="number" min="0" step="any" value="200" inputmode="decimal" data-field="cal-ruler-span-x" aria-describedby="calibration-msg">
-                            </div>
-                            <div class="field">
-                                <label class="label" for="cal-ruler-span-y">Vertical line span (CSS px)</label>
-                                <input class="inp" id="cal-ruler-span-y" type="number" min="0" step="any" value="200" inputmode="decimal" data-field="cal-ruler-span-y" aria-describedby="calibration-msg">
-                            </div>
-                        </div>
-                        <div class="form-grid">
-                            <div class="field">
-                                <label class="label" for="cal-ruler-error-x">Horizontal ruler error (± mm)</label>
-                                <input class="inp" id="cal-ruler-error-x" type="number" min="0" step="any" inputmode="decimal" aria-describedby="calibration-msg" data-field="cal-ruler-error-x">
-                            </div>
-                            <div class="field">
-                                <label class="label" for="cal-ruler-error-y">Vertical ruler error (± mm)</label>
-                                <input class="inp" id="cal-ruler-error-y" type="number" min="0" step="any" inputmode="decimal" aria-describedby="calibration-msg" data-field="cal-ruler-error-y">
-                            </div>
-                        </div>
-                        <p class="hint" id="cal-ruler-error-note">Estimate the reading error for each measured line. It is propagated across the usable panel before saving. This does not establish a 2 mm accuracy claim.</p>
-                        <button class="btn" id="cal-use-ruler" type="button" data-action="cal-use-ruler">Check ruler measurements</button>
-                        <div id="cal-ruler-preview" role="status" aria-live="polite" tabindex="-1" hidden></div>
-                        <fieldset id="cal-ruler-decision" hidden class="task-section">
-                            <legend>Choose which measurement to use</legend>
-                            <p>Keep supplied writes nothing and preserves the current profile and mapping. Use ruler prepares a new calibration revision with these scales and errors. The supplied profile, old revisions and layout pins stay unchanged. Measure again discards this check.</p>
-                            <button class="btn" id="cal-keep-supplied" type="button" data-action="cal-keep-supplied">Keep supplied</button>
-                            <button class="btn" id="cal-accept-ruler" type="button" data-action="cal-accept-ruler">Use ruler</button>
-                            <button class="btn" id="cal-measure-again" type="button" data-action="cal-measure-again">Measure again</button>
-                        </fieldset>
-                        <p>X is the browser’s horizontal axis; Y is vertical. Quarter turn maps these CSS axes into the native panel, and odd quarter turns exchange width and height. Each axis is measured independently. DPR does not change these measurements. Estimated panel profiles are not ruler verified; browser toolbars can inset the picture area.</p>
-                    </fieldset>
-                    <h4>Advanced calibration fields</h4>
-                    <p>Set quarter turn before checking the ruler. Review the propagated uncertainty. Measure the browser picture area’s inset from the panel origin for panel offsets; use 0 only when the viewport starts at the panel origin. Review these fields, then Save calibration.</p>
-
-                    <div class="form-grid">
-                        <div class="field">
-                            <label class="label" for="cal-profile-revision">Profile revision</label>
-                            <input class="inp" id="cal-profile-revision" type="number" min="1" step="1" inputmode="numeric" autocomplete="off" data-field="cal-profile-revision" aria-describedby="calibration-msg">
-                        </div>
-                        <div class="field">
-                            <label class="label" for="cal-viewport-width">Viewport width (CSS px)</label>
-                            <input class="inp" id="cal-viewport-width" type="number" min="1" step="any" inputmode="decimal" autocomplete="off" data-field="cal-viewport-width" aria-describedby="calibration-msg">
-                        </div>
-                        <div class="field">
-                            <label class="label" for="cal-viewport-height">Viewport height (CSS px)</label>
-                            <input class="inp" id="cal-viewport-height" type="number" min="1" step="any" inputmode="decimal" autocomplete="off" data-field="cal-viewport-height" aria-describedby="calibration-msg">
-                        </div>
-                        <div class="field">
-                            <label class="label" for="cal-dpr">Device pixel ratio</label>
-                            <input class="inp" id="cal-dpr" type="number" min="0" step="any" inputmode="decimal" autocomplete="off" data-field="cal-dpr" aria-describedby="calibration-msg">
-                        </div>
-                        <div class="field">
-                            <label class="label" for="cal-orientation">Orientation</label>
-                            <select class="inp" id="cal-orientation" data-field="cal-orientation" aria-describedby="calibration-msg">
-                                <option value="">Choose orientation</option>
-                                <option value="0">0°</option>
-                                <option value="90">90°</option>
-                                <option value="180">180°</option>
-                                <option value="270">270°</option>
-                            </select><svg class="select-icon" viewBox="0 0 16 16" width="16" height="16" fill="none" stroke="currentColor" stroke-width="1.5" aria-hidden="true"><path d="m4 6 4 4 4-4"/></svg>
-                        </div>
-                        <div class="field">
-                            <label class="label" for="cal-mode">Mode</label>
-                            <select class="inp" id="cal-mode" data-field="cal-mode" aria-describedby="calibration-msg">
-                                <option value="">Choose mode</option>
-                                <option value="tab">Tab</option>
-                                <option value="fullscreen">Fullscreen</option>
-                                <option value="standalone">Standalone</option>
-                            </select><svg class="select-icon" viewBox="0 0 16 16" width="16" height="16" fill="none" stroke="currentColor" stroke-width="1.5" aria-hidden="true"><path d="m4 6 4 4 4-4"/></svg>
-                        </div>
-                        <div class="field">
-                            <label class="label" for="cal-quarter-turn">Quarter turn</label>
-                            <select class="inp" id="cal-quarter-turn" data-field="cal-quarter-turn" aria-describedby="calibration-msg">
-                                <option value="0">0</option>
-                                <option value="1">1</option>
-                                <option value="2">2</option>
-                                <option value="3">3</option>
-                            </select><svg class="select-icon" viewBox="0 0 16 16" width="16" height="16" fill="none" stroke="currentColor" stroke-width="1.5" aria-hidden="true"><path d="m4 6 4 4 4-4"/></svg>
-                        </div>
-                        <div class="field">
-                            <label class="label" for="cal-anchor-edge">Anchor edge</label>
-                            <select class="inp" id="cal-anchor-edge" data-field="cal-anchor-edge" aria-describedby="calibration-msg">
-                                <option value="top-left">Top left</option>
-                                <option value="top-right">Top right</option>
-                                <option value="bottom-left">Bottom left</option>
-                                <option value="bottom-right">Bottom right</option>
-                            </select><svg class="select-icon" viewBox="0 0 16 16" width="16" height="16" fill="none" stroke="currentColor" stroke-width="1.5" aria-hidden="true"><path d="m4 6 4 4 4-4"/></svg>
-                        </div>
-                        <div class="field">
-                            <label class="label" for="cal-offset-x">Panel offset X (mm)</label>
-                            <input class="inp" id="cal-offset-x" type="number" step="any" inputmode="decimal" autocomplete="off" data-field="cal-offset-x" aria-describedby="calibration-msg">
-                        </div>
-                        <div class="field">
-                            <label class="label" for="cal-offset-y">Panel offset Y (mm)</label>
-                            <input class="inp" id="cal-offset-y" type="number" step="any" inputmode="decimal" autocomplete="off" data-field="cal-offset-y" aria-describedby="calibration-msg">
-                        </div>
-                        <div class="field">
-                            <label class="label" for="cal-mm-css-x">mm per CSS pixel X</label>
-                            <input class="inp" id="cal-mm-css-x" type="number" min="0" step="any" inputmode="decimal" autocomplete="off" data-field="cal-mm-css-x" aria-describedby="calibration-msg">
-                        </div>
-                        <div class="field">
-                            <label class="label" for="cal-mm-css-y">mm per CSS pixel Y</label>
-                            <input class="inp" id="cal-mm-css-y" type="number" min="0" step="any" inputmode="decimal" autocomplete="off" data-field="cal-mm-css-y" aria-describedby="calibration-msg">
-                        </div>
-                        <div class="field">
-                            <label class="label" for="cal-uncertainty">Uncertainty (mm)</label>
-                            <input class="inp" id="cal-uncertainty" type="number" min="0" step="any" inputmode="decimal" autocomplete="off" data-field="cal-uncertainty" aria-describedby="calibration-msg">
-                        </div>
-                        <div class="field field-wide">
-                            <label class="label" for="cal-method">Method</label>
-                            <input class="inp" id="cal-method" type="text" maxlength="80" autocomplete="off" spellcheck="false" placeholder="ruler across the active edge" data-field="cal-method" aria-describedby="calibration-msg">
-                        </div>
-                    </div>
-
-                    <p class="form-msg" id="calibration-msg" role="status" aria-live="polite" hidden></p>
-                    <div class="operator-actions">
-                        <button type="submit" class="btn" id="btn-calibration-save" data-action="btn-calibration-save">Save calibration</button>
-                        <button type="button" class="btn" id="review-calibration" data-action="review-calibration">Compare current saved calibration</button>
-                        <button type="button" class="btn" id="discard-calibration" data-action="discard-calibration">Discard calibration fields</button>
-                    </div>
-                </form>
-            </div>
-        </section>
-        </div>
-        </details>
             <details class="destructive-area" id="tablet-lifecycle">
                 <summary><svg class="disclosure-icon" viewBox="0 0 16 16" width="16" height="16" fill="none" stroke="currentColor" stroke-width="1.5" aria-hidden="true"><path d="m6 4 4 4-4 4"/></svg>Remove or replace</summary><p class="hint">Remove wall placement, forget a registration, or review a replacement. Each action requires confirmation.</p>
                 <div class="operator-actions">
@@ -1142,6 +912,251 @@
     <p class="noscript">This page needs JavaScript. It talks to the server over plain HTTP.</p>
 </noscript>
 
+<dialog class="measure-dialog" id="measurement-details" aria-labelledby="measure-title" data-step="model">
+    <header class="measure-head">
+        <h2 id="measure-title">Measure tablet</h2>
+        <form method="dialog"><button class="btn btn-ghost icon-button" value="close" aria-label="Close measurements">✕</button></form>
+    </header>
+    <nav class="measure-steps" aria-label="Measurement steps">
+        <button type="button" class="measure-step" data-measure-step="model" aria-current="step"><span>1</span> Model</button>
+        <button type="button" class="measure-step" data-measure-step="profile"><span>2</span> Size and bezels</button>
+        <button type="button" class="measure-step" data-measure-step="ruler"><span>3</span> Ruler check <small>optional</small></button>
+        <button type="button" class="measure-step" data-measure-step="advanced"><span>4</span> Advanced</button>
+    </nav>
+            <div class="measure-body">
+            <section class="field-review" id="measurement-review" hidden>
+                <h3>Review changed saved fields</h3>
+                <pre class="form-comparison" id="measurement-comparison"></pre>
+                <button type="button" class="btn" id="measurement-keep" data-action="measurement-keep">Use my edited measurements</button>
+            </section>
+            <section class="device-card task-section" aria-labelledby="device-card-title">
+            <h3 id="device-card-title">Measurements</h3>
+            <p class="empty-note" id="device-card-empty">Select a tablet to edit its measurements.</p>
+
+            <div id="device-card-body" hidden>
+                <div class="device-card-head">
+                    <p class="device-card-subject" id="device-card-name">–</p>
+                    <span class="chip" id="device-card-cal" data-kind="info">–</span>
+                </div>
+
+                <div class="field" data-step-panel="model">
+                    <label class="label" for="tablet-model">Tablet model</label>
+<div class="select-control">                    <select class="inp" id="tablet-model" data-field="tablet-model"></select><svg class="select-icon" viewBox="0 0 16 16" width="16" height="16" fill="none" stroke="currentColor" stroke-width="1.5" aria-hidden="true"><path d="m4 6 4 4 4-4"/></svg></div>
+                    <p class="hint" id="tablet-model-status" role="status"></p>
+                    <div class="operator-actions">
+                        <button class="btn" type="button" id="apply-tablet-model" data-action="apply-tablet-model">Confirm model choice</button>
+                        <button type="button" class="btn" id="review-model" data-action="review-model">Compare current saved model</button>
+                        <button type="button" class="btn" id="discard-model" data-action="discard-model">Discard model choice</button>
+                    </div>
+                    <p class="hint">Turning the tablet updates its browser mapping. Use the wall rotation controls to match how it is mounted. Fullscreen assumes no browser inset; other modes are approximate.</p>
+                </div>
+                <form class="measure-form" id="profile-form" novalidate data-form="profile-form" data-step-panel="profile">
+                    <h3>Profile</h3>
+                    <p class="current" id="profile-current"></p>
+
+                    <div class="form-grid">
+                        <div class="field">
+                            <label class="label" for="profile-active-width">Active width (mm)</label>
+                            <input class="inp" id="profile-active-width" type="number" min="0" step="any" inputmode="decimal" autocomplete="off" data-field="profile-active-width" aria-describedby="profile-msg">
+                        </div>
+                        <div class="field">
+                            <label class="label" for="profile-active-height">Active height (mm)</label>
+                            <input class="inp" id="profile-active-height" type="number" min="0" step="any" inputmode="decimal" autocomplete="off" data-field="profile-active-height" aria-describedby="profile-msg">
+                        </div>
+                        <div class="field">
+                            <label class="label" for="profile-bezel-top">Bezel top (mm)</label>
+                            <input class="inp" id="profile-bezel-top" type="number" min="0" step="any" inputmode="decimal" autocomplete="off" data-field="profile-bezel-top" aria-describedby="profile-msg">
+                        </div>
+                        <div class="field">
+                            <label class="label" for="profile-bezel-right">Bezel right (mm)</label>
+                            <input class="inp" id="profile-bezel-right" type="number" min="0" step="any" inputmode="decimal" autocomplete="off" data-field="profile-bezel-right" aria-describedby="profile-msg">
+                        </div>
+                        <div class="field">
+                            <label class="label" for="profile-bezel-bottom">Bezel bottom (mm)</label>
+                            <input class="inp" id="profile-bezel-bottom" type="number" min="0" step="any" inputmode="decimal" autocomplete="off" data-field="profile-bezel-bottom" aria-describedby="profile-msg">
+                        </div>
+                        <div class="field">
+                            <label class="label" for="profile-bezel-left">Bezel left (mm)</label>
+                            <input class="inp" id="profile-bezel-left" type="number" min="0" step="any" inputmode="decimal" autocomplete="off" data-field="profile-bezel-left" aria-describedby="profile-msg">
+                        </div>
+                        <div class="field field-wide">
+                            <label class="label" for="profile-label">Label</label>
+                            <input class="inp" id="profile-label" type="text" maxlength="80" autocomplete="off" spellcheck="false" data-field="profile-label" aria-describedby="profile-msg">
+                        </div>
+                        <div class="field field-wide">
+                            <label class="label" for="profile-provenance">Provenance</label>
+                            <input class="inp" id="profile-provenance" type="text" maxlength="40" autocomplete="off" spellcheck="false" placeholder="manual, datasheet" data-field="profile-provenance" aria-describedby="profile-msg">
+                        </div>
+                        <div class="field">
+                            <label class="label" for="profile-pixel-width">Panel pixels wide (optional)</label>
+                            <input class="inp" id="profile-pixel-width" type="number" min="1" step="1" inputmode="numeric" autocomplete="off" data-field="profile-pixel-width" aria-describedby="profile-msg">
+                        </div>
+                        <div class="field">
+                            <label class="label" for="profile-pixel-height">Panel pixels high (optional)</label>
+                            <input class="inp" id="profile-pixel-height" type="number" min="1" step="1" inputmode="numeric" autocomplete="off" data-field="profile-pixel-height" aria-describedby="profile-msg">
+                        </div>
+                    </div>
+
+                    <p class="form-msg" id="profile-msg" role="status" aria-live="polite" hidden></p>
+                    <div class="operator-actions">
+                        <button type="submit" class="btn" id="btn-profile-save" data-action="btn-profile-save">Save profile</button>
+                        <button type="button" class="btn" id="review-profile" data-action="review-profile">Compare current saved profile</button>
+                        <button type="button" class="btn" id="discard-profile" data-action="discard-profile">Discard profile fields</button>
+                    </div>
+                </form>
+
+                <form class="measure-form" id="calibration-form" novalidate data-form="calibration-form" data-step-panel="ruler advanced">
+                    <h3>Calibration</h3>
+                    <p class="current" id="calibration-current"></p>
+                    <fieldset class="task-section" data-step-panel="ruler">
+                        <legend>Optional advanced ruler measurement</legend>
+                        <p>Confirmed known models can already use the physical wall. New measurements are optional. Keep supplied measurements unless you choose a new ruler calibration.</p>
+                        <p id="cal-live-viewport" role="status" aria-live="polite">Waiting for tablet viewport.</p>
+                        <button class="btn" id="cal-use-viewport" type="button" data-action="cal-use-viewport">Use tablet viewport</button>
+                        <p id="cal-ruler-address-note">Loading tablet address…</p>
+                        <a id="cal-ruler-link" hidden></a>
+                        <button class="btn" id="cal-copy-ruler" type="button" hidden data-action="cal-copy-ruler">Copy ruler address</button>
+                        <p>On the selected tablet, measure each ruler line with a physical ruler. Copy the full current labelled CSS span for each line. Long spans reduce extrapolation. The 200 px short-span option remains available on the tablet.</p>
+                        <div class="form-grid">
+                            <div class="field">
+                                <label class="label" for="cal-ruler-mm-x">Horizontal measured length (mm)</label>
+                                <input class="inp" id="cal-ruler-mm-x" type="number" min="0" step="any" inputmode="decimal" data-field="cal-ruler-mm-x" aria-describedby="calibration-msg">
+                            </div>
+                            <div class="field">
+                                <label class="label" for="cal-ruler-mm-y">Vertical measured length (mm)</label>
+                                <input class="inp" id="cal-ruler-mm-y" type="number" min="0" step="any" inputmode="decimal" data-field="cal-ruler-mm-y" aria-describedby="calibration-msg">
+                            </div>
+                            <div class="field">
+                                <label class="label" for="cal-ruler-span-x">Horizontal line span (CSS px)</label>
+                                <input class="inp" id="cal-ruler-span-x" type="number" min="0" step="any" value="200" inputmode="decimal" data-field="cal-ruler-span-x" aria-describedby="calibration-msg">
+                            </div>
+                            <div class="field">
+                                <label class="label" for="cal-ruler-span-y">Vertical line span (CSS px)</label>
+                                <input class="inp" id="cal-ruler-span-y" type="number" min="0" step="any" value="200" inputmode="decimal" data-field="cal-ruler-span-y" aria-describedby="calibration-msg">
+                            </div>
+                        </div>
+                        <div class="form-grid">
+                            <div class="field">
+                                <label class="label" for="cal-ruler-error-x">Horizontal ruler error (± mm)</label>
+                                <input class="inp" id="cal-ruler-error-x" type="number" min="0" step="any" inputmode="decimal" aria-describedby="calibration-msg" data-field="cal-ruler-error-x">
+                            </div>
+                            <div class="field">
+                                <label class="label" for="cal-ruler-error-y">Vertical ruler error (± mm)</label>
+                                <input class="inp" id="cal-ruler-error-y" type="number" min="0" step="any" inputmode="decimal" aria-describedby="calibration-msg" data-field="cal-ruler-error-y">
+                            </div>
+                        </div>
+                        <p class="hint" id="cal-ruler-error-note">Estimate the reading error for each measured line. It is propagated across the usable panel before saving. This does not establish a 2 mm accuracy claim.</p>
+                        <button class="btn" id="cal-use-ruler" type="button" data-action="cal-use-ruler">Check ruler measurements</button>
+                        <div id="cal-ruler-preview" role="status" aria-live="polite" tabindex="-1" hidden></div>
+                        <fieldset id="cal-ruler-decision" hidden class="task-section">
+                            <legend>Choose which measurement to use</legend>
+                            <p>Keep supplied writes nothing and preserves the current profile and mapping. Use ruler prepares a new calibration revision with these scales and errors. The supplied profile, old revisions and layout pins stay unchanged. Measure again discards this check.</p>
+                            <button class="btn" id="cal-keep-supplied" type="button" data-action="cal-keep-supplied">Keep supplied</button>
+                            <button class="btn" id="cal-accept-ruler" type="button" data-action="cal-accept-ruler">Use ruler</button>
+                            <button class="btn" id="cal-measure-again" type="button" data-action="cal-measure-again">Measure again</button>
+                        </fieldset>
+                        <p>X is the browser’s horizontal axis; Y is vertical. Quarter turn maps these CSS axes into the native panel, and odd quarter turns exchange width and height. Each axis is measured independently. DPR does not change these measurements. Estimated panel profiles are not ruler verified; browser toolbars can inset the picture area.</p>
+                    </fieldset>
+                    <div class="measure-advanced" data-step-panel="advanced">
+                    <h4>Advanced calibration fields</h4>
+                    <p>Set quarter turn before checking the ruler. Review the propagated uncertainty. Measure the browser picture area’s inset from the panel origin for panel offsets; use 0 only when the viewport starts at the panel origin. Review these fields, then Save calibration.</p>
+
+                    <div class="form-grid">
+                        <div class="field">
+                            <label class="label" for="cal-profile-revision">Profile revision</label>
+                            <input class="inp" id="cal-profile-revision" type="number" min="1" step="1" inputmode="numeric" autocomplete="off" data-field="cal-profile-revision" aria-describedby="calibration-msg">
+                        </div>
+                        <div class="field">
+                            <label class="label" for="cal-viewport-width">Viewport width (CSS px)</label>
+                            <input class="inp" id="cal-viewport-width" type="number" min="1" step="any" inputmode="decimal" autocomplete="off" data-field="cal-viewport-width" aria-describedby="calibration-msg">
+                        </div>
+                        <div class="field">
+                            <label class="label" for="cal-viewport-height">Viewport height (CSS px)</label>
+                            <input class="inp" id="cal-viewport-height" type="number" min="1" step="any" inputmode="decimal" autocomplete="off" data-field="cal-viewport-height" aria-describedby="calibration-msg">
+                        </div>
+                        <div class="field">
+                            <label class="label" for="cal-dpr">Device pixel ratio</label>
+                            <input class="inp" id="cal-dpr" type="number" min="0" step="any" inputmode="decimal" autocomplete="off" data-field="cal-dpr" aria-describedby="calibration-msg">
+                        </div>
+                        <div class="field">
+                            <label class="label" for="cal-orientation">Orientation</label>
+                            <select class="inp" id="cal-orientation" data-field="cal-orientation" aria-describedby="calibration-msg">
+                                <option value="">Choose orientation</option>
+                                <option value="0">0°</option>
+                                <option value="90">90°</option>
+                                <option value="180">180°</option>
+                                <option value="270">270°</option>
+                            </select><svg class="select-icon" viewBox="0 0 16 16" width="16" height="16" fill="none" stroke="currentColor" stroke-width="1.5" aria-hidden="true"><path d="m4 6 4 4 4-4"/></svg>
+                        </div>
+                        <div class="field">
+                            <label class="label" for="cal-mode">Mode</label>
+                            <select class="inp" id="cal-mode" data-field="cal-mode" aria-describedby="calibration-msg">
+                                <option value="">Choose mode</option>
+                                <option value="tab">Tab</option>
+                                <option value="fullscreen">Fullscreen</option>
+                                <option value="standalone">Standalone</option>
+                            </select><svg class="select-icon" viewBox="0 0 16 16" width="16" height="16" fill="none" stroke="currentColor" stroke-width="1.5" aria-hidden="true"><path d="m4 6 4 4 4-4"/></svg>
+                        </div>
+                        <div class="field">
+                            <label class="label" for="cal-quarter-turn">Quarter turn</label>
+                            <select class="inp" id="cal-quarter-turn" data-field="cal-quarter-turn" aria-describedby="calibration-msg">
+                                <option value="0">0</option>
+                                <option value="1">1</option>
+                                <option value="2">2</option>
+                                <option value="3">3</option>
+                            </select><svg class="select-icon" viewBox="0 0 16 16" width="16" height="16" fill="none" stroke="currentColor" stroke-width="1.5" aria-hidden="true"><path d="m4 6 4 4 4-4"/></svg>
+                        </div>
+                        <div class="field">
+                            <label class="label" for="cal-anchor-edge">Anchor edge</label>
+                            <select class="inp" id="cal-anchor-edge" data-field="cal-anchor-edge" aria-describedby="calibration-msg">
+                                <option value="top-left">Top left</option>
+                                <option value="top-right">Top right</option>
+                                <option value="bottom-left">Bottom left</option>
+                                <option value="bottom-right">Bottom right</option>
+                            </select><svg class="select-icon" viewBox="0 0 16 16" width="16" height="16" fill="none" stroke="currentColor" stroke-width="1.5" aria-hidden="true"><path d="m4 6 4 4 4-4"/></svg>
+                        </div>
+                        <div class="field">
+                            <label class="label" for="cal-offset-x">Panel offset X (mm)</label>
+                            <input class="inp" id="cal-offset-x" type="number" step="any" inputmode="decimal" autocomplete="off" data-field="cal-offset-x" aria-describedby="calibration-msg">
+                        </div>
+                        <div class="field">
+                            <label class="label" for="cal-offset-y">Panel offset Y (mm)</label>
+                            <input class="inp" id="cal-offset-y" type="number" step="any" inputmode="decimal" autocomplete="off" data-field="cal-offset-y" aria-describedby="calibration-msg">
+                        </div>
+                        <div class="field">
+                            <label class="label" for="cal-mm-css-x">mm per CSS pixel X</label>
+                            <input class="inp" id="cal-mm-css-x" type="number" min="0" step="any" inputmode="decimal" autocomplete="off" data-field="cal-mm-css-x" aria-describedby="calibration-msg">
+                        </div>
+                        <div class="field">
+                            <label class="label" for="cal-mm-css-y">mm per CSS pixel Y</label>
+                            <input class="inp" id="cal-mm-css-y" type="number" min="0" step="any" inputmode="decimal" autocomplete="off" data-field="cal-mm-css-y" aria-describedby="calibration-msg">
+                        </div>
+                        <div class="field">
+                            <label class="label" for="cal-uncertainty">Uncertainty (mm)</label>
+                            <input class="inp" id="cal-uncertainty" type="number" min="0" step="any" inputmode="decimal" autocomplete="off" data-field="cal-uncertainty" aria-describedby="calibration-msg">
+                        </div>
+                        <div class="field field-wide">
+                            <label class="label" for="cal-method">Method</label>
+                            <input class="inp" id="cal-method" type="text" maxlength="80" autocomplete="off" spellcheck="false" placeholder="ruler across the active edge" data-field="cal-method" aria-describedby="calibration-msg">
+                        </div>
+                    </div>
+
+                    </div>
+                    <p class="form-msg" id="calibration-msg" role="status" aria-live="polite" hidden></p>
+                    <div class="operator-actions">
+                        <button type="submit" class="btn" id="btn-calibration-save" data-action="btn-calibration-save">Save calibration</button>
+                        <button type="button" class="btn" id="review-calibration" data-action="review-calibration">Compare current saved calibration</button>
+                        <button type="button" class="btn" id="discard-calibration" data-action="discard-calibration">Discard calibration fields</button>
+                    </div>
+                </form>
+            </div>
+        </section>
+        </div>
+    <footer class="measure-foot">
+        <button type="button" class="btn" id="measure-back" data-measure-nav="-1">Back</button>
+        <button type="button" class="btn" id="measure-next" data-measure-nav="1">Next</button>
+    </footer>
+</dialog>
 <script src="operator-dom.js?v=2"></script>
 <script src="operator-composition.js?v=2"></script>
 <script src="operator-state.js?v=20261113-b"></script>
@@ -1150,17 +1165,17 @@
 <script src="operator-stage-viewport.js?v=2"></script>
 <script src="operator-content.js?v=m13c-1"></script>
 <script src="operator-grid.js?v=20261114-m13-b-flow"></script>
-<script src="operator-devices.js?v=m13e-1"></script>
+<script src="operator-devices.js?v=20261115-b2"></script>
 <script src="operator-readiness.js?v=20261113-a"></script>
 <script src="operator-sync.js?v=20261115-review"></script>
 <script src="operator-session.js?v=20261115-review"></script>
-<script src="operator-workspace.js?v=20261115-review"></script>
+<script src="operator-workspace.js?v=20261115-b3"></script>
 <script src="physical-playback.js?v=20261115-review"></script>
 <script src="physical-sizing.js?v=3"></script>
 <script src="physical-stage.js?v=20261115-review"></script>
 <script src="physical-calibration.js?v=1"></script>
 <script src="operator-measurements.js?v=3"></script>
-<script src="physical.js?v=20261115-review"></script>
+<script src="physical.js?v=20261115-b2"></script>
 <dialog class="draft-resolution" id="draft-resolution" aria-labelledby="draft-resolution-title">
     <h2 id="draft-resolution-title">Resolve your preview</h2>
     <p id="draft-resolution-text"></p>

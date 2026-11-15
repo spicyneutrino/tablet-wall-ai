@@ -5,7 +5,7 @@ import time
 import urllib.request
 from PIL import Image
 from playwright.sync_api import expect
-from _workspace_shell import select_tablet
+from _workspace_shell import open_measure, select_tablet
 
 from _redesign_edge_cases import task_tab
 from _workspace_shell import task as workspace_task
@@ -253,7 +253,7 @@ def parity(rig):
     task("Tablets")
     pick(ids[0])
     task("Measure")
-    page.locator("#measurement-details").evaluate("details=>details.open=true")
+    open_measure(page)
     rig.open_disclosures(page.locator("#profile-active-width"))
     page.locator("#profile-active-width").fill("148.5")
     rig.open_disclosures(page.locator("#btn-profile-save"))
@@ -346,7 +346,7 @@ def parity(rig):
     page.locator("#tablet-label-discard").click()
     pick(ids[0])
     task("Measure")
-    page.locator("#measurement-details").evaluate("details => details.open=true")
+    open_measure(page)
     rig.open_disclosures(page.locator("#profile-active-width"))
     page.locator("#profile-active-width").fill("148.25")
     rig.open_disclosures(page.locator("#cal-viewport-width"))
@@ -370,7 +370,8 @@ def parity(rig):
         True,
         "Profile, calibration and model choice retain exact drafts across tablet and task switches",
     )
-    for group in ["profile", "calibration", "model"]:
+    for group, step in [("profile", "profile"), ("calibration", "advanced"), ("model", "model")]:
+        open_measure(page, step)
         page.locator("#discard-" + group).click()
     task("Arrange")
     page.locator("#grid-kind").select_option("logical")

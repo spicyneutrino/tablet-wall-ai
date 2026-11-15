@@ -145,7 +145,10 @@ const controller = fs.readFileSync(require.resolve("../frontend/controller/physi
     for (const id of ["saved-layouts", "return-point"]) assert.ok(arrange.includes('id="' + id + '"'));
     assert.ok(test.includes('id="presentation-checks"'));
     assert.equal(count("diagnostic-colours"), 1, "Test colour controls are shared with the selected Tablet inspector");
-    for (const id of ["tablet-label-form", "measurement-details", "profile-form", "calibration-form", "cal-live-viewport"]) assert.ok(tablet.includes('id="' + id + '"'), "Tablet panel retains " + id);
+    for (const id of ["tablet-label-form", "open-tablet-measurements"]) assert.ok(tablet.includes('id="' + id + '"'), "Tablet panel retains " + id);
+    const measure = html.slice(html.indexOf('<dialog class="measure-dialog" id="measurement-details"'), html.indexOf('</dialog>', html.indexOf('id="measure-title"')));
+    for (const id of ["profile-form", "calibration-form", "cal-live-viewport", "tablet-model"]) assert.ok(measure.includes('id="' + id + '"'), "Measure dialog owns " + id);
+    for (const step of ["model", "profile", "ruler", "advanced"]) assert.ok(measure.includes('data-measure-step="' + step + '"') && measure.includes('data-step-panel="' + step), "Measure dialog has a " + step + " step and panel");
     for (const id of ["settings-evidence", "settings-diagnostics", "backup-restore", "settings-experimental", "diag-last-known", "operator-readiness-backup", "readiness-status", "btn-readiness-refresh", "btn-diag-refresh", "btn-diag-verify", "clear-wall-confirm"]) {
         assert.ok(server.includes('id="' + id + '"'), "Server drawer owns " + id);
     }

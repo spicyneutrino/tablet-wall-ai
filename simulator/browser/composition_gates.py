@@ -558,11 +558,11 @@ def run(out: Path, port_range: str) -> dict:
                 "header_height": header_height, "chip_tops": chip_tops, "more_opens_all": more_opens_all,
                 "more_stays_open": more_stays_open,
                 "pass": fully_inside(cp["box"], (390, 844)) and cp["hit"] and header_height <= 93
-                and len(chip_tops) == 2 and max(chip_tops) - min(chip_tops) <= 0.5 and more_opens_all and more_stays_open}
+                and len(chip_tops) == 1 and more_opens_all and more_stays_open}
             gates["G2"] = verdict(all(v["pass"] for v in g2.values()), g2,
                 "commit primary fully inside viewport, 7 viewports x (image, arrangement) draft, "
                 "all inspector disclosures open; phone draft rows match with one-line Show image; "
-                "three offline plus image draft at 390x844 hit-testable, header <=93px, all failures reachable via +N")
+                "three offline plus image draft at 390x844 hit-testable, header <=93px, one summary chip opens every failure")
             shot(page, "g2-image-draft-offline3-390x844", state="three offline, image draft, disclosures open")
 
             g8: dict[str, Any] = {}
