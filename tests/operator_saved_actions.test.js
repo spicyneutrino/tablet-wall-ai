@@ -48,7 +48,7 @@ function setup() {
         loadLayouts: () => new Promise((resolve, reject) => { release = () => failRead ? reject(new Error("read failed")) : resolve(); }),
         api: async (method, path, body, options) => { writes.push({ method, path, options }); return { etag: "recalled-wall" }; },
         operatorContent: { imageFor: () => null, previewScene: (item, guard) => previews.push({ item, guard }) },
-        showTab: async name => { tasks.push(name); } });
+        showMode: async name => { tasks.push(name); } });
     vm.runInContext(extract("    let compositionBusy = false;", "    const profileCache")
         + extract("    function syncDraftUi()", "    function pushUndo(")
         + extract("    function setBusy(", "    /*")

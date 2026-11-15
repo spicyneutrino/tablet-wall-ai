@@ -13,24 +13,18 @@
     const HISTORY_LIMIT = 80;
     const MIN_DWELL_MS = 1000;
     const MAX_DWELL_MS = 600000;
-    const TAB_STORAGE_KEY = "tablet-wall-console-tab-v1";
-    const TAB_NAMES = ["tablet", "show", "content", "saved", "system"];
     const SNAPSHOT_NAME_RULE = "Use letters, numbers, spaces, dots, underscores or hyphens. Start with a letter or number. 64 characters at most.";
     const COMPACT_MEDIA = typeof window.matchMedia === "function"
-        ? window.matchMedia("(max-width: 719px)") : null;
+        ? window.matchMedia("(max-width: 47.99rem)") : null;
 
     const el = {
         railTabs: document.getElementById("rail-tabs"),
         tabShow: document.getElementById("tab-show"),
-        tabTablet: document.getElementById("tab-tablet"),
+        tabTest: document.getElementById("tab-test"),
         tabContent: document.getElementById("tab-content"),
-        tabSystem: document.getElementById("tab-system"),
         panelShow: document.getElementById("panel-show"),
-        panelTablet: document.getElementById("panel-tablet"),
+        panelTest: document.getElementById("panel-test"),
         panelContent: document.getElementById("panel-content"),
-        panelSystem: document.getElementById("panel-system"),
-        tabTabletDot: document.getElementById("tab-tablet-dot"),
-        tabContentDot: document.getElementById("tab-content-dot"),
         railPanels: document.getElementById("rail-panels"),
         topbarPlaybackState: document.getElementById("topbar-playback-state"),
         btnTopbarStart: document.getElementById("btn-topbar-start"),
@@ -54,6 +48,8 @@
         deviceCount: document.getElementById("device-count"),
         wallHealth: document.getElementById("wall-health"),
         btnWallHealth: document.getElementById("btn-wall-health"),
+        btnServer: document.getElementById("btn-server"),
+        serverDrawer: document.getElementById("server-drawer"),
         rosterStatus: document.getElementById("roster-status"),
         btnRosterRefresh: document.getElementById("btn-roster-refresh"),
         deviceList: document.getElementById("device-list"),
@@ -191,6 +187,8 @@
         pageStatus: document.getElementById("page-status")
     };
 
+    const featureElements = window.OperatorDom.capture(document);
+
     const state = {
         readiness: {},
         gridPreview: null,
@@ -238,13 +236,11 @@
         diagnosticsState: "pending",
         diagnosticsError: null,
         diagnosticsLoading: false,
-        tabDecided: false,
-        tabName: null,
-        tabScroll: {},
-        playbackSettled: false
+        modeScroll: {}
     };
 
     let confirmingModels = false, modelBatchReview = null, modelReviewVersion = 0;
+    let stageViewport = null;
     let operatorContent = null, operatorGrid = null, operatorDevices = null, operatorReadiness = null, workspace = null;
     const tabletForms = window.OperatorForms.create();
     const session = window.OperatorSession.create({ onConflict: showConflict, isDirty });
@@ -256,6 +252,7 @@
         snapshots: view => view.config && view.config.snapshots || {},
         roster: view => view.roster,
         rosterError: view => view.rosterError,
+        rosterUnreachable: view => view.rosterUnreachable,
         connectionText: view => view.transportText,
         connectionVersions: view => view.connectionVersions,
         rosterCheckedAt: view => view.rosterCheckedAt,
@@ -274,6 +271,21 @@
         delete state[key];
         Object.defineProperty(state, key, { get: () => read(session.view()) });
     }
+
+    let compositionState = window.OperatorComposition.createState();
+    delete state.selectedId;
+    Object.defineProperty(state, "selectedId", {
+        get: () => compositionState.selectedTablet,
+        set: id => {
+            if (id !== compositionState.selectedTablet && state.drag) endDrag(false, "subject");
+            compositionState = window.OperatorComposition.reduce(compositionState, { type: "select-tablet", id });
+        }
+    });
+    Object.defineProperty(state, "mode", { get: () => compositionState.mode });
+    Object.defineProperty(state, "composition", { get: () => window.OperatorComposition.select(compositionState, {
+        image: !!operatorContent && operatorContent.dirty(),
+        arrangement: isDirty() || !!operatorGrid && operatorGrid.dirty()
+    }) });
 
     let compositionBusy = false;
     delete state.busy;
@@ -660,97 +672,54 @@
      * Rail tabs and the topbar transport
      * ---------------------------------------------------------------- */
 
-    function tabEntries() {
+    function modeEntries() {
         return [
             { name: "content", tab: el.tabContent, panel: el.panelContent },
-            { name: "show", tab: el.tabShow, panel: el.panelShow },
-            { name: "tablet", tab: el.tabTablet, panel: el.panelTablet },
-            { name: "saved", tab: document.getElementById("tab-saved"), panel: document.getElementById("panel-saved") },
-            { name: "system", tab: el.tabSystem, panel: el.panelSystem }
+            { name: "arrange", tab: el.tabShow, panel: el.panelShow },
+            { name: "test", tab: el.tabTest, panel: el.panelTest }
         ];
-    }
-
-    function readStoredTab() {
-        try {
-            const stored = window.sessionStorage.getItem(TAB_STORAGE_KEY);
-            return TAB_NAMES.indexOf(stored) === -1 ? null : stored;
-        } catch (error) {
-            return null;
-        }
-    }
-
-    function storeTab(name) {
-        try { window.sessionStorage.setItem(TAB_STORAGE_KEY, name); }
-        catch (error) { /* The current view still switches. */ }
     }
 
     function compactView() {
         return Boolean(COMPACT_MEDIA && COMPACT_MEDIA.matches);
     }
 
-    function showTab(name, options) {
-        return workspace ? workspace.open(name, options) : commitTask(name, options);
+    function showMode(name, options) {
+        return workspace ? workspace.open(name, options) : commitMode(name, options);
     }
 
     function resolveOutput(reason, except) { return workspace ? workspace.resolve(reason, except) : Promise.resolve(true); }
 
-    function commitTask(name, options) {
+    function commitMode(name, options) {
         const settings = options || {};
-        const entries = tabEntries();
-        const resolved = name;
-        let target = null;
-        entries.forEach(function (entry) {
-            if (entry.name === resolved) target = entry;
-        });
+        const entries = modeEntries();
+        const target = entries.find(entry => entry.name === name);
         if (!target || !target.tab || !target.panel) return false;
 
-        const deviceSheet = document.getElementById("device-sheet");
-        if (resolved !== "tablet" && deviceSheet.open && deviceSheet.dataset.modal === "true") {
-            state.sheetTrigger = null;
-            deviceSheet.close();
-        }
-        const changed = state.tabName !== resolved;
-        if (changed && el.railPanels && state.tabName && !compactView()) {
-            state.tabScroll[state.tabName] = el.railPanels.scrollTop;
-        }
-        entries.forEach(function (entry) {
-            if (!entry.tab || !entry.panel) return;
-            const active = entry.name === resolved;
+        const changed = state.mode !== name;
+        if (changed && state.drag) endDrag(false, "view");
+        if (changed && el.railPanels && !compactView()) state.modeScroll[state.mode] = el.railPanels.scrollTop;
+        for (const entry of entries) {
+            const active = entry.name === name;
             entry.tab.setAttribute("aria-selected", active ? "true" : "false");
             entry.tab.tabIndex = active ? 0 : -1;
             entry.panel.hidden = !active;
-        });
-        state.tabName = resolved;
-        if (changed && el.railPanels) {
-            el.railPanels.scrollTop = state.tabScroll[resolved] || 0;
         }
-        if (settings.persist) {
-            storeTab(name);
-            state.tabDecided = true;
-        }
-        if (settings.focus) {
-            const selector = document.getElementById("compact-task-select");
-            (selector.getClientRects().length ? selector : target.tab).focus({ preventScroll: true });
-        }
+        compositionState = window.OperatorComposition.reduce(compositionState, { type: "set-mode", mode: name });
+        document.body.dataset.view = "tools";
+        if (changed && el.railPanels) el.railPanels.scrollTop = state.modeScroll[name] || 0;
+        if (settings.focus) target.tab.focus({ preventScroll: true });
         if (workspace) workspace.render();
         if (changed) renderStage();
-        if (changed && name === "saved") { loadLayouts(); loadScenes(); }
-        if (changed && name === "system" && operatorReadiness) { operatorReadiness.load(); loadDiagnostics(false); }
         return true;
     }
 
     function onTabKeyDown(event) {
         if (event.altKey || event.ctrlKey || event.metaKey) return;
-        const entries = tabEntries();
+        const entries = modeEntries();
         const target = event.target && event.target.closest
             ? event.target.closest('[role="tab"]') : null;
-        let current = -1;
-        for (let index = 0; index < entries.length; index += 1) {
-            if (entries[index].tab === target) {
-                current = index;
-                break;
-            }
-        }
+        const current = entries.findIndex(entry => entry.tab === target);
         if (current === -1) return;
 
         let next = null;
@@ -761,48 +730,24 @@
         if (next === null) return;
 
         event.preventDefault();
-        Promise.resolve(showTab(entries[next].name, { persist: true })).then(opened => { if (opened) entries[next].tab.focus(); });
-    }
-
-    function onCompactChange() {
-        showTab(state.tabName || readStoredTab() || "content", { persist: false });
-    }
-
-    function maybeChooseInitialTab() {
-        if (state.tabDecided) return;
-        if (!state.configLoaded) return;
-        state.tabDecided = true;
-        const name = Object.keys(window.OperatorState.entries(state.base)).length ? "content" : "tablet";
-        showTab(name, { persist: false });
+        Promise.resolve(showMode(entries[next].name)).then(opened => { if (opened) entries[next].tab.focus(); });
     }
 
     function syncTabDots() {
-        const dirtyTasks = {
+        const dirtyModes = {
             content: !!operatorContent && operatorContent.dirty(),
-            tablet: tabletForms.dirty(undefined, "name"),
-            show: isDirty() || !!operatorGrid && operatorGrid.dirty(),
-            system: state.playlistDirty || tabletForms.dirty(undefined, "model") || tabletForms.dirty(undefined, "profile") || tabletForms.dirty(undefined, "calibration")
+            arrange: isDirty() || !!operatorGrid && operatorGrid.dirty(),
+            test: false
         };
-        const entries = tabEntries();
-        for (const { name, tab } of entries) {
+        for (const { name, tab } of modeEntries()) {
             const dot = tab.querySelector(".tab-dot"), label = tab.textContent.trim();
-            if (dot) dot.hidden = !dirtyTasks[name];
-            tab.setAttribute("aria-label", label + (dirtyTasks[name] ? ", unsaved changes" : ""));
+            if (dot) dot.hidden = !dirtyModes[name];
+            tab.setAttribute("aria-label", label + (dirtyModes[name] ? ", unsaved changes" : ""));
         }
-        const selector = document.getElementById("compact-task-select"), drafts = [];
-        for (const option of selector.options) {
-            const tab = entries.find(entry => entry.name === option.value).tab;
-            const name = tab.textContent.trim(), dirty = dirtyTasks[option.value];
-            const text = name + (dirty ? " •" : "");
-            if (option.textContent !== text) option.textContent = text;
-            option.setAttribute("aria-label", tab.getAttribute("aria-label"));
-            if (dirty) drafts.push(name);
-        }
-        selector.parentElement.dataset.dirty = String(!!drafts.length);
-        selector.setAttribute("aria-label", "Wall task" + (drafts.length ? ". Unsaved changes in " + drafts.join(", ") + "." : ""));
-        const note = document.getElementById("task-drafts");
-        const text = drafts.length ? (drafts.length === 1 ? "Draft: " : "Drafts: ") + drafts.join(", ") : "";
-        if (note.textContent !== text) note.textContent = text;
+        const sheet = document.getElementById("device-sheet");
+        sheet.dataset.dirty = String(tabletForms.dirty(undefined, "name") || tabletForms.dirty(undefined, "model")
+            || tabletForms.dirty(undefined, "profile") || tabletForms.dirty(undefined, "calibration"));
+        document.getElementById("server-dot").hidden = !state.playlistDirty;
     }
 
     function syncTopbarTransport() {
@@ -841,6 +786,8 @@
         el.errorText.hidden = true;
     }
 
+    const MESSAGE_TTL_MS = 8000, msgTimers = new WeakMap();
+
     function setMsg(node, text, kind) {
         if (!node) return;
         if (!text) {
@@ -852,6 +799,8 @@
         node.textContent = text;
         node.dataset.kind = kind || "info";
         node.hidden = false;
+        clearTimeout(msgTimers.get(node));
+        if (kind === "ok") msgTimers.set(node, setTimeout(() => { if (node.textContent === text) setMsg(node, "", null); }, MESSAGE_TTL_MS));
     }
 
     function clearMsg(node) {
@@ -906,10 +855,8 @@
 
     function observeSession(view, settings = {}) {
         if (!view.uncertain && document.activeElement === document.getElementById("refresh-command-status")) {
-            const selector = document.getElementById("compact-task-select");
             const tab = document.querySelector('[role="tab"][aria-selected="true"]');
-            const target = selector && selector.getClientRects().length ? selector : tab;
-            if (target && target.getClientRects().length) target.focus({ preventScroll: true });
+            if (tab && tab.getClientRects().length) tab.focus({ preventScroll: true });
         }
         document.getElementById("command-uncertainty").hidden = !view.uncertain;
         if (!view.config) { renderAll(); return; }
@@ -937,7 +884,7 @@
         ensureSelection();
         if (conflict) showConflict("The wall changed. Your arrangement preview and its original guard are retained. Review the live wall, then rebuild or discard the preview.");
         else if (!state.draftConflict) hideConflict();
-        renderAll(); maybeChooseInitialTab();
+        renderAll();
         if (firstConfig) {
             loadLayouts(); loadScenes();
             announce(Object.keys(window.OperatorState.entries(state.base)).length ? "Controller connected to the server. Review current tablet reports."
@@ -948,8 +895,7 @@
     function ensureSelection() {
         const ids = new Set(Object.keys(state.roster));
         Object.keys(window.OperatorState.entries(state.draft)).forEach(id => ids.add(id));
-        if (state.selectedId && ids.has(state.selectedId)) return;
-        state.selectedId = Array.from(ids).sort(compareDeviceIds)[0] || null;
+        if (state.selectedId && !ids.has(state.selectedId)) clearSelection();
     }
 
     async function loadConfig() {
@@ -982,7 +928,12 @@
         await loadConfig();
     }
 
+    let landed = false;
+    let diagnosticSubject = null;
+
     function renderAll() {
+        if (operatorContent) operatorContent.update();
+        if (operatorGrid) operatorGrid.update();
         syncMeta();
         syncDraftUi();
         if (operatorContent) operatorContent.render();
@@ -994,9 +945,26 @@
         if (operatorDevices) operatorDevices.render();
         if (operatorReadiness) operatorReadiness.render();
         if (workspace) workspace.render();
+        if (workspace && !landed && state.configLoaded) { landed = true; workspace.land(); }
         renderLogicalEditor();
+        syncDiagnosticColours();
+    }
+
+    function syncDiagnosticColours() {
+        if (diagnosticSubject !== state.selectedId) {
+            diagnosticSubject = state.selectedId;
+            clearMsg(document.getElementById("diagnostic-colour-message"));
+        }
         const colourSubject = document.getElementById("diagnostic-colour-subject");
-        if (colourSubject) colourSubject.textContent = state.selectedId ? numberedLabel(state.selectedId) : "Select a tablet in Tablets.";
+        if (colourSubject) colourSubject.textContent = state.selectedId ? numberedLabel(state.selectedId) : "None selected";
+        const colourReason = document.getElementById("diagnostic-colour-reason");
+        if (colourReason) colourReason.hidden = !!state.selectedId;
+        for (const id of ["diagnostic-colour-one", "diagnostic-colour-refresh"]) {
+            const button = document.getElementById(id);
+            if (!button) continue;
+            button.disabled = !state.selectedId;
+            if (button.disabled) button.setAttribute("aria-describedby", "diagnostic-colour-reason"); else button.removeAttribute("aria-describedby");
+        }
     }
 
     function syncMeta() {
@@ -1060,8 +1028,8 @@
             el.btnApply.disabled = true;
             document.getElementById("arrange-status").textContent = "Nothing to apply.";
             el.btnCancel.disabled = true;
-            el.btnUndo.disabled = true; el.btnUndo.hidden = true;
-            el.btnRedo.disabled = true; el.btnRedo.hidden = true;
+            el.btnUndo.disabled = true; el.btnUndo.hidden = false;
+            el.btnRedo.disabled = true; el.btnRedo.hidden = false;
             el.boundsMode.disabled = true;
             el.boundsPadding.disabled = true;
             el.btnPackTablets.disabled = true;
@@ -1084,8 +1052,8 @@
             : "Add a tablet before applying this arrangement.";
         el.btnApply.title = emptyPhysical ? "This arrangement has no tablets. Use an explicit Remove action to clear a slot." : "Apply the entire previewed layout once";
         el.btnCancel.disabled = state.busy || !dirty && !inputDirty;
-        el.btnUndo.disabled = state.busy || state.undo.length === 0; el.btnUndo.hidden = state.undo.length === 0;
-        el.btnRedo.disabled = state.busy || state.redo.length === 0; el.btnRedo.hidden = state.redo.length === 0;
+        el.btnUndo.disabled = state.busy || state.undo.length === 0; el.btnUndo.hidden = false;
+        el.btnRedo.disabled = state.busy || state.redo.length === 0; el.btnRedo.hidden = false;
         el.btnProfileSave.disabled = state.busy;
         el.btnCalibrationSave.disabled = state.busy || rulerSaveBlocked();
         el.btnLayoutSave.disabled = state.busy || !state.etag;
@@ -1121,7 +1089,7 @@
         syncDraftUi();
         renderStage();
         renderLogicalEditor();
-        if (operatorGrid) operatorGrid.render();
+        if (operatorGrid) { operatorGrid.update(); operatorGrid.render(); }
         if (workspace) workspace.render();
         renderPlaybackPreflight(playbackPreflight());
     }
@@ -1174,7 +1142,7 @@
         clearLogicalErrors();
         observeSession(session.view());
         if (operatorGrid) operatorGrid.cancel();
-        if (restoreFocus) document.getElementById("grid-preview").focus({ preventScroll: true });
+        if (restoreFocus) document.getElementById(state.selectedId ? "tablet-action-name" : "grid-preview").focus({ preventScroll: true });
         announce("Arrangement discarded. The live wall is unchanged.");
     }
 
@@ -1185,6 +1153,7 @@
             showError("An empty measured draft cannot be applied. Use a deliberate Remove action to clear an active slot."); return;
         }
         clearError();
+        const trigger = document.activeElement;
         setBusy(true);
         try {
             const body = state.draft.kind === "physical" ? {
@@ -1203,6 +1172,9 @@
             handleWriteError(error, null);
         } finally {
             setBusy(false);
+            if (trigger === el.btnApply && (document.activeElement === trigger || document.activeElement === document.body)) {
+                document.getElementById(state.selectedId ? "tablet-action-name" : "grid-preview").focus({ preventScroll: true });
+            }
         }
     }
 
@@ -1229,6 +1201,7 @@
             profileCurrent: el.profileCurrent, profileForm: el.profileForm, profileLabel: el.profileLabel, profileMsg: el.profileMsg,
             profilePixelHeight: el.profilePixelHeight, profilePixelWidth: el.profilePixelWidth, profileProvenance: el.profileProvenance
         },
+        lookup: featureElements,
         physicalCalibration: window.PhysicalCalibration, refresh: () => session.refresh(),
         state, num, markInvalid, ValidationError, deviceLabel, formatNumber, setInputValue, setSelectValue, api, syncTabDots, setMsg, errorDetail, profileFor, latestProfile, latestCalibration, numberedLabel, calibrationStatus, bodyMetrics, tabletForms, clearMsg, clearError, announce, resolveOutput, setBusy, handleWriteError
     });
@@ -1238,14 +1211,25 @@
      * ---------------------------------------------------------------- */
 
     const {
-        addSelectedDevice, deleteSelectedSlot, endDrag, geometryHelp, matchScreenShape, matchStatus, nudgeSelected, onPointerCancel, onPointerDown, onPointerMove, onPointerUp, renderDeviceHealth, renderDeviceList, renderStage: drawStage, rotateSelected, selectDevice, setViewZoom, syncInspector, viewZoom
+        addSelectedDevice, deleteSelectedSlot, endDrag, geometryHelp, matchScreenShape, matchStatus, nudgeSelected, onPointerCancel, onPointerDown, onPointerMove, onPointerUp, renderDeviceHealth, renderDeviceList, renderStage: drawStage, revealSheet, clearSelection, rotateSelected, selectDevice, setViewZoom, syncInspector, viewZoom
     } = window.PhysicalStage.create({
         selectionChanged: () => {
+            syncDiagnosticColours();
             if (operatorDevices) operatorDevices.render(); renderLogicalEditor();
             syncDraftUi();
-            if (state.tabName === "show") document.getElementById("arrange-custom").open = true;
+            if (workspace) workspace.render();
         },
-        DRAG_THRESHOLD_PX, afterDraftChange, announce, bodyMetrics, calibrationFor, beginManual, canManualEdit, clearMsg, clone, deviceEntries, deviceLabel, deviceNumber, deviceRows, el, finiteOr, formatNumber, isOnline, latestProfile, mutateDraft, numberTag, numberedLabel, populateDeviceCard, profileFor, pushUndo, roundTo, selectedSlot, setInputValue, showError, showTab, state, syncTabDots, validPair
+        lookup: featureElements,
+        navigateSelection: (id, options) => navigateSelection(id, options),
+        fitStage: () => stageViewport && stageViewport.fit(),
+        DRAG_THRESHOLD_PX, afterDraftChange, appliedName: () => operatorContent ? operatorContent.stageNames().applied : "", announce, bodyMetrics, calibrationFor, beginManual, canManualEdit, clearMsg, clone, deviceEntries, deviceLabel, deviceNumber, deviceRows, el, finiteOr, formatNumber, isOnline, latestProfile, mutateDraft, numberTag, numberedLabel, populateDeviceCard, profileFor, pushUndo, roundTo, selectedSlot, setInputValue, showError, showMode, state, syncTabDots, validPair
+    });
+
+    const navigateSelection = window.OperatorComposition.createSelectionNavigation({
+        composition: () => state.composition,
+        selectedId: () => state.selectedId,
+        revealTablet: (id, trigger) => revealSheet(id, trigger || document.activeElement),
+        expandArrange: () => { document.getElementById("arrange-custom").open = true; }
     });
 
     const geometryReady = typeof setViewZoom === "function" && typeof viewZoom === "function"
@@ -1321,12 +1305,16 @@
     function logicalError() {
         return logicalInvalid.size ? logicalInvalid.values().next().value : "";
     }
+    function setGridMessage(text) {
+        const node = document.getElementById("grid-message"), summary = document.getElementById("grid-summary");
+        if (node) node.textContent = text;
+        if (summary) summary.hidden = true;
+    }
     function setLogicalError(input, message) {
         logicalInvalid.set(input, message);
         markInvalid(input, true);
         input.setAttribute("aria-describedby", "grid-message");
-        const node = document.getElementById("grid-message");
-        if (node) node.textContent = message;
+        setGridMessage(message);
         announce(message, "err");
         syncDraftUi();
     }
@@ -1335,8 +1323,7 @@
         logicalInvalid.delete(input);
         markInvalid(input, false);
         input.removeAttribute("aria-describedby");
-        const node = document.getElementById("grid-message");
-        if (node) node.textContent = logicalError();
+        setGridMessage(logicalError());
         if (!logicalInvalid.size) syncDraftUi();
     }
     function clearLogicalErrors() {
@@ -1346,8 +1333,7 @@
             input.removeAttribute("aria-describedby");
         }
         logicalInvalid.clear();
-        const node = document.getElementById("grid-message");
-        if (node) node.textContent = "";
+        setGridMessage("");
         syncDraftUi();
     }
     function reconcileLogicalErrors(draft) {
@@ -2042,7 +2028,7 @@
     const {
         actionFromPauseButton, liveSlotEntry, playbackAction, playbackPreflight, refreshPlayback, renderPlayback, renderPlaybackButtons, renderPlaybackPreflight, restorePlaybackExclusions
     } = window.PhysicalPlayback.create({
-        API_PLAYBACK, ApiError, announce, api, appendText, clearChildren, clearMsg, compareDeviceIds, deviceLabel, deviceNumber, el, errorDetail, formatDuration, formatSpan, isDirty, isOnline, latestProfile, libraryAsset, maybeChooseInitialTab, numberTag, numberedLabel, savePlaylist, setMsg, setTextIfChanged, shortId, state, syncPlaylistCurrent, syncTopbarTransport, renderFactList
+        API_PLAYBACK, ApiError, announce, api, appendText, clearChildren, clearMsg, compareDeviceIds, deviceLabel, deviceNumber, el, errorDetail, formatDuration, formatSpan, isDirty, isOnline, latestProfile, libraryAsset, numberTag, numberedLabel, savePlaylist, setMsg, setTextIfChanged, shortId, state, syncPlaylistCurrent, syncTopbarTransport, renderFactList
     });
 
     /* ---------------------------------------------------------------- *
@@ -2367,6 +2353,7 @@
         try {
             const result = await api("PUT", (kind === "logical" ? "/api/v3/logical-layouts" : API_LAYOUTS) + "/" + encodeURIComponent(name) + (existing ? "?replace=true" : ""), undefined, { ifMatch: guard });
             ingestConfig(result, { preserveDraft: true });
+            if (el.layoutName.value.trim() === name) el.layoutName.value = "";
             setMsg(el.layoutMsg, "Arrangement “" + result.name + "” saved.", "ok");
             await loadLayouts();
         } catch (error) { handleWriteError(error, el.layoutMsg); }
@@ -2443,7 +2430,7 @@
                     if (!await resolveOutput(verb + " saved content “" + entry.name + "”")) return;
                     if (!snapshotMatches(entry, "scenes")) { setMsg(document.getElementById("scene-message"), "The saved content changed. Refresh saved and review it again.", "err"); return; }
                     if (verb === "Preview content") {
-                        operatorContent.previewScene(entry, state.etag); await showTab("content", { focus: true, persist: true });
+                        operatorContent.previewScene(entry, state.etag); await showMode("content", { focus: true });
                         return;
                     }
                     if (!window.confirm("Delete saved content “" + entry.name + "”? Applied content is unchanged.")) return;
@@ -2509,10 +2496,10 @@
             if (!await resolveOutput("Set a diagnostic test colour")) return;
             try {
                 const result = await api("POST", target === "all" ? "/devices/color" : "/devices/" + encodeURIComponent(id) + "/color", { color: colour });
-                message.textContent = "Diagnostic colour set for " + (target === "all" ? "all currently registered tablets" : numberedLabel(id)) + ". "
+                if (target === "all" || id === state.selectedId) message.textContent = "Diagnostic colour set for " + (target === "all" ? "all currently registered tablets" : numberedLabel(id)) + ". "
                     + (result.delivered === false ? "Delivery waits for connection. " : "") + "This legacy test command has no revision guard. It does not show an image.";
                 await session.refresh();
-            } catch (error) { message.textContent = "Diagnostic colour command failed. " + error.message; }
+            } catch (error) { if (target === "all" || id === state.selectedId) message.textContent = "Diagnostic colour command failed. " + error.message; }
         });
     }
 
@@ -2542,7 +2529,7 @@
                     + ". Keeping your proposal adopts this reviewed guard only. Apply arrangement remains a separate command. Exact historical measurement pins remain in the proposal."
                     + (state.draft.kind !== current.layout.kind ? " Applying changes the sizing representation and requires a server-created return point." : "");
                 document.getElementById("manual-review-details").textContent = "Current geometry\n" + JSON.stringify(current.layout, null, 2) + "\nYour proposed geometry\n" + JSON.stringify(state.draft, null, 2);
-                if (!await showTab("show", { persist: true })) return;
+                if (!await showMode("arrange")) return;
                 document.getElementById("manual-arrangement-review").hidden = false;
                 document.getElementById("manual-review-summary").focus();
             } catch (error) { handleWriteError(error); }
@@ -2581,10 +2568,21 @@
             tabletForms.discard(state.selectedId, group);
             state.formDeviceId = null; populateDeviceCard(); syncTabDots();
         });
-        document.getElementById("clear-wall").addEventListener("click", async () => {
+        const clearConfirm = document.getElementById("clear-wall-confirm"), clearButton = document.getElementById("clear-wall");
+        let clearReviewedEtag = null;
+        const closeClearConfirm = () => { clearReviewedEtag = null; clearConfirm.hidden = true; clearButton.setAttribute("aria-expanded", "false"); };
+        clearButton.addEventListener("click", async () => {
             if (!await resolveOutput("Clear the active wall")) return;
-            if (!window.confirm("Clear all active positions? Registrations, names, measurements and saved arrangements are retained. The selected image stays unchanged.")) return;
-            try { const result = await api("POST", "/api/v3/layout/clear", { confirm: true }, { etag: true }); ingestConfig(result); announce("Active positions cleared. Tablets and saved arrangements are retained."); }
+            clearReviewedEtag = state.etag;
+            clearConfirm.hidden = false; clearButton.setAttribute("aria-expanded", "true");
+            document.getElementById("clear-wall-cancel").focus();
+        });
+        document.getElementById("clear-wall-cancel").addEventListener("click", () => { closeClearConfirm(); clearButton.focus(); });
+        document.getElementById("clear-wall-confirm-yes").addEventListener("click", async () => {
+            const reviewedEtag = clearReviewedEtag;
+            closeClearConfirm(); clearButton.focus();
+            if (!reviewedEtag || reviewedEtag !== state.etag) { announce("The wall changed. Review Clear wall again.", "err"); return; }
+            try { const result = await api("POST", "/api/v3/layout/clear", { confirm: true }, { etag: true, ifMatch: reviewedEtag }); ingestConfig(result); announce("Active positions cleared. Tablets and saved arrangements are retained."); }
             catch (error) { handleWriteError(error); }
         });
         const newModelReview = () => { modelReviewVersion += 1; modelBatchReview = null; document.getElementById("group-hardware").checked = false; operatorGrid.render(); };
@@ -2647,7 +2645,9 @@
             if (existing && !window.confirm("Overwrite saved content “" + name + "” with the applied content? Geometry is excluded.")) return;
             try {
                 const result = await api("PUT", "/api/v3/scenes/" + encodeURIComponent(name) + (existing ? "?replace=true" : ""), undefined, { etag: true });
-                ingestConfig(result, { preserveDraft: true }); await loadScenes(); setMsg(message, "Content saved.", "ok");
+                ingestConfig(result, { preserveDraft: true });
+                if (input.value.trim() === name) input.value = "";
+                await loadScenes(); setMsg(message, "Content saved.", "ok");
             } catch (error) { setMsg(message, error.message, "err"); }
         });
     }
@@ -2673,10 +2673,15 @@
             return;
         }
 
+        if (key === "Escape" && !state.drag && !document.querySelector("dialog:modal")) {
+            if (workspace && workspace.closeJoin()) { event.preventDefault(); return; }
+            if (state.selectedId) { event.preventDefault(); clearSelection(); return; }
+        }
+
         if (state.drag) return;
 
         if (modified && (key === "z" || key === "Z")) {
-            if (state.tabName !== "show" || isEditableTarget(event.target)) return;
+            if (state.mode !== "arrange" || isEditableTarget(event.target)) return;
             event.preventDefault();
             if (event.shiftKey) redoDraft();
             else undoDraft();
@@ -2684,7 +2689,7 @@
         }
 
         if (modified && (key === "y" || key === "Y")) {
-            if (state.tabName !== "show" || isEditableTarget(event.target)) return;
+            if (state.mode !== "arrange" || isEditableTarget(event.target)) return;
             event.preventDefault();
             redoDraft();
             return;
@@ -2706,33 +2711,67 @@
         else if (key === "ArrowDown") deltaY = step;
         if (deltaX === 0 && deltaY === 0) return;
 
+        const focused = event.target.closest(".slot");
+        if (focused && focused.dataset.deviceId && focused.dataset.deviceId !== state.selectedId) selectDevice(focused.dataset.deviceId);
         if (!selectedSlot() && !(state.draft && state.draft.placements && state.draft.placements[state.selectedId])) return;
         event.preventDefault();
         nudgeSelected(deltaX, deltaY);
     }
 
     function openMeasurements(id) {
-        if (id && state.selectedId !== id) selectDevice(id);
-        showTab("system", { persist: true });
+        if (id) selectDevice(id, { reveal: true });
         document.getElementById("measurement-details").open = true;
         document.getElementById("tablet-model").focus();
     }
 
+    function openServer() {
+        if (el.serverDrawer.open) return;
+        document.getElementById("server-joining").append(document.getElementById("join-strip"));
+        el.serverDrawer.showModal();
+        if (workspace) workspace.render();
+        el.btnServer.setAttribute("aria-expanded", "true");
+        document.getElementById("server-title").focus({ preventScroll: true });
+        if (operatorReadiness) operatorReadiness.load();
+        loadDiagnostics(false);
+    }
+
     function bindEvents() {
-        tabEntries().forEach(function (entry) {
-            if (!entry.tab) return;
+        modeEntries().forEach(function (entry) {
             entry.tab.addEventListener("click", function () {
-                showTab(entry.name, { persist: true, focus: true });
+                if (state.mode === entry.name) { clearSelection(); return; }
+                showMode(entry.name, { focus: true });
             });
         });
         if (el.railTabs) el.railTabs.addEventListener("keydown", onTabKeyDown);
-        if (COMPACT_MEDIA) {
-            if (typeof COMPACT_MEDIA.addEventListener === "function") {
-                COMPACT_MEDIA.addEventListener("change", onCompactChange);
-            } else if (typeof COMPACT_MEDIA.addListener === "function") {
-                COMPACT_MEDIA.addListener(onCompactChange);
-            }
+        for (const item of document.querySelectorAll("#bottom-nav [data-workspace-mode]")) {
+            item.addEventListener("click", () => {
+                if (state.mode === item.dataset.workspaceMode && document.body.dataset.view === "tools") { clearSelection(); return; }
+                showMode(item.dataset.workspaceMode);
+            });
         }
+        document.getElementById("nav-tablets").addEventListener("click", () => {
+            if (state.selectedId && document.body.dataset.view === "tablets") { clearSelection(); return; }
+            const tablets = document.body.dataset.view !== "tablets";
+            document.body.dataset.view = tablets ? "tablets" : "tools";
+            if (workspace) workspace.render();
+            if (tablets) { const issue = document.querySelector("#device-list [data-status=offline], #device-list [data-status=stale], #device-list [data-status=failed]"); if (issue && issue.scrollIntoView) issue.scrollIntoView({ block: "nearest" }); }
+        });
+        document.getElementById("add-tablet").addEventListener("click", () => workspace.toggleJoin());
+        document.getElementById("tablet-back").addEventListener("click", clearSelection);
+        document.getElementById("stage-well").addEventListener("click", event => {
+            if (event.target.matches("[data-stage-well], .wall-stage, .stage-scroll")) clearSelection();
+        });
+        el.btnServer.addEventListener("click", openServer);
+        document.getElementById("server-close").addEventListener("click", () => el.serverDrawer.close());
+        el.serverDrawer.addEventListener("keydown", window.OperatorWorkspace.containModalFocus);
+        el.serverDrawer.addEventListener("click", event => { if (event.target === el.serverDrawer) el.serverDrawer.close(); });
+        el.serverDrawer.addEventListener("close", () => {
+            document.getElementById("stage-well").append(document.getElementById("join-strip"));
+            if (workspace) workspace.render();
+            el.btnServer.setAttribute("aria-expanded", "false");
+            document.getElementById("clear-wall-confirm").hidden = true;
+            if (el.btnServer.getClientRects().length) el.btnServer.focus({ preventScroll: true });
+        });
 
         el.btnUndo.addEventListener("click", undoDraft);
         el.btnRedo.addEventListener("click", redoDraft);
@@ -2867,11 +2906,6 @@
         el.stageSvg.addEventListener("pointercancel", onPointerCancel);
         el.stageSvg.addEventListener("lostpointercapture", function (event) {
             if (state.drag && event.pointerId === state.drag.pointerId) endDrag(true);
-        });
-        el.stageSvg.addEventListener("focusin", function (event) {
-            const group = event.target && event.target.closest
-                ? event.target.closest(".slot") : null;
-            if (group && group.dataset.deviceId) selectDevice(group.dataset.deviceId);
         });
         el.stageSvg.addEventListener("keydown", function (event) {
             if (event.key !== "Enter" && event.key !== " ") return;
@@ -3018,12 +3052,6 @@
             });
         }
 
-        if (el.btnWallHealth) el.btnWallHealth.addEventListener("click", async () => {
-            await showTab("tablet", { persist: true });
-            document.getElementById("wall-issues-panel").open = true;
-            const heading = document.getElementById("issues-title");
-            heading.focus({ preventScroll: true }); heading.scrollIntoView({ block: "nearest" });
-        });
         if (el.btnRosterRefresh) el.btnRosterRefresh.addEventListener("click", async () => { await Promise.all([operatorReadiness.load(), refreshRoster()]); workspace.render(); });
         if (el.btnDiagDownload) {
             el.btnDiagDownload.addEventListener("click", downloadDiagnostics);
@@ -3054,6 +3082,7 @@
         }
 
         el.btnLayoutsRefresh.addEventListener("click", () => Promise.all([loadLayouts(), loadScenes()]));
+        document.getElementById("btn-scenes-refresh").addEventListener("click", loadScenes);
         el.layoutName.addEventListener("input", function () { clearMsg(el.layoutMsg); });
 
         document.addEventListener("keydown", onKeyDown);
@@ -3081,12 +3110,21 @@
     }
 
     function init() {
+        const field = el.stageSvg.closest(".stage-scroll");
+        const well = document.getElementById("stage-well");
+        const wellElements = { field, well, tally: well.querySelector(".well-tally") };
+        stageViewport = window.OperatorStageViewport.create({ svg: el.stageSvg, field, observe: well,
+            measure: () => window.OperatorStageViewport.measureWell(el.stageSvg, wellElements),
+            onResize: () => { state.stageTap = null; endDrag(false, "view"); }
+        });
         const labelFor = id => numberedLabel(id, latestProfile(id));
         operatorContent = window.OperatorContent.create({
+            lookup: featureElements,
             state, api, ingestConfig, renderStage, announce, showConflict, resolveOutput,
             refreshConnection: () => session.refresh()
         });
         operatorGrid = window.OperatorGrid.create({
+            lookup: featureElements,
             state, api, labelFor, validPair, profileFor, calibrationFor,
             ingestConfig, renderStage, syncDraftUi, isDirty, announce, showConflict,
             modelBusy: () => confirmingModels,
@@ -3097,21 +3135,27 @@
             openMeasurements: id => openMeasurements(id)
         });
         operatorDevices = window.OperatorDevices.create({
+            lookup: featureElements,
             state, api, labelFor, profileFor, calibrationFor,
             ingestConfig, refreshRoster, showConflict, announce, tabletForms, resolveOutput,
             renderRoster: () => {
                 renderDeviceList();
-                operatorGrid.render();
+                operatorGrid.update(); operatorGrid.render();
             },
             removedFromWall: id => operatorGrid.exclude(id),
             selectTablet: selectDevice,
-            openArrange: () => showTab("show", { focus: true, persist: true })
+            openArrange: async () => {
+                const id = state.selectedId;
+                if (await showMode("arrange") && state.selectedId === id) addSelectedDevice();
+            }
         });
-        for (const event of ["input", "click"]) document.getElementById("tablet-label-form").addEventListener(event, syncTabDots);
+        for (const event of ["input", "click"]) document.getElementById("tablet-label-form").addEventListener(event, () => { syncTabDots(); if (workspace) workspace.render(); });
         operatorReadiness = window.OperatorReadiness.create({ state, api, copyText });
         session.subscribe(observeSession);
         workspace = window.OperatorWorkspace.create({
+            lookup: featureElements,
             state, labelFor,
+            arrangeElement: document.querySelector(".arrange-tools"),
             arrangementDirty: () => isDirty() || operatorGrid.dirty(),
             arrangementPreview: isDirty,
             imageDirty: () => operatorContent.dirty(),
@@ -3120,7 +3164,7 @@
             discardArrangement: cancelDraft,
             discardImage: () => operatorContent.discard(),
             canCommit: kind => kind === "image" ? !document.getElementById("show-image").disabled : isDirty() && !el.btnApply.disabled,
-            selectTablet: selectDevice, commitTask, renderStage,
+            selectTablet: selectDevice, commitMode, renderStage, clearSelection,
             stageNames: () => operatorContent.stageNames(),
             onViewChange: () => operatorContent.viewChanged()
         });
@@ -3128,40 +3172,27 @@
         const refreshStatus = document.getElementById("refresh-status");
         if (refreshStatus) refreshStatus.addEventListener("click", async () => {
             const restoreFocus = document.activeElement === refreshStatus;
-            const refreshTask = state.tabName;
+            const refreshMode = state.mode;
             refreshStatus.disabled = true;
             try { await Promise.all([refreshRoster(), operatorReadiness.load()]); workspace.render(); }
             catch (error) { showError(error.message); }
             finally {
                 refreshStatus.disabled = false;
-                if (restoreFocus && state.tabName === refreshTask && document.activeElement === document.body) refreshStatus.focus({ preventScroll: true });
+                if (restoreFocus && state.mode === refreshMode && document.activeElement === document.body) refreshStatus.focus({ preventScroll: true });
             }
         });
         window.addEventListener("beforeunload", event => {
             if (hasUnsavedEdits()) { event.preventDefault(); event.returnValue = ""; }
         });
         document.getElementById("open-tablet-measurements").addEventListener("click", () => openMeasurements(state.selectedId));
-        const imageActions = document.querySelector(".image-actions");
-        const workspaceNav = document.querySelector(".workspace-nav-landmark");
-        const imageActionObserver = new ResizeObserver(() => {
-            document.body.style.setProperty("--task-nav-height", workspaceNav.clientHeight - parseFloat(getComputedStyle(workspaceNav).paddingBottom) + "px");
-            document.body.style.setProperty("--image-action-height", imageActions.offsetHeight + "px");
-            window.OperatorStage.fit(el.stageSvg);
-        });
-        for (const chrome of [imageActions, workspaceNav]) imageActionObserver.observe(chrome);
         state.onParticipation = (id, participating) => mutateDraft(draft => { draft.slots[id].participating = participating; });
         document.getElementById("experimental-opt-in").addEventListener("change", event => {
             document.getElementById("experimental-controls").hidden = !event.target.checked;
             if (event.target.checked) { loadLibrary(true); loadPlaylist(); refreshPlayback(); }
         });
         window.addEventListener("resize", () => { renderDeviceHealth(); renderStage(); });
-        window.addEventListener("pagehide", () => { imageActionObserver.disconnect(); session.destroy(); operatorContent.destroy(); workspace.destroy(); clearInterval(state.playbackTimer); });
+        window.addEventListener("pagehide", () => { stageViewport.destroy(); session.destroy(); operatorContent.destroy(); workspace.destroy(); clearInterval(state.playbackTimer); });
         operatorReadiness.load();
-        const storedTab = readStoredTab();
-        if (storedTab) {
-            showTab(storedTab, { persist: false });
-            state.tabDecided = true;
-        }
         bindEvents();
         bindDiagnosticColours();
         bindTabletSetup();

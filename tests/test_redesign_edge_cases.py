@@ -119,7 +119,7 @@ def test_two_held_real_responses_release_independently(tmp_path):
         config = HeldResponse(
             rig, page, "**/api/v3/config", "held config alongside image inventory"
         )
-        page.locator("#btn-roster-refresh").click()
+        page.locator("#refresh-status").click()
         config.wait()
         task(page, "Images")
         expect(page.locator("#refresh-images")).to_be_enabled()

@@ -9,18 +9,13 @@
         unsupported: { label: "unsupported", warning: false, guidance: "This browser does not report a screen wake lock. Keep the tablet charging and check Auto-Lock and kiosk settings. The operator cannot wake the tablet remotely." },
         unknown: { label: "unknown", warning: false, guidance: "The tablet has not reported a screen wake-lock state. Check the current tablet page, Auto-Lock, charging and kiosk settings. The operator cannot wake the tablet remotely." }
     };
-    const EXCEPTION_LABELS = { loading: "Loading", blocked: "Blocked", unknown: "Unconfirmed", stale: "Stale paint",
-        hidden: "Hidden", offline: "Offline", excluded: "Excluded", identifying: "Identify", playback: "Playback",
-        unplaced: "Unplaced", unsupported: "Unsupported" };
-    const MAPPING_STATUSES = new Set(["invalid", "stale_calibration", "needs_calibration", "needs_profile",
-        "viewport_mismatch", "zoom_changed", "missing_profile", "missing_calibration", "invalid_mapping",
-        "unsupported_client", "unsupported_content"]);
-    function exceptionLabel(status, text) {
+    const EXCEPTION_LABELS = { loading: "Loading", unknown: "Unconfirmed", excluded: "Excluded", identifying: "Identify", playback: "Playback" };
+    function exceptionLabel(status) {
         if (!status || status === "displayed" || status === "preview") return "";
-        if (status === "stale" && text === "Active mapping revisions differ from the pinned slot") return "Mapping mismatch";
-        if (status === "failed") return String(text || "").split(" · ")[0] || "Failed";
+        const roster = model.rosterStatus({ status, online: status !== "offline" });
+        if (roster.key !== "connected") return roster.word;
         if (EXCEPTION_LABELS[status]) return EXCEPTION_LABELS[status];
-        return MAPPING_STATUSES.has(status) ? "Blocked" : "Needs review";
+        return "Needs review";
     }
     function powerReadiness(device, options = {}) {
         const state = device && typeof device.wake_lock === "string" && Object.prototype.hasOwnProperty.call(WAKE_STATES, device.wake_lock)
@@ -33,7 +28,8 @@
         const stamp = stale && Number.isFinite(checked)
             ? " Last checked " + new Date(checked).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }) + "." : "";
         const label = stale ? "Last known wake lock " + entry.label + " · status stale" : "Wake lock: " + entry.label;
-        return { state, stale, warning: entry.warning, label,
+        const report = state === "denied" ? "Denied by browser" : entry.label[0].toUpperCase() + entry.label.slice(1);
+        return { state, stale, warning: entry.warning, label, report: (stale ? "Last known · " : "") + report,
             short: stale ? "Last known wake lock " + entry.label : "Wake lock " + entry.label,
             fact: stale ? "Last known browser wake-lock state: " + entry.label + "." : entry.guidance,
             guidance: stale ? (offline ? "Tablet is offline; this is the last known report." : "Status is stale; this is the last known report.")
@@ -49,7 +45,7 @@
         return { state: power.state, label: WAKE_STATES[power.state].label, count: online.length };
     }
     const powerHelp = "Screen wake locks are browser reports, not proof the operating system will keep the screen on. "
-        + "Check Auto-Lock, charging and kiosk settings; an insecure origin cannot take a wake lock, so open the wall over its trusted HTTPS origin. "
+        + "Check Auto-Lock, charging and kiosk settings. An insecure origin cannot take a wake lock, so open the wall over its trusted HTTPS origin. "
         + "The operator cannot wake a sleeping tablet remotely.";
     function panels(layout, profileFor) {
         return Object.entries(model.entries(layout)).map(([id, slot]) => {
@@ -115,21 +111,24 @@
             + "Escape cancels a drag. Alt pauses snapping while dragging with a mouse or pen; on touch use the snap checkbox. "
             + "Numeric position, size and bezel fields are available in Arrange. Fit and 2x change the view only. " + powerHelp;
     }
+    const LABEL_MAX = 16;
     function fitLabels(svg) {
-        svg.querySelectorAll(".operator-slot-label").forEach(label => {
+        const labels = [...svg.querySelectorAll(".operator-slot-label")].map(label => {
             const matrix = label.getScreenCTM();
-            if (!matrix) return;
-            const scale = Math.hypot(matrix.a, matrix.b);
-            if (!scale) return;
+            const scale = matrix ? Math.hypot(matrix.a, matrix.b) : 0;
+            if (!scale) return null;
             const width = Number(label.dataset.width) * scale, height = Number(label.dataset.height) * scale;
+            const fit = Math.min(LABEL_MAX, height - 8, (width - 12) / (Math.min(4, label.dataset.label.length) * 0.6));
+            return { label, scale, width, fit };
+        }).filter(Boolean);
+        const numberedWall = labels.some(({ label, width }) => label.dataset.label.length * LABEL_MAX * 0.6 > width - 12);
+        const wallSize = Math.min(LABEL_MAX, ...labels.map(item => item.fit));
+        labels.forEach(({ label, scale }) => {
             const text = label.dataset.label;
-            const size = Math.min(12, height - 8, (width - 12) / (Math.min(4, text.length) * 0.6));
-            label.style.display = size < 10 ? "none" : "";
-            if (size < 10) return;
-            const room = Math.max(1, Math.floor((width - 12) / (size * 0.6)));
+            const size = Math.max(1, wallSize);
             const numbered = /^Tablet (\d+)\b/.exec(text);
-            label.textContent = text.length > room && numbered && room <= numbered[0].length ? numbered[1]
-                : text.length > room ? text.slice(0, Math.max(1, room - 1)) + "…" : text;
+            label.style.display = "";
+            label.textContent = numberedWall && numbered ? numbered[1] : text;
             label.setAttribute("font-size", size / scale);
             label.setAttribute("stroke-width", 0);
             label.setAttribute("x", Number(label.dataset.x) + 6 / scale);
@@ -144,98 +143,55 @@
                 bg.setAttribute("rx", 2 / scale);
             }
         });
-        svg.querySelectorAll(".operator-slot-status").forEach(label => {
+        const statusLabels = [...svg.querySelectorAll(".operator-slot-status")].map(label => {
             if (!label.classList || !label.classList.contains("operator-slot-status")) return;
             const matrix = label.getScreenCTM();
             if (!matrix) return;
             const scale = Math.hypot(matrix.a, matrix.b);
             if (!scale) return;
             const width = Number(label.dataset.width) * scale, height = Number(label.dataset.height) * scale;
-            const text = label.dataset.label || "";
-            const size = Math.min(10, height - 10, (width - 12) / (Math.max(1, text.length) * 0.6));
+            let text = label.dataset.label || "";
+            const offline = label.dataset.status === "offline";
+            if (offline && (width - 12) / (Math.max(1, text.length) * 0.6) < 9) text = "Offline";
+            const fit = Math.min(LABEL_MAX, height - 10, (width - 12) / (Math.max(1, text.length) * 0.6));
+            return { label, scale, width, height, text, offline, fit };
+        }).filter(Boolean);
+        const statusSize = Math.min(LABEL_MAX, ...statusLabels.map(item => item.fit).filter(fit => fit >= 9));
+        statusLabels.forEach(({ label, scale, width, height, text, offline, fit }) => {
+            label.textContent = text;
+            const size = Math.min(statusSize, fit);
             const room = Math.max(1, Math.floor((width - 12) / (Math.max(1, size) * 0.6)));
-            const fits = size >= 9 && text.length <= room;
+            const fits = offline || size >= 9 && text.length <= room;
             label.style.display = fits ? "" : "none";
             if (!fits) return;
             label.setAttribute("font-size", size / scale);
             label.setAttribute("stroke-width", 2 / scale);
+            if (offline) {
+                label.setAttribute("text-anchor", "middle");
+                label.setAttribute("x", Number(label.dataset.x) + Number(label.dataset.width) / 2);
+                label.setAttribute("y", Number(label.dataset.y) + Number(label.dataset.height) / 2 + size / 3 / scale);
+                return;
+            }
             label.setAttribute("x", Number(label.dataset.x) + 6 / scale);
             label.setAttribute("y", Number(label.dataset.y) + height / scale - 6 / scale);
         });
     }
-    const fits = new WeakMap();
-    // Call OperatorStage.fit(el.stageSvg) after renderStage and stage relocation.
-    // Optional { actionBar, navigation } elements override the workspace defaults.
-    function fit(svg, options = {}) {
+    function fit(svg, available, { field = svg.closest(".stage-scroll") } = {}) {
         if (svg.classList.contains("is-dragging")) return null;
-        const field = svg.closest(".stage-scroll");
-        if (!field || !field.parentElement || !svg.viewBox.baseVal.width) return null;
-        const win = svg.ownerDocument.defaultView, doc = svg.ownerDocument;
-        let state = fits.get(svg);
-        if (!state) {
-            state = { options, parent: null };
-            const schedule = () => {
-                if (state.frame) return;
-                state.frame = win.requestAnimationFrame(() => { state.frame = 0; fit(svg, state.options); });
-            };
-            state.observer = new win.ResizeObserver(schedule);
-            win.addEventListener("resize", schedule);
-            fits.set(svg, state);
-        }
-        state.options = options;
-        if (state.parent !== field.parentElement) {
-            state.observer.disconnect();
-            state.parent = field.parentElement;
-            state.observer.observe(state.parent);
-        }
-        const parentStyle = win.getComputedStyle(state.parent), fieldStyle = win.getComputedStyle(field);
-        const availableWidth = state.parent.clientWidth - parseFloat(parentStyle.paddingLeft) - parseFloat(parentStyle.paddingRight);
-        if (availableWidth <= 0 || !field.getClientRects().length) return null;
-        const compact = win.matchMedia("(max-width: 48rem), (max-height: 32rem) and (orientation: landscape)").matches;
-        const fieldRect = field.getBoundingClientRect();
-        const zoom = fieldRect.width / parseFloat(fieldStyle.width) || 1;
-        const fieldTop = (fieldRect.top + win.scrollY + (doc.querySelector(".operator-workspace")?.scrollTop || 0)) / zoom;
-        let bottom = win.innerHeight / zoom;
-        const navigation = options.navigation || doc.querySelector(".workspace-nav-landmark");
-        const actionBar = options.actionBar || doc.body.dataset.task !== "arrange" && doc.querySelector(".image-actions");
-        for (const bar of [navigation, doc.body.dataset.outputDirty === "true" && actionBar]) {
-            if (!bar || !bar.getClientRects().length) continue;
-            const rect = bar.getBoundingClientRect();
-            if (bar === actionBar) {
-                const inline = compact && bottom - fieldTop - rect.height / zoom - 16 < 120 / zoom;
-                doc.body.dataset.imageActionsInline = String(inline);
-                if (inline) continue;
-            }
-            const style = win.getComputedStyle(bar);
-            if ((bar === navigation || style.position === "fixed") && rect.bottom / zoom > bottom / 2) bottom = Math.min(bottom, rect.top / zoom - (parseFloat(style.marginTop) || 0));
-        }
-        const taskSelector = doc.getElementById("compact-task-select");
-        const reflow = taskSelector && taskSelector.getClientRects().length;
-        const commitShelf = doc.body.dataset.task === "images" && !compact && !reflow && doc.getElementById("commit-shelf");
-        if (commitShelf && commitShelf.getClientRects().length) {
-            const summary = doc.querySelector("#stage-technical > summary");
-            bottom -= (commitShelf.getBoundingClientRect().height + (summary?.getBoundingClientRect().height || 0) + 40) / zoom;
-        }
-        const borderWidth = parseFloat(fieldStyle.borderLeftWidth) + parseFloat(fieldStyle.borderRightWidth);
-        const borderHeight = parseFloat(fieldStyle.borderTopWidth) + parseFloat(fieldStyle.borderBottomWidth);
+        const { width, height: availableHeight, borderWidth = 0, borderHeight = 0 } = available;
         const aspect = svg.viewBox.baseVal.width / svg.viewBox.baseVal.height;
-        const width = Math.max(0, availableWidth - borderWidth);
-        const availableHeight = bottom - fieldTop - 16 - borderHeight;
-        // A short viewport keeps a usable field and falls back to page scrolling.
-        const topInset = navigation && win.getComputedStyle(navigation).position === "sticky" ? navigation.getBoundingClientRect().height / zoom : 0;
-        const imagePortrait = compact && doc.body.dataset.task === "images" && win.matchMedia("(orientation: portrait)").matches;
-        const height = imagePortrait ? width / aspect : reflow ? Math.min(width / aspect, Math.max(120 / zoom, bottom - topInset - 16))
-            : Math.min(width / aspect, Math.max(120 / zoom, availableHeight));
+        const height = Math.min(availableHeight, width / aspect);
         const fitWidth = Math.min(width, height * aspect);
         const size = viewSize(fitWidth, height, viewZoom(svg));
         field.style.inlineSize = fitWidth + borderWidth + "px";
         field.style.blockSize = size.fieldBlockSize === null ? ""
-            : Math.min(size.fieldBlockSize, Math.max(120 / zoom, availableHeight)) + borderHeight + "px";
+            : Math.min(size.fieldBlockSize, available.scrollHeight || availableHeight) + borderHeight + "px";
         field.style.overflow = size.overflow;
         svg.style.inlineSize = size.inlineSize + "px";
         svg.style.blockSize = size.blockSize + "px";
         fitLabels(svg);
-        return { width: fitWidth, height, availableWidth, availableHeight, zoom: size.zoom };
+        return { width: fitWidth, height, availableWidth: available.availableWidth ?? width,
+            availableHeight: available.availableHeight ?? availableHeight, zoom: size.zoom };
     }
     function draw({ svg, layout, content, profileFor, labelFor, statusFor, powerFor = null, fleet = null, selectedId, runtime, resolutionNode, preview = false, editable = true, presentation = "context", viewport = null, compareIds = null }) {
         const ns = "http://www.w3.org/2000/svg";
@@ -286,7 +242,8 @@
         if (transform && content.url && content.available !== false && content.availability !== "unavailable") visible.append(image(1));
         const estimates = [], upscaleFactors = [];
         list.sort((a, z) => compareIds ? compareIds(a.id, z.id) : Number(a.id === selectedId) - Number(z.id === selectedId)).forEach(panel => {
-            const status = preview ? { status: "preview", text: "Local preview · not tablet output" } : statusFor(panel.id);
+            const reported = statusFor(panel.id);
+            const status = preview && reported.status !== "offline" ? { status: "preview", text: "Local preview · not tablet output" } : reported;
             const power = powerFor ? powerFor(panel.id) : null;
             const group = node("g", { class: "slot operator-slot", role: "button", tabindex: 0,
                 "data-device-id": panel.id, "data-status": status.status, "data-preview": String(preview), "aria-pressed": String(panel.id === selectedId),
@@ -295,6 +252,7 @@
                 "aria-label": labelFor(panel.id) + ", " + status.text + (power ? ", " + power.label : "") + (panel.missing ? ", pinned profile missing" : "") });
             const outline = node("g", { transform: rotation(panel) });
             if (!panel.missing) {
+                if (panel.id === selectedId) outline.append(rect(panel.body, { class: "operator-selection-halo", fill: "none", stroke: "#000", "stroke-width": 8 / scale }));
                 outline.append(rect(panel.body, { class: "operator-body-outline", fill: "transparent", "stroke-width": (panel.id === selectedId ? 3 : 1.5) / scale }));
                 outline.append(rect(panel.active, { class: "operator-active-outline", fill: "none", "stroke-width": 0.75 / scale }));
                 const estimate = resolution(panel, transform, content, runtime && runtime.devices && runtime.devices[panel.id]);
@@ -303,7 +261,7 @@
                     + (estimate.upscale > 1.1 ? " · " + estimate.upscale.toFixed(1) + "× upscale" : ""));
             } else outline.append(node("circle", { cx: panel.cx, cy: panel.cy, r: 8 / scale, fill: "none", stroke: "var(--stage-selected)", "stroke-width": 2 / scale }));
             if (!preview && status.status === "offline" && !panel.missing) {
-                outline.append(rect(panel.body, { class: "offline-reservation", opacity: 0.18 }));
+                outline.append(rect(panel.body, { class: "offline-reservation", opacity: 0.45 }));
                 outline.append(rect(panel.body, { fill: "url(#operator-occlusion)", opacity: 0.28 }));
             }
             if (!panel.missing) {
@@ -338,18 +296,19 @@
             group.append(outline);
             const fleetCovered = fleet && runtime && runtime.devices && runtime.devices[panel.id]
                 && runtime.devices[panel.id].online && power && power.state === fleet.state;
-            const statusText = [exception, power && !fleetCovered && (power.warning || power.stale) ? power.short : ""].filter(Boolean).join(" · ");
+            const exceptionText = status.status === "offline" && exception ? "▲ " + exception : exception;
+            const statusText = [exceptionText, power && !fleetCovered && (power.warning || power.stale) ? power.short : ""].filter(Boolean).join(" · ");
             if (!panel.missing && statusText && panel.body.width * scale >= 40 && panel.body.height * scale >= 24) {
                 const statusNode = node("text", { x: panel.body.x + 6 / scale, y: panel.body.y + panel.body.height - 6 / scale,
                     class: "operator-slot-status", "font-size": 10 / scale, "stroke-width": 2 / scale,
                     "paint-order": "stroke", fill: "var(--stage-text)", stroke: "var(--stage)",
                     "data-status": status.status, "data-power-state": power ? power.state : "",
-                    "data-label": exception, "data-x": panel.body.x, "data-y": panel.body.y,
+                    "data-label": exceptionText, "data-x": panel.body.x, "data-y": panel.body.y,
                     "data-width": panel.body.width, "data-height": panel.body.height, "aria-hidden": "true" }, statusText);
                 if (typeof document.createTextNode === "function") {
                     statusNode.textContent = "";
-                    if (exception) statusNode.append(node("tspan", {}, exception));
-                    const powerLabel = statusText.slice(exception.length);
+                    if (exceptionText) statusNode.append(node("tspan", {}, exceptionText));
+                    const powerLabel = statusText.slice(exceptionText.length);
                     if (powerLabel) statusNode.append(node("tspan", { class: "operator-slot-power-text" }, powerLabel));
                 }
                 group.append(statusNode);
@@ -365,7 +324,6 @@
             "stroke-width": 1.5 / scale, "stroke-dasharray": 6 / scale + " " + 4 / scale, "pointer-events": "none"
         }));
         syncChildren(svg, view);
-        fit(svg, fits.get(svg) && fits.get(svg).options);
         if (resolutionNode) resolutionNode.textContent = estimates.join("; ");
         if (focusedId) {
             const target = Array.from(svg.querySelectorAll(".slot")).find(item => item.dataset.deviceId === focusedId);

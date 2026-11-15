@@ -1,4 +1,5 @@
 "use strict";
+function renderGrid(feature) { feature.update(); feature.render(); }
 const assert = require("node:assert/strict");
 const grid = require("../frontend/controller/operator-grid.js");
 class Node {
@@ -18,9 +19,13 @@ global.Option = function (text, value) { this.textContent = text; this.value = v
 const state = { base: { kind: "logical", placements: {} }, layoutKind: "logical", roster: { first: { number: 1, online: false } } };
 const owner = grid.create({ state, api: async () => {}, labelFor: () => "Tablet 1", validPair: () => null, profileFor: () => null, calibrationFor: () => null,
     ingestConfig() {}, renderStage() {}, syncDraftUi() {}, isDirty: () => false, announce() {}, showConflict() {} });
-owner.render();
+renderGrid(owner);
 state.roster.first = { number: 1, online: true, viewport: { width: 900, height: 1280 } };
-owner.render();
+const beforeObservation = owner.view();
+owner.render(); owner.render();
+assert.deepEqual(owner.view(), beforeObservation, "presentation cannot observe membership, change selected IDs or input versions");
+assert.deepEqual(owner.selectedIds(), [], "the late tablet is admitted only by the explicit update step");
+renderGrid(owner);
 const item = nodes.get("grid-order").children[0];
 assert.equal(item.children[0].children[0].checked, true, "#24 registration before socket readiness must become selected without reload");
 assert.equal(Number(item.children[1].children[1].children[0].value), 70, "untouched width uses fresh 900 / 1280 viewport");
@@ -36,7 +41,7 @@ nodes.get("grid-preview").listeners.click().then(async () => {
     const manualOwner = grid.create({ state: manualState, api: async () => { previewRequests += 1; },
         labelFor: id => id, validPair: () => null, profileFor: () => null, calibrationFor: () => null,
         ingestConfig() {}, renderStage() {}, syncDraftUi() {}, isDirty: () => true, announce() {}, showConflict() {} });
-    manualOwner.render();
+    renderGrid(manualOwner);
     await nodes.get("grid-preview").listeners.click();
     assert.match(nodes.get("grid-message").textContent, /manual draft/);
     assert.equal(manualOwner.dirty(), false, "refusing a grid preview cannot create a competing grid draft");

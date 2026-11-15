@@ -1,5 +1,6 @@
 "use strict";
 (function (root) {
+    const composition = typeof module !== "undefined" && module.exports ? require("./operator-composition.js") : root.OperatorComposition;
     const clone = value => JSON.parse(JSON.stringify(value));
     const entries = layout => layout && (layout.kind === "physical" ? layout.slots : layout.placements) || {};
     function layoutSignature(layout) {
@@ -27,6 +28,9 @@
         });
     }
 
+    function stageEditable(state) {
+        return composition.stageEditable({ mode: state.mode }, state);
+    }
     function stageView(state) {
         const arrangement = !!state.gridPreview || !!state.base && !!state.draft && layoutSignature(state.draft) !== layoutSignature(state.base);
         const preview = !state.viewLive && (arrangement || !!state.previewContent);
@@ -35,7 +39,7 @@
         if (content && content.asset && content.asset === state.activeImageUnavailableId) content = { ...content, available: false };
         return { layout, content, preview,
             mode: preview ? arrangement ? "arrangement-preview" : "image-preview" : "live",
-            editable: state.tabName === "show" && !state.gridPreview && !state.viewLive && !state.previewContent };
+            editable: stageEditable(state) };
     }
     function registrationCounts(config) {
         const devices = config && config.runtime && config.runtime.devices;
@@ -141,12 +145,16 @@
             .map(([id, device]) => [id, observeDevice(device, nowMono)]));
         return { ...config, runtime: { ...config.runtime, devices } };
     }
+    function shownSubject(content) {
+        const type = content && content.type;
+        return type === "image" ? "image" : type === "color" ? "colour" : type === "calibration" ? "wall grid" : "content";
+    }
     function tabletState(config, id, nowMono) {
         const slot = entries(config.layout)[id];
         const device = config.runtime && config.runtime.devices && config.runtime.devices[id];
         const content = config.scene && config.scene.content || {};
         const image = content.type === "image";
-        const subject = image ? "image" : "scene";
+        const subject = shownSubject(content);
         const result = (status, text, showing = false) => ({ status, text, showing, online: !!device && device.online === true });
         if (!slot) return result("unplaced", "No placement");
         if (!device) return result("unknown", "Missing tablet · spot reserved");
@@ -172,14 +180,25 @@
                     || device.connection_id !== undefined && expected.connection_id !== device.connection_id) {
                 return result("stale", "Previous paint · current " + subject + " unconfirmed");
             }
-            return result("displayed", image ? "Reports current image" : "Current scene reported", true);
+            return result("displayed", "Reports current " + subject, true);
         }
-        const texts = { blocked: "Blocked", loading: "Loading " + subject, failed: image ? "Image failed" : "Scene failed", hidden: "Page hidden",
+        const texts = { blocked: "Blocked", loading: "Loading " + subject, failed: subject[0].toUpperCase() + subject.slice(1) + " failed", hidden: "Page hidden",
             stale: "Confirmation expired", unsupported: "Unsupported client or content", unplaced: "No placement", unknown: "Current " + subject + " unconfirmed" };
         return result(status in texts ? status : "unknown", (texts[status] || texts.unknown) + (render.reason ? " · " + render.reason : ""));
     }
     function needsAttention(item) {
         return !item.showing && item.status !== "excluded";
+    }
+    const WRONG_CONTENT = new Set(["failed", "blocked", "hidden", "unsupported", "unsupported_client", "unsupported_content", "viewport_mismatch", "zoom_changed",
+        "mapping_mismatch", "invalid", "invalid_mapping", "stale_calibration", "needs_calibration", "needs_profile", "missing_profile", "missing_calibration"]);
+    function rosterStatus(item, { stale = false } = {}) {
+        const result = (key, word, tone) => ({ key, word, tone });
+        if (stale) return result("stale", "Stale", "failure");
+        if (item.status === "unplaced") return item.online ? result("not-placed", "Not placed", "progress") : result("offline", "Offline", "quiet");
+        if (item.status === "offline" || (item.status === "unknown" && !item.online)) return result("offline", "Offline", "failure");
+        if (item.status === "stale") return result("stale", "Stale", "failure");
+        if (WRONG_CONTENT.has(item.status)) return result("wrong-content", "Wrong content", "failure");
+        return result("connected", "Connected", "ok");
     }
     function aggregate(config, nowMs) {
         const ids = Object.keys(entries(config.layout)).filter(id => entries(config.layout)[id].participating !== false);
@@ -191,7 +210,7 @@
         return { event() { epoch += 1; }, start() { return { epoch, sequence: ++issued }; }, current(ticket) { return ticket.epoch === epoch; },
             accept(ticket) { if (ticket.epoch !== epoch || ticket.sequence < accepted) return false; accepted = ticket.sequence; return true; } };
     }
-    const api = { stageView, layoutSignature, fitLogical, arrangeLogical, rotateLogical, clone, entries, registrationCounts, layoutDraft, bounds, fitTransform, compareIds, sameToken, observeDevice, observeConfig, tabletState, needsAttention, aggregate, readFence };
+    const api = { shownSubject, stageEditable, stageView, layoutSignature, fitLogical, arrangeLogical, rotateLogical, clone, entries, registrationCounts, layoutDraft, bounds, fitTransform, compareIds, sameToken, observeDevice, observeConfig, tabletState, needsAttention, rosterStatus, aggregate, readFence };
     if (typeof module !== "undefined" && module.exports) module.exports = api;
     else root.OperatorState = api;
 }(typeof window !== "undefined" ? window : globalThis));

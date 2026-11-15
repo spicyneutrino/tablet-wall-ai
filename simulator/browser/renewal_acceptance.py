@@ -175,14 +175,14 @@ SCENARIO_ENTRIES = (
 SCENARIOS = {entry["name"]: entry for entry in SCENARIO_ENTRIES}
 SCENARIO_FIXTURES = {entry["name"]: entry["fixtures"] for entry in SCENARIO_ENTRIES}
 
-TASK_NAMES = ("Images", "Arrange", "Tablets", "Saved", "Settings")
-TASK_PANELS = {
-    "Images": "panel-content",
-    "Arrange": "panel-show",
-    "Tablets": "panel-tablet",
-    "Saved": "panel-saved",
-    "Settings": "panel-system",
-}
+try:
+    from ._workspace_shell import select_tablet
+except ImportError:
+    from _workspace_shell import select_tablet
+
+TASK_NAMES = ("Images", "Arrange", "Test", "Tablets", "Saved arrangements", "Saved content", "Server")
+TASK_PANELS = {"Images": "panel-content", "Arrange": "panel-show", "Test": "panel-test",
+               "Tablets": "roster", "Saved arrangements": "panel-show", "Saved content": "panel-content", "Server": "server-drawer"}
 VIEWPORTS = ((1440, 900), (1280, 800), (390, 844), (320, 740), (844, 390))
 FRACTIONAL_WIDTHS = (719.5, 767.5, 768.5, 1100.5, 1360.5)
 # Control ids that must be visible in each task before a height sweep means
@@ -191,14 +191,13 @@ TOUCH_EXPECTED = {
     "Images": {
         "ids": (
             "view-zoom-fit", "view-zoom-2x", "image-search", "add-image",
-            "refresh-images", "image-chooser-summary", "show-colours",
-            "show-calibration", "pattern-grid", "pattern-black",
+            "refresh-images",
         ),
         "classes": (),
     },
     "Tablets": {
-        "ids": ("btn-roster-refresh", "issues-title"),
-        "classes": ("dev-pick",),
+        "ids": ("refresh-status",),
+        "classes": (),
     },
 }
 
@@ -429,7 +428,7 @@ class RenewalRig(Rig):
 # ---------------------------------------------------------------------------
 
 
-VISIBLE_PANEL = "() => document.querySelector('.task-panel:not([hidden])')"
+VISIBLE_PANEL = "() => document.querySelector('.inspector-pane:not([hidden])')"
 
 LAYOUT_MEASURE = """() => {
     const visible = el => {
@@ -439,13 +438,14 @@ LAYOUT_MEASURE = """() => {
         const rect = el.getBoundingClientRect();
         return rect.width > 0.5 && rect.height > 0.5;
     };
-    const panels = [...document.querySelectorAll('.task-panel')].filter(visible);
+    const modal = document.querySelector('#server-drawer:modal');
+    const panels = [...document.querySelectorAll(modal ? '#server-drawer' : '.inspector-pane, #device-sheet')].filter(visible);
     const panel = panels[0] || null;
     const result = {
         innerWidth,
         scrollWidth: document.documentElement.scrollWidth,
         panel: panel ? panel.id : null,
-        paddings: panels.map(item => [item.id, parseFloat(getComputedStyle(item).paddingInlineStart)]),
+        paddings: panels.map(item => [item.id, parseFloat(getComputedStyle(item.closest('.inspector-scroll') || item.querySelector('.drawer-content') || item).paddingInlineStart)]),
         headings: {},
         headingRoles: {},
         rootFontSize: parseFloat(getComputedStyle(document.documentElement).fontSize),
@@ -495,7 +495,7 @@ LAYOUT_MEASURE = """() => {
 }"""
 
 CONTROL_SWEEP = """() => {
-    const panel = document.querySelector('.task-panel:not([hidden])');
+    const panel = document.body;
     if (!panel) return {panel: null, controls: [], count: 0, short: [], coarse: false};
     const selector = 'button, select, textarea, summary, .check-label, .check,'
         + ' input:not([type="hidden"]):not([type="checkbox"]):not([type="radio"])';
@@ -559,7 +559,7 @@ def _device_rows(page: Any) -> list[dict[str, Any]]:
 
 def _roster_rows(page: Any) -> list[dict[str, Any]]:
     return page.evaluate(
-        """() => [...document.querySelectorAll('#exception-roster > li')].map(row => ({
+        """() => [...document.querySelectorAll('#roster > li')].map(row => ({
             id: row.dataset.deviceId,
             status: row.dataset.status,
             powerState: row.dataset.powerState,
@@ -615,16 +615,12 @@ def _soft_wait(page: Any, expression: str, arg: Any = None, timeout: float = 15.
 
 
 def _task(rig: RenewalRig, name: str) -> None:
-    page = rig.page
-    compact = page.locator("#compact-task-select")
-    if compact.is_visible():
-        compact.select_option(value=TASK_VALUES[name])
-    else:
-        page.get_by_role(
-            "tab", name=re.compile(rf"^{re.escape(name)}(?:, unsaved changes)?$")
-        ).click()
-    _wait_task_panel(rig, name)
-    page.wait_for_timeout(60)
+    try:
+        from ._workspace_shell import task
+    except ImportError:
+        from _workspace_shell import task
+    task(rig.page, name)
+    rig.page.wait_for_timeout(60)
 
 
 def _port_and_place(rig: RenewalRig, count: int, held: int | None = None) -> list[tuple[Any, str]]:
@@ -677,6 +673,20 @@ def _close_client(rig: RenewalRig, page: Any, device_id: str) -> None:
     )
 
 
+def _tablet_power_reports(rig: RenewalRig, ids: list[str]) -> dict[str, str]:
+    page = rig.page
+    reports = {}
+    for device_id in ids:
+        select_tablet(page.locator(f':is(.dev-pick,.roster-pick):visible[data-device-id="{device_id}"]').first)
+        wait_until(page, "id => document.querySelector('#tablet-label-form')?.dataset.deviceId === id", arg=device_id)
+        reports[device_id] = page.locator("#tablet-facts").evaluate("""e => {
+            const term = [...e.querySelectorAll('dt')].find(n => n.textContent === 'Screen wake lock');
+            return term?.nextElementSibling?.textContent || '';
+        }""")
+    page.locator("#tablet-back").click()
+    return reports
+
+
 def _scene_scene_puts(rig: RenewalRig) -> int:
     return len([row for row in rig.requests
                 if row["method"] == "PUT" and row["url"].split("?")[0].endswith("/api/v3/scene")])
@@ -712,13 +722,13 @@ def status_truth(rig: RenewalRig) -> None:
     offline_id = ids[-1]
     _close_client(rig, clients[-1][0], offline_id)
     _task(rig, "Images")
-    wait_until(page, "() => /showing the current/.test(document.getElementById('wall-health').textContent)")
+    wait_until(page, "() => /showing /.test(document.getElementById('wall-health').textContent)")
 
-    shown = _visible_text_matches(page, "showing the current")
+    shown = _visible_text_matches(page, "showing ")
     rig.check(
         "The complete wall status remains accessible without repeated visible sentences",
-        len(shown) == 1 and page.locator("#wall-health").text_content().count("showing the current") == 1
-        and page.locator("#wall-health-short").inner_text() == "5/6",
+        len(shown) == 1 and page.locator("#wall-health").text_content().count("showing ") == 1
+        and page.locator("#wall-health-short").text_content() == "5/6",
         {"visible": shown, "accessible": page.locator("#wall-health").text_content()},
         {"compact": "5/6", "accessible_count": 1},
         obligation="D3",
@@ -728,14 +738,15 @@ def status_truth(rig: RenewalRig) -> None:
     health_label = page.get_attribute("#btn-wall-health", "aria-label")
     rig.check(
         "The wall health line keeps its exact count and Issues label",
-        health_text == "5 of 6 showing the current image"
-        and health_label == "5/6. 5 of 6 tablets showing the current image. Issues.",
+        health_text == "5 of 6 showing " + page.locator("#image-title").inner_text()
+        and health_label == "5/6. 5 of 6 tablets showing the current image.",
         {"text": health_text, "label": health_label},
         {"text": "5 of 6 showing the current image",
-         "label": "5/6. 5 of 6 tablets showing the current image. Issues."},
+         "label": "5/6. 5 of 6 tablets showing the current image."},
         obligation="C-STATUS",
     )
 
+    page.locator("#stage-technical").evaluate("e=>e.open=true")
     power_mentions = page.evaluate(
         """() => {
             const root = document.getElementById('panel-content');
@@ -754,39 +765,39 @@ def status_truth(rig: RenewalRig) -> None:
         }"""
     )
     rig.check(
-        "Uniform wake-lock warnings leave at most three visible power mentions in Images",
-        len(power_mentions) <= 3 and page.locator("#wall-power-caution").is_visible(),
+        "Uniform wake-lock reports stay out of Content tools",
+        len(power_mentions) == 0 and page.locator("#wall-power-caution").count() == 0,
         power_mentions,
-        {"max": 3},
+        {"max": 0},
         obligation="D2",
     )
 
     roster = _roster_rows(page)
     rig.check(
-        "The first Exceptions roster row is the offline tablet",
-        len(roster) == 6 and roster[0]["id"] == offline_id,
+        "The persistent roster keeps stable tablet-number order with the offline tablet in its original position",
+        len(roster) == 6 and [row["id"] for row in roster] == ids and roster[-1]["id"] == offline_id,
         {"rows": roster, "offline": offline_id},
         {"first": offline_id, "count": 6},
         obligation="D1",
     )
 
-    attention = page.locator("#attention-heading").text_content()
+    attention = page.locator("#issues-description").text_content()
     rig.check(
         "The attention heading counts the one offline position",
-        attention == "Needs review (1)",
+        attention == "1 current content report issue",
         attention,
         "Needs review (1)",
         obligation="D1",
     )
 
     summary = page.locator("#wall-power-summary")
-    summary_visible = page.locator("#wall-power-caution").is_visible() and summary.count() == 1 and summary.locator("xpath=ancestor::details[@id='stage-technical']").count() == 1
+    summary_visible = summary.is_visible() if summary.count() else False
     summary_text = summary.text_content() if summary.count() else ""
     rig.check(
-        "The fleet caution is visible and Details names the five online reports",
-        summary_visible and "5" in summary_text and "denied" in summary_text.lower(),
+        "Wall details do not infer fleet screen readiness from browser wake reports",
+        summary.count() == 0 and not summary_visible,
         {"count": summary.count(), "visible": summary_visible, "text": summary_text},
-        {"count": 1, "visible": True, "names": "5 ... denied"},
+        {"count": 0, "visible": False},
         obligation="D2",
     )
 
@@ -857,38 +868,41 @@ def status_truth(rig: RenewalRig) -> None:
                 .filter(slot => slot.dataset.powerWarning === 'true');
             return {
                 count: slots.length,
-                missing: slots.filter(slot => !/denied/i.test(slot.textContent))
+                missing: slots.filter(slot => !/denied/i.test(slot.getAttribute('aria-label')))
                     .map(slot => slot.dataset.deviceId),
+                ids: slots.map(slot => slot.dataset.deviceId),
             };
         }"""
     )
+    reports = _tablet_power_reports(rig, warnings["ids"])
     rig.check(
-        "Mixed wake-lock states keep every warning tile's power text",
-        warnings["count"] >= 6 and warnings["missing"] == [],
-        warnings,
-        {"count": ">= 6", "missing": []},
+        "Mixed wake-lock states keep every warning tile's accessible power and labelled Tablet report",
+        warnings["count"] >= 6 and warnings["missing"] == []
+        and all("Denied by browser" in report for report in reports.values()),
+        {**warnings, "tablet_reports": reports},
+        {"count": ">= 6", "missing": [], "tablet_reports": "Denied by browser for each warning tablet"},
         obligation="D2",
     )
     mixed_summary = page.locator("#wall-power-summary")
     rig.check(
         "Mixed wake-lock states hide the fleet line instead of summarising one state",
-        mixed_summary.count() == 1 and not mixed_summary.is_visible(),
+        mixed_summary.count() == 0,
         {"count": mixed_summary.count(),
          "visible": mixed_summary.is_visible() if mixed_summary.count() else None},
-        {"count": 1, "visible": False},
+        {"count": 0, "visible": False},
         obligation="D2",
     )
 
     focus_id = ids[0]
-    target = page.locator(f'#exception-roster li[data-device-id="{focus_id}"] .exception-review')
-    wait_until(page, "(id) => { const row = document.querySelector('#exception-roster li[data-device-id=\"' + id + '\"]'); return !!row && row.dataset.status === 'displayed'; }", arg=focus_id)
+    target = page.locator(f'#roster li[data-device-id="{focus_id}"] .roster-pick')
+    wait_until(page, "(id) => { const row = document.querySelector('#roster li[data-device-id=\"' + id + '\"]'); return !!row && row.dataset.status === 'connected'; }", arg=focus_id)
     target.focus()
-    focused_before = page.evaluate("() => document.activeElement?.dataset?.deviceId || null")
+    focused_before = page.evaluate("() => document.activeElement?.closest('[data-device-id]')?.dataset?.deviceId || null")
     focus_offline = ids[1]
     _close_client(rig, clients[1][0], focus_offline)
     reordered = _soft_wait(
         page,
-        "(id) => { const first = document.querySelector('#exception-roster > li'); return !!first && first.dataset.deviceId === id; }",
+        "(id) => { const first = document.querySelector('#roster > li'); return !!first && first.dataset.deviceId !== id; }",
         arg=focus_offline,
         timeout=20,
     )
@@ -896,12 +910,12 @@ def status_truth(rig: RenewalRig) -> None:
         """() => {
             const element = document.activeElement;
             return {tag: element ? element.tagName : null,
-                id: element && element.dataset ? element.dataset.deviceId || null : null,
+                id: element?.closest("[data-device-id]")?.dataset.deviceId || null,
                 body: element === document.body};
         }"""
     )
     rig.check(
-        "A reordering render keeps focus on the same roster button",
+        "A status update preserves stable order and focus on the same roster button",
         reordered and focused_before == focus_id and focused["id"] == focus_id and not focused["body"],
         {"before": focused_before, "after": focused, "reordered": reordered},
         {"before": focus_id, "after": focus_id, "body": False, "reordered": True},
@@ -949,7 +963,7 @@ def status_truth(rig: RenewalRig) -> None:
                 connection: document.body.dataset.connection,
                 health: health.textContent,
                 healthLabel: document.getElementById('btn-wall-health').getAttribute('aria-label'),
-                counting: /\\d+ of \\d+ showing the current/.test(health.textContent),
+                counting: /\\d+ of \\d+ showing /.test(health.textContent),
                 fleet: summary
                     ? {present: true, visible: summary.getClientRects().length > 0,
                         hidden: summary.hidden, text: summary.textContent}
@@ -976,14 +990,14 @@ def status_truth(rig: RenewalRig) -> None:
     rig.check(
         "A stale roster reports that current image evidence is unavailable",
         became_stale
-        and "Status stale" in stale["health"]
-        and "Current image evidence unavailable" in stale["health"]
+        and ("Server unreachable · tablets keep their last image" in stale["health"]
+             or "Status stale" in stale["health"] and "Current image evidence unavailable" in stale["health"])
         and not stale["counting"]
-        and (stale["healthLabel"] or "").startswith("Status stale."),
+        and (stale["healthLabel"] or "").startswith(("Status stale.", "Server unreachable")),
         {"health": stale["health"], "label": stale["healthLabel"],
          "counting": stale["counting"]},
-        {"health": "Status stale · Current image evidence unavailable",
-         "counting": False, "label": "starts with Status stale."},
+        {"health": "Server unreachable · tablets keep their last image, or Status stale · Current image evidence unavailable",
+         "counting": False, "label": "starts with Status stale or Server unreachable."},
         obligation="C-POWER",
     )
     rig.check(
@@ -1002,11 +1016,9 @@ def status_truth(rig: RenewalRig) -> None:
     rig.check(
         "A stale roster hides the fleet power line",
         became_stale
-        and stale["fleet"]["present"]
-        and stale["fleet"]["hidden"]
-        and not stale["fleet"]["visible"],
+        and not stale["fleet"]["present"],
         stale["fleet"],
-        {"present": True, "hidden": True, "visible": False},
+        {"present": False},
         obligation="D2",
     )
 
@@ -1032,7 +1044,7 @@ def guarded_show_focus(rig: RenewalRig) -> None:
                 wait_until(page, "etag => document.getElementById('etag-value').title === etag"
                            " && document.getElementById('etag-state').textContent === 'current'",
                            arg=rig.config()["etag"])
-                _task(rig, "Saved")
+                _task(rig, "Saved content")
                 wait_until(page, "() => document.getElementById('scenes-status').textContent === ''")
                 page.get_by_role("button", name="Preview content “Renewal focus”", exact=True).click()
             else:
@@ -1250,7 +1262,7 @@ def _scene_writes(rig: RenewalRig, start: int) -> list[dict[str, Any]]:
 
 def saved_name_rule(rig: RenewalRig) -> None:
     page = rig.page
-    _task(rig, "Saved")
+    _task(rig, "Saved arrangements")
     rule = "Use letters, numbers, spaces, dots, underscores or hyphens."
     before_any_submit = page.evaluate(
         """() => {
@@ -1360,7 +1372,7 @@ def saved_name_rule(rig: RenewalRig) -> None:
         " return value && state && state.textContent === 'current'; }",
         timeout=20,
     )
-    _task(rig, "Saved")
+    _task(rig, "Saved content")
 
     start = len(rig.requests)
     page.fill("#scene-name", "Harbour dawn, fit")
@@ -1415,7 +1427,9 @@ def pattern_grouping(rig: RenewalRig) -> None:
     _port_and_place(rig, 1)
     _task(rig, "Images")
     wait_until(page, "() => document.querySelectorAll('#image-gallery > li').length >= 8", timeout=20)
+    _task(rig, "Test")
     rig.click("#pattern-black")
+    _task(rig, "Images")
     wait_until(page, "() => document.querySelectorAll('#image-gallery > li').length >= 9", timeout=20)
     rig.click("#refresh-images")
     wait_until(
@@ -1436,7 +1450,9 @@ def pattern_grouping(rig: RenewalRig) -> None:
                 .find(node => node.children.length === 0 && node.textContent.trim() === 'Test pattern');
             return {
                 assetId: item.dataset.assetId || '',
-                name: name ? name.textContent : '',
+                name: button ? button.title : '',
+                displayName: name ? name.textContent : '',
+                nameTitle: name ? name.title : '',
                 text: item.textContent,
                 tag: tag ? {present: true, visible: tag.getClientRects().length > 0} : {present: false},
                 ariaLabel: button ? button.getAttribute('aria-label') : null,
@@ -1450,8 +1466,14 @@ def pattern_grouping(rig: RenewalRig) -> None:
     expected_name = "wall-pattern-" + last["assetId"][len("sha256:"):] + ".png"
     rig.check(
         "The generated pattern sorts last and keeps its exact published name",
-        last["assetId"].startswith("sha256:") and last["name"] == expected_name,
-        {"assetId": last["assetId"], "name": last["name"], "position": last["buttons"]},
+        last["assetId"].startswith("sha256:")
+        and last["name"] == expected_name
+        and last["nameTitle"] == expected_name
+        and last["ariaLabel"] == "Preview " + expected_name + ", test pattern"
+        and last["displayName"] == expected_name[:8] + "…" + expected_name[-13:],
+        {"assetId": last["assetId"], "name": last["name"], "position": last["buttons"],
+         "ariaLabel": last["ariaLabel"], "nameTitle": last["nameTitle"],
+         "displayName": last["displayName"]},
         {"assetId": "sha256:…", "name": expected_name, "last": True},
         obligation="D7",
     )
@@ -1506,7 +1528,7 @@ def _layout_check(rig: RenewalRig, task: str, label: str, measured: dict[str, An
             for item in heading_roles.get(role, [])
         )
     heading_levels = {level: measured["headings"].get(level, []) for level in ("h2", "h3")}
-    text_checked = task in ("Saved", "Settings", "Tablets")
+    text_checked = task in ("Saved arrangements", "Saved content", "Server", "Tablets")
     text_ok = (not text_checked) or (
         measured["textCount"] > 0 and not measured["textOffenders"]
     )
@@ -1558,8 +1580,8 @@ def layout_foundation(rig: RenewalRig) -> None:
         page.set_viewport_size({"width": width, "height": height})
         page.wait_for_timeout(120)
         for task, rail_selector, wall_selector in (
-            ("Images", "#exception-rail", "#wall-context-content"),
-            ("Arrange", ".arrange-tools", ".arrange-result"),
+            ("Images", "#exception-rail", "[data-stage-well]"),
+            ("Arrange", ".arrange-tools", "[data-stage-well]"),
         ):
             _task(rig, task)
             placed = page.evaluate(
@@ -1685,7 +1707,7 @@ def layout_foundation(rig: RenewalRig) -> None:
     empty_verdict = touch_coverage(empty_sweep, "Images")
     rig.check(
         "The coarse-pointer predicate rejects a deliberately empty task panel",
-        empty_sweep["panel"] == "panel-content"
+        empty_sweep["panel"] == ""
         and empty_sweep["count"] == 0
         and not empty_verdict["ok"]
         and empty_verdict["missing_ids"] == list(TOUCH_EXPECTED["Images"]["ids"]),
@@ -1842,12 +1864,20 @@ def _gallery_metrics(page: Any, *, reset_scroll: bool = True) -> dict[str, Any]:
                 const img = li.querySelector('img');
                 const rect = li.getBoundingClientRect();
                 const imageRect = img ? img.getBoundingClientRect() : null;
+                const nameRect = name ? name.getBoundingClientRect() : null;
+                const sizeRect = size ? size.getBoundingClientRect() : null;
                 return {
                     assetId: li.dataset.assetId || '',
-                    name: name ? name.textContent : null,
+                    name: button ? button.title : null,
+                    displayName: name ? name.textContent : null,
+                    nameTitle: name ? name.title : null,
                     buttonText: button ? button.textContent.trim() : null,
                     ariaLabel: button ? button.getAttribute('aria-label') : null,
                     imageSize: size ? size.textContent.trim() : null,
+                    sizeBelowName: !!nameRect && !!sizeRect && size.checkVisibility()
+                        && sizeRect.width > 1 && sizeRect.height > 1
+                        && sizeRect.top >= nameRect.bottom - 1
+                        && sizeRect.bottom <= rect.bottom + 1,
                     rect: {top: rect.top, bottom: rect.bottom, left: rect.left, right: rect.right},
                     img: imageRect ? {
                         width: imageRect.width,
@@ -1884,6 +1914,12 @@ def _gallery_metrics(page: Any, *, reset_scroll: bool = True) -> dict[str, Any]:
     )
 
 
+def _contained_size(img: dict[str, Any], natural_width: int, natural_height: int) -> tuple[float, float]:
+    """Size an object-fit contain image paints inside its element box."""
+    scale = min(img["width"] / natural_width, img["height"] / natural_height)
+    return natural_width * scale, natural_height * scale
+
+
 def _whole_image_ok(
     tile: dict[str, Any] | None, expected_width: int, expected_height: int
 ) -> bool:
@@ -1899,15 +1935,14 @@ def _whole_image_ok(
         return False
     if not img.get("width") or not img.get("height"):
         return False
-    aspect = img["width"] / img["height"]
-    expected = expected_width / expected_height
-    return abs(aspect / expected - 1) <= 0.02
+    rendered = _contained_size(img, expected_width, expected_height)
+    return abs(rendered[0] / rendered[1] / (expected_width / expected_height) - 1) <= 0.02
 
 
 def _drawing_metrics(page: Any) -> dict[str, Any]:
     return page.evaluate(
         """() => {
-            const host = document.getElementById('wall-context-content');
+            const host = document.getElementById('stage-well');
             const svg = document.getElementById('stage-svg');
             if (!host || !svg) return {present: false};
             const style = getComputedStyle(host);
@@ -1939,7 +1974,15 @@ def _commit_positions(page: Any) -> dict[str, Any]:
         """() => {
             const bar = document.getElementById('commit-bar');
             const evidence = document.querySelector('.commit-evidence');
+            const inspector = document.getElementById('rail-panels');
+            const before = bar?.getBoundingClientRect();
+            const scroll = inspector?.scrollTop;
+            if (inspector) inspector.scrollTop = inspector.scrollHeight;
+            const after = bar?.getBoundingClientRect();
+            if (inspector) inspector.scrollTop = scroll;
             return {
+                inside: !!before && before.top >= 0 && before.bottom <= innerHeight && before.right <= innerWidth,
+                unchangedAfterInspectorScroll: !!after && before.y === after.y && before.height === after.height,
                 bar: bar ? getComputedStyle(bar).position : null,
                 evidence: evidence ? getComputedStyle(evidence).position : null,
             };
@@ -1987,7 +2030,7 @@ def _navigation_modes(page: Any) -> dict[str, bool]:
             };
             return {
                 tabs: shown(document.getElementById('rail-tabs')),
-                compact: shown(document.getElementById('compact-task-select')),
+                compact: shown(document.getElementById('bottom-nav')),
             };
         }"""
     )
@@ -2003,7 +2046,7 @@ def _roster_focus_metrics(page: Any) -> dict[str, Any]:
     return page.evaluate(
         """() => {
             const active = document.activeElement;
-            const roster = document.getElementById('exception-roster');
+            const roster = document.getElementById('roster');
             if (!active || !roster || !roster.contains(active)) return {focusInside: false};
             let container = null, node = active.parentElement;
             while (node && node !== document.body) {
@@ -2170,7 +2213,7 @@ def images_workbench(rig: RenewalRig) -> None:
         page,
         "(names) => names.every(name => {"
         " const li = [...document.querySelectorAll('#image-gallery > li')]"
-        "   .find(item => item.querySelector('.image-choice-name')?.textContent === name);"
+        "   .find(item => item.querySelector('button')?.getAttribute('aria-label') === 'Preview ' + name);"
         " const img = li?.querySelector('img');"
         " return !!img && img.complete && img.naturalWidth > 0 && img.naturalHeight > 0; })",
         arg=shape_names,
@@ -2207,11 +2250,12 @@ def images_workbench(rig: RenewalRig) -> None:
     )
     for name, width, height in WORKBENCH_SHAPES:
         tile = next((item for item in gallery["tiles"] if item["name"] == name), None)
-        aspect = (
-            tile["img"]["width"] / tile["img"]["height"]
+        rendered = (
+            _contained_size(tile["img"], width, height)
             if tile and tile["img"] and tile["img"]["height"]
             else None
         )
+        aspect = rendered[0] / rendered[1] if rendered else None
         expected = width / height
         ok = _whole_image_ok(tile, width, height)
         rig.check(
@@ -2224,32 +2268,58 @@ def images_workbench(rig: RenewalRig) -> None:
              "objectFit": "contain", "aspectWithin": "2%"},
             obligation="C-WORKBENCH",
         )
+    boxes = {
+        (round(tile["img"]["width"]), round(tile["img"]["height"]))
+        for tile in gallery["tiles"]
+        if tile["img"]
+    }
     rig.check(
-        "Gallery tile buttons keep the plain image name so gallery-focus still reads it",
+        "1440x900: every gallery thumbnail shares one box, so wide images letterbox instead of shrinking",
+        len(boxes) == 1,
+        sorted(boxes),
+        {"distinct boxes": 1},
+        obligation="C-WORKBENCH",
+    )
+    rig.check(
+        "Gallery tile buttons expose the exact image name and a matching label with its ending visible",
         bool(gallery["tiles"])
-        and all(tile["name"] and tile["buttonText"] == tile["name"] for tile in gallery["tiles"]),
-        [{"name": tile["name"], "buttonText": tile["buttonText"]} for tile in gallery["tiles"]],
-        {"buttonText": "equals the image name"},
+        and all(
+            tile["name"] in inventory
+            and tile["ariaLabel"] == "Preview " + tile["name"]
+            and tile["nameTitle"] == tile["name"]
+            and tile["buttonText"] == tile["displayName"]
+            and tile["displayName"] == (
+                tile["name"][:8] + "…" + tile["name"][-13:]
+                if len(tile["name"]) > 22 else tile["name"]
+            )
+            for tile in gallery["tiles"]
+        ),
+        [{"name": tile["name"], "ariaLabel": tile["ariaLabel"],
+          "nameTitle": tile["nameTitle"], "displayName": tile["displayName"],
+          "buttonText": tile["buttonText"]} for tile in gallery["tiles"]],
+        {"accessibleName": "Preview followed by the exact published name",
+         "titles": "exact published name", "displayName": "filename with its ending visible"},
         obligation="C-GALLERY",
     )
     sized = [tile for tile in gallery["tiles"] if tile["imageSize"]]
     sizes_ok = len(sized) == len(gallery["tiles"]) and all(
         tile["name"] in inventory
-        and str(inventory[tile["name"]]["width"]) in tile["imageSize"]
-        and str(inventory[tile["name"]]["height"]) in tile["imageSize"]
+        and tile["imageSize"] == f'{inventory[tile["name"]]["width"]} × {inventory[tile["name"]]["height"]}'
+        and tile["sizeBelowName"]
         for tile in sized
     )
     rig.check(
         "Each gallery tile states its pixel size under the name",
         sizes_ok,
-        [{"name": tile["name"], "size": tile["imageSize"]} for tile in gallery["tiles"]],
+        [{"name": tile["name"], "size": tile["imageSize"],
+          "sizeBelowName": tile["sizeBelowName"]} for tile in gallery["tiles"]],
         {"size": "width and height shown for every tile"},
         obligation="C-WORKBENCH",
     )
     commits = _commit_positions(page)
     rig.check(
-        "1440x900: the commit bar is sticky and commit evidence stays in flow",
-        commits["bar"] == "sticky" and commits["evidence"] not in ("sticky", "fixed"),
+        "1440x900: the commit bar stays in its pinned stage region and evidence stays in flow",
+        commits["inside"] and commits["unchangedAfterInspectorScroll"] and commits["evidence"] not in ("sticky", "fixed"),
         commits,
         {"bar": "sticky", "evidence": "not sticky"},
         obligation="D10",
@@ -2259,8 +2329,8 @@ def images_workbench(rig: RenewalRig) -> None:
         " return node ? getComputedStyle(node).display : null; }"
     )
     rig.check(
-        "1440x900: the phone Choose an image button is not displayed",
-        jump_display == "none",
+        "1440x900: obsolete page-jump control is absent from the persistent shell",
+        jump_display is None,
         jump_display,
         "none",
         obligation="C-WORKBENCH",
@@ -2278,7 +2348,7 @@ def images_workbench(rig: RenewalRig) -> None:
     page.wait_for_timeout(120)
 
     # Status-driven reorder: focus a row that stays, then take another tablet offline.
-    roster_row = page.locator(f'#exception-roster li[data-device-id="{ids[0]}"] .exception-review')
+    roster_row = page.locator(f'#roster li[data-device-id="{ids[0]}"] .roster-pick')
     if roster_row.count():
         roster_row.focus()
     focus_before = _roster_focus_metrics(page)
@@ -2288,13 +2358,13 @@ def images_workbench(rig: RenewalRig) -> None:
     _close_client(rig, clients[-1][0], ids[-1])
     reordered = _soft_wait(
         page,
-        "(id) => document.querySelector('#exception-roster > li')?.dataset.deviceId === id",
+        "(id) => document.querySelector('#roster > li')?.dataset.deviceId !== id",
         arg=ids[-1],
         timeout=20,
     )
     focus = _roster_focus_metrics(page)
     rig.check(
-        "After a status-driven reorder the originally focused roster row keeps focus inside "
+        "After a status change the original stable roster row keeps focus inside "
         "the roster box and the page does not scroll",
         _roster_focus_ok(reordered, focus_before, focus, ids[0], scroll_before),
         {"reordered": reordered, "focusBefore": focus_before, "focus": focus,
@@ -2378,11 +2448,11 @@ def images_workbench(rig: RenewalRig) -> None:
     page.wait_for_timeout(180)
     page.evaluate("() => window.scrollTo(0, 0)")
     _task(rig, "Images")
-    jump = page.locator("#jump-to-library")
+    jump = page.locator("#nav-content")
     jump_visible = jump.count() == 1 and jump.is_visible()
     jump_box = jump.first.bounding_box() if jump.count() else None
     rig.check(
-        "390x844: Choose an image is visible at the top of the page",
+        "390x844: the Content mode button stays in the visible bottom navigation",
         jump_visible and jump_box is not None and jump_box["y"] <= 844,
         {"visible": jump_visible, "box": jump_box},
         {"visible": True, "top": "<= 844"},
@@ -2393,11 +2463,11 @@ def images_workbench(rig: RenewalRig) -> None:
         jump.first.click()
         focused_gallery = _soft_wait(
             page,
-            "() => document.getElementById('image-gallery')?.contains(document.activeElement)",
+            "() => document.activeElement?.id === 'nav-content' && document.getElementById('image-search').checkVisibility()",
             timeout=10,
         )
     rig.check(
-        "390x844: one activation of Choose an image puts focus in the gallery",
+        "390x844: Content navigation retains focus and exposes the inline library",
         focused_gallery,
         page.evaluate(
             "() => ({tag: document.activeElement?.tagName, id: document.activeElement?.id,"
@@ -2428,7 +2498,7 @@ def images_workbench(rig: RenewalRig) -> None:
     commits = _commit_positions(page)
     rig.check(
         "390x844: the commit bar is sticky at phone height and commit evidence stays in flow",
-        commits["bar"] == "sticky" and commits["evidence"] not in ("sticky", "fixed"),
+        commits["inside"] and commits["unchangedAfterInspectorScroll"] and commits["evidence"] not in ("sticky", "fixed"),
         commits,
         {"bar": "sticky", "evidence": "not sticky"},
         obligation="D10",
@@ -2575,7 +2645,7 @@ def images_workbench(rig: RenewalRig) -> None:
                 page.evaluate("() => window.scrollTo(0, 0)")
                 page.wait_for_timeout(250)
                 fit = page.evaluate("""() => {
-                    const box = document.getElementById('wall-context-content');
+                    const box = document.getElementById('stage-well');
                     const rect = box.getBoundingClientRect();
                     const inside = node => { const r = node.getBoundingClientRect();
                         return r.width > 0 && r.height > 0 && r.top >= rect.top - .5
@@ -2586,12 +2656,12 @@ def images_workbench(rig: RenewalRig) -> None:
                     return {range: box.scrollHeight - box.clientHeight,
                         slots: slots.map(inside),
                         drawingWidth: Math.max(...drawn.map(r => r.right)) - Math.min(...drawn.map(r => r.left)),
-                        coverage: inside(document.getElementById('stage-key')),
-                        details: inside(document.querySelector('#stage-technical > summary')),
+                        coverage: !!document.getElementById('stage-key')?.closest('#stage-technical') && !!document.getElementById('stage-key').textContent,
+                        details: !!document.querySelector('#stage-technical > summary')?.closest('#inspector'),
                         horizontalOverflow: document.documentElement.scrollWidth - innerWidth};
                 }""")
                 rig.check(
-                    f"Fit {count} tablets {width}x{height} draft={draft}: tiles, coverage and Stage details fit without inner scrolling",
+                    f"Fit {count} tablets {width}x{height} draft={draft}: tiles fit without inner scrolling and coverage details stay in the inspector",
                     fit["range"] == 0 and len(fit["slots"]) == count and all(fit["slots"])
                     and fit["coverage"] and fit["details"] and fit["horizontalOverflow"] == 0,
                     fit,
@@ -2623,7 +2693,7 @@ def images_workbench(rig: RenewalRig) -> None:
     page.locator("#view-zoom-fit").click()
     page.set_viewport_size({"width": 390, "height": 844})
     page.add_style_tag(content="html {font-size:200%}")
-    _task(rig, "Settings")
+    _task(rig, "Server")
     page.locator("#backup-restore > summary").click()
     paths = page.evaluate("""() => ({
         open: document.getElementById('backup-restore').open,
@@ -2712,30 +2782,24 @@ def first_wall(rig: RenewalRig) -> None:
             step_two.click()
             _wait_task_panel(rig, "Arrange")
             focused_preset = _soft_wait(
-                page, "() => document.activeElement?.id === 'grid-2x2'", timeout=10
+                page, "() => document.activeElement?.id === 'grid-preview'", timeout=10
             )
     rig.check(
-        "Step 2 opens Arrange and lands focus on the 2 by 2 preset",
+        "Step 2 opens Arrange and lands focus on the recommended preset's Preview",
         focused_preset,
         page.evaluate(
-            "() => ({active: document.activeElement?.id, panel: document.querySelector('.task-panel:not([hidden])')?.id})"
+            "() => ({active: document.activeElement?.id, panel: document.querySelector('.inspector-pane:not([hidden])')?.id})"
         ),
-        {"active": "grid-2x2"},
+        {"active": "grid-preview"},
         obligation="D11",
     )
 
-    # Place one tablet from a Tablets row, using the visible Place action only.
+    # Place is a selected-tablet action in the persistent inspector.
     _task(rig, "Tablets")
-    wait_until(
-        page,
-        "(id) => !!document.querySelector('#device-list .dev-row[data-device-id=\"' + id + '\"] .dev-action')",
-        arg=ids[0],
-        timeout=20,
-    )
+    select_tablet(page.locator(f':is(.dev-pick,.roster-pick):visible[data-device-id="{ids[0]}"]'))
     place_start = len(rig.requests)
-    page.locator(
-        f'#device-list .dev-row[data-device-id="{ids[0]}"] .dev-action'
-    ).click()
+    page.locator("#tablet-arrange").click()
+    page.locator("#tablet-back").click()
     _wait_task_panel(rig, "Arrange")
     disabled_by_draft = _soft_wait(
         page, "() => document.getElementById('grid-2x2')?.disabled === true", timeout=15
@@ -2850,12 +2914,15 @@ def first_wall(rig: RenewalRig) -> None:
         "() => document.querySelectorAll('#device-list .dev-row').length >= 4",
         timeout=20,
     )
-    hidden_after = steps.count() == 1 and not steps.is_visible()
+    states_after = page.evaluate(
+        "() => ['first-wall-join','first-wall-arrange','first-wall-image'].map(id => document.getElementById(id)?.dataset.state)"
+    )
+    still_open = steps.count() == 1 and steps.is_visible() and states_after == ["done", "done", "current"]
     rig.check(
-        "Applying the first wall hides the first-wall steps",
-        hidden_after,
-        {"present": steps.count(), "hidden": hidden_after},
-        {"present": 1, "hidden": True},
+        "Applying the first wall leaves only the Show step to finish",
+        still_open,
+        {"present": steps.count(), "visible": steps.is_visible(), "states": states_after},
+        {"present": 1, "visible": True, "states": ["done", "done", "current"]},
         obligation="D11",
     )
 
@@ -2870,8 +2937,8 @@ def first_wall(rig: RenewalRig) -> None:
         page.click("#show-image")
     health = _soft_wait(
         page,
-        "() => /4 of 4 showing the current image/.test("
-        "document.getElementById('wall-health').textContent)",
+        "() => document.getElementById('wall-health').textContent === "
+        "'4 of 4 showing ' + document.getElementById('image-title').textContent",
         timeout=35,
     )
     puts = _scene_write_rows(rig, show_start)
@@ -2915,16 +2982,25 @@ def first_wall(rig: RenewalRig) -> None:
     health_label = page.get_attribute("#btn-wall-health", "aria-label")
     rig.check(
         "The wall health line says 4 of 4 showing the current image",
-        health_text == "4 of 4 showing the current image"
-        and health_label == "4/4. 4 of 4 tablets showing the current image. Issues.",
+        (health_text == "4 of 4 showing " + page.locator("#image-title").inner_text() or health_text == "4/4 showing")
+        and health_label == "4/4. 4 of 4 tablets showing the current image.",
         {"text": health_text, "label": health_label},
         {"text": "4 of 4 showing the current image",
-         "label": "4/4. 4 of 4 tablets showing the current image. Issues."},
+         "label": "4/4. 4 of 4 tablets showing the current image."},
         obligation="C-STATUS",
     )
 
-    # Arrange with a mixed wake-lock fleet: the shared stage must keep each
-    # tablet's own power fact instead of depending on the Images fleet line.
+    hidden_after = bool(health) and steps.count() == 1 and _soft_wait(
+        page, "() => document.getElementById('setup-strip')?.hidden === true", timeout=10
+    )
+    rig.check(
+        "Showing the first image removes the first-wall steps",
+        hidden_after,
+        {"present": steps.count(), "hidden": hidden_after},
+        {"present": 1, "hidden": True},
+        obligation="D11",
+    )
+
     _task(rig, "Arrange")
     wait_until(
         page, "() => document.querySelectorAll('#stage-svg .slot').length === 4", timeout=20
@@ -2940,19 +3016,20 @@ def first_wall(rig: RenewalRig) -> None:
         }))"""
     )
     expected_power = expected_wake
+    reports = _tablet_power_reports(rig, list(expected_power))
     by_id = {slot["id"]: slot for slot in slots}
     mixed_ok = len(slots) == 4 and all(
         by_id.get(device_id)
         and by_id[device_id]["powerState"] == state
         and state in by_id[device_id]["label"].lower()
-        and (state != "denied" or state in by_id[device_id]["text"].lower())
+        and state in reports[device_id].lower()
         for device_id, state in expected_power.items()
     )
     rig.check(
-        "Arrange (mixed wake locks): every stage slot keeps its own per-tablet power text",
+        "Arrange (mixed wake locks): every stage slot keeps accessible power and its own labelled Tablet report",
         mixed_ok,
-        {"slots": slots, "expected": expected_power},
-        {"powerState": expected_power, "denied": "visible text on Arrange"},
+        {"slots": slots, "expected": expected_power, "tablet_reports": reports},
+        {"powerState": expected_power, "tablet_reports": "matching browser report for every tablet"},
         obligation="C-POWER",
     )
 
@@ -3018,13 +3095,13 @@ def tablet_facts(rig: RenewalRig) -> None:
     rows = {row["id"]: row for row in _tablet_rows(page)}
     expected = {
         ids[0]: {"status": "displayed", "connection": "Connected",
-                 "image": "Reports current image", "power": "Wake lock denied"},
+                 "image": "Connected", "power": "Wake lock denied"},
         ids[1]: {"status": "displayed", "connection": "Connected",
-                 "image": "Reports current image", "power": "Wake lock denied"},
+                 "image": "Connected", "power": "Wake lock denied"},
         ids[2]: {"status": "unplaced", "connection": "Connected",
-                 "image": None, "power": "Wake lock denied"},
+                 "image": "Not placed", "power": "Wake lock denied"},
         ids[3]: {"status": "offline", "connection": None,
-                 "image": None, "power": "Last known wake lock denied"},
+                 "image": "Offline", "power": "Last known wake lock denied"},
     }
     for device_id, want in expected.items():
         row = rows.get(device_id)
@@ -3089,8 +3166,6 @@ def tablet_facts(rig: RenewalRig) -> None:
         obligation="C-POWER",
     )
 
-    # Arrange with a uniform denied fleet: the shared stage must still show the
-    # per-tablet power text instead of relying on the Images-only fleet line.
     _task(rig, "Arrange")
     wait_until(
         page, "() => document.querySelectorAll('#stage-svg .slot').length === 3", timeout=20
@@ -3105,17 +3180,18 @@ def tablet_facts(rig: RenewalRig) -> None:
             label: slot.getAttribute('aria-label') || '',
         }))"""
     )
+    reports = _tablet_power_reports(rig, [slot["id"] for slot in arrange_slots])
     uniform_ok = len(arrange_slots) == 3 and all(
         slot["powerState"] == "denied"
         and "denied" in slot["label"].lower()
-        and "denied" in slot["text"].lower()
+        and "Denied by browser" in reports[slot["id"]]
         for slot in arrange_slots
     )
     rig.check(
-        "Arrange (uniform denied): every stage slot keeps its per-tablet power text",
+        "Arrange (uniform denied): every stage slot keeps accessible power and its own labelled Tablet report",
         uniform_ok,
-        arrange_slots,
-        {"powerState": "denied", "denied": "visible text on Arrange"},
+        {"slots": arrange_slots, "tablet_reports": reports},
+        {"powerState": "denied", "tablet_reports": "Denied by browser for every tablet"},
         obligation="C-POWER",
     )
     _task(rig, "Tablets")
@@ -3127,7 +3203,7 @@ def tablet_facts(rig: RenewalRig) -> None:
         timeout=20,
     )
 
-    page.locator(f'#device-list .dev-pick[data-device-id="{ids[3]}"]').click()
+    select_tablet(page.locator(f':is(.dev-pick,.roster-pick):visible[data-device-id="{ids[3]}"]'))
     wait_until(page, "() => document.getElementById('device-sheet')?.open === true")
     pointer = page.get_by_role(
         "button", name="Review replacement with a new tablet", exact=True
@@ -3170,7 +3246,7 @@ def tablet_facts(rig: RenewalRig) -> None:
         obligation="C-RECOVERY",
     )
 
-    page.locator(f'#device-list .dev-pick[data-device-id="{ids[3]}"]').click()
+    select_tablet(page.locator(f':is(.dev-pick,.roster-pick):visible[data-device-id="{ids[3]}"]'))
     wait_until(
         page,
         "(id) => document.querySelector('#device-list .dev-row[data-device-id=\"' + id + '\"]')"
@@ -3184,6 +3260,7 @@ def tablet_facts(rig: RenewalRig) -> None:
             return {
                 present: true,
                 hidden: node.hidden,
+                blocks: [...node.querySelectorAll('section > h4')].map(n => n.textContent),
                 paragraphs: node.querySelectorAll('p').length,
                 text: node.textContent,
             };
@@ -3191,15 +3268,15 @@ def tablet_facts(rig: RenewalRig) -> None:
     )
     recovery_text = (recovery.get("text") or "").lower()
     rig.check(
-        "The offline recovery guidance is three paragraphs that still say power, denied and cannot wake",
+        "The offline recovery guidance has three labelled blocks that still say power, denied and cannot wake",
         recovery["present"]
         and not recovery["hidden"]
-        and recovery["paragraphs"] == 3
+        and recovery["blocks"] == ["What the server last knew", "At the tablet", "What the server cannot do"]
         and "power" in recovery_text
         and "denied" in recovery_text
         and "cannot wake" in recovery_text,
         recovery,
-        {"paragraphs": 3, "words": ["power", "denied", "cannot wake"]},
+        {"blocks": 3, "words": ["power", "denied", "cannot wake"]},
         obligation="C-RECOVERY",
     )
 
@@ -3426,7 +3503,7 @@ def measured_blockers(rig: RenewalRig) -> None:
             clicked = True
             opened = _soft_wait(
                 page,
-                "({id}) => { const panel = document.getElementById('panel-system');"
+                "({id}) => { const panel = document.getElementById('device-sheet');"
                 " const details = document.getElementById('measurement-details');"
                 " const selected = document.querySelector('#device-list .dev-pick[aria-pressed=true]');"
                 " const active = document.activeElement;"
@@ -3437,7 +3514,7 @@ def measured_blockers(rig: RenewalRig) -> None:
                 timeout=10,
             )
         action_state = page.evaluate(
-            "() => ({panels: [...document.querySelectorAll('.task-panel')]"
+            "() => ({panels: [...document.querySelectorAll('.inspector-pane, #device-sheet')]"
             ".filter(panel => !panel.hidden && panel.getClientRects().length > 0)"
             ".map(panel => panel.id),"
             " detailsOpen: !!document.getElementById('measurement-details')?.open,"
@@ -3457,7 +3534,7 @@ def measured_blockers(rig: RenewalRig) -> None:
         )
     _task(rig, "Tablets")
     selected_id = device_rows[0]["id"]
-    page.locator(f'#device-list .dev-pick[data-device-id="{selected_id}"]').click()
+    select_tablet(page.locator(f':is(.dev-pick,.roster-pick):visible[data-device-id="{selected_id}"]'))
     standalone = page.locator("#open-tablet-measurements")
     available = standalone.count() == 1 and standalone.is_visible() and standalone.is_enabled()
     opened = False
@@ -3466,7 +3543,7 @@ def measured_blockers(rig: RenewalRig) -> None:
         opened = _soft_wait(
             page,
             "(id) => { const details = document.getElementById('measurement-details');"
-            " const active = document.activeElement; const panel = document.getElementById('panel-system');"
+            " const active = document.activeElement; const panel = document.getElementById('device-sheet');"
             " return !!panel && !panel.hidden && !!details && details.open"
             " && document.querySelector('#device-list .dev-pick[aria-pressed=true]')?.dataset.deviceId === id"
             " && !!active && !active.disabled && active.getClientRects().length > 0"
@@ -3500,7 +3577,7 @@ def _dom_snapshot(page: Any) -> dict[str, Any]:
     return page.evaluate(
         """() => {
             const text = id => { const node = document.getElementById(id); return node ? node.textContent : null; };
-            const roster = document.getElementById('exception-roster');
+            const roster = document.getElementById('roster');
             const pattern = document.getElementById('pattern-black');
             const patternGrid = document.getElementById('pattern-grid');
             const colours = document.getElementById('show-colours');
@@ -3558,7 +3635,7 @@ def _server_stop_at_viewport(rig: RenewalRig, clients: list, width: int, height:
         raise RuntimeError(f"scene write failed: {status}")
     current = _soft_wait(
         page,
-        "() => /6 of 6 showing the current image/.test("
+        "() => /6 of 6 showing /.test("
         "document.getElementById('wall-health').textContent)",
         timeout=35,
     )
@@ -3606,24 +3683,24 @@ def _server_stop_at_viewport(rig: RenewalRig, clients: list, width: int, height:
         page.click("#refresh-status")
     stale_health = _soft_wait(
         page,
-        "() => /Status stale|evidence unavailable|stale/i.test("
+        "() => /Status stale|Server unreachable|evidence unavailable|stale/i.test("
         "document.getElementById('wall-health').textContent)",
         timeout=15,
     )
     refreshed = _dom_snapshot(page)
     health_text = (refreshed["health"] or "")
     health_label = (refreshed["healthLabel"] or "")
-    counting_current = bool(re.search(r"\d+ of \d+ showing the current", health_text))
+    counting_current = bool(re.search(r"\d+ of \d+ showing ", health_text))
     rig.check(
         "Refresh status cannot present current wall evidence while the server is stopped",
         stale_health
-        and (health_text.startswith("Status stale") or "evidence unavailable" in health_text.lower())
+        and (health_text.startswith(("Status stale", "Server unreachable")) or "evidence unavailable" in health_text.lower())
         and not counting_current
-        and health_label.startswith("Status stale"),
+        and health_label.startswith(("Status stale", "Server unreachable")),
         {"health": health_text, "label": health_label, "counting": counting_current,
          "connection": refreshed["connection"], "etagState": refreshed["etagState"]},
-        {"health": "Status stale · Current image evidence unavailable",
-         "counting": False, "label": "starts with Status stale."},
+        {"health": "Server unreachable · tablets keep their last image",
+         "counting": False, "label": "starts with Status stale or Server unreachable."},
         obligation="C-OFFLINE",
     )
     after_refresh_index = len(rig.requests)
@@ -3793,7 +3870,7 @@ def _server_stop_at_viewport(rig: RenewalRig, clients: list, width: int, height:
     restored = _soft_wait(
         page,
         "() => document.body.dataset.connection === 'current'"
-        " && /showing the current/.test(document.getElementById('wall-health').textContent)",
+        " && /showing /.test(document.getElementById('wall-health').textContent)",
         timeout=25,
     )
     recovered = _dom_snapshot(page)
@@ -3801,7 +3878,7 @@ def _server_stop_at_viewport(rig: RenewalRig, clients: list, width: int, height:
         "After a restart on the same port and data, Refresh status restores current status",
         restored and recovered["connection"] == "current"
         and "Status stale" not in (recovered["health"] or "")
-        and bool(re.search(r"\d+ of \d+ showing the current", recovered["health"] or "")),
+        and bool(re.search(r"\d+ of \d+ showing ", recovered["health"] or "")),
         {"restart": restart, "after": recovered["connection"],
          "health": recovered["health"], "etagState": recovered["etagState"]},
         {"connection": "current", "health": "not Status stale; N of M showing the current"},

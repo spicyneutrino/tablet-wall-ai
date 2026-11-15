@@ -37,6 +37,7 @@
     --info-border: #e3e3e0;
     --focus: var(--accent);
     --tally-live: #d93a26;
+    --draft-text: #18773f;
     --tally-preview: #1e8e50;
     --stage: #0a0a0b;
     --stage-text: #edeef0;
@@ -74,6 +75,7 @@
     :root:not([data-theme="light"]) {
         color-scheme: dark;
         --tally-live: #ff5d45;
+        --draft-text: #3dd08a;
         --tally-preview: #3dd08a;
         --stage: #000000;
         --bg: #131416;
@@ -109,6 +111,7 @@
 :root[data-theme="dark"] {
     color-scheme: dark;
     --tally-live: #ff5d45;
+    --draft-text: #3dd08a;
     --tally-preview: #3dd08a;
     --stage: #000000;
     --bg: #131416;

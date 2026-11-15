@@ -4,200 +4,161 @@ const fs = require("node:fs");
 const vm = require("node:vm");
 (async () => {
 const nodes = new Map();
-const document = { activeElement: null, body: { dataset: {} }, getElementById: node, querySelector: selector => node(selector === ".arrange-tools" ? "arrange-tools" : "shared-stage") };
+const document = { activeElement: null, body: { dataset: {} }, addEventListener() {}, querySelectorAll: () => [],
+    getElementById: node, querySelector: () => node("arrange-tools") };
 function node(id) {
-    if (!nodes.has(id)) nodes.set(id, { dataset: {}, hidden: true, textContent: "", listeners: {}, appends: [],
+    if (!nodes.has(id)) nodes.set(id, { id, dataset: {}, hidden: false, textContent: "", listeners: {}, children: [], appends: [], isConnected: true,
+        classList: { values: new Set(), toggle(name, yes) { if (yes) this.values.add(name); else this.values.delete(name); } },
         setAttribute(name, value) { (this.attrs ||= {})[name] = value; },
         addEventListener(event, fn) { this.listeners[event] = fn; },
         append(child) { this.appends.push(child); child.parent = this; },
-        contains(child) { return child === this || child === node(id + "-summary"); },
+        contains(child) { return child === this; }, scrollIntoView() {}, getClientRects() { return this.hidden ? [] : [1]; },
         querySelector() { return node(id + "-summary"); }, focus() { document.activeElement = this; } });
     return nodes.get(id);
 }
-const state = { tabName: "content", roster: { a: { online: true }, b: { online: false } }, configLoaded: true, base: { placements: { a: {} } }, draft: { placements: { a: {} } } };
-let dirty = false, applied = "a.png", unavailable = false;
-node("stage-mode").hidden = false;
-node("image-title").textContent = "a.png";
+const composition = require("../frontend/controller/operator-composition.js");
+const state = { get composition() { return { mode: this.mode, selectedTablet: this.selectedId }; },
+    mode: "content", roster: { a: { online: true }, b: { online: false } }, configLoaded: true,
+    base: { placements: { a: {} } }, draft: { placements: { a: {} } }, scene: { content: { type: "image" } } };
+let dirty = false, arrangement = false, applied = "a.png", unavailable = false;
 const context = { window: { OperatorState: require("../frontend/controller/operator-state.js") }, document };
 vm.createContext(context);
 vm.runInContext(fs.readFileSync(require.resolve("../frontend/controller/operator-dom.js"), "utf8"), context);
-vm.runInNewContext(fs.readFileSync(require.resolve("../frontend/controller/operator-workspace.js"), "utf8"), context);
-const workspace = context.window.OperatorWorkspace.create({ state, arrangementDirty: () => false, arrangementPreview: () => false,
-    imageDirty: () => dirty, canCommit: () => true, stageNames: () => ({ applied, pending: "b.png", unavailable }), commitTask: name => { state.tabName = name; } });
+vm.runInContext(fs.readFileSync(require.resolve("../frontend/controller/operator-workspace.js"), "utf8"), context);
+const workspace = context.window.OperatorWorkspace.create({ state, arrangementDirty: () => arrangement, arrangementPreview: () => arrangement,
+    imageDirty: () => dirty, canCommit: () => true, stageNames: () => ({ applied, pending: "b.png", unavailable }),
+    clearSelection: () => { state.selectedId = null; },
+    commitMode: name => { state.mode = name; return true; } });
 workspace.render();
 assert.equal(node("commit-applied-name").textContent, "On wall: a.png");
-assert.equal(node("first-wall-steps").hidden, true);
-assert.equal(node("shared-stage").parent, node("wall-context-content"));
+assert.equal(node("setup-strip").hidden, true);
+assert.equal(node("commit-bar").dataset.commit, "idle", "the commit bar is present even without a draft");
 assert.equal(node("stage-mode-label").textContent, "Showing");
-state.tabName = "show"; workspace.render();
-assert.equal(node("stage-mode-label").textContent, "Showing a.png", "other tasks retain the applied filename");
-state.tabName = "content"; workspace.render();
-unavailable = true; node("image-title").textContent = "Unavailable image"; workspace.render();
-assert.equal(node("stage-mode-label").textContent, "Unavailable image", "unavailable content is never described as showing");
-assert.equal(node("stage-mode").hidden, true, "Images does not repeat its unavailable heading in a second status");
-state.tabName = "show"; workspace.render();
-assert.equal(node("stage-mode").hidden, false, "other tasks keep the missing-image signal visible");
-assert.equal(node("stage-mode-label").textContent, "Unavailable image");
-state.tabName = "content"; unavailable = false; node("image-title").textContent = "a.png"; workspace.render();
-assert.equal(node("stage-mode").hidden, false);
-assert.equal(node("stage-mode-description").textContent, "");
 node("edited-field").focus();
-const attached = node("wall-context-content").appends.length;
-workspace.render(); workspace.render();
-assert.equal(node("wall-context-content").appends.length, attached, "runtime updates do not detach the stage or SVG focus");
-assert.equal(document.activeElement, node("edited-field"));
-assert.equal(node("stage-applied-chip").textContent, "Applied: a.png", "the workbench stage names the applied content");
-assert.equal(node("stage-draft-chip").hidden, true, "no draft chip without a pending image");
-state.tabName = "tablet"; dirty = true; state.previewContent = { type: "image" }; workspace.render();
-assert.equal(node("shared-stage").parent, node("wall-context-tablet"));
-assert.equal(node("stage-mode-label").textContent, "Preview · b.png");
-assert.equal(node("stage-mode-description").textContent, "Image preview, not shown");
+for (const mode of composition.MODES) {
+    state.mode = mode; workspace.render();
+    assert.equal(document.activeElement, node("edited-field"), "rendering never takes keyed field focus");
+    assert.equal([...nodes.values()].reduce((sum, item) => sum + item.appends.length, 0), 0, "the stage and forms are never detached by a mode render");
+}
+state.mode = "content";
+unavailable = true; workspace.render();
+assert.equal(node("stage-mode-label").textContent, "Unavailable image", "unavailable content is never described as showing");
+unavailable = false; dirty = true; state.previewContent = { type: "image" }; state.selectedId = "a"; workspace.render();
+assert.equal(document.body.dataset.subject, "tablet");
 assert.equal(document.body.dataset.stageMode, "image-preview");
-assert.equal(node("stage-draft-chip").textContent, "Draft: b.png", "the workbench stage names the pending image");
-assert.equal(node("draft-state").textContent, "Draft · not on wall", "the shelf names the draft state");
+assert.equal(node("stage-mode-description").textContent, "Image preview, not shown");
+assert.equal(node("commit-bar").dataset.commit, "image");
+assert.match(node("draft-state").textContent, /b.png.*not on wall/);
+assert.equal(node("show-image").classList.values.has("btn-primary"), true);
+assert.equal(node("tablet-arrange").classList.values.has("btn-primary"), false, "draft commit takes priority over tablet actions");
 state.rosterError = true; workspace.render();
 assert.equal(document.body.dataset.connection, "stale");
-node("add-image").listeners.click();
+node("upload-form").hidden = true; node("add-image").listeners.click();
 assert.equal(node("image-addition").open, true);
-assert.equal(document.activeElement, node("image-addition-summary"), "disabled upload leads to availability explanation");
+assert.equal(document.activeElement, node("image-addition-summary"), "unadmitted uploads focus the explanation");
 node("upload-form").hidden = false; node("add-image").listeners.click();
-assert.equal(document.activeElement, node("upload-file"), "admitted upload leads to the native file control");
-dirty = false; state.previewContent = null; applied = null;
-state.scene = { content: { type: "color" } }; workspace.render();
-assert.equal(node("stage-mode-label").textContent, "Showing tablet colours", "test colours on the wall are not reported as nothing");
+assert.equal(document.activeElement, node("upload-file"));
+dirty = false; state.rosterError = false; state.previewContent = null; applied = null; state.scene = { content: { type: "color" } }; workspace.render();
+assert.equal(node("stage-mode-label").textContent, "Showing tablet colours");
+assert.equal(node("commit-bar").dataset.commit, "idle");
+assert.equal(document.body.dataset.noImage, "true");
+assert.equal(node("draft-state").textContent, "No image yet · tablet colours");
+assert.equal(node("first-wall-image-action").classList.values.has("btn-primary"), true);
 state.scene = { content: { type: "calibration" } }; workspace.render();
 assert.equal(node("stage-mode-label").textContent, "Showing calibration pattern");
-state.base = { placements: {} }; workspace.render();
-assert.equal(node("stage-mode-label").textContent, "Nothing shown", "a scene with no tablets on the wall shows nothing");
-state.base = { placements: { a: {} } }; state.scene = null; workspace.render();
-assert.equal(node("stage-mode-label").textContent, "Nothing shown");
-const tabletOnly = ["image-details-disclosure", "stage-technical", "arrange-tools"];
+assert.equal(node("restore-image").classList.values.has("btn-primary"), true, "test restore precedes the selected tablet");
+state.base = { placements: {} }; state.rosterError = false; workspace.render();
+assert.equal(node("stage-mode-label").textContent, "Nothing shown", "a scene without wall positions cannot claim to be showing");
+assert.equal(node("join-strip").hidden, true, "joined tablets replace the join card");
+assert.equal(node("setup-strip").hidden, false);
+assert.equal(node("first-wall-join").dataset.done, "true");
+assert.deepEqual(["first-wall-join", "first-wall-arrange", "first-wall-image"].map(id => node(id).dataset.state), ["done", "current", "blocked"]);
+assert.equal(node("first-wall-arrange-action").classList.values.has("btn-primary"), true, "only the current step's action is the filled primary");
+assert.equal(node("first-wall-image-action").classList.values.has("btn-primary"), false);
+await node("first-wall-arrange-action").listeners.click();
+assert.equal(state.mode, "arrange");
+workspace.render();
+assert.equal(node("grid-preview").classList.values.has("btn-primary"), true);
+assert.equal(node("first-wall-arrange-action").classList.values.has("btn-primary"), false);
+assert.equal(document.activeElement, node("grid-preview"));
+await node("first-wall-image-action").listeners.click();
+assert.equal(state.mode, "content");
+node("first-wall-join-action").listeners.click();
+assert.equal(document.activeElement, node("copy-tablet-url"));
 state.roster = {}; workspace.render();
+assert.equal(node("first-wall-arrange-action").disabled, true);
 assert.equal(node("tablet-joining").open, true);
-assert.deepEqual(tabletOnly.map(id => node(id).hidden), [true, true, true], "with no tablets, Images and Arrange offer only Add tablets");
 state.roster = { a: { online: true } }; workspace.render();
 assert.equal(node("tablet-joining").open, false);
 node("tablet-joining").open = true; workspace.render();
-assert.equal(node("tablet-joining").open, true, "polls preserve an opened joining disclosure");
-assert.deepEqual(tabletOnly.map(id => node(id).hidden), [false, false, false], "details and arrange tools return once a tablet joins");
-state.rosterError = false; state.base = { placements: {} }; state.tabName = "content"; state.roster = { a: { online: true } }; workspace.render();
-node("image-title").textContent = "Nothing shown"; workspace.render();
-assert.equal(node("stage-mode").hidden, true, "empty Images announces Nothing shown only once");
-assert.equal(node("wall-empty").hidden, false);
-assert.equal(node("empty-add-tablets").textContent, "Arrange tablets", "online tablets lead the empty Images card to Arrange");
-await node("empty-add-tablets").listeners.click();
-assert.equal(state.tabName, "show", "the empty Images action opens Arrange");
-for (const task of ["show", "tablet"]) { state.tabName = task; workspace.render(); assert.equal(node("wall-empty").hidden, true, "no empty card on " + task); }
-state.tabName = "content"; state.roster = { a: { online: false } }; workspace.render();
-assert.equal(node("empty-add-tablets").textContent, "Add tablets");
-await node("empty-add-tablets").listeners.click();
-assert.equal(state.tabName, "tablet", "without online tablets the action opens Tablets");
-console.log("Workspace relocates one stage only on task changes and preserves keyed field focus and admitted entry points");
+assert.equal(node("tablet-joining").open, true, "runtime updates preserve disclosure state");
+state.mode = "arrange"; state.base = { placements: { a: {} } }; state.scene = {}; workspace.render();
+assert.equal(node("setup-strip").hidden, false, "a placed wall with no image still has a step to finish");
+assert.deepEqual(["first-wall-join", "first-wall-arrange", "first-wall-image"].map(id => node(id).dataset.state), ["done", "done", "current"]);
+assert.equal(node("first-wall-image-action").classList.values.has("btn-primary"), true);
+state.scene = { content: { type: "image" } }; workspace.render();
+assert.equal(node("setup-strip").hidden, true, "the strip disappears once tablets are placed and an image is shown");
+state.selectedId = null; state.mode = "content"; state.base = { placements: {} }; state.scene = {}; workspace.render();
+assert.equal(await workspace.land(), true, "an unarranged wall with tablets lands on Arrange");
+assert.equal(state.mode, "arrange");
+state.mode = "content"; state.base = { placements: { a: {} } }; workspace.render();
+assert.equal(await workspace.land(), false, "an arranged wall lands in Content");
+assert.equal(state.mode, "content");
+console.log("Persistent wall, draft identity, precedence and retained form focus passed");
 
 const controller = fs.readFileSync(require.resolve("../frontend/controller/physical.js"), "utf8");
-const taskSource = controller.slice(controller.indexOf("    function commitTask("), controller.indexOf("    function onTabKeyDown("));
-const sequence = [];
-const taskState = { tabName: "tablet", tabScroll: {} };
-const tasks = ["tablet", "content", "show"].map(name => ({ name,
-    tab: { setAttribute() {} }, panel: { hidden: true, querySelector() { return null; } } }));
-const taskContext = { document, state: taskState, el: {}, tabEntries: () => tasks,
-    workspace: { render() { sequence.push("move:" + taskState.tabName); } },
-    renderStage() { sequence.push("draw:" + taskState.tabName); } };
-vm.createContext(taskContext); vm.runInContext(taskSource, taskContext);
-assert.equal(taskContext.commitTask("content"), true);
-assert.deepEqual(sequence, ["move:content", "draw:content"], "task change draws immediately after state and host change");
-sequence.length = 0;
-taskContext.commitTask("content");
-assert.deepEqual(sequence, ["move:content"], "re-entering the active task needs no extra draw");
-console.log("Task commit draws the new task immediately after moving the original stage");
-
 {
     const forms = require("../frontend/controller/operator-forms.js").create();
     let layoutDirty = false, imageDirty = false;
-    const labels = { content: "Images", tablet: "Tablets", show: "Arrange", saved: "Saved", system: "Settings" };
-    const entries = Object.entries(labels).map(([name, label]) => ({ name, tab: {
-        textContent: label, dot: name === "saved" ? null : { hidden: true }, attrs: {},
-        querySelector() { return this.dot; },
-        setAttribute(key, value) { this.attrs[key] = value; }, getAttribute(key) { return this.attrs[key]; }
+    const entries = [["content", "Content"], ["arrange", "Arrange"], ["test", "Test"]].map(([name, label]) => ({ name, tab: {
+        textContent: label, dot: { hidden: true }, attrs: {}, querySelector() { return this.dot; },
+        setAttribute(key, value) { this.attrs[key] = value; }
     } }));
-    const selector = { options: entries.map(e => ({ value: e.name, textContent: labels[e.name], setAttribute() {} })),
-        parentElement: { dataset: {} }, setAttribute() {} };
-    const note = { textContent: "" };
-    const ctx = { state: { playlistDirty: false }, tabletForms: forms, tabEntries: () => entries,
-        isDirty: () => layoutDirty, operatorGrid: { dirty: () => false }, operatorContent: { dirty: () => imageDirty },
-        document: { getElementById: id => id === "compact-task-select" ? selector : note } };
+    const ctx = { state: { playlistDirty: false }, tabletForms: forms, modeEntries: () => entries,
+        isDirty: () => layoutDirty, operatorGrid: { dirty: () => false }, operatorContent: { dirty: () => imageDirty }, document };
     vm.createContext(ctx);
     vm.runInContext(controller.slice(controller.indexOf("    function syncTabDots("), controller.indexOf("    function syncTopbarTransport(")), ctx);
-    const tab = name => entries.find(e => e.name === name).tab;
-    layoutDirty = true; ctx.syncTabDots();
-    assert.equal(tab("show").dot.hidden, false, "geometry drafts belong to Arrange");
-    assert.equal(tab("tablet").dot.hidden, true, "geometry drafts do not mark Tablets");
-    assert.equal(note.textContent, "Draft: Arrange", "closed navigation names the draft owner");
+    layoutDirty = true; ctx.syncTabDots(); assert.equal(entries[1].tab.dot.hidden, false);
     layoutDirty = false; imageDirty = true; ctx.syncTabDots();
-    assert.equal(tab("content").attrs["aria-label"], "Images, unsaved changes", "image previews are not announced as playlist drafts");
-    assert.equal(note.textContent, "Draft: Images");
+    assert.equal(entries[0].tab.attrs["aria-label"], "Content, unsaved changes");
     imageDirty = false;
-    forms.observe("A", "profile", { width: 100 }, "base"); forms.edit("A", "profile", { width: 101 }, "base"); ctx.syncTabDots();
-    assert.equal(note.textContent, "Draft: Settings", "profile edits retain their Settings owner across tablet selection");
-    forms.discard("A", "profile");
-    forms.observe("B", "model", { model: "" }, "base"); forms.edit("B", "model", { model: "manual" }, "base"); ctx.syncTabDots();
-    assert.equal(note.textContent, "Draft: Settings", "unconfirmed model choices retain their Settings owner");
-    assert.equal(tab("system").attrs["aria-label"], "Settings, unsaved changes");
-    forms.discard("B", "model");
-    forms.observe("A", "name", { name: "A" }, "base"); forms.edit("A", "name", { name: "Lobby" }, "base"); ctx.syncTabDots();
-    assert.equal(note.textContent, "Draft: Tablets", "tablet naming has its own owner");
-    forms.discard("A", "name"); ctx.syncTabDots();
-    assert.equal(note.textContent, "", "discard clears the named draft hint");
-    assert.ok(entries.every(e => !e.tab.dot || e.tab.dot.hidden));
+    for (const group of ["profile", "model", "name", "calibration"]) {
+        forms.observe("A", group, { value: "base" }, "etag"); forms.edit("A", group, { value: "draft" }, "etag");
+        ctx.syncTabDots(); assert.equal(node("device-sheet").dataset.dirty, "true", "tablet field drafts belong to the Tablet panel");
+        forms.discard("A", group);
+    }
+    ctx.syncTabDots(); assert.equal(node("device-sheet").dataset.dirty, "false");
+    assert.ok(entries.every(entry => entry.tab.dot.hidden));
 }
-
 {
     const html = fs.readFileSync(require.resolve("../frontend/controller/physical.html"), "utf8");
     const count = id => (html.match(new RegExp('id="' + id + '"', "g")) || []).length;
-    for (const id of ["workbench-stage", "commit-shelf", "wall-status", "exception-rail", "exception-strip", "exception-roster", "device-list", "show-image", "presentation-checks", "stage-svg", "image-gallery", "draft-resolution", "device-sheet"]) {
-        assert.equal(count(id), 1, "the shell owns exactly one #" + id);
+    const unique = ["stage-well", "stage-svg", "commit-shelf", "commit-bar", "roster", "device-list", "show-image", "btn-apply", "setup-strip", "server-drawer", "device-sheet", "measurement-details", "saved-layouts", "saved-scenes", "return-point", "readiness-message"];
+    for (const id of unique) assert.equal(count(id), 1, "one instance of #" + id);
+    assert.doesNotMatch(html, /wall-context-|id="tab-(tablet|saved|system)"|compact-task-select/);
+    const content = html.slice(html.indexOf('id="panel-content"'), html.indexOf('id="panel-show"'));
+    const arrange = html.slice(html.indexOf('id="panel-show"'), html.indexOf('id="panel-test"'));
+    const test = html.slice(html.indexOf('id="panel-test"'), html.indexOf('id="panel-tablets"'));
+    const tablet = html.slice(html.indexOf('id="device-sheet"'), html.indexOf('</main>'));
+    const server = html.slice(html.indexOf('id="server-drawer"'), html.indexOf('</dialog>', html.indexOf('id="server-drawer"')));
+    assert.ok(content.includes('id="saved-scenes"'));
+    for (const id of ["saved-layouts", "return-point"]) assert.ok(arrange.includes('id="' + id + '"'));
+    assert.ok(test.includes('id="presentation-checks"'));
+    assert.equal(count("diagnostic-colours"), 1, "Test colour controls are shared with the selected Tablet inspector");
+    for (const id of ["tablet-label-form", "measurement-details", "profile-form", "calibration-form", "cal-live-viewport"]) assert.ok(tablet.includes('id="' + id + '"'), "Tablet panel retains " + id);
+    for (const id of ["settings-evidence", "settings-diagnostics", "backup-restore", "settings-experimental", "diag-last-known", "operator-readiness-backup", "readiness-status", "btn-readiness-refresh", "btn-diag-refresh", "btn-diag-verify", "clear-wall-confirm"]) {
+        assert.ok(server.includes('id="' + id + '"'), "Server drawer owns " + id);
     }
-    const images = html.slice(html.indexOf('id="panel-content"'), html.indexOf('id="panel-system"'));
-    for (const id of ["workbench-stage", "commit-shelf", "commit-bar", "commit-draft-name", "commit-applied-name", "jump-to-library", "wall-status", "exception-rail", "exception-strip", "exception-roster", "wall-context-content"]) {
-        assert.ok(images.includes('id="' + id + '"'), "Images contains #" + id);
+    for (const id of ["tablet-label-form", "profile-form", "calibration-form", "scene-save-form", "layout-save-form", "upload-form"]) {
+        assert.equal(count(id), 1); assert.ok(html.includes('data-form="' + id + '"'), "keyed form contract retained");
     }
-    assert.equal(images.includes('id="device-list"'), false, "the Images rail never duplicates the Tablets roster");
-    const tablets = html.slice(html.indexOf('id="panel-tablet"'), html.indexOf('id="panel-content"'));
-    assert.ok(tablets.includes('id="device-list"'), "Tablets keeps the real device roster");
-    assert.ok(!tablets.includes('id="exception-roster"'), "the exception roster is not the Tablets roster");
-    assert.equal((html.match(/id="wall-context-content"/g) || []).length, 1, "one Images stage host");
-
-    const saved = html.slice(html.indexOf('id="panel-saved"'), html.indexOf('id="wall-context-park"'));
-    for (const id of ["saved-layouts", "saved-scenes", "saved-empty", "saved-scenes-empty", "layouts-status", "scenes-status", "layouts-count", "scenes-count", "return-point"]) {
-        assert.equal(count(id), 1, "Saved owns exactly one #" + id);
-    }
-    assert.equal((saved.match(/class="saved-list"/g) || []).length, 2, "Saved keeps one arrangement list and one content list");
-    assert.ok(saved.includes("Automatic restore point saved"), "the automatic return point is labelled");
-    assert.ok(saved.includes("Recall geometry from return point"), "the return point names geometry, not content");
-
-    const settings = html.slice(html.indexOf('id="panel-system"'), html.indexOf('id="panel-saved"'));
-    for (const id of ["settings-evidence", "settings-diagnostics", "backup-restore", "settings-experimental", "diag-last-known", "operator-readiness-backup", "readiness-status", "btn-readiness-refresh", "btn-diag-refresh", "btn-diag-verify", "cal-live-viewport"]) {
-        assert.equal(count(id), 1, "Settings owns exactly one #" + id);
-    }
-    for (const heading of ["Joining and launch admission", "Diagnostics and current evidence", "Backup and restore", "Measurements and calibration", "Experimental"]) {
-        assert.ok(settings.replace(/<[^>]+>/g, "").includes(heading), "Settings groups " + heading);
-    }
-    assert.equal((settings.match(/id="readiness-message"/g) || []).length, 0, "Copy feedback stays with the joining surface");
-    assert.equal(count("readiness-message"), 1, "there is one Copy-only readiness message");
-    const joining = html.slice(html.indexOf('id="tablet-joining"'), html.indexOf('id="device-sheet"'));
-    assert.ok(joining.includes('id="readiness-message"'), "readiness-message belongs to Add tablets");
-    assert.equal((settings.match(/id="presentation-checks"/g) || []).length, 0, "check actions are not duplicated in Settings");
-
-    const source = fs.readFileSync(require.resolve("../frontend/controller/physical.js"), "utf8");
-    assert.match(source, /"Recall geometry"/, "arrangements expose geometry recall");
-    assert.match(source, /"Preview content"/, "content exposes preview only");
-    assert.match(source, /Automatic restore point/, "restore points are labelled in saved rows");
-    assert.match(source, /not current evidence for the wall/, "a failed diagnostics read is labelled last known, not current");
-    assert.match(source, /Showing last known saved arrangements/, "saved arrangement failures retain an explicit last-known label");
-    assert.match(source, /Showing last known saved content/, "saved content failures retain an explicit last-known label");
-    console.log("The shared shell owns one stage, one commit surface and the exact workbench slots");
+    assert.match(controller, /"Recall geometry"/);
+    assert.match(controller, /"Preview content"/);
+    assert.match(controller, /Automatic restore point/);
+    assert.match(controller, /not current evidence for the wall/);
+    assert.match(controller, /Showing last known saved arrangements/);
+    assert.match(controller, /Showing last known saved content/);
 }
-
 
 {
     const source = fs.readFileSync(require.resolve("../frontend/controller/physical.js"), "utf8");
@@ -235,5 +196,6 @@ console.log("Task commit draws the new task immediately after moving the origina
     await new Promise(setImmediate);
     assert.equal(calls.length, 3, "heartbeat updates do not restart saved-list reads");
 }
+
 
 })().catch(error => { console.error(error); process.exitCode = 1; });

@@ -7,15 +7,8 @@ function rosterSummary(config, stale) {
     return (stale ? "Status stale · Last known: " : "") + counts.online + " online"
         + (counts.retained ? " · " + counts.retained + (counts.retained === 1 ? " retained wall position" : " retained wall positions") : "");
 }
-function configureDeviceSheet(deviceSheet, compact, previousCompact) {
-    if (previousCompact === compact) return previousCompact;
-    if (compact) {
-        if (deviceSheet.open) deviceSheet.close();
-        deviceSheet.removeAttribute("open");
-    } else {
-        if (deviceSheet.open && deviceSheet.dataset.modal === "true") deviceSheet.close();
-        if (!deviceSheet.open) deviceSheet.setAttribute("open", "");
-    }
+function configureDeviceSheet(deviceSheet, compact) {
+    if (!deviceSheet.open) deviceSheet.setAttribute("open", "");
     return compact;
 }
 
@@ -24,8 +17,11 @@ window.PhysicalStage = {
     configureDeviceSheet: configureDeviceSheet,
     create: function (dependencies) {
         const {
-            DRAG_THRESHOLD_PX, afterDraftChange, announce, bodyMetrics, calibrationFor, beginManual, canManualEdit, clearMsg, clone, deviceEntries, deviceLabel, deviceNumber, deviceRows, el, finiteOr, formatNumber, isOnline, latestProfile, mutateDraft, numberTag, numberedLabel, populateDeviceCard, profileFor, pushUndo, roundTo, selectedSlot, selectionChanged, setInputValue, showError, showTab, state, syncTabDots, validPair
+            DRAG_THRESHOLD_PX, afterDraftChange, appliedName = () => "", announce, bodyMetrics, calibrationFor, beginManual, canManualEdit, clearMsg, clone, deviceEntries, deviceLabel, deviceNumber, deviceRows, el, finiteOr, formatNumber, isOnline, latestProfile, mutateDraft, numberTag, numberedLabel, populateDeviceCard, profileFor, pushUndo, roundTo, selectedSlot, selectionChanged, navigateSelection = () => {}, fitStage = () => {}, lookup = null, setInputValue, showError, showMode, state, syncTabDots, validPair
         } = dependencies;
+
+        const $ = lookup || (id => typeof document !== "undefined" ? document.getElementById(id) : null);
+        function stageEditable() { return window.OperatorState.stageEditable(state); }
 
         function powerFor(id) {
             return window.OperatorStage && window.OperatorStage.powerReadiness
@@ -48,7 +44,7 @@ window.PhysicalStage = {
             if (!view.layout) { el.stageScale.textContent = "Waiting for the wall."; return; }
             const { layout, content, preview, editable } = view;
             const config = state.operatorConfig || { layout: state.base, scene: state.scene, runtime: { devices: state.roster }, revision: state.revision, generation: state.generation };
-            const presentation = { content: "images", tablet: "tablets", show: "arrange" }[state.tabName] || "context";
+            const presentation = { content: "images", test: "images", arrange: "arrange" }[state.mode] || "context";
             state.stage = window.OperatorStage.draw({ svg: el.stageSvg, layout, presentation,
                 viewport: state.drag && state.drag.viewport,
                 content, profileFor,
@@ -60,8 +56,8 @@ window.PhysicalStage = {
                     .filter(([, slot]) => slot.participating !== false)
                     .map(([id]) => ({ id, online: !!state.roster[id] && state.roster[id].online === true, power: powerFor(id) }))) : null,
                 selectedId: state.selectedId, runtime: config.runtime, preview, editable,
-                resolutionNode: document.getElementById("stage-resolution") });
-            const stageKey = document.getElementById("stage-key");
+                resolutionNode: $("stage-resolution") });
+            const stageKey = $("stage-key");
             if (stageKey) {
                 const bounds = window.OperatorState.bounds(layout);
                 const placed = window.OperatorStage.panels(layout, profileFor).filter(panel => !panel.missing && panel.slot.participating !== false);
@@ -70,7 +66,7 @@ window.PhysicalStage = {
                 stageKey.hidden = !(share > 0 && share < 100);
                 stageKey.textContent = placed.length + (placed.length === 1 ? " tablet covers " : " tablets cover ") + share + "% of the wall.";
             }
-            const summary = document.getElementById("stage-identities");
+            const summary = $("stage-identities");
             const identities = summary.querySelector("ul");
             const rows = window.OperatorStage.panels(layout, profileFor).map(panel => {
                 const status = preview ? "Local preview · not tablet output" : state.rosterError
@@ -83,6 +79,7 @@ window.PhysicalStage = {
                 identities.replaceChildren(...rows.map(text => { const item = document.createElement("li"); item.textContent = text; return item; }));
             }
             summary.hidden = !rows.length;
+            fitStage();
             const bounds = window.OperatorState.bounds(layout);
             el.stageScale.textContent = formatNumber(bounds.width, 1) + " × " + formatNumber(bounds.height, 1)
                 + (layout.kind === "physical" ? " mm" : " logical units");
@@ -97,12 +94,12 @@ window.PhysicalStage = {
         }
 
         function snapEnabled() {
-            const input = typeof document !== "undefined" ? document.getElementById("logical-snap-enabled") : null;
+            const input = typeof document !== "undefined" ? $("logical-snap-enabled") : null;
             return !input || input.checked !== false;
         }
 
         function snapStep() {
-            const input = typeof document !== "undefined" ? document.getElementById("logical-snap") : null;
+            const input = typeof document !== "undefined" ? $("logical-snap") : null;
             return Math.max(1, Math.round(Number(input && input.value) || 1));
         }
 
@@ -144,7 +141,7 @@ window.PhysicalStage = {
             if (state.draft.kind !== "logical") {
                 return { available: false, measured: true, reason: "Measured mode keeps pinned profile and calibration revisions and the declared mounting. Match screen shape is available only in relative units; review measurements instead." };
             }
-            if (state.tabName !== "show" || state.viewLive || state.previewContent || state.gridPreview || state.busy) {
+            if (!stageEditable() || state.busy) {
                 return { available: false, reason: "Match screen shape is available while editing an editable arrangement draft." };
             }
             const id = state.selectedId;
@@ -186,13 +183,13 @@ window.PhysicalStage = {
             if (event.button !== 0 && event.pointerType === "mouse") return;
             const group = event.target && event.target.closest
                 ? event.target.closest(".slot") : null;
-            if (!group) return;
+            if (!group) { if (!state.drag && state.selectedId) clearSelection(); return; }
             const id = group.dataset.deviceId;
             if (!id || !state.draft) return;
             if (!window.OperatorState.entries(state.draft)[id]) return;
 
             selectDevice(id, { reveal: false });
-            if (state.tabName !== "show" || state.busy || state.gridPreview || state.viewLive || state.previewContent) {
+            if (!stageEditable() || state.busy) {
                 state.stageTap = { id: id, pointerId: event.pointerId, x: event.clientX, y: event.clientY };
                 return;
             }
@@ -288,7 +285,7 @@ window.PhysicalStage = {
             } catch (error) { /* capture already gone */ }
 
             if (!drag.moved) {
-                revealInspector();
+                if (commit) revealInspector();
                 return;
             }
             if (!commit) {
@@ -326,19 +323,7 @@ window.PhysicalStage = {
          * Selection
          * ---------------------------------------------------------------- */
 
-        const deviceSheet = typeof document !== "undefined" ? document.getElementById("device-sheet") : null;
-        const containSheetFocus = event => {
-            if (!document.getElementById("draft-resolution").matches(":modal")) window.OperatorWorkspace.containModalFocus(event, deviceSheet);
-        };
-        let deviceSheetCompactMode = null;
-        function compactSheet() {
-            return typeof window.matchMedia === "function" && window.matchMedia("(max-width: 48rem)").matches;
-        }
-        function syncDeviceSheetMode() {
-            if (!deviceSheet) return;
-            const compact = compactSheet();
-            deviceSheetCompactMode = configureDeviceSheet(deviceSheet, compact, deviceSheetCompactMode);
-        }
+        const deviceSheet = typeof document !== "undefined" ? $("device-sheet") : null;
         function focusNode(node) {
             if (!node || node.isConnected === false || node.disabled) return false;
             if (typeof node.getClientRects === "function" && !node.getClientRects().length) return false;
@@ -347,8 +332,8 @@ window.PhysicalStage = {
             return true;
         }
         function focusSheetFallback() {
-            for (const id of ["issues-title", "btn-wall-health", "tab-tablet"]) {
-                const node = document.getElementById(id);
+            for (const id of ["issues-title", "add-tablet", "tab-content"]) {
+                const node = $(id);
                 if (node && focusNode(node)) return;
             }
         }
@@ -356,62 +341,30 @@ window.PhysicalStage = {
             return !!trigger && trigger.isConnected !== false && !trigger.disabled
                 && (typeof trigger.getClientRects !== "function" || trigger.getClientRects().length > 0);
         }
-        function openDeviceSheet(trigger) {
-            if (!deviceSheet || !compactSheet()) return false;
-            if (deviceSheet.open && deviceSheet.dataset.modal !== "true") deviceSheet.close();
-            state.sheetTrigger = trigger || document.activeElement;
-            document.addEventListener("keydown", containSheetFocus);
-            if (!deviceSheet.open) { deviceSheet.dataset.modal = "true"; deviceSheet.showModal(); }
-            const heading = document.getElementById("tablet-action-name");
-            if (focusNode(heading) && typeof heading.scrollIntoView === "function") heading.scrollIntoView({ block: "nearest" });
-            return true;
-        }
         function revealSheet(id, trigger) {
             if (state.selectedId !== id) return false;
-            if (compactSheet()) return openDeviceSheet(trigger);
-            const heading = document.getElementById("tablet-action-name");
+            state.sheetTrigger = trigger || document.activeElement;
+            const heading = $("tablet-action-name");
             if (!focusNode(heading)) return false;
-            if (typeof heading.scrollIntoView === "function") heading.scrollIntoView({ block: "nearest" });
+            const back = $("tablet-back") || heading;
+            if (typeof back.scrollIntoView === "function") back.scrollIntoView({ block: "start" });
             return true;
         }
-        function revealAfterTask(id, trigger, taskOpened) {
-            if (!id) return Promise.resolve(false);
-            const opening = taskOpened ? Promise.resolve(true) : Promise.resolve(showTab("tablet", { persist: true }));
-            return opening.then(function (opened) {
-                if (!opened || state.tabName !== "tablet" || state.selectedId !== id) return false;
-                return revealSheet(id, trigger);
-            });
-        }
         function revealInspector() {
-            if (state.drag || state.tabName === "show") return;
-            const id = state.selectedId, trigger = document.activeElement;
-            revealAfterTask(id, trigger, state.tabName === "tablet");
+            if (state.drag) return;
+            navigateSelection(state.selectedId, { reveal: true, stageActivation: true, trigger: document.activeElement });
         }
         if (deviceSheet && deviceSheet.addEventListener) {
-            deviceSheet.addEventListener("keydown", window.OperatorWorkspace.containModalFocus);
-            deviceSheet.addEventListener("close", function () {
-                document.removeEventListener("keydown", containSheetFocus);
-                const modal = deviceSheet.dataset.modal === "true";
-                const inside = typeof deviceSheet.contains === "function" && deviceSheet.contains(document.activeElement);
-                deviceSheet.dataset.modal = "";
-                const trigger = state.sheetTrigger;
-                state.sheetTrigger = null;
-                if (!modal && !trigger && !inside) return;
-                if (!trigger && !inside && document.activeElement !== document.body && originVisible(document.activeElement)) return;
-                if (originVisible(trigger)) { trigger.focus({ preventScroll: true }); return; }
-                focusSheetFallback();
-            });
-            document.getElementById("device-sheet-close")?.addEventListener("click", function () { deviceSheet.close(); });
-            window.addEventListener("resize", function () {
-                if (state.drag) endDrag(false, "view");
-                syncDeviceSheetMode();
-            });
-            syncDeviceSheetMode();
+            configureDeviceSheet(deviceSheet);
+            window.addEventListener("resize", () => { if (state.drag) endDrag(false, "view"); });
+            $("device-sheet-close")?.addEventListener("click", clearSelection);
         }
 
         function selectDevice(id, options) {
             if (!id) return;
             if (state.selectedId !== id) {
+                if (state.drag) endDrag(false, "subject");
+                state.stageTap = null;
                 state.selectedId = id;
                 clearMsg(el.profileMsg);
                 clearMsg(el.calibrationMsg);
@@ -425,10 +378,28 @@ window.PhysicalStage = {
                 syncInspector();
             }
             selectionChanged();
-            if (options && options.reveal) {
-                const trigger = options.trigger || (typeof document !== "undefined" ? document.activeElement : null);
-                revealAfterTask(id, trigger, options.taskOpened === true);
-            }
+            return navigateSelection(id, options);
+        }
+
+        function clearSelection() {
+            if (!state.selectedId) return;
+            if (state.drag) endDrag(false, "subject");
+            state.stageTap = null;
+            state.selectedId = null;
+            clearMsg(el.profileMsg);
+            clearMsg(el.calibrationMsg);
+            syncDeviceRows();
+            syncInspector();
+            renderStage();
+            populateDeviceCard();
+            syncTabDots();
+            selectionChanged();
+            const trigger = state.sheetTrigger;
+            state.sheetTrigger = null;
+            if (trigger?.closest?.("#stage-svg")) {
+                el.stageSvg.closest(".stage-scroll").focus({ preventScroll: true });
+            } else if (originVisible(trigger)) trigger.focus({ preventScroll: true });
+            else focusSheetFallback();
         }
 
         function syncDeviceRows() {
@@ -436,6 +407,8 @@ window.PhysicalStage = {
                 const selected = id === state.selectedId;
                 row.item.dataset.selected = selected ? "true" : "false";
                 row.pick.setAttribute("aria-pressed", selected ? "true" : "false");
+                row.chip.dataset.selected = selected ? "true" : "false";
+                row.chipPick.setAttribute("aria-pressed", selected ? "true" : "false");
             });
             renderDeviceCount();
         }
@@ -451,17 +424,19 @@ window.PhysicalStage = {
                 const counts = window.OperatorState.registrationCounts(state.operatorConfig);
                 const empty = counts && counts.online ? counts.online + " online · none on the wall" : "No tablets on the wall";
                 const content = state.operatorConfig.scene && state.operatorConfig.scene.content || {};
-                const noun = content.type === "image" ? "image" : "scene";
-                const paint = result.total
-                    ? (stale ? "Current " + noun + " evidence unavailable" : result.showing + " of " + result.total + " showing the current " + noun)
+                const noun = window.OperatorState.shownSubject(content);
+                const paint = result.total && !appliedName() && content.type === "color" ? (counts?.online || 0) + " online · no image yet" : result.total
+                    ? (stale ? "Current " + noun + " evidence unavailable" : result.showing + " of " + result.total + " showing " + (/^wall-pattern-/.test(appliedName()) ? "Test pattern" : appliedName() || "the current image"))
                     : empty;
-                el.wallHealth.textContent = (stale ? "Status stale · " : "") + paint;
-                el.btnWallHealth.dataset.kind = !stale && result.states.some(item => ["failed", "blocked", "invalid_mapping"].includes(item.status)) ? "err" : stale || result.states.some(item => !["displayed", "offline", "excluded"].includes(item.status)) ? "warn"
+                const unreachable = stale && !!state.rosterUnreachable;
+                el.wallHealth.textContent = unreachable ? "Server unreachable · tablets keep their last image" : (stale ? "Status stale · " : "") + paint;
+                el.btnWallHealth.dataset.state = unreachable ? "unreachable" : "";
+                el.btnWallHealth.dataset.kind = unreachable ? "err" : !stale && result.states.some(item => ["failed", "blocked", "invalid_mapping"].includes(item.status)) ? "err" : stale || result.states.some(item => !["displayed", "offline", "excluded"].includes(item.status)) ? "warn"
                     : result.total && result.showing === result.total ? "ok" : "info";
-                if (document.getElementById("wall-health-short")) document.getElementById("wall-health-short").textContent = (stale ? "Stale " : "") + (result.total ? result.showing + "/" + result.total : counts?.online ? counts.online + " online" : "No wall");
-                const compact = typeof window.matchMedia === "function" && window.matchMedia("(max-width: 36rem)").matches;
-                if (compact) el.wallHealth.textContent = (stale ? "Stale · " : "") + (result.total ? result.showing + "/" + result.total + " showing " + noun : counts && counts.online ? counts.online + " online · none on wall" : "No wall");
-                el.btnWallHealth.setAttribute("aria-label", (stale ? "Status stale. " : "") + (result.total ? result.showing + "/" + result.total + ". " + result.showing + " of " + result.total + " tablets showing the current " + noun + ". Issues." : empty + ". Issues."));
+                if ($("wall-health-short")) $("wall-health-short").textContent = unreachable ? "Server unreachable" : (stale ? "Stale " : "") + (result.total ? result.showing + "/" + result.total : counts?.online ? counts.online + " online" : "No wall");
+                el.btnWallHealth.setAttribute("aria-label", content.type === "image" && result.total && !unreachable
+                    ? (stale ? "Status stale. " : "") + result.showing + "/" + result.total + ". " + result.showing + " of " + result.total + " tablets showing the current image."
+                    : el.wallHealth.textContent);
                 el.deviceCount.textContent = rosterSummary(state.operatorConfig, stale);
                 el.rosterStatus.hidden = !stale;
                 el.rosterStatus.textContent = stale ? "Status stale. " + state.rosterError + ". Refresh status to retry." : "";
@@ -513,14 +488,14 @@ window.PhysicalStage = {
 
         function renderDeviceList() {
             const entries = deviceEntries(), ids = new Set(entries.map(entry => entry.id));
-            for (const [id, row] of deviceRows) if (!ids.has(id)) { row.item.remove(); deviceRows.delete(id); }
+            for (const [id, row] of deviceRows) if (!ids.has(id)) { row.item.remove(); row.chip.remove(); deviceRows.delete(id); }
             const onlinePowers = entries.filter(entry => isOnline(entry.id)).map(entry => powerFor(entry.id));
             const powerCounts = new Map();
             if (!state.rosterError) for (const power of onlinePowers) {
                 if (power && !power.stale) powerCounts.set(power.state, (powerCounts.get(power.state) || 0) + 1);
             }
             const commonPower = [...powerCounts].find(([, count]) => count > onlinePowers.length / 2)?.[0] || null;
-            const fleetNote = document.getElementById("tablet-fleet-power");
+            const fleetNote = $("tablet-fleet-power");
             if (fleetNote) {
                 fleetNote.hidden = !commonPower || commonPower === "held";
                 fleetNote.textContent = commonPower ? (powerCounts.get(commonPower) === onlinePowers.length ? "All online tablets report" : powerCounts.get(commonPower) + " of " + onlinePowers.length + " online tablets report") + " wake lock " + commonPower + "." : "";
@@ -528,7 +503,7 @@ window.PhysicalStage = {
             }
             const differentScreens = entries.some(entry => powerFor(entry.id)?.state !== commonPower || powerFor(entry.id)?.stale);
             el.deviceList.dataset.screens = String(differentScreens);
-            const screenColumn = document.getElementById("screen-column");
+            const screenColumn = $("screen-column");
             if (screenColumn) screenColumn.hidden = !differentScreens;
             for (const [index, entry] of entries.entries()) {
                 let row = deviceRows.get(entry.id);
@@ -553,12 +528,21 @@ window.PhysicalStage = {
                     const add = document.createElement("button"); add.type = "button"; add.className = "btn btn-sm dev-action"; add.textContent = "Place";
                     add.addEventListener("click", async () => {
                         selectDevice(entry.id);
-                        if (await showTab("show", { persist: true })) {
+                        if (await showMode("arrange")) {
                             if (state.draft.kind === "physical" && !validPair(entry.id)) announce("Confirm the model or save measurements in Arrange before placing this tablet.");
                             else addSelectedDevice();
                         }
                     });
-                    item.append(add); row = { item, pick, number, name, meta, facts, add }; deviceRows.set(entry.id, row);
+                    item.append(add);
+                    const chip = document.createElement("li"); chip.className = "roster-chip"; chip.dataset.deviceId = entry.id;
+                    const chipPick = document.createElement("button"); chipPick.type = "button"; chipPick.className = "roster-pick"; chipPick.dataset.deviceId = entry.id;
+                    const chipNumber = document.createElement("span"); chipNumber.className = "dev-number";
+                    const glyph = document.createElement("span"); glyph.className = "roster-glyph"; glyph.setAttribute("aria-hidden", "true");
+                    const word = document.createElement("span"); word.className = "roster-word";
+                    const chipName = document.createElement("span"); chipName.className = "dev-label sr-only";
+                    chipPick.append(chipNumber, glyph, word, chipName); chip.append(chipPick);
+                    chipPick.addEventListener("click", () => { if (state.selectedId === entry.id) clearSelection(); else selectDevice(entry.id, { reveal: true, trigger: chipPick }); });
+                    row = { item, pick, number, name, meta, facts, add, chip, chipPick, chipNumber, glyph, word, chipName }; deviceRows.set(entry.id, row);
                 }
                 const online = isOnline(entry.id), current = state.operatorConfig && !state.rosterError
                     && window.OperatorState.tabletState(state.operatorConfig, entry.id, performance.now());
@@ -571,31 +555,34 @@ window.PhysicalStage = {
                     : online ? "Connected"
                     : Number.isFinite(seen) ? "Offline · last seen " + new Date(seen).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })
                     : "Offline";
-                const image = current ? (current.status === "unplaced" ? "Not on the wall" : current.text)
-                    : state.rosterError ? "Current image evidence unavailable"
-                    : "Status unknown";
                 row.number.textContent = numberTag(entry.id);
                 row.name.textContent = entry.label;
                 row.facts.connection.textContent = connection;
                 row.facts.connection.className = "dev-fact sr-only";
-                row.facts.image.textContent = state.rosterError ? "Status stale" : !online ? "Offline" : current?.showing ? "Reports current image" : image;
+                const roster = window.OperatorState.rosterStatus(current || { status: online ? "unknown" : "offline", online }, { stale: !!state.rosterError });
+                row.facts.image.textContent = roster.word;
                 row.facts.power.textContent = power ? power.short : "";
-                if (typeof row.facts.power.replaceChildren === "function") {
-                    const powerPrefix = document.createElement("span"); powerPrefix.className = "sr-only";
-                    powerPrefix.textContent = power ? (power.short.match(/^(?:Last known wake lock|Wake lock) /) || [""])[0] : "";
-                    const powerValue = document.createElement("span");
-                    powerValue.textContent = power ? power.short.slice(powerPrefix.textContent.length) : "";
-                    row.facts.power.replaceChildren(powerPrefix, powerValue);
-                }
                 row.facts.power.title = power ? power.label : "";
                 row.facts.power.className = "dev-fact" + (commonPower && power?.state === commonPower && !power.stale ? " sr-only" : "");
                 row.item.dataset.status = state.rosterError ? "stale" : current ? current.status : online ? "online" : "offline";
+                row.chip.dataset.status = roster.key; row.chip.dataset.tone = roster.tone;
+                row.chip.dataset.powerState = power ? power.state : "unknown";
+                row.chipNumber.textContent = String(deviceNumber(entry.id) || numberTag(entry.id).replace(/^#/, ""));
+                row.glyph.textContent = roster.tone === "failure" ? "▲" : roster.tone === "progress" ? "○" : roster.tone === "quiet" ? "–" : "●";
+                row.word.textContent = roster.key === "connected" ? "" : roster.word;
+                const named = entry.label !== "Tablet " + deviceNumber(entry.id);
+                row.chipName.className = "dev-label" + (named && entry.label.length <= 12 ? "" : " sr-only");
+                row.chipName.textContent = entry.label;
+                row.chipPick.title = numberedLabel(entry.id) + " · " + roster.word;
+                row.chipPick.setAttribute("aria-label", numberedLabel(entry.id) + ", " + roster.word + (power && !(commonPower && power.state === commonPower && !power.stale) ? ". " + power.label : ""));
                 row.item.dataset.powerState = power ? power.state : "unknown";
                 row.item.dataset.powerWarning = String(!!power && power.warning);
                 row.item.dataset.powerStale = String(!!power && power.stale);
                 row.pick.setAttribute("aria-label", numberedLabel(entry.id) + ", " + connection + ", " + status + (power ? ". " + power.label : ""));
                 row.add.hidden = !!(entry.slot || entry.placement); row.add.disabled = state.busy;
                 if (el.deviceList.children[index] !== row.item) el.deviceList.insertBefore(row.item, el.deviceList.children[index] || null);
+                const chips = $("roster");
+                if (chips && chips.children[index] !== row.chip) chips.insertBefore(row.chip, chips.children[index] || null);
             }
             syncDeviceRows();
         }
@@ -693,7 +680,7 @@ window.PhysicalStage = {
         }
 
         function nudgeSelected(deltaX, deltaY) {
-            if (state.tabName !== "show" || state.viewLive || state.previewContent || state.gridPreview || state.busy) return;
+            if (!stageEditable() || state.busy) return;
             if (state.draft && state.draft.kind === "logical") {
                 const id = state.selectedId;
                 if (!state.draft.placements[id]) return;
@@ -761,7 +748,7 @@ window.PhysicalStage = {
             if (!state.draft || state.draft.kind !== "physical" || state.gridPreview) return;
             const position = window.PhysicalSizing.nextPosition(state.draft.slots, profileFor, pair.profile, state.draft.bounds);
             if (position.error) { showError(position.error); return; }
-            const mount = document.getElementById("grid-common-mount").value;
+            const mount = $("grid-common-mount").value;
             if (mount === "") { showError("Declare the mounted top edge in Arrange before adding a measured tablet. Browser rotation does not establish the mounting."); return; }
             const centerX = position.x, centerY = position.y;
 
@@ -789,6 +776,6 @@ window.PhysicalStage = {
          * Bounds and slot inputs
          * ---------------------------------------------------------------- */
 
-        return { addSelectedDevice, deleteSelectedSlot, endDrag, geometryHelp: helpText, matchScreenShape, matchStatus, nudgeSelected, onPointerCancel, onPointerDown, onPointerMove, onPointerUp, renderDeviceHealth, renderDeviceList, renderStage, rotateSelected, selectDevice, setViewZoom, syncInspector, viewZoom };
+        return { clearSelection, addSelectedDevice, deleteSelectedSlot, endDrag, geometryHelp: helpText, matchScreenShape, matchStatus, nudgeSelected, onPointerCancel, onPointerDown, onPointerMove, onPointerUp, renderDeviceHealth, renderDeviceList, renderStage, revealSheet, rotateSelected, selectDevice, setViewZoom, syncInspector, viewZoom };
     }
 };

@@ -15,12 +15,12 @@
         onConflict = () => {}, isDirty = () => false } = {}) {
         const listeners = new Set();
         const state = { operatorConfig: null, roster: {}, etag: null, etagState: "missing", busy: false,
-            rosterError: null, rosterCheckedAt: null, transportText: "Connecting to the wall…", connectionVersions: {}, readFence: model.readFence() };
+            rosterError: null, rosterUnreachable: false, rosterCheckedAt: null, transportText: "Connecting to the wall…", connectionVersions: {}, readFence: model.readFence() };
         let snapshot = null, uncertain = false, adoptionVersion = 0, supported = false;
         function publish(options = {}) {
             snapshot = freeze({ config: state.operatorConfig ? model.clone(state.operatorConfig) : null,
                 etag: state.etag, etagState: state.etagState, connectionVersions: { ...state.connectionVersions }, roster: model.clone(state.roster),
-                rosterError: state.rosterError, rosterCheckedAt: state.rosterCheckedAt, transportText: state.transportText, uncertain, supported, busy: state.busy });
+                rosterError: state.rosterError, rosterUnreachable: !!state.rosterError && state.rosterUnreachable, rosterCheckedAt: state.rosterCheckedAt, transportText: state.transportText, uncertain, supported, busy: state.busy });
             listeners.forEach(listener => listener(snapshot, options));
         }
         function ingest(config, options = {}) {

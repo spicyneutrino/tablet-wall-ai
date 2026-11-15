@@ -20,13 +20,15 @@ for (const status of ["offline", "stale", "failed", "unplaced"]) assert.equal(mo
 assert.equal(model.needsAttention({ status: "displayed", showing: true }), false);
 assert.equal(model.needsAttention({ status: "excluded", showing: false }), false);
 
-const document = { activeElement: null, createElement: () => node() };
+const document = { activeElement: null, body: { dataset: { view: "tools" } }, createElement: () => node() };
 const focusCalls = [];
 function node() {
-    return { children: [], dataset: {}, attrs: {}, textContent: "", hidden: false, isConnected: true,
+    return { children: [], dataset: {}, attrs: {}, listeners: {}, textContent: "", hidden: false, isConnected: true,
         append(...children) { for (const child of children) { this.children.push(child); child.parent = this; } },
         contains(child) { return !!child && (child === this || this.children.some(item => item.contains(child))); },
-        setAttribute(key, value) { this.attrs[key] = value; }, addEventListener() {},
+        setAttribute(key, value) { this.attrs[key] = value; },
+        addEventListener(event, listener) { this.listeners[event] = listener; },
+        click() { if (this.listeners.click) this.listeners.click(); },
         insertBefore(child, before) {
             if (child.parent) {
                 if (child.contains(document.activeElement)) document.activeElement = null;
@@ -45,49 +47,58 @@ $("wall-health").textContent = "1 of 3 showing the current image";
 const state = { operatorConfig: { layout: { placements: { a: {}, b: {}, c: {} } } }, roster: { a: { number: 1, online: true, wake_lock: "denied" },
     b: { number: 2, online: true, wake_lock: "denied" }, c: { number: 3, online: false, wake_lock: "released" } }, deviceLabels: {} };
 const context = { document, state, window: { OperatorState: model, OperatorStage: stage }, $, setTextIfChanged: (node, text) => { node.textContent = text; },
-    rosterRows: new Map(), stripRows: new Map(), labelFor: id => id, revealRow() {},
-    orderedIds: ids => ids.slice().sort((a, b) => model.compareIds(state.roster, {}, a, b)),
-    positionTag: id => "#" + state.roster[id].number, shortEvidence: item => item.text,
-    powerFor: id => stage.powerReadiness(state.roster[id], { stale: !!state.rosterError }),
-    powerText: power => power.warning || power.stale || power.state === "unknown" ? power.label : "" };
+    phone: { matches: false }, problemRows: new Map(), labelFor: id => "Tablet " + state.roster[id].number, revealRow() {},
+    powerFor: id => stage.powerReadiness(state.roster[id], { stale: !!state.rosterError }) };
 const source = fs.readFileSync(require.resolve("../frontend/controller/operator-workspace.js"), "utf8");
 vm.createContext(context);
-vm.runInContext(source.slice(source.indexOf("        function renderExceptionRail("), source.indexOf("        async function resolve(")), context);
+vm.runInContext(source.slice(source.indexOf("        function renderProblems("), source.indexOf("        const powerFor =", source.indexOf("        function renderProblems("))), context);
 const evidence = new Map([["a", { status: "displayed", showing: true, text: "Reports current image" }],
     ["b", { status: "failed", showing: false, text: "Image failed" }], ["c", { status: "offline", showing: false, text: "Offline" }]]);
-const render = () => context.renderExceptionRail(["c", "a", "b"], evidence);
-const order = () => $("exception-roster").children.map(row => row.dataset.deviceId);
+const render = () => context.renderProblems(["a", "b", "c"], evidence);
+const order = () => $("exception-strip").children.map(row => row.button.dataset.problemDevice);
 render();
-assert.deepEqual(order(), ["b", "c", "a"]);
+assert.deepEqual(order(), ["b", "c"], "header chips name failures only");
 assert.equal($("wall-status-summary").textContent, "Content report issues: 2");
-assert.equal($("wall-status-summary").textContent.includes("showing the current"), false);
-assert.equal($("wall-power-summary").textContent, "Screen wake lock: all 2 online tablets report denied. Browser report, not proof the screen is lit.");
-assert.equal($("wall-power-summary").hidden, false);
-const rows = context.rosterRows;
-assert.equal(rows.get("a").power.hidden, true);
-assert.equal(rows.get("c").power.hidden, false);
-assert.equal(rows.get("a").dataset.powerState, "denied");
-assert.equal(rows.get("a").button.attrs["aria-label"], "a, Reports current image, Wake lock: denied. Review recovery.");
-const healthyButton = rows.get("a").button;
-document.activeElement = healthyButton;
-evidence.set("a", { status: "failed", showing: false, text: "Image failed" });
-render();
-assert.deepEqual(order(), ["a", "b", "c"]);
-assert.equal(document.activeElement, healthyButton);
-assert.equal(focusCalls.length, 1);
-assert.equal(focusCalls[0].button, healthyButton);
-assert.equal(focusCalls[0].options.preventScroll, true);
-render(); assert.equal(focusCalls.length, 1);
+assert.equal($("wall-power-summary").textContent, "", "wake-lock reports belong only in the selected Tablet panel");
+const rows = context.problemRows, button = rows.get("b").button;
+assert.equal(button.textContent, "▲ Tablet 2 wrong content");
+assert.match(button.attrs["aria-label"], /Image failed.*Review recovery/);
+document.activeElement = button;
+render(); render();
+assert.equal(document.activeElement, button, "polling keeps the exact issue button and its focus");
+assert.equal(focusCalls.length, 0, "polling does not take keyboard ownership");
 state.roster.b.wake_lock = "held"; render();
-assert.equal(rows.get("a").power.hidden, false);
-assert.equal($("wall-power-summary").hidden, true);
+assert.equal($("wall-power-summary").textContent, "", "mixed wake states cannot produce a fleet claim");
 assert.equal($("wall-power-summary").textContent, "");
-state.roster.b.wake_lock = "denied"; state.rosterError = true; render();
-assert.equal($("wall-power-summary").hidden, true);
-assert.equal(rows.get("a").power.hidden, false);
-evidence.set("a", { showing: true, status: "displayed", text: "Reports current image" });
-evidence.set("b", { showing: true, status: "displayed", text: "Reports current image" });
-render(); assert.equal($("wall-status-summary").textContent, "Content report issues: 1");
+state.rosterError = true; render();
+assert.equal($("wall-power-summary").textContent, "", "stale evidence cannot produce a fleet claim");
+assert.deepEqual(order(), [], "unreachable server is a separate status, not six offline tablets");
+state.rosterError = false;
+evidence.set("b", { showing: false, status: "unplaced", online: true, text: "Not placed" });
+render(); assert.deepEqual(order(), ["c"], "Not placed is setup progress, not a failure chip");
 evidence.set("c", { showing: false, status: "excluded", text: "Excluded" });
+render(); assert.equal($("wall-status-summary").textContent, "Content report issues: 1");
+evidence.set("b", { showing: true, status: "displayed", text: "Reports current image" });
 render(); assert.equal($("wall-status-summary").textContent, "Content report issues: 0");
-console.log("Wall status fleet power, attention order, retained focus and single summary pass");
+for (const id of ["a", "b", "c"]) evidence.set(id, { status: "offline", showing: false, text: "Offline" });
+context.phone.matches = true;
+render();
+assert.deepEqual(order(), ["a", "b"], "phone shows the first failure and a count for the rest");
+assert.equal(rows.get("+more").button.textContent, "+2");
+assert.match(rows.get("+more").button.attrs["aria-label"], /Open Tablets to review all/);
+let tabletNavigations = 0;
+$("nav-tablets").addEventListener("click", () => { tabletNavigations++; document.body.dataset.view = "tablets"; });
+rows.get("+more").button.click(); rows.get("+more").button.click();
+assert.equal(document.body.dataset.view, "tablets", "every failing tablet remains reachable from the count");
+assert.equal(tabletNavigations, 1, "repeated count activation keeps Tablets open");
+const firstPhoneButton = rows.get("a").button;
+firstPhoneButton.focus();
+const focusCount = focusCalls.length;
+render(); render();
+assert.equal(document.activeElement, firstPhoneButton, "phone polling retains the exact first failure button");
+assert.equal(focusCalls.length, focusCount, "phone polling does not move focus");
+context.phone.matches = false; render();
+assert.deepEqual(order(), ["a", "b", "c"], "desktop restores two named failures plus the remaining count");
+assert.equal(rows.get("+more").button.textContent, "+1");
+assert.equal(document.activeElement, firstPhoneButton, "responsive failure compaction retains the first failure focus");
+console.log("Failure-only header chips, phone failure counts, retained focus and Tablet-panel-only wake reports passed");

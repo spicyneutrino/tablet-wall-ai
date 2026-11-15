@@ -1,4 +1,5 @@
 "use strict";
+function renderContent(feature) { feature.update(); feature.render(); }
 const assert = require("node:assert/strict");
 const fs = require("node:fs");
 const vm = require("node:vm");
@@ -73,12 +74,12 @@ function fixture(file = { name: "sample.jpg", type: "image/jpeg" }) {
     {
         const f = fixture();
         f.state.capabilities.uploads = false;
-        f.content.render();
+        renderContent(f.content);
         assert.equal(f.node("upload-form").hidden, true, "refused admission hides the upload form");
         f.submit();
         assert.equal(f.requests.length, 0, "refused admission never sends a transport");
         f.state.capabilities = {};
-        f.content.render();
+        renderContent(f.content);
         assert.equal(f.node("upload-form").hidden, true, "unknown admission hides the upload form");
         f.submit();
         assert.equal(f.requests.length, 0, "unknown admission never sends a transport");

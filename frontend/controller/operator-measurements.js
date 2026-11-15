@@ -135,7 +135,8 @@
         return { buildProfileBody, buildCalibrationBody, requireInteger, requireNonNegative };
     }
 
-    function create({ elements: el, physicalCalibration, refresh, state, num, markInvalid, ValidationError, deviceLabel, formatNumber, setInputValue, setSelectValue, api, syncTabDots, setMsg, errorDetail, profileFor, latestProfile, latestCalibration, numberedLabel, calibrationStatus, bodyMetrics, tabletForms, clearMsg, clearError, announce, resolveOutput, setBusy, handleWriteError }) {
+    function create({ elements: el, physicalCalibration, refresh, state, num, markInvalid, ValidationError, deviceLabel, formatNumber, setInputValue, setSelectValue, api, syncTabDots, setMsg, errorDetail, profileFor, latestProfile, latestCalibration, numberedLabel, calibrationStatus, bodyMetrics, tabletForms, clearMsg, clearError, announce, resolveOutput, setBusy, handleWriteError, lookup = id => document.getElementById(id) }) {
+        const $ = lookup;
         const { buildProfileBody, buildCalibrationBody, requireInteger, requireNonNegative } = createPayloads({ fields: el, num, ValidationError, markInvalid });
         function profileDefaults(profile, id = state.selectedId) {
             return {
@@ -163,7 +164,7 @@
         }
 
         function fillProfileForm(profile) {
-            for (const [id, value] of Object.entries(profileFieldValues(profile))) setInputValue(document.getElementById(id), value);
+            for (const [id, value] of Object.entries(profileFieldValues(profile))) setInputValue($(id), value);
             state.profileDirty = false;
         }
 
@@ -194,7 +195,7 @@
 
         function fillCalibrationForm(calibration, profile) {
             for (const [id, value] of Object.entries(calibrationFieldValues(calibration, profile))) {
-                const input = document.getElementById(id);
+                const input = $(id);
                 if (input.tagName === "SELECT") setSelectValue(input, value); else setInputValue(input, value);
             }
             state.calDirty = false;
@@ -206,9 +207,9 @@
             const measurements = {};
             ["x", "y"].forEach(function (axis) {
                 measurements[axis] = {
-                    mm: document.getElementById("cal-ruler-mm-" + axis).value,
-                    px: document.getElementById("cal-ruler-span-" + axis).value,
-                    error: document.getElementById("cal-ruler-error-" + axis).value
+                    mm: $("cal-ruler-mm-" + axis).value,
+                    px: $("cal-ruler-span-" + axis).value,
+                    error: $("cal-ruler-error-" + axis).value
                 };
             });
             return measurements;
@@ -234,9 +235,9 @@
 
         function invalidateRuler() {
             rulerReview.invalidate();
-            document.getElementById("cal-ruler-decision").hidden = true;
+            $("cal-ruler-decision").hidden = true;
             if (rulerReview.status === "stale") {
-                const preview = document.getElementById("cal-ruler-preview");
+                const preview = $("cal-ruler-preview");
                 preview.hidden = false;
                 preview.textContent = "Measurement or mapping changed. Check the current ruler measurements again before saving.";
             }
@@ -251,10 +252,10 @@
                 rulerReview.begin(context.key);
                 rememberFields("calibration");
                 syncTabDots();
-                const preview = document.getElementById("cal-ruler-preview");
+                const preview = $("cal-ruler-preview");
                 preview.hidden = false;
                 preview.textContent = "Checking both CSS axes. Nothing has been saved.";
-                document.getElementById("cal-ruler-decision").hidden = true;
+                $("cal-ruler-decision").hidden = true;
                 renderCalibrationHelper();
                 const results = await Promise.all(context.bodies.map(function (body) {
                     return api("POST", "/api/v3/calibration-check", body);
@@ -289,7 +290,7 @@
                 const note = document.createElement("p");
                 note.textContent = "Both axes are measured separately. Browser insets can make the usable viewport smaller than the full panel, especially in tab or standalone mode. Review panel offsets below. No values were averaged or saved. Existing layout pins stay unchanged.";
                 preview.appendChild(note);
-                document.getElementById("cal-ruler-decision").hidden = false;
+                $("cal-ruler-decision").hidden = false;
                 preview.focus();
             } catch (error) {
                 if (context && rulerReview.key !== context.key) return;
@@ -304,7 +305,7 @@
                 const context = rulerContext();
                 if (rulerReview.key !== context.key) throw new Error("The tablet or measurement changed. Check again.");
                 rulerReview.decide(choice);
-                document.getElementById("cal-ruler-decision").hidden = true;
+                $("cal-ruler-decision").hidden = true;
                 if (choice === "use_ruler") {
                     fillViewport(context.viewport);
                     const results = rulerReview.results;
@@ -320,13 +321,13 @@
                     el.btnCalibrationSave.focus();
                 } else if (choice === "keep_supplied") {
                     setMsg(el.calibrationMsg, "Supplied measurements kept. Nothing was written; the profile and existing mapping stay unchanged. No ruler scale will be saved.", "ok");
-                    document.getElementById("cal-use-ruler").focus();
+                    $("cal-use-ruler").focus();
                 } else {
-                    document.getElementById("cal-ruler-mm-x").value = "";
-                    document.getElementById("cal-ruler-mm-y").value = "";
+                    $("cal-ruler-mm-x").value = "";
+                    $("cal-ruler-mm-y").value = "";
                     invalidateRuler();
                     setMsg(el.calibrationMsg, "Measure each line again using its current labelled span, then check both axes.", "info");
-                    document.getElementById("cal-ruler-mm-x").focus();
+                    $("cal-ruler-mm-x").focus();
                 }
                 syncTabDots();
             } catch (error) {
@@ -338,9 +339,9 @@
 
         function renderCalibrationHelper() {
             const v = physicalCalibration.selectedViewport(state.roster, state.selectedId);
-            updateLiveViewport(document.getElementById("cal-live-viewport"), v);
-            document.getElementById("cal-use-viewport").disabled = !v || state.busy;
-            document.getElementById("cal-use-ruler").disabled = !v || state.busy || rulerReview.status === "checking";
+            updateLiveViewport($("cal-live-viewport"), v);
+            $("cal-use-viewport").disabled = !v || state.busy;
+            $("cal-use-ruler").disabled = !v || state.busy || rulerReview.status === "checking";
             if (rulerReview.key && ["checking", "review", "prepared"].includes(rulerReview.status)) {
                 try { if (rulerContext().key !== rulerReview.key) invalidateRuler(); }
                 catch (_) { invalidateRuler(); }
@@ -349,8 +350,8 @@
         }
 
         async function loadRulerAddress() {
-            const link = document.getElementById("cal-ruler-link");
-            const note = document.getElementById("cal-ruler-address-note");
+            const link = $("cal-ruler-link");
+            const note = $("cal-ruler-address-note");
             try {
                 const config = await api("GET", "/operator-config");
                 const url = physicalCalibration.rulerUrl(config.tablet_origin);
@@ -358,7 +359,7 @@
                 link.href = url;
                 link.textContent = url;
                 link.hidden = false;
-                document.getElementById("cal-copy-ruler").hidden = false;
+                $("cal-copy-ruler").hidden = false;
                 note.textContent = "Open this address on the selected tablet in its existing browser identity.";
             } catch (_) {
                 note.textContent = "Set the server’s tablet origin to a tablet-reachable HTTP(S) address. A loopback address works only on this computer.";
@@ -414,7 +415,7 @@
         }
 
         function fieldsIn(group) {
-            if (group === "model") return [document.getElementById("tablet-model")];
+            if (group === "model") return [$("tablet-model")];
             return Array.from((group === "profile" ? el.profileForm : el.calibrationForm).querySelectorAll("input[id], select[id]"));
         }
 
@@ -462,18 +463,18 @@
 
             if (changed) {
                 rulerReview.reset();
-                document.getElementById("cal-ruler-preview").hidden = true;
-                document.getElementById("cal-ruler-decision").hidden = true;
-                document.getElementById("cal-ruler-error-x").value = "";
-                document.getElementById("cal-ruler-error-y").value = "";
-                document.getElementById("cal-ruler-mm-x").value = "";
-                document.getElementById("cal-ruler-mm-y").value = "";
-                document.getElementById("cal-ruler-span-x").value = "200";
-                document.getElementById("cal-ruler-span-y").value = "200";
+                $("cal-ruler-preview").hidden = true;
+                $("cal-ruler-decision").hidden = true;
+                $("cal-ruler-error-x").value = "";
+                $("cal-ruler-error-y").value = "";
+                $("cal-ruler-mm-x").value = "";
+                $("cal-ruler-mm-y").value = "";
+                $("cal-ruler-span-x").value = "200";
+                $("cal-ruler-span-y").value = "200";
             }
             updateDeviceCardHeadings();
             updateCurrentLines();
-            const modelSelect = document.getElementById("tablet-model");
+            const modelSelect = $("tablet-model");
             const assignment = state.tabletAssignments[id] || { mode: "auto" };
             if (changed || !modelSelect.options.length) {
                 modelSelect.textContent = "";
@@ -489,7 +490,7 @@
             }
             const record = state.roster[id] || {};
             const matches = (record.model_suggestions || []).filter(function (key) { return state.tabletModels[key]; });
-            document.getElementById("tablet-model-status").textContent = matches.length === 1
+            $("tablet-model-status").textContent = matches.length === 1
                 ? "Looks like " + state.tabletModels[matches[0]].label + ". Choose that model and Confirm only after checking the hardware. Screen signature is a suggestion, not proof."
                 : matches.length ? "Ambiguous screen signature." : "Unknown screen signature.";
             renderCalibrationHelper();

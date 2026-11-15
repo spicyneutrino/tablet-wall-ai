@@ -1,4 +1,5 @@
 "use strict";
+function renderContent(feature) { feature.update(); feature.render(); }
 const assert = require("node:assert/strict");
 const fs = require("node:fs");
 const vm = require("node:vm");
@@ -257,7 +258,7 @@ async function galleryNavigation() {
     list.scrollLeft = 0;
     rows().forEach(row => { row.hidden = false; row.children[0].disabled = false; });
     galleryNode("image-search").value = "";
-    content.render();
+    renderContent(content);
     const firstRow = rows()[0];
     firstRow.dataset.probe = "kept";
     await content.refresh();
@@ -281,7 +282,7 @@ async function galleryNavigation() {
 
     rows()[1].hidden = false;
     buttons()[4].disabled = false;
-    content.render();
+    renderContent(content);
     galleryNode("image-search").focus();
     galleryNode("image-search").value = "img-4";
     galleryNode("image-search").input();
@@ -299,7 +300,7 @@ async function galleryNavigation() {
     assert.equal(focused(), galleryNode("image-search"));
     assert.equal(tabStops().length, 1);
 
-    content.render();
+    renderContent(content);
     layout(3);
     focusButton(5);
     galleryNode("image-search").value = "img-6";

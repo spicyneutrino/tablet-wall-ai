@@ -383,7 +383,7 @@
         /* Welcome arrives before the wall replay; until that replay lands,
          * "Connected" is the honest state and "Not placed" would be a guess. */
         if (!held) return "Connected";
-        return hasPlacement(held) ? "Connected" : "Not placed";
+        return hasPlacement(held) ? "Connected" : "Waiting for the operator";
     }
 
     function updateHudText(state) {
@@ -400,7 +400,7 @@
         }
         hudEl.setAttribute(
             "data-placed",
-            status === "Not placed" ? "false" : "true"
+            status === "Waiting for the operator" ? "false" : "true"
         );
     }
 
@@ -1297,7 +1297,7 @@
         ctx.fillStyle = PATTERN.unplacedHint;
         ctx.font = hintSize + "px " + FONT_STACK;
         ctx.fillText(
-            "Not placed on this wall yet \u2014 assign a placement in the controller.",
+            "Connected. Waiting for the operator to place this screen on the wall.",
             midX,
             midY + idSize * 0.35 + noteSize
         );

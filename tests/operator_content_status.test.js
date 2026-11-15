@@ -1,4 +1,5 @@
 "use strict";
+function renderContent(feature) { feature.update(); feature.render(); }
 const assert = require("node:assert/strict");
 const fs = require("node:fs");
 const vm = require("node:vm");
@@ -54,7 +55,7 @@ const content = context.window.OperatorContent.create({ state, renderStage() {},
         throw Error(path);
     } });
 (async () => {
-    await content.refresh(); content.render();
+    await content.refresh(); renderContent(content);
     assert.equal(content.dirty(), false, "loading Images must not create a draft");
     assert.equal(node("show-image").disabled, true, "Show needs a draft");
     assert.equal(node("image-preview-controls").hidden, true, "an idle wall does not present an inactive edit form");
@@ -63,12 +64,16 @@ const content = context.window.OperatorContent.create({ state, renderStage() {},
     assert.equal(node("image-title").textContent, "Tablet colours", "the stage names the test pattern currently on the wall");
     assert.equal(node("image-details").textContent, "", "idle state needs no instructional paragraph");
     state.scene = { content: { type: "image", asset: "sha256:missing" } };
-    content.render();
+    const derivedBefore = { preview: state.previewContent, unavailable: state.activeImageUnavailableId };
+    content.render(); content.render();
+    assert.equal(state.previewContent, derivedBefore.preview, "presentation cannot replace the preview record");
+    assert.equal(state.activeImageUnavailableId, derivedBefore.unavailable, "presentation cannot observe inventory availability");
+    renderContent(content);
     assert.equal(node("image-title").textContent, "Unavailable image", "a missing applied image has a readable heading instead of an asset digest");
     assert.equal(node("image-source-details").textContent, "sha256:missing", "the exact missing asset identity stays in Image details");
     assert.equal(content.stageNames().unavailable, true, "stage metadata exposes availability independently of its filename");
     state.scene = { content: { type: "color" } };
-    content.render();
+    renderContent(content);
 
     node("image-fit").value = "contain";
     node("image-fit").change({ target: node("image-fit") });
@@ -111,7 +116,7 @@ const content = context.window.OperatorContent.create({ state, renderStage() {},
     await buttonA.click();
     assert.equal(node("image-discard").hidden, false);
     assert.equal(node("image-rebuild").hidden, true, "a current preview needs no Rebuild");
-    state.etag = "changed"; content.render();
+    state.etag = "changed"; renderContent(content);
     assert.equal(node("image-rebuild").hidden, false, "a stale-base draft exposes Rebuild");
     state.etag = "e";
     node("image-discard").focus();
@@ -120,8 +125,8 @@ const content = context.window.OperatorContent.create({ state, renderStage() {},
     assert.equal(node("image-discard").hidden, true); assert.equal(node("restore-image").hidden, false);
     assert.equal(content.dirty(), false); assert.equal(state.previewContent, null);
     assert.equal(node("edit-current-image").hidden, false, "a saved image has an explicit adjust action");
-    assert.equal(node("image-preview-controls").hidden, true);
-    assert.equal(node("show-image").disabled, true); assert.equal(node("image-fit").disabled, true);
+    assert.equal(node("image-preview-controls").hidden, false, "idle image scaling remains available in the commit bar");
+    assert.equal(node("show-image").disabled, true); assert.equal(node("image-fit").disabled, false);
     assert.equal(node("image-message").textContent, "", "routine success is silent; the header carries the state");
     assert.equal(buttonA.attrs["aria-pressed"], "false", "a completed Show clears the rust draft outline");
     assert.equal(cardA.dataset.applied, "true", "the applied marker remains when no draft exists");
@@ -131,49 +136,51 @@ const content = context.window.OperatorContent.create({ state, renderStage() {},
     assert.equal(buttonA.attrs["aria-describedby"], appliedNote.id, "the applied marker has an accessible description");
     assert.equal(content.stageNames().applied, "a");
 
+
+
     const confirm = "";
     const render = config.runtime.devices.t.render;
     Object.assign(render, { state: "displayed", current: true, expected_token: token, accepted_token: { ...token }, age_ms: 0, observed_mono: 100 });
-    content.render(); assert.equal(node("image-message").textContent, confirm);
-    render.accepted_token = { ...token, revision: 1 }; content.render();
+    renderContent(content); assert.equal(node("image-message").textContent, confirm);
+    render.accepted_token = { ...token, revision: 1 }; renderContent(content);
     assert.equal(node("image-message").textContent, confirm, "stale tablet evidence stays in the header and Issues");
-    render.state = "failed"; content.render();
+    render.state = "failed"; renderContent(content);
     assert.equal(node("image-message").textContent, confirm, "tablet failures are not enumerated in the inspector");
-    config.runtime.devices.t.mapping.state = "needs_calibration"; content.render();
+    config.runtime.devices.t.mapping.state = "needs_calibration"; renderContent(content);
     assert.equal(node("image-message").textContent, confirm, "mapping failures are not enumerated in the inspector");
     config.runtime.devices.t.mapping.state = "ready";
-    config.runtime.devices.t.online = false; content.render();
+    config.runtime.devices.t.online = false; renderContent(content);
     assert.equal(node("image-message").textContent, confirm, "offline tablets are not enumerated in the inspector");
     assert.doesNotMatch(node("image-message").textContent, /offline|failed|failure|cannot confirm|stale/i);
-    config.runtime.devices.t.online = true; config.revision = 3; content.render();
+    config.runtime.devices.t.online = true; config.revision = 3; renderContent(content);
     assert.equal(node("image-message").textContent, "", "revision-only drift with unchanged generation, content and arrangement needs no warning");
     const warning = /changed after this command/;
-    config.scene.content.asset = "b"; content.render(); assert.match(node("image-message").textContent, warning, "another asset retains the warning");
-    config.scene.content.asset = "a"; config.scene.content.fit = "contain"; content.render(); assert.match(node("image-message").textContent, warning, "changed scaling retains the warning");
-    config.scene.content.fit = "cover"; config.scene.content.type = "color"; content.render(); assert.match(node("image-message").textContent, warning, "changed content type retains the warning");
+    config.scene.content.asset = "b"; renderContent(content); assert.match(node("image-message").textContent, warning, "another asset retains the warning");
+    config.scene.content.asset = "a"; config.scene.content.fit = "contain"; renderContent(content); assert.match(node("image-message").textContent, warning, "changed scaling retains the warning");
+    config.scene.content.fit = "cover"; config.scene.content.type = "color"; renderContent(content); assert.match(node("image-message").textContent, warning, "changed content type retains the warning");
     config.scene.content.type = "image";
-    config.layout.width = 200; content.render(); assert.match(node("image-message").textContent, warning, "changed arrangement retains the warning even for the same image");
+    config.layout.width = 200; renderContent(content); assert.match(node("image-message").textContent, warning, "changed arrangement retains the warning even for the same image");
     config.layout.width = 100;
-    config.generation = "new"; content.render(); assert.match(node("image-message").textContent, warning, "another server generation cannot inherit the receipt");
-    config.generation = "g"; content.render(); assert.equal(node("image-message").textContent, "");
-    config.revision = 2; content.render();
+    config.generation = "new"; renderContent(content); assert.match(node("image-message").textContent, warning, "another server generation cannot inherit the receipt");
+    config.generation = "g"; renderContent(content); assert.equal(node("image-message").textContent, "");
+    config.revision = 2; renderContent(content);
     assert.equal(node("image-message").textContent, confirm);
     await content.refresh();
-    config.generation = "after-read"; content.render();
+    config.generation = "after-read"; renderContent(content);
     assert.match(node("image-message").textContent, warning, "inventory success preserves the command receipt for later drift detection");
-    config.generation = "g"; content.render();
+    config.generation = "g"; renderContent(content);
     assert.equal(node("image-message").textContent, confirm);
 
-    state.etagState = "stale"; content.render();
+    state.etagState = "stale"; renderContent(content);
     assert.match(node("image-message").textContent, /^Image applied\. Tablet reports may be stale/);
     state.etagState = "current";
-    state.rosterError = "offline"; content.render();
+    state.rosterError = "offline"; renderContent(content);
     assert.match(node("image-message").textContent, /stale/);
-    state.rosterError = null; content.render();
+    state.rosterError = null; renderContent(content);
     assert.equal(node("image-message").textContent, confirm);
 
-    failInventory = true; await content.refresh(); content.render(); assert.match(node("library-status").textContent, /library unavailable/);
-    await buttonA.click(); await content.showSelected(); content.render();
+    failInventory = true; await content.refresh(); renderContent(content); assert.match(node("library-status").textContent, /library unavailable/);
+    await buttonA.click(); await content.showSelected(); renderContent(content);
     assert.match(node("library-status").textContent, /library unavailable/, "a retained library error survives a later command");
     failInventory = false; await content.refresh();
     await buttonA.click(); release = {};
@@ -188,10 +195,10 @@ const content = context.window.OperatorContent.create({ state, renderStage() {},
     assert.equal(buttonA.attrs["aria-pressed"], "false", "Show cleared the draft it submitted");
     assert.equal(buttonB.attrs["aria-pressed"], "true", "a newer draft keeps its own rust outline");
     assert.equal(cardA.dataset.applied, "true", "Show moves the applied marker to the submitted image");
-    state.viewLive = true; content.render();
+    state.viewLive = true; renderContent(content);
     assert.equal(node("image-title").textContent, "a", "the stage headline names the applied image during comparison");
     assert.equal(node("show-image").textContent, "Show b", "while the applied wall is visible, Show names what it will show");
-    state.viewLive = false; content.render();
+    state.viewLive = false; renderContent(content);
     node("image-discard").focus(); content.discard(); assert.equal(document.activeElement, node("image-search"));
     assert.equal(content.dirty(), false); assert.equal(state.previewContent, null);
     assert.equal(cardA.dataset.applied, "true", "Discard never removes the applied marker");
@@ -202,15 +209,22 @@ const content = context.window.OperatorContent.create({ state, renderStage() {},
     content.discard();
     assert.equal(content.dirty(), false);
 
+    await node("image-fit").change({ target: { value: "contain" } });
+    assert.equal(state.previewContent.fit, "contain", "the first Scaling choice is retained when opening an applied-image draft");
+    assert.equal(node("image-fit").value, "contain");
+    assert.equal(state.scene.content.fit, "cover", "changing Scaling only previews, without changing the applied image");
+    content.discard();
+    assert.equal(node("image-fit").value, "cover", "discard restores applied Scaling");
+
     state.scene = { content: { type: "image", asset: "a", fit: "contain" } };
-    content.render();
+    renderContent(content);
     await buttonA.click();
     assert.equal(state.previewContent.fit, "contain", "reselected applied image retains its applied fit");
     assert.equal(state.previewContent.background, "#0b1120", "an omitted applied background falls back to the renderer default");
 
     content.discard();
     state.scene = { content: { type: "image", asset: "a", fit: "contain", background: "#123456" } };
-    content.render();
+    renderContent(content);
     await buttonA.click();
     assert.equal(state.previewContent.background, "#123456", "reselected applied image retains its explicit background");
     node("image-fit").value = "cover";
@@ -225,7 +239,7 @@ const content = context.window.OperatorContent.create({ state, renderStage() {},
 
     content.discard();
     state.scene = { content: { type: "color" } };
-    content.render();
+    renderContent(content);
     await buttonA.click();
     assert.equal(state.previewContent.fit, "cover", "a genuinely new image starts at cover");
     node("image-fit").value = "contain";
@@ -260,11 +274,11 @@ const content = context.window.OperatorContent.create({ state, renderStage() {},
 
     content.discard();
     state.scene = { content: { type: "image", asset: "a", fit: "contain", background: "#123456" } };
-    content.render();
+    renderContent(content);
     content.previewScene({ name: "Amber", content: { type: "image", asset: "a", fit: "contain", background: "#abcdef" } }, "e");
     const savedDraft = JSON.stringify(state.previewContent);
     const beforeRebuild = requests.length;
-    state.etag = "saved-entry-replaced"; content.render();
+    state.etag = "saved-entry-replaced"; renderContent(content);
     assert.equal(content.rebuild(), false, "saved previews refuse Rebuild instead of rebasing name recall");
     assert.equal(content.dirty(), true, "refused Rebuild retains the draft");
     assert.equal(JSON.stringify(state.previewContent), savedDraft, "refused Rebuild never substitutes saved content");
@@ -329,7 +343,7 @@ const content = context.window.OperatorContent.create({ state, renderStage() {},
     const setFit = async value => { fitNode("image-fit").value = value;
         fitNode("image-fit").change({ target: fitNode("image-fit") }); await new Promise(resolve => setImmediate(resolve)); };
     const wall = (width, height) => { state.base.width = width; state.base.height = height;
-        state.draft.width = width; state.draft.height = height; content.render(); };
+        state.draft.width = width; state.draft.height = height; renderContent(content); };
     await content.refresh();
     assert.equal(text("fit-summary"), "Select an image to estimate Fill crop or Fit bands.");
     assert.equal(text("fit-applied"), "Applied: tablet colours · no image fit");
@@ -371,7 +385,7 @@ const content = context.window.OperatorContent.create({ state, renderStage() {},
 
     await choose("wide");
     state.base.width = 0;
-    content.render();
+    renderContent(content);
     assert.match(text("fit-summary"), /^Preview crop estimate unavailable: wall bounds are missing\.$/);
     assert.equal(fitNode("crop-bars").hidden, true);
     wall(200, 200);
@@ -387,27 +401,27 @@ const content = context.window.OperatorContent.create({ state, renderStage() {},
 
     content.discard();
     state.scene = { content: { type: "image", asset: "missing" } };
-    content.render();
+    renderContent(content);
     assert.match(text("fit-summary"), /^Applied crop estimate unavailable: source dimensions are missing\.$/);
     assert.equal(fitNode("crop-bars").hidden, true);
 
     state.scene = { content: { type: "image", asset: "wide", fit: "cover", background: "#0b1120",
         intrinsicWidth: 1600, intrinsicHeight: 1000 } };
-    content.render();
+    renderContent(content);
     const summary = fitNode("fit-summary");
     let summaryValue = summary.textContent, summaryWrites = 0;
     Object.defineProperty(summary, "textContent", { get: () => summaryValue,
         set: value => { summaryWrites += 1; summaryValue = value; } });
-    for (let index = 0; index < 5; index += 1) content.render();
+    for (let index = 0; index < 5; index += 1) renderContent(content);
     assert.equal(summaryWrites, 0, "heartbeats and repeated renders never announce an unchanged fit");
     state.base.width = 400;
-    content.render();
+    renderContent(content);
     assert.equal(summaryWrites, 1, "a settled wall change updates the authoritative fit summary once");
     assert.match(summaryValue, /^Applied Fill of 1600 × 1000:/);
 
     state.scene = { content: { type: "color" } };
     state.base.width = 200;
-    content.render();
+    renderContent(content);
     await content.refresh();
     await choose("wide");
     await setFit("cover");
@@ -538,7 +552,7 @@ console.log("Fit feedback slots are unique, labelled, decorative and placed afte
         if (event === "412") {
             command.reject(Object.assign(new Error("guard conflict"), { status: 412 }));
             await showing;
-        } else { state.etag = "remote"; content.render(); }
+        } else { state.etag = "remote"; renderContent(content); }
         const expected = event === "412" ? exact412 : staleImage;
         assert.equal(node("image-message").textContent, expected);
         const before = messageWrites;
@@ -562,7 +576,7 @@ console.log("Fit feedback slots are unique, labelled, decorative and placed afte
     node("show-image").focus();
     const beforeStale = calls.length;
     state.etagState = "stale";
-    content.render();
+    renderContent(content);
     assert.equal(doc.activeElement, node("image-rebuild"), "remote invalidation hands focused Show to Rebuild before the new guard arrives");
     assert.equal(node("image-rebuild").hidden, false);
     assert.equal(node("show-image").disabled, true);
@@ -570,7 +584,7 @@ console.log("Fit feedback slots are unique, labelled, decorative and placed afte
     assert.equal(node("image-message").dataset.kind, "warn");
     const once = messageWrites;
     state.etag = "remote"; state.etagState = "current";
-    content.render(); content.render();
+    renderContent(content); renderContent(content);
     assert.equal(messageWrites, once, "one stale transition announces only once across invalidation and reconciliation");
     assert.equal(calls.length, beforeStale, "passive recovery sends no request or automatic rebase");
     assert.equal(await content.showSelected(), false);
@@ -578,13 +592,13 @@ console.log("Fit feedback slots are unique, labelled, decorative and placed afte
     await choose("a");
     node("image-search").focus();
     state.etag = "remote";
-    content.render();
+    renderContent(content);
     assert.equal(doc.activeElement, node("image-search"), "remote staleness does not touch another control's focus");
     content.discard(); state.etag = "e";
     content.previewScene({ name: "Amber", content: { type: "color" } }, "e");
     node("show-image").focus();
     state.etag = "remote";
-    content.render();
+    renderContent(content);
     assert.equal(node("image-message").textContent, staleSaved);
     assert.equal(doc.activeElement, node("image-message"), "saved previews focus the safe re-preview instruction");
     content.discard(); state.etag = "e";
@@ -593,7 +607,7 @@ console.log("Fit feedback slots are unique, labelled, decorative and placed afte
     await content.refresh();
     const retainedError = node("library-status").textContent;
     state.etag = "remote";
-    content.render();
+    renderContent(content);
     assert.equal(node("library-status").textContent, retainedError, "staleness never overwrites a retained inventory error");
     assert.equal(node("image-message").textContent, staleImage, "a library error cannot suppress stale preview guidance");
     inventoryError = false;
@@ -614,7 +628,7 @@ console.log("Fit feedback slots are unique, labelled, decorative and placed afte
     assert.notEqual(doc.activeElement, node("image-search"), "a failed Show never falls back to the search field");
     assert.equal(node("image-rebuild").disabled, false);
     const originalGuard = calls.at(-1).options.ifMatch;
-    state.etagState = "current"; content.render();
+    state.etagState = "current"; renderContent(content);
     assert.equal(node("show-image").disabled, true, "Refresh alone cannot authorize the original preview against a new wall");
     const beforeBlocked = calls.length;
     assert.equal(await content.showSelected(), false, "the public action also refuses a preview requiring rebuild");
@@ -665,11 +679,11 @@ console.log("Fit feedback slots are unique, labelled, decorative and placed afte
     node("show-image").focus();
     pending = content.showSelected();
     await new Promise(resolve => setImmediate(resolve));
-    state.tabName = "system";
+    state.mode = "test";
     rejectShow(new Error("Connection lost"));
     await pending;
     assert.equal(doc.activeElement, doc.body, "intervening task navigation prevents late Show focus restoration");
-    state.tabName = "content";
+    state.mode = "content";
 
     state.etag = "e"; state.etagState = "current";
     content.discard();
@@ -708,9 +722,9 @@ console.log("Fit feedback slots are unique, labelled, decorative and placed afte
 {
     const html = fs.readFileSync(require.resolve("../frontend/controller/physical.html"), "utf8");
     const status = html.slice(html.indexOf('id="wall-status"'), html.indexOf("</div>", html.indexOf('id="wall-status"')));
-    assert.ok(status.includes('id="wall-power-caution"'), "the wall status group exposes a short wake-lock caution");
+    assert.ok(!status.includes('id="wall-power-caution"'), "wall status does not infer whether tablet screens may sleep");
     const details = html.slice(html.indexOf('id="stage-technical"'));
-    assert.ok(details.includes('id="wall-power-summary"'), "the complete fleet evidence is reachable in Details");
+    assert.ok(!details.includes('id="wall-power-summary"'), "wake-lock reports stay in the Tablet panel");
     assert.match(html, /id="image-message"[^>]*tabindex="-1"/, "the Images message is programmatically focusable");
     for (const [input, hint, message] of [["layout-name", "layout-name-rule", "layout-msg"],
         ["scene-name", "scene-name-rule", "scene-message"]]) {
@@ -720,4 +734,4 @@ console.log("Fit feedback slots are unique, labelled, decorative and placed afte
             "the " + input + " rule sentence is stated once as a hint");
     }
 }
-console.log("Wave-one HTML adds the power summary, both name-rule hints and a focusable Images message");
+console.log("HTML keeps wake reports out of wall details, both name-rule hints and a focusable Images message");

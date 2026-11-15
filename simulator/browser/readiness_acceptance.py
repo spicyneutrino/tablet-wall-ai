@@ -270,25 +270,19 @@ def shot(page, name: str, full: bool = False) -> None:
     print("SHOT", name, flush=True)
 
 
-TAB_IDS = {
-    "Images": "tab-content",
-    "Arrange": "tab-show",
-    "Tablets": "tab-tablet",
-    "Saved": "tab-saved",
-    "Settings": "tab-system",
-}
-
-
 def tab(page, name: str) -> None:
-    page.locator("#" + TAB_IDS[name]).click()
+    """Open the tool that owns a legacy task name, as an operator does in the persistent-wall shell."""
+    from simulator.browser import _workspace_shell as shell
+    if name == "Settings" and page.locator("#device-sheet").is_visible() and not page.locator("#server-drawer").is_visible():
+        return  # measurement lives in the selected tablet's panel
+    shell.task(page, {"Images": "Content", "Arrange": "Arrange", "Tablets": "Tablets",
+                      "Saved": "Saved arrangements", "Settings": "Server"}[name])
 
 
 def select_tablet(page, device_id: str) -> None:
+    from simulator.browser import _workspace_shell as shell
     tab(page, "Tablets")
-    page.locator(f".dev-pick[data-device-id='{device_id}']").click()
-    wait_until(lambda: page.locator(f".dev-pick[data-device-id='{device_id}']")
-               .get_attribute("aria-pressed") == "true",
-               "click did not select the requested tablet")
+    shell.pick(page, device_id)
 
 
 def make_images() -> None:

@@ -25,6 +25,7 @@ window.OperatorSync = {
                 state.rosterCheckedAt = new Date().toISOString();
                 status(socket && socket.readyState === WebSocket.OPEN ? "Live operator updates connected. Slow reconciliation is active." : "Socket unavailable. Showing reconciled status; live updates may be delayed.");
             } catch (error) {
+                state.rosterUnreachable = error.status === 0;
                 state.rosterError = error.message;
                 status("Status stale. " + error.message + " Retry Refresh."); renderAll();
             } finally { fetching = false; if (queued && !stopped && !state.busy) { queued = false; reconcile(); } }
