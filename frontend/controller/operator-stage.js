@@ -111,7 +111,7 @@
             + "Escape cancels a drag. Alt pauses snapping while dragging with a mouse or pen; on touch use the snap checkbox. "
             + "Numeric position, size and bezel fields are available in Arrange. Fit and 2x change the view only. " + powerHelp;
     }
-    const LABEL_MAX = 16, LABEL_MIN = 10;
+    const LABEL_MAX = 16;
     function fitLabels(svg) {
         const labels = [...svg.querySelectorAll(".operator-slot-label")].map(label => {
             const matrix = label.getScreenCTM();
@@ -121,16 +121,14 @@
             const fit = Math.min(LABEL_MAX, height - 8, (width - 12) / (Math.min(4, label.dataset.label.length) * 0.6));
             return { label, scale, width, fit };
         }).filter(Boolean);
-        const wallSize = Math.min(LABEL_MAX, ...labels.map(item => item.fit).filter(fit => fit >= LABEL_MIN));
-        labels.forEach(({ label, scale, width, fit }) => {
+        const numberedWall = labels.some(({ label, width }) => label.dataset.label.length * LABEL_MAX * 0.6 > width - 12);
+        const wallSize = Math.min(LABEL_MAX, ...labels.map(item => item.fit));
+        labels.forEach(({ label, scale }) => {
             const text = label.dataset.label;
-            const size = Math.min(wallSize, fit);
-            label.style.display = fit < LABEL_MIN ? "none" : "";
-            if (fit < LABEL_MIN) return;
-            const room = Math.max(1, Math.floor((width - 12) / (size * 0.6)));
+            const size = Math.max(1, wallSize);
             const numbered = /^Tablet (\d+)\b/.exec(text);
-            label.textContent = text.length > room && numbered && room <= numbered[0].length ? numbered[1]
-                : text.length > room ? text.slice(0, Math.max(1, room - 1)) + "…" : text;
+            label.style.display = "";
+            label.textContent = numberedWall && numbered ? numbered[1] : text;
             label.setAttribute("font-size", size / scale);
             label.setAttribute("stroke-width", 0);
             label.setAttribute("x", Number(label.dataset.x) + 6 / scale);
@@ -163,7 +161,7 @@
             label.textContent = text;
             const size = Math.min(statusSize, fit);
             const room = Math.max(1, Math.floor((width - 12) / (Math.max(1, size) * 0.6)));
-            const fits = size >= 9 && text.length <= room;
+            const fits = offline || size >= 9 && text.length <= room;
             label.style.display = fits ? "" : "none";
             if (!fits) return;
             label.setAttribute("font-size", size / scale);
@@ -244,7 +242,8 @@
         if (transform && content.url && content.available !== false && content.availability !== "unavailable") visible.append(image(1));
         const estimates = [], upscaleFactors = [];
         list.sort((a, z) => compareIds ? compareIds(a.id, z.id) : Number(a.id === selectedId) - Number(z.id === selectedId)).forEach(panel => {
-            const status = preview ? { status: "preview", text: "Local preview · not tablet output" } : statusFor(panel.id);
+            const reported = statusFor(panel.id);
+            const status = preview && reported.status !== "offline" ? { status: "preview", text: "Local preview · not tablet output" } : reported;
             const power = powerFor ? powerFor(panel.id) : null;
             const group = node("g", { class: "slot operator-slot", role: "button", tabindex: 0,
                 "data-device-id": panel.id, "data-status": status.status, "data-preview": String(preview), "aria-pressed": String(panel.id === selectedId),
@@ -253,6 +252,7 @@
                 "aria-label": labelFor(panel.id) + ", " + status.text + (power ? ", " + power.label : "") + (panel.missing ? ", pinned profile missing" : "") });
             const outline = node("g", { transform: rotation(panel) });
             if (!panel.missing) {
+                if (panel.id === selectedId) outline.append(rect(panel.body, { class: "operator-selection-halo", fill: "none", stroke: "#000", "stroke-width": 8 / scale }));
                 outline.append(rect(panel.body, { class: "operator-body-outline", fill: "transparent", "stroke-width": (panel.id === selectedId ? 3 : 1.5) / scale }));
                 outline.append(rect(panel.active, { class: "operator-active-outline", fill: "none", "stroke-width": 0.75 / scale }));
                 const estimate = resolution(panel, transform, content, runtime && runtime.devices && runtime.devices[panel.id]);

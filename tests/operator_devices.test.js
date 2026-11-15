@@ -76,11 +76,13 @@ async function run() {
     assert.equal((node("tablet-label-save").dataset.ready === "true"), false, "discard restores the clean treatment");
     assert.equal(node("tablet-identify").disabled, false);
     assert.equal(node("tablet-recovery-actions").open, false, "healthy current reports collapse recovery");
+    assert.equal(node("tablet-recovery-title").textContent, "Details");
     node("tablet-recovery-actions").open = true; devices.render();
     assert.equal(node("tablet-recovery-actions").open, true, "polls preserve operator disclosure choice");
     state.roster.a.online = false;
     evidence = { status: "offline", text: "Offline", showing: false }; devices.render();
     assert.equal(node("tablet-recovery-actions").hidden, true, "offline recovery does not offer an empty disclosure");
+    assert.equal(node("tablet-evidence").hidden, true, "offline facts are not repeated above guidance");
     assert.equal(node("tablet-recovery").hidden, false, "offline physical recovery guidance remains visible");
     assert.match(node("tablet-recovery").textContent, /check power/);
     state.roster.a.online = true;
@@ -157,22 +159,18 @@ async function run() {
     assert.match(node("tablet-recovery").textContent, /Tablet is offline.*last known report/);
     assert.doesNotMatch(node("tablet-recovery").textContent, /browser reports the screen wake lock held/);
     assert.equal(node("tablet-recovery").children.length, 3, "offline recovery also has three readable parts");
-    const stamp = "Last checked " + new Date("2026-11-01T12:00:00Z").toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }) + ".";
     const offlineSentences = [
-        "On the tablet, check power, keep its screen awake, join the wall network and reopen the tablet page in its existing browser.",
-        "The server cannot wake a powered-off or sleeping tablet.",
         "Tablet is offline; this is the last known report.",
-        stamp,
-        "Last known browser wake-lock state: held.",
-        "Screen wake locks are browser reports, not proof the operating system will keep the screen on.",
-        "Check Auto-Lock, charging and kiosk settings.",
-        "An insecure origin cannot take a wake lock, so open the wall over its trusted HTTPS origin.",
-        "The operator cannot wake a sleeping tablet remotely."
+        "On the tablet, check power, keep its screen awake, join the wall network and reopen the tablet page in its existing browser.",
+        "Check Auto-Lock, charging, kiosk settings and the trusted HTTPS origin.",
+        "The server cannot wake a sleeping tablet.",
+        "Wake lock is not proof of screen or paint.",
+        "Insecure origins cannot take a wake lock."
     ];
     assert.deepEqual(node("tablet-recovery").children.map(block => block.children[0].textContent),
         ["What the server last knew", "At the tablet", "What the server cannot do"]);
     assert.deepEqual(sentences(node("tablet-recovery").children.flatMap(block => block.children.slice(1)).map(p => p.textContent).join(" ")), offlineSentences.slice().sort(),
-        "splitting the stale offline guidance loses no sentence and rewords none");
+        "offline guidance retains the concise physical actions and server limits");
     state.roster.a.online = true;
 
     delete state.roster.a.wake_lock;
