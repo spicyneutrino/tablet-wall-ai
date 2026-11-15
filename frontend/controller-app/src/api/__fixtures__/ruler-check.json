@@ -1,0 +1,101 @@
+{
+  "schema": 1,
+  "axis": "x",
+  "status": "disagreement",
+  "derived": {
+    "mm_per_css": 0.2,
+    "mm_per_css_uncertainty": 0.001,
+    "relative_error": 0.005,
+    "span_quality": "partial-span",
+    "quality_label": "Partial span — 1.54x extrapolation",
+    "short_span": false,
+    "extrapolation_factor": 1.536,
+    "span_count": 1
+  },
+  "inputs": {
+    "span_px": 500,
+    "span_mm": 100,
+    "span_error_mm": 0.5,
+    "span_count": 1,
+    "axis": "x",
+    "usable_width_px": 768,
+    "usable_height_px": 1024,
+    "supplied_width_mm": 150,
+    "supplied_height_mm": 200
+  },
+  "implied_dimensions_mm": {
+    "width": 153.60000000000002,
+    "height": 204.8,
+    "measured_axis": "x",
+    "measured": 153.60000000000002,
+    "assumes_uniform_scale": true,
+    "note": "The same mm/CSS value is applied to the unmeasured axis; that is an assumption, not a second measurement."
+  },
+  "extrapolated_uncertainty": {
+    "width_mm": 0.7680000000000001,
+    "height_mm": 1.024,
+    "measured_mm": 0.7680000000000001,
+    "mm_per_css": 0.001,
+    "relative": 0.005,
+    "formula": "span_error_mm / span_mm × implied dimension"
+  },
+  "comparison": {
+    "valid": true,
+    "reason_code": null,
+    "reason": null,
+    "axis": "x",
+    "implied_mm": 153.60000000000002,
+    "supplied_mm": 150,
+    "delta_mm": 3.6000000000000227,
+    "delta_percent": 2.4000000000000155,
+    "tolerance_mm": 0.7680000000000001,
+    "disagreement": true
+  },
+  "decision": {
+    "required": true,
+    "code": "scale_disagreement",
+    "message": "The ruler implies 153.60 mm for the x dimension; the supplied dimension is 150.00 mm. Both are shown. Choose which value to keep or re-measure; nothing has been changed.",
+    "choices": [
+      {
+        "id": "keep_supplied",
+        "label": "Keep the supplied dimension",
+        "consequence": "Keep 150.00 mm for the x dimension. The ruler scale is not saved, so the existing mapping remains unchanged."
+      },
+      {
+        "id": "use_ruler",
+        "label": "Save the ruler scale",
+        "consequence": "Save a new calibration revision with 0.2 mm/CSS and an implied 153.60 mm x extent. Existing revisions and layouts that pin them stay unchanged."
+      },
+      {
+        "id": "remeasure",
+        "label": "Measure again",
+        "consequence": "Repeat the measurement with a longer span to reduce extrapolation, then compare both values again."
+      }
+    ],
+    "changes_nothing": true,
+    "saved": false
+  },
+  "warnings": [],
+  "actionable_warning": {
+    "code": "scale_disagreement",
+    "severity": "warning",
+    "message": "The ruler implies 153.60 mm for the x dimension; the supplied dimension is 150.00 mm. Both are shown. Choose which value to keep or re-measure; nothing has been changed.",
+    "action": "Choose keep_supplied, use_ruler, or remeasure; this helper never changes the supplied value."
+  },
+  "assumptions": [
+    "The ruler span and error are explicit inputs; no model substitution occurred.",
+    "Implied dimensions use the supplied usable viewport CSS size.",
+    "The unmeasured axis uses the same scale as an explicit assumption.",
+    "This arithmetic does not establish a 2 mm accuracy target."
+  ],
+  "accuracy_claimed": false,
+  "note": "Prospective calculation only. No profile, calibration revision, saved layout, or live mapping was written.",
+  "profile": {
+    "device_id": "00000000-0000-4000-8000-000000000001",
+    "revision": 1,
+    "active_width_mm": 150,
+    "active_height_mm": 200,
+    "quarter_turn": 0,
+    "native_axis": "width"
+  }
+}

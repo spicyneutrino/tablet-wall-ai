@@ -1,0 +1,1880 @@
+{
+  "schema": 2,
+  "operator_state_version": 1,
+  "revision": 3,
+  "generation": "1ce83911",
+  "etag": "3e03084eaca1d9589d9835fb1160ca79",
+  "layout": {
+    "kind": "physical",
+    "bounds": {
+      "x": 0,
+      "y": 0,
+      "width": 340,
+      "height": 440
+    },
+    "slots": {
+      "00000000-0000-4000-8000-000000000001": {
+        "center_x_mm": 85,
+        "center_y_mm": 110,
+        "mount_angle": 0,
+        "nudge_x_mm": 0,
+        "nudge_y_mm": 0,
+        "profile_revision": 1,
+        "calibration_revision": 1
+      },
+      "00000000-0000-4000-8000-000000000002": {
+        "center_x_mm": 255,
+        "center_y_mm": 110,
+        "mount_angle": 0,
+        "nudge_x_mm": 0,
+        "nudge_y_mm": 0,
+        "profile_revision": 1,
+        "calibration_revision": 1
+      },
+      "00000000-0000-4000-8000-000000000003": {
+        "center_x_mm": 85,
+        "center_y_mm": 330,
+        "mount_angle": 0,
+        "nudge_x_mm": 0,
+        "nudge_y_mm": 0,
+        "profile_revision": 1,
+        "calibration_revision": 1
+      },
+      "00000000-0000-4000-8000-000000000004": {
+        "center_x_mm": 255,
+        "center_y_mm": 330,
+        "mount_angle": 0,
+        "nudge_x_mm": 0,
+        "nudge_y_mm": 0,
+        "profile_revision": 1,
+        "calibration_revision": 1
+      }
+    },
+    "sizing": {
+      "mode": "fixed",
+      "padding": 0
+    }
+  },
+  "scene": {
+    "content": {
+      "type": "color"
+    },
+    "layout": "active"
+  },
+  "displays": [
+    {
+      "active_width_mm": 150,
+      "active_height_mm": 200,
+      "bezels": {
+        "left": 10,
+        "right": 10,
+        "top": 10,
+        "bottom": 10
+      },
+      "panel_pixels": {
+        "width": 768,
+        "height": 1024
+      },
+      "label": "Contract tablet",
+      "provenance": "manual",
+      "device_id": "00000000-0000-4000-8000-000000000001",
+      "revision": 1,
+      "created_at": "2026-11-15T22:16:47.679920+00:00"
+    },
+    {
+      "active_width_mm": 150,
+      "active_height_mm": 200,
+      "bezels": {
+        "left": 10,
+        "right": 10,
+        "top": 10,
+        "bottom": 10
+      },
+      "panel_pixels": {
+        "width": 768,
+        "height": 1024
+      },
+      "label": "Contract tablet",
+      "provenance": "manual",
+      "device_id": "00000000-0000-4000-8000-000000000002",
+      "revision": 1,
+      "created_at": "2026-11-15T22:16:47.738505+00:00"
+    },
+    {
+      "active_width_mm": 150,
+      "active_height_mm": 200,
+      "bezels": {
+        "left": 10,
+        "right": 10,
+        "top": 10,
+        "bottom": 10
+      },
+      "panel_pixels": {
+        "width": 768,
+        "height": 1024
+      },
+      "label": "Contract tablet",
+      "provenance": "manual",
+      "device_id": "00000000-0000-4000-8000-000000000003",
+      "revision": 1,
+      "created_at": "2026-11-15T22:16:47.789204+00:00"
+    },
+    {
+      "active_width_mm": 150,
+      "active_height_mm": 200,
+      "bezels": {
+        "left": 10,
+        "right": 10,
+        "top": 10,
+        "bottom": 10
+      },
+      "panel_pixels": {
+        "width": 768,
+        "height": 1024
+      },
+      "label": "Contract tablet",
+      "provenance": "manual",
+      "device_id": "00000000-0000-4000-8000-000000000004",
+      "revision": 1,
+      "created_at": "2026-11-15T22:16:47.855483+00:00"
+    }
+  ],
+  "calibrations": [
+    {
+      "profile_revision": 1,
+      "viewport_width": 768,
+      "viewport_height": 1024,
+      "dpr": 1,
+      "orientation": 0,
+      "mode": "tab",
+      "quarter_turn": 0,
+      "panel_offset_mm": [
+        0,
+        0
+      ],
+      "mm_per_css": [
+        0.1953125,
+        0.1953125
+      ],
+      "anchor_edge": "top-left",
+      "uncertainty_mm": 0.5,
+      "method": "manual",
+      "device_id": "00000000-0000-4000-8000-000000000001",
+      "revision": 1,
+      "created_at": "2026-11-15T22:16:47.713893+00:00"
+    },
+    {
+      "profile_revision": 1,
+      "viewport_width": 768,
+      "viewport_height": 1024,
+      "dpr": 1,
+      "orientation": 0,
+      "mode": "tab",
+      "quarter_turn": 0,
+      "panel_offset_mm": [
+        0,
+        0
+      ],
+      "mm_per_css": [
+        0.1953125,
+        0.1953125
+      ],
+      "anchor_edge": "top-left",
+      "uncertainty_mm": 0.5,
+      "method": "manual",
+      "device_id": "00000000-0000-4000-8000-000000000002",
+      "revision": 1,
+      "created_at": "2026-11-15T22:16:47.767086+00:00"
+    },
+    {
+      "profile_revision": 1,
+      "viewport_width": 768,
+      "viewport_height": 1024,
+      "dpr": 1,
+      "orientation": 0,
+      "mode": "tab",
+      "quarter_turn": 0,
+      "panel_offset_mm": [
+        0,
+        0
+      ],
+      "mm_per_css": [
+        0.1953125,
+        0.1953125
+      ],
+      "anchor_edge": "top-left",
+      "uncertainty_mm": 0.5,
+      "method": "manual",
+      "device_id": "00000000-0000-4000-8000-000000000003",
+      "revision": 1,
+      "created_at": "2026-11-15T22:16:47.822034+00:00"
+    },
+    {
+      "profile_revision": 1,
+      "viewport_width": 768,
+      "viewport_height": 1024,
+      "dpr": 1,
+      "orientation": 0,
+      "mode": "tab",
+      "quarter_turn": 0,
+      "panel_offset_mm": [
+        0,
+        0
+      ],
+      "mm_per_css": [
+        0.1953125,
+        0.1953125
+      ],
+      "anchor_edge": "top-left",
+      "uncertainty_mm": 0.5,
+      "method": "manual",
+      "device_id": "00000000-0000-4000-8000-000000000004",
+      "revision": 1,
+      "created_at": "2026-11-15T22:16:47.887755+00:00"
+    }
+  ],
+  "referenced_displays": [
+    {
+      "active_width_mm": 150,
+      "active_height_mm": 200,
+      "bezels": {
+        "left": 10,
+        "right": 10,
+        "top": 10,
+        "bottom": 10
+      },
+      "panel_pixels": {
+        "width": 768,
+        "height": 1024
+      },
+      "label": "Contract tablet",
+      "provenance": "manual",
+      "device_id": "00000000-0000-4000-8000-000000000001",
+      "revision": 1,
+      "created_at": "2026-11-15T22:16:47.679920+00:00"
+    },
+    {
+      "active_width_mm": 150,
+      "active_height_mm": 200,
+      "bezels": {
+        "left": 10,
+        "right": 10,
+        "top": 10,
+        "bottom": 10
+      },
+      "panel_pixels": {
+        "width": 768,
+        "height": 1024
+      },
+      "label": "Contract tablet",
+      "provenance": "manual",
+      "device_id": "00000000-0000-4000-8000-000000000002",
+      "revision": 1,
+      "created_at": "2026-11-15T22:16:47.738505+00:00"
+    },
+    {
+      "active_width_mm": 150,
+      "active_height_mm": 200,
+      "bezels": {
+        "left": 10,
+        "right": 10,
+        "top": 10,
+        "bottom": 10
+      },
+      "panel_pixels": {
+        "width": 768,
+        "height": 1024
+      },
+      "label": "Contract tablet",
+      "provenance": "manual",
+      "device_id": "00000000-0000-4000-8000-000000000003",
+      "revision": 1,
+      "created_at": "2026-11-15T22:16:47.789204+00:00"
+    },
+    {
+      "active_width_mm": 150,
+      "active_height_mm": 200,
+      "bezels": {
+        "left": 10,
+        "right": 10,
+        "top": 10,
+        "bottom": 10
+      },
+      "panel_pixels": {
+        "width": 768,
+        "height": 1024
+      },
+      "label": "Contract tablet",
+      "provenance": "manual",
+      "device_id": "00000000-0000-4000-8000-000000000004",
+      "revision": 1,
+      "created_at": "2026-11-15T22:16:47.855483+00:00"
+    }
+  ],
+  "referenced_calibrations": [
+    {
+      "profile_revision": 1,
+      "viewport_width": 768,
+      "viewport_height": 1024,
+      "dpr": 1,
+      "orientation": 0,
+      "mode": "tab",
+      "quarter_turn": 0,
+      "panel_offset_mm": [
+        0,
+        0
+      ],
+      "mm_per_css": [
+        0.1953125,
+        0.1953125
+      ],
+      "anchor_edge": "top-left",
+      "uncertainty_mm": 0.5,
+      "method": "manual",
+      "device_id": "00000000-0000-4000-8000-000000000001",
+      "revision": 1,
+      "created_at": "2026-11-15T22:16:47.713893+00:00"
+    },
+    {
+      "profile_revision": 1,
+      "viewport_width": 768,
+      "viewport_height": 1024,
+      "dpr": 1,
+      "orientation": 0,
+      "mode": "tab",
+      "quarter_turn": 0,
+      "panel_offset_mm": [
+        0,
+        0
+      ],
+      "mm_per_css": [
+        0.1953125,
+        0.1953125
+      ],
+      "anchor_edge": "top-left",
+      "uncertainty_mm": 0.5,
+      "method": "manual",
+      "device_id": "00000000-0000-4000-8000-000000000002",
+      "revision": 1,
+      "created_at": "2026-11-15T22:16:47.767086+00:00"
+    },
+    {
+      "profile_revision": 1,
+      "viewport_width": 768,
+      "viewport_height": 1024,
+      "dpr": 1,
+      "orientation": 0,
+      "mode": "tab",
+      "quarter_turn": 0,
+      "panel_offset_mm": [
+        0,
+        0
+      ],
+      "mm_per_css": [
+        0.1953125,
+        0.1953125
+      ],
+      "anchor_edge": "top-left",
+      "uncertainty_mm": 0.5,
+      "method": "manual",
+      "device_id": "00000000-0000-4000-8000-000000000003",
+      "revision": 1,
+      "created_at": "2026-11-15T22:16:47.822034+00:00"
+    },
+    {
+      "profile_revision": 1,
+      "viewport_width": 768,
+      "viewport_height": 1024,
+      "dpr": 1,
+      "orientation": 0,
+      "mode": "tab",
+      "quarter_turn": 0,
+      "panel_offset_mm": [
+        0,
+        0
+      ],
+      "mm_per_css": [
+        0.1953125,
+        0.1953125
+      ],
+      "anchor_edge": "top-left",
+      "uncertainty_mm": 0.5,
+      "method": "manual",
+      "device_id": "00000000-0000-4000-8000-000000000004",
+      "revision": 1,
+      "created_at": "2026-11-15T22:16:47.887755+00:00"
+    }
+  ],
+  "tablet_models": {
+    "ipad-air-2": {
+      "label": "iPad Air 2",
+      "active_width_mm": 146.75,
+      "active_height_mm": 196,
+      "bezels": {
+        "left": 10.52,
+        "right": 10.52,
+        "top": 21.1,
+        "bottom": 21.1
+      },
+      "screen_width": 768,
+      "screen_height": 1024,
+      "portrait_angle": 0,
+      "dpr": 2,
+      "platform": "ios",
+      "mm_per_css": [
+        0.187725,
+        0.187725
+      ],
+      "uncertainty_mm": 3
+    },
+    "google-pixel-c": {
+      "label": "Google Pixel C",
+      "active_width_mm": 147,
+      "active_height_mm": 210,
+      "bezels": {
+        "left": 15.2,
+        "right": 15.2,
+        "top": 15.2,
+        "bottom": 15.2
+      },
+      "screen_width": 900,
+      "screen_height": 1280,
+      "portrait_angle": 270,
+      "dpr": 2,
+      "platform": "android",
+      "mm_per_css": [
+        0.16195,
+        0.16195
+      ],
+      "uncertainty_mm": 3
+    }
+  },
+  "tablet_assignments": {
+    "00000000-0000-4000-8000-000000000001": {
+      "mode": "manual",
+      "model_id": null
+    },
+    "00000000-0000-4000-8000-000000000002": {
+      "mode": "manual",
+      "model_id": null
+    },
+    "00000000-0000-4000-8000-000000000003": {
+      "mode": "manual",
+      "model_id": null
+    },
+    "00000000-0000-4000-8000-000000000004": {
+      "mode": "manual",
+      "model_id": null
+    }
+  },
+  "device_labels": {
+    "00000000-0000-4000-8000-000000000001": null,
+    "00000000-0000-4000-8000-000000000002": null,
+    "00000000-0000-4000-8000-000000000003": null,
+    "00000000-0000-4000-8000-000000000004": null
+  },
+  "snapshots": {
+    "layouts": [
+      {
+        "name": "Before physical 31ee4d8486f1",
+        "etag": "b8eec867f7c675d8f3e2fb44e59ad04a",
+        "kind": "logical",
+        "valid": true
+      },
+      {
+        "name": "Contract logical",
+        "etag": "b8eec867f7c675d8f3e2fb44e59ad04a",
+        "kind": "logical",
+        "valid": true
+      }
+    ],
+    "scenes": []
+  },
+  "capabilities": {
+    "layout_kinds": [
+      "logical",
+      "physical"
+    ],
+    "fits": [
+      "cover",
+      "contain"
+    ],
+    "render_ack": true,
+    "identify": true,
+    "image_contain": true,
+    "grid": true,
+    "test_patterns": [
+      "grid",
+      "black"
+    ],
+    "uploads": true,
+    "diagnostics": true,
+    "login_supported": false
+  },
+  "runtime": {
+    "devices": {
+      "00000000-0000-4000-8000-000000000001": {
+        "online": true,
+        "protocol": 3,
+        "caps": [
+          "calibration",
+          "image",
+          "physical",
+          "render_ack",
+          "identify",
+          "image_contain",
+          "video"
+        ],
+        "number": 1,
+        "label": null,
+        "last_seen": "2026-11-15T22:16:47.897628+00:00",
+        "viewport": {
+          "width": 768,
+          "height": 1024,
+          "dpr": 1,
+          "orientation": 0,
+          "mode": "tab",
+          "visual_scale": 1
+        },
+        "mapping": {
+          "revision": "d4bcee2fea0c7737c2cff8e58d0aec9a",
+          "state": "ready",
+          "reason": null,
+          "viewport": {
+            "width": 768,
+            "height": 1024,
+            "dpr": 1,
+            "orientation": 0,
+            "mode": "tab",
+            "visual_scale": 1
+          },
+          "profile_revision": 1,
+          "calibration_revision": 1,
+          "health": {
+            "schema": 1,
+            "device_id": "00000000-0000-4000-8000-000000000001",
+            "status": "ready",
+            "status_reason": "pinned mapping is usable",
+            "status_label": "Ready — measured ±0.5 mm (usable viewport, not a confirmed full panel)",
+            "ok": false,
+            "provenance": {
+              "kind": "manual",
+              "manual": true,
+              "model": false,
+              "unknown": false,
+              "label": "Measured",
+              "description": "Ready — measured ±0.5 mm (usable viewport, not a confirmed full panel)",
+              "method": "manual",
+              "profile_provenance": "manual",
+              "approximate": false,
+              "confirmed": true,
+              "confirmation_required": false,
+              "accuracy_claimed": false,
+              "model_id": null,
+              "model_label": null,
+              "manual_value": {
+                "mm_per_css": [
+                  0.1953125,
+                  0.1953125
+                ],
+                "uncertainty_mm": 0.5,
+                "method": "manual"
+              },
+              "model_snapshot": {
+                "available": false,
+                "source": null,
+                "pinned_assignment": false,
+                "confirmed": false,
+                "mode": null
+              },
+              "model_signature": null
+            },
+            "approximate": false,
+            "confirmed": true,
+            "accuracy_claimed": false,
+            "uncertainty_mm": 0.5,
+            "uncertainty": {
+              "mm": 0.5,
+              "source": "pinned_calibration",
+              "calibration_mm": 0.5,
+              "model_mm": null,
+              "agreement": null,
+              "note": "The supplied uncertainty is preserved. It is not an accuracy claim."
+            },
+            "revisions": {
+              "profile_revision": 1,
+              "calibration_revision": 1,
+              "calibration_pins_profile_revision": 1,
+              "pinned_pair_agrees": true,
+              "assignment": {
+                "present": true,
+                "profile_revision": null,
+                "calibration_revision": null,
+                "pinned_match": false,
+                "model_id": null,
+                "mode": null,
+                "confirmed": false
+              },
+              "latest_substitution": false,
+              "source": "pinned slot revisions"
+            },
+            "scale": {
+              "mm_per_css": [
+                0.1953125,
+                0.1953125
+              ],
+              "source": "pinned_calibration",
+              "usable": true,
+              "approximate": false,
+              "confirmed": true,
+              "uncertainty_mm": 0.5,
+              "quarter_turn": 0,
+              "calibration_mm_per_css": [
+                0.1953125,
+                0.1953125
+              ],
+              "model_mm_per_css": null,
+              "note": "Manual scale is measured; its supplied uncertainty is preserved, not averaged."
+            },
+            "scale_unavailable_reason": null,
+            "predicted_full_panel": {
+              "valid": false,
+              "basis": null,
+              "reason_code": "tab_viewport",
+              "reason": "The pinned calibration uses a tab or standalone usable viewport, not a full panel. Total browser/PWA insets are not supplied, so extrapolating to the full panel is not valid.",
+              "mm": null,
+              "source": "pinned calibration usable viewport",
+              "usable_for_mapping": false,
+              "estimate_only": false,
+              "orientation_swapped": false
+            },
+            "comparison": {
+              "valid": false,
+              "reason_code": "tab_viewport",
+              "reason": "The pinned calibration uses a tab or standalone usable viewport, not a full panel. Total browser/PWA insets are not supplied, so extrapolating to the full panel is not valid.",
+              "basis": null,
+              "lit_dimensions_mm": [
+                150,
+                200
+              ],
+              "predicted_mm": null,
+              "axes": [],
+              "discrepancy": null,
+              "requires_operator_decision": false,
+              "message": "The pinned calibration uses a tab or standalone usable viewport, not a full panel. Total browser/PWA insets are not supplied, so extrapolating to the full panel is not valid.",
+              "action": "Use a fullscreen measurement or compare the model signature separately; do not call the usable viewport a full panel.",
+              "orientation_swapped": false
+            },
+            "viewport": {
+              "supplied": true,
+              "live": {
+                "width": 768,
+                "height": 1024,
+                "dpr": 1,
+                "orientation": 0,
+                "mode": "tab",
+                "visual_scale": 1,
+                "visual_scale_supplied": true
+              },
+              "pinned": {
+                "width": 768,
+                "height": 1024,
+                "dpr": 1,
+                "orientation": 0,
+                "mode": "tab",
+                "quarter_turn": 0,
+                "panel_offset_mm": [
+                  0,
+                  0
+                ],
+                "mm_per_css": [
+                  0.1953125,
+                  0.1953125
+                ]
+              },
+              "mode": {
+                "pinned": "tab",
+                "live": "tab",
+                "matches": true,
+                "adapted": false
+              },
+              "orientation": {
+                "pinned": 0,
+                "live": 0,
+                "matches": true,
+                "quarter_turn": 0
+              },
+              "dpr": {
+                "pinned": 1,
+                "live": 1,
+                "matches": true
+              },
+              "size": {
+                "pinned": [
+                  768,
+                  1024
+                ],
+                "live": [
+                  768,
+                  1024
+                ],
+                "matches": true
+              },
+              "zoom": {
+                "visual_scale": 1,
+                "matches": true
+              },
+              "full_panel": false,
+              "usable_extent_mm": [
+                150,
+                200
+              ],
+              "insets": {
+                "assumed": true,
+                "source": "pinned calibration panel_offset_mm; full-panel coverage is not established",
+                "left_mm": 0,
+                "top_mm": 0,
+                "right_mm": null,
+                "bottom_mm": null,
+                "panel_offset_mm": [
+                  0,
+                  0
+                ]
+              },
+              "fences": []
+            },
+            "warnings": [
+              {
+                "code": "full_panel_comparison_unavailable",
+                "severity": "warning",
+                "message": "The manual calibration used a tab or standalone viewport. The usable viewport is not the full panel, so its scale cannot be extrapolated to the complete panel.",
+                "action": "Use a fullscreen measurement for a full-panel comparison, or measure the full lit span explicitly."
+              }
+            ],
+            "actionable_warning": {
+              "code": "full_panel_comparison_unavailable",
+              "severity": "warning",
+              "message": "The manual calibration used a tab or standalone viewport. The usable viewport is not the full panel, so its scale cannot be extrapolated to the complete panel.",
+              "action": "Use a fullscreen measurement for a full-panel comparison, or measure the full lit span explicitly."
+            },
+            "measurements": {
+              "profile": {
+                "device_id": "00000000-0000-4000-8000-000000000001",
+                "revision": 1,
+                "active_width_mm": 150,
+                "active_height_mm": 200,
+                "bezels": {
+                  "left": 10,
+                  "top": 10,
+                  "right": 10,
+                  "bottom": 10
+                },
+                "panel_pixels": {
+                  "width": 768,
+                  "height": 1024
+                },
+                "label": "Contract tablet",
+                "provenance": "manual",
+                "created_at": "2026-11-15T22:16:47.679920+00:00"
+              },
+              "calibration": {
+                "device_id": "00000000-0000-4000-8000-000000000001",
+                "revision": 1,
+                "profile_revision": 1,
+                "viewport_width": 768,
+                "viewport_height": 1024,
+                "dpr": 1,
+                "orientation": 0,
+                "mode": "tab",
+                "quarter_turn": 0,
+                "panel_offset_mm": [
+                  0,
+                  0
+                ],
+                "mm_per_css": [
+                  0.1953125,
+                  0.1953125
+                ],
+                "anchor_edge": "top-left",
+                "uncertainty_mm": 0.5,
+                "method": "manual",
+                "created_at": "2026-11-15T22:16:47.713893+00:00"
+              },
+              "lit_dimensions_mm": [
+                150,
+                200
+              ],
+              "calibration_mm_per_css": [
+                0.1953125,
+                0.1953125
+              ],
+              "model_mm_per_css": null,
+              "uncertainty_mm": 0.5,
+              "model_uncertainty_mm": null
+            },
+            "assumptions": [
+              "The caller supplied the pinned profile and calibration revisions; this helper performs no database or global reads and does not substitute the latest record.",
+              "Every supplied measured value is echoed unchanged; no averaging or rewriting occurred.",
+              "No real-world accuracy is claimed.",
+              "Only fullscreen is treated as a full-panel launch mode; a tab or standalone viewport may include browser or PWA insets."
+            ],
+            "notes": [
+              "A signature match is a suggestion, not proof.",
+              "A model plan is never presented as a plain verified ok."
+            ]
+          }
+        },
+        "render": {
+          "state": "stale",
+          "current": false,
+          "expected_token": {
+            "connection_id": "907c91195f344e94ba37e50ac091fb08",
+            "generation": "1ce83911",
+            "revision": 3,
+            "render_seq": 12,
+            "mapping_revision": "d4bcee2fea0c7737c2cff8e58d0aec9a",
+            "asset": null
+          },
+          "accepted_token": {
+            "connection_id": "907c91195f344e94ba37e50ac091fb08",
+            "generation": "1ce83911",
+            "revision": 2,
+            "render_seq": 11,
+            "mapping_revision": "db3aa6825a3eea881ba4da940b27b8fe",
+            "asset": null
+          },
+          "accepted_status": "loading",
+          "received_at": 65135.883602314,
+          "age_ms": 32,
+          "reason": "superseded"
+        },
+        "identify": null,
+        "model_suggestions": [],
+        "wake_lock": "denied"
+      },
+      "00000000-0000-4000-8000-000000000002": {
+        "online": true,
+        "protocol": 3,
+        "caps": [
+          "calibration",
+          "image",
+          "physical",
+          "render_ack",
+          "identify",
+          "image_contain",
+          "video"
+        ],
+        "number": 2,
+        "label": null,
+        "last_seen": "2026-11-15T22:16:47.898978+00:00",
+        "viewport": {
+          "width": 768,
+          "height": 1024,
+          "dpr": 1,
+          "orientation": 0,
+          "mode": "tab",
+          "visual_scale": 1
+        },
+        "mapping": {
+          "revision": "18dcf01e5c2753877f965dc6dee60c20",
+          "state": "ready",
+          "reason": null,
+          "viewport": {
+            "width": 768,
+            "height": 1024,
+            "dpr": 1,
+            "orientation": 0,
+            "mode": "tab",
+            "visual_scale": 1
+          },
+          "profile_revision": 1,
+          "calibration_revision": 1,
+          "health": {
+            "schema": 1,
+            "device_id": "00000000-0000-4000-8000-000000000002",
+            "status": "ready",
+            "status_reason": "pinned mapping is usable",
+            "status_label": "Ready — measured ±0.5 mm (usable viewport, not a confirmed full panel)",
+            "ok": false,
+            "provenance": {
+              "kind": "manual",
+              "manual": true,
+              "model": false,
+              "unknown": false,
+              "label": "Measured",
+              "description": "Ready — measured ±0.5 mm (usable viewport, not a confirmed full panel)",
+              "method": "manual",
+              "profile_provenance": "manual",
+              "approximate": false,
+              "confirmed": true,
+              "confirmation_required": false,
+              "accuracy_claimed": false,
+              "model_id": null,
+              "model_label": null,
+              "manual_value": {
+                "mm_per_css": [
+                  0.1953125,
+                  0.1953125
+                ],
+                "uncertainty_mm": 0.5,
+                "method": "manual"
+              },
+              "model_snapshot": {
+                "available": false,
+                "source": null,
+                "pinned_assignment": false,
+                "confirmed": false,
+                "mode": null
+              },
+              "model_signature": null
+            },
+            "approximate": false,
+            "confirmed": true,
+            "accuracy_claimed": false,
+            "uncertainty_mm": 0.5,
+            "uncertainty": {
+              "mm": 0.5,
+              "source": "pinned_calibration",
+              "calibration_mm": 0.5,
+              "model_mm": null,
+              "agreement": null,
+              "note": "The supplied uncertainty is preserved. It is not an accuracy claim."
+            },
+            "revisions": {
+              "profile_revision": 1,
+              "calibration_revision": 1,
+              "calibration_pins_profile_revision": 1,
+              "pinned_pair_agrees": true,
+              "assignment": {
+                "present": true,
+                "profile_revision": null,
+                "calibration_revision": null,
+                "pinned_match": false,
+                "model_id": null,
+                "mode": null,
+                "confirmed": false
+              },
+              "latest_substitution": false,
+              "source": "pinned slot revisions"
+            },
+            "scale": {
+              "mm_per_css": [
+                0.1953125,
+                0.1953125
+              ],
+              "source": "pinned_calibration",
+              "usable": true,
+              "approximate": false,
+              "confirmed": true,
+              "uncertainty_mm": 0.5,
+              "quarter_turn": 0,
+              "calibration_mm_per_css": [
+                0.1953125,
+                0.1953125
+              ],
+              "model_mm_per_css": null,
+              "note": "Manual scale is measured; its supplied uncertainty is preserved, not averaged."
+            },
+            "scale_unavailable_reason": null,
+            "predicted_full_panel": {
+              "valid": false,
+              "basis": null,
+              "reason_code": "tab_viewport",
+              "reason": "The pinned calibration uses a tab or standalone usable viewport, not a full panel. Total browser/PWA insets are not supplied, so extrapolating to the full panel is not valid.",
+              "mm": null,
+              "source": "pinned calibration usable viewport",
+              "usable_for_mapping": false,
+              "estimate_only": false,
+              "orientation_swapped": false
+            },
+            "comparison": {
+              "valid": false,
+              "reason_code": "tab_viewport",
+              "reason": "The pinned calibration uses a tab or standalone usable viewport, not a full panel. Total browser/PWA insets are not supplied, so extrapolating to the full panel is not valid.",
+              "basis": null,
+              "lit_dimensions_mm": [
+                150,
+                200
+              ],
+              "predicted_mm": null,
+              "axes": [],
+              "discrepancy": null,
+              "requires_operator_decision": false,
+              "message": "The pinned calibration uses a tab or standalone usable viewport, not a full panel. Total browser/PWA insets are not supplied, so extrapolating to the full panel is not valid.",
+              "action": "Use a fullscreen measurement or compare the model signature separately; do not call the usable viewport a full panel.",
+              "orientation_swapped": false
+            },
+            "viewport": {
+              "supplied": true,
+              "live": {
+                "width": 768,
+                "height": 1024,
+                "dpr": 1,
+                "orientation": 0,
+                "mode": "tab",
+                "visual_scale": 1,
+                "visual_scale_supplied": true
+              },
+              "pinned": {
+                "width": 768,
+                "height": 1024,
+                "dpr": 1,
+                "orientation": 0,
+                "mode": "tab",
+                "quarter_turn": 0,
+                "panel_offset_mm": [
+                  0,
+                  0
+                ],
+                "mm_per_css": [
+                  0.1953125,
+                  0.1953125
+                ]
+              },
+              "mode": {
+                "pinned": "tab",
+                "live": "tab",
+                "matches": true,
+                "adapted": false
+              },
+              "orientation": {
+                "pinned": 0,
+                "live": 0,
+                "matches": true,
+                "quarter_turn": 0
+              },
+              "dpr": {
+                "pinned": 1,
+                "live": 1,
+                "matches": true
+              },
+              "size": {
+                "pinned": [
+                  768,
+                  1024
+                ],
+                "live": [
+                  768,
+                  1024
+                ],
+                "matches": true
+              },
+              "zoom": {
+                "visual_scale": 1,
+                "matches": true
+              },
+              "full_panel": false,
+              "usable_extent_mm": [
+                150,
+                200
+              ],
+              "insets": {
+                "assumed": true,
+                "source": "pinned calibration panel_offset_mm; full-panel coverage is not established",
+                "left_mm": 0,
+                "top_mm": 0,
+                "right_mm": null,
+                "bottom_mm": null,
+                "panel_offset_mm": [
+                  0,
+                  0
+                ]
+              },
+              "fences": []
+            },
+            "warnings": [
+              {
+                "code": "full_panel_comparison_unavailable",
+                "severity": "warning",
+                "message": "The manual calibration used a tab or standalone viewport. The usable viewport is not the full panel, so its scale cannot be extrapolated to the complete panel.",
+                "action": "Use a fullscreen measurement for a full-panel comparison, or measure the full lit span explicitly."
+              }
+            ],
+            "actionable_warning": {
+              "code": "full_panel_comparison_unavailable",
+              "severity": "warning",
+              "message": "The manual calibration used a tab or standalone viewport. The usable viewport is not the full panel, so its scale cannot be extrapolated to the complete panel.",
+              "action": "Use a fullscreen measurement for a full-panel comparison, or measure the full lit span explicitly."
+            },
+            "measurements": {
+              "profile": {
+                "device_id": "00000000-0000-4000-8000-000000000002",
+                "revision": 1,
+                "active_width_mm": 150,
+                "active_height_mm": 200,
+                "bezels": {
+                  "left": 10,
+                  "top": 10,
+                  "right": 10,
+                  "bottom": 10
+                },
+                "panel_pixels": {
+                  "width": 768,
+                  "height": 1024
+                },
+                "label": "Contract tablet",
+                "provenance": "manual",
+                "created_at": "2026-11-15T22:16:47.738505+00:00"
+              },
+              "calibration": {
+                "device_id": "00000000-0000-4000-8000-000000000002",
+                "revision": 1,
+                "profile_revision": 1,
+                "viewport_width": 768,
+                "viewport_height": 1024,
+                "dpr": 1,
+                "orientation": 0,
+                "mode": "tab",
+                "quarter_turn": 0,
+                "panel_offset_mm": [
+                  0,
+                  0
+                ],
+                "mm_per_css": [
+                  0.1953125,
+                  0.1953125
+                ],
+                "anchor_edge": "top-left",
+                "uncertainty_mm": 0.5,
+                "method": "manual",
+                "created_at": "2026-11-15T22:16:47.767086+00:00"
+              },
+              "lit_dimensions_mm": [
+                150,
+                200
+              ],
+              "calibration_mm_per_css": [
+                0.1953125,
+                0.1953125
+              ],
+              "model_mm_per_css": null,
+              "uncertainty_mm": 0.5,
+              "model_uncertainty_mm": null
+            },
+            "assumptions": [
+              "The caller supplied the pinned profile and calibration revisions; this helper performs no database or global reads and does not substitute the latest record.",
+              "Every supplied measured value is echoed unchanged; no averaging or rewriting occurred.",
+              "No real-world accuracy is claimed.",
+              "Only fullscreen is treated as a full-panel launch mode; a tab or standalone viewport may include browser or PWA insets."
+            ],
+            "notes": [
+              "A signature match is a suggestion, not proof.",
+              "A model plan is never presented as a plain verified ok."
+            ]
+          }
+        },
+        "render": {
+          "state": "stale",
+          "current": false,
+          "expected_token": {
+            "connection_id": "403210bb8e70444286fed7bfa05ced87",
+            "generation": "1ce83911",
+            "revision": 3,
+            "render_seq": 12,
+            "mapping_revision": "18dcf01e5c2753877f965dc6dee60c20",
+            "asset": null
+          },
+          "accepted_token": {
+            "connection_id": "403210bb8e70444286fed7bfa05ced87",
+            "generation": "1ce83911",
+            "revision": 2,
+            "render_seq": 11,
+            "mapping_revision": "ee0714c1dc0d551e146a90f4fb5b715c",
+            "asset": null
+          },
+          "accepted_status": "displayed",
+          "received_at": 65135.884952959,
+          "age_ms": 31,
+          "reason": "superseded"
+        },
+        "identify": null,
+        "model_suggestions": [],
+        "wake_lock": "denied"
+      },
+      "00000000-0000-4000-8000-000000000003": {
+        "online": true,
+        "protocol": 3,
+        "caps": [
+          "calibration",
+          "image",
+          "physical",
+          "render_ack",
+          "identify",
+          "image_contain",
+          "video"
+        ],
+        "number": 3,
+        "label": null,
+        "last_seen": "2026-11-15T22:16:47.898802+00:00",
+        "viewport": {
+          "width": 768,
+          "height": 1024,
+          "dpr": 1,
+          "orientation": 0,
+          "mode": "tab",
+          "visual_scale": 1
+        },
+        "mapping": {
+          "revision": "8d0558c8ec787f6fa050859fd8e8dc91",
+          "state": "ready",
+          "reason": null,
+          "viewport": {
+            "width": 768,
+            "height": 1024,
+            "dpr": 1,
+            "orientation": 0,
+            "mode": "tab",
+            "visual_scale": 1
+          },
+          "profile_revision": 1,
+          "calibration_revision": 1,
+          "health": {
+            "schema": 1,
+            "device_id": "00000000-0000-4000-8000-000000000003",
+            "status": "ready",
+            "status_reason": "pinned mapping is usable",
+            "status_label": "Ready — measured ±0.5 mm (usable viewport, not a confirmed full panel)",
+            "ok": false,
+            "provenance": {
+              "kind": "manual",
+              "manual": true,
+              "model": false,
+              "unknown": false,
+              "label": "Measured",
+              "description": "Ready — measured ±0.5 mm (usable viewport, not a confirmed full panel)",
+              "method": "manual",
+              "profile_provenance": "manual",
+              "approximate": false,
+              "confirmed": true,
+              "confirmation_required": false,
+              "accuracy_claimed": false,
+              "model_id": null,
+              "model_label": null,
+              "manual_value": {
+                "mm_per_css": [
+                  0.1953125,
+                  0.1953125
+                ],
+                "uncertainty_mm": 0.5,
+                "method": "manual"
+              },
+              "model_snapshot": {
+                "available": false,
+                "source": null,
+                "pinned_assignment": false,
+                "confirmed": false,
+                "mode": null
+              },
+              "model_signature": null
+            },
+            "approximate": false,
+            "confirmed": true,
+            "accuracy_claimed": false,
+            "uncertainty_mm": 0.5,
+            "uncertainty": {
+              "mm": 0.5,
+              "source": "pinned_calibration",
+              "calibration_mm": 0.5,
+              "model_mm": null,
+              "agreement": null,
+              "note": "The supplied uncertainty is preserved. It is not an accuracy claim."
+            },
+            "revisions": {
+              "profile_revision": 1,
+              "calibration_revision": 1,
+              "calibration_pins_profile_revision": 1,
+              "pinned_pair_agrees": true,
+              "assignment": {
+                "present": true,
+                "profile_revision": null,
+                "calibration_revision": null,
+                "pinned_match": false,
+                "model_id": null,
+                "mode": null,
+                "confirmed": false
+              },
+              "latest_substitution": false,
+              "source": "pinned slot revisions"
+            },
+            "scale": {
+              "mm_per_css": [
+                0.1953125,
+                0.1953125
+              ],
+              "source": "pinned_calibration",
+              "usable": true,
+              "approximate": false,
+              "confirmed": true,
+              "uncertainty_mm": 0.5,
+              "quarter_turn": 0,
+              "calibration_mm_per_css": [
+                0.1953125,
+                0.1953125
+              ],
+              "model_mm_per_css": null,
+              "note": "Manual scale is measured; its supplied uncertainty is preserved, not averaged."
+            },
+            "scale_unavailable_reason": null,
+            "predicted_full_panel": {
+              "valid": false,
+              "basis": null,
+              "reason_code": "tab_viewport",
+              "reason": "The pinned calibration uses a tab or standalone usable viewport, not a full panel. Total browser/PWA insets are not supplied, so extrapolating to the full panel is not valid.",
+              "mm": null,
+              "source": "pinned calibration usable viewport",
+              "usable_for_mapping": false,
+              "estimate_only": false,
+              "orientation_swapped": false
+            },
+            "comparison": {
+              "valid": false,
+              "reason_code": "tab_viewport",
+              "reason": "The pinned calibration uses a tab or standalone usable viewport, not a full panel. Total browser/PWA insets are not supplied, so extrapolating to the full panel is not valid.",
+              "basis": null,
+              "lit_dimensions_mm": [
+                150,
+                200
+              ],
+              "predicted_mm": null,
+              "axes": [],
+              "discrepancy": null,
+              "requires_operator_decision": false,
+              "message": "The pinned calibration uses a tab or standalone usable viewport, not a full panel. Total browser/PWA insets are not supplied, so extrapolating to the full panel is not valid.",
+              "action": "Use a fullscreen measurement or compare the model signature separately; do not call the usable viewport a full panel.",
+              "orientation_swapped": false
+            },
+            "viewport": {
+              "supplied": true,
+              "live": {
+                "width": 768,
+                "height": 1024,
+                "dpr": 1,
+                "orientation": 0,
+                "mode": "tab",
+                "visual_scale": 1,
+                "visual_scale_supplied": true
+              },
+              "pinned": {
+                "width": 768,
+                "height": 1024,
+                "dpr": 1,
+                "orientation": 0,
+                "mode": "tab",
+                "quarter_turn": 0,
+                "panel_offset_mm": [
+                  0,
+                  0
+                ],
+                "mm_per_css": [
+                  0.1953125,
+                  0.1953125
+                ]
+              },
+              "mode": {
+                "pinned": "tab",
+                "live": "tab",
+                "matches": true,
+                "adapted": false
+              },
+              "orientation": {
+                "pinned": 0,
+                "live": 0,
+                "matches": true,
+                "quarter_turn": 0
+              },
+              "dpr": {
+                "pinned": 1,
+                "live": 1,
+                "matches": true
+              },
+              "size": {
+                "pinned": [
+                  768,
+                  1024
+                ],
+                "live": [
+                  768,
+                  1024
+                ],
+                "matches": true
+              },
+              "zoom": {
+                "visual_scale": 1,
+                "matches": true
+              },
+              "full_panel": false,
+              "usable_extent_mm": [
+                150,
+                200
+              ],
+              "insets": {
+                "assumed": true,
+                "source": "pinned calibration panel_offset_mm; full-panel coverage is not established",
+                "left_mm": 0,
+                "top_mm": 0,
+                "right_mm": null,
+                "bottom_mm": null,
+                "panel_offset_mm": [
+                  0,
+                  0
+                ]
+              },
+              "fences": []
+            },
+            "warnings": [
+              {
+                "code": "full_panel_comparison_unavailable",
+                "severity": "warning",
+                "message": "The manual calibration used a tab or standalone viewport. The usable viewport is not the full panel, so its scale cannot be extrapolated to the complete panel.",
+                "action": "Use a fullscreen measurement for a full-panel comparison, or measure the full lit span explicitly."
+              }
+            ],
+            "actionable_warning": {
+              "code": "full_panel_comparison_unavailable",
+              "severity": "warning",
+              "message": "The manual calibration used a tab or standalone viewport. The usable viewport is not the full panel, so its scale cannot be extrapolated to the complete panel.",
+              "action": "Use a fullscreen measurement for a full-panel comparison, or measure the full lit span explicitly."
+            },
+            "measurements": {
+              "profile": {
+                "device_id": "00000000-0000-4000-8000-000000000003",
+                "revision": 1,
+                "active_width_mm": 150,
+                "active_height_mm": 200,
+                "bezels": {
+                  "left": 10,
+                  "top": 10,
+                  "right": 10,
+                  "bottom": 10
+                },
+                "panel_pixels": {
+                  "width": 768,
+                  "height": 1024
+                },
+                "label": "Contract tablet",
+                "provenance": "manual",
+                "created_at": "2026-11-15T22:16:47.789204+00:00"
+              },
+              "calibration": {
+                "device_id": "00000000-0000-4000-8000-000000000003",
+                "revision": 1,
+                "profile_revision": 1,
+                "viewport_width": 768,
+                "viewport_height": 1024,
+                "dpr": 1,
+                "orientation": 0,
+                "mode": "tab",
+                "quarter_turn": 0,
+                "panel_offset_mm": [
+                  0,
+                  0
+                ],
+                "mm_per_css": [
+                  0.1953125,
+                  0.1953125
+                ],
+                "anchor_edge": "top-left",
+                "uncertainty_mm": 0.5,
+                "method": "manual",
+                "created_at": "2026-11-15T22:16:47.822034+00:00"
+              },
+              "lit_dimensions_mm": [
+                150,
+                200
+              ],
+              "calibration_mm_per_css": [
+                0.1953125,
+                0.1953125
+              ],
+              "model_mm_per_css": null,
+              "uncertainty_mm": 0.5,
+              "model_uncertainty_mm": null
+            },
+            "assumptions": [
+              "The caller supplied the pinned profile and calibration revisions; this helper performs no database or global reads and does not substitute the latest record.",
+              "Every supplied measured value is echoed unchanged; no averaging or rewriting occurred.",
+              "No real-world accuracy is claimed.",
+              "Only fullscreen is treated as a full-panel launch mode; a tab or standalone viewport may include browser or PWA insets."
+            ],
+            "notes": [
+              "A signature match is a suggestion, not proof.",
+              "A model plan is never presented as a plain verified ok."
+            ]
+          }
+        },
+        "render": {
+          "state": "stale",
+          "current": false,
+          "expected_token": {
+            "connection_id": "ff80063717024ef6acc97304f76f7498",
+            "generation": "1ce83911",
+            "revision": 3,
+            "render_seq": 12,
+            "mapping_revision": "8d0558c8ec787f6fa050859fd8e8dc91",
+            "asset": null
+          },
+          "accepted_token": {
+            "connection_id": "ff80063717024ef6acc97304f76f7498",
+            "generation": "1ce83911",
+            "revision": 2,
+            "render_seq": 11,
+            "mapping_revision": "78f283424d9daa52180e65930000a1ed",
+            "asset": null
+          },
+          "accepted_status": "displayed",
+          "received_at": 65135.884777441,
+          "age_ms": 32,
+          "reason": "superseded"
+        },
+        "identify": null,
+        "model_suggestions": [],
+        "wake_lock": "denied"
+      },
+      "00000000-0000-4000-8000-000000000004": {
+        "online": true,
+        "protocol": 3,
+        "caps": [
+          "calibration",
+          "image",
+          "physical",
+          "render_ack",
+          "identify",
+          "image_contain",
+          "video"
+        ],
+        "number": 4,
+        "label": null,
+        "last_seen": "2026-11-15T22:16:47.898377+00:00",
+        "viewport": {
+          "width": 768,
+          "height": 1024,
+          "dpr": 1,
+          "orientation": 0,
+          "mode": "tab",
+          "visual_scale": 1
+        },
+        "mapping": {
+          "revision": "80448c7f297fd5bc4532a1bcbb5bac1e",
+          "state": "ready",
+          "reason": null,
+          "viewport": {
+            "width": 768,
+            "height": 1024,
+            "dpr": 1,
+            "orientation": 0,
+            "mode": "tab",
+            "visual_scale": 1
+          },
+          "profile_revision": 1,
+          "calibration_revision": 1,
+          "health": {
+            "schema": 1,
+            "device_id": "00000000-0000-4000-8000-000000000004",
+            "status": "ready",
+            "status_reason": "pinned mapping is usable",
+            "status_label": "Ready — measured ±0.5 mm (usable viewport, not a confirmed full panel)",
+            "ok": false,
+            "provenance": {
+              "kind": "manual",
+              "manual": true,
+              "model": false,
+              "unknown": false,
+              "label": "Measured",
+              "description": "Ready — measured ±0.5 mm (usable viewport, not a confirmed full panel)",
+              "method": "manual",
+              "profile_provenance": "manual",
+              "approximate": false,
+              "confirmed": true,
+              "confirmation_required": false,
+              "accuracy_claimed": false,
+              "model_id": null,
+              "model_label": null,
+              "manual_value": {
+                "mm_per_css": [
+                  0.1953125,
+                  0.1953125
+                ],
+                "uncertainty_mm": 0.5,
+                "method": "manual"
+              },
+              "model_snapshot": {
+                "available": false,
+                "source": null,
+                "pinned_assignment": false,
+                "confirmed": false,
+                "mode": null
+              },
+              "model_signature": null
+            },
+            "approximate": false,
+            "confirmed": true,
+            "accuracy_claimed": false,
+            "uncertainty_mm": 0.5,
+            "uncertainty": {
+              "mm": 0.5,
+              "source": "pinned_calibration",
+              "calibration_mm": 0.5,
+              "model_mm": null,
+              "agreement": null,
+              "note": "The supplied uncertainty is preserved. It is not an accuracy claim."
+            },
+            "revisions": {
+              "profile_revision": 1,
+              "calibration_revision": 1,
+              "calibration_pins_profile_revision": 1,
+              "pinned_pair_agrees": true,
+              "assignment": {
+                "present": true,
+                "profile_revision": null,
+                "calibration_revision": null,
+                "pinned_match": false,
+                "model_id": null,
+                "mode": null,
+                "confirmed": false
+              },
+              "latest_substitution": false,
+              "source": "pinned slot revisions"
+            },
+            "scale": {
+              "mm_per_css": [
+                0.1953125,
+                0.1953125
+              ],
+              "source": "pinned_calibration",
+              "usable": true,
+              "approximate": false,
+              "confirmed": true,
+              "uncertainty_mm": 0.5,
+              "quarter_turn": 0,
+              "calibration_mm_per_css": [
+                0.1953125,
+                0.1953125
+              ],
+              "model_mm_per_css": null,
+              "note": "Manual scale is measured; its supplied uncertainty is preserved, not averaged."
+            },
+            "scale_unavailable_reason": null,
+            "predicted_full_panel": {
+              "valid": false,
+              "basis": null,
+              "reason_code": "tab_viewport",
+              "reason": "The pinned calibration uses a tab or standalone usable viewport, not a full panel. Total browser/PWA insets are not supplied, so extrapolating to the full panel is not valid.",
+              "mm": null,
+              "source": "pinned calibration usable viewport",
+              "usable_for_mapping": false,
+              "estimate_only": false,
+              "orientation_swapped": false
+            },
+            "comparison": {
+              "valid": false,
+              "reason_code": "tab_viewport",
+              "reason": "The pinned calibration uses a tab or standalone usable viewport, not a full panel. Total browser/PWA insets are not supplied, so extrapolating to the full panel is not valid.",
+              "basis": null,
+              "lit_dimensions_mm": [
+                150,
+                200
+              ],
+              "predicted_mm": null,
+              "axes": [],
+              "discrepancy": null,
+              "requires_operator_decision": false,
+              "message": "The pinned calibration uses a tab or standalone usable viewport, not a full panel. Total browser/PWA insets are not supplied, so extrapolating to the full panel is not valid.",
+              "action": "Use a fullscreen measurement or compare the model signature separately; do not call the usable viewport a full panel.",
+              "orientation_swapped": false
+            },
+            "viewport": {
+              "supplied": true,
+              "live": {
+                "width": 768,
+                "height": 1024,
+                "dpr": 1,
+                "orientation": 0,
+                "mode": "tab",
+                "visual_scale": 1,
+                "visual_scale_supplied": true
+              },
+              "pinned": {
+                "width": 768,
+                "height": 1024,
+                "dpr": 1,
+                "orientation": 0,
+                "mode": "tab",
+                "quarter_turn": 0,
+                "panel_offset_mm": [
+                  0,
+                  0
+                ],
+                "mm_per_css": [
+                  0.1953125,
+                  0.1953125
+                ]
+              },
+              "mode": {
+                "pinned": "tab",
+                "live": "tab",
+                "matches": true,
+                "adapted": false
+              },
+              "orientation": {
+                "pinned": 0,
+                "live": 0,
+                "matches": true,
+                "quarter_turn": 0
+              },
+              "dpr": {
+                "pinned": 1,
+                "live": 1,
+                "matches": true
+              },
+              "size": {
+                "pinned": [
+                  768,
+                  1024
+                ],
+                "live": [
+                  768,
+                  1024
+                ],
+                "matches": true
+              },
+              "zoom": {
+                "visual_scale": 1,
+                "matches": true
+              },
+              "full_panel": false,
+              "usable_extent_mm": [
+                150,
+                200
+              ],
+              "insets": {
+                "assumed": true,
+                "source": "pinned calibration panel_offset_mm; full-panel coverage is not established",
+                "left_mm": 0,
+                "top_mm": 0,
+                "right_mm": null,
+                "bottom_mm": null,
+                "panel_offset_mm": [
+                  0,
+                  0
+                ]
+              },
+              "fences": []
+            },
+            "warnings": [
+              {
+                "code": "full_panel_comparison_unavailable",
+                "severity": "warning",
+                "message": "The manual calibration used a tab or standalone viewport. The usable viewport is not the full panel, so its scale cannot be extrapolated to the complete panel.",
+                "action": "Use a fullscreen measurement for a full-panel comparison, or measure the full lit span explicitly."
+              }
+            ],
+            "actionable_warning": {
+              "code": "full_panel_comparison_unavailable",
+              "severity": "warning",
+              "message": "The manual calibration used a tab or standalone viewport. The usable viewport is not the full panel, so its scale cannot be extrapolated to the complete panel.",
+              "action": "Use a fullscreen measurement for a full-panel comparison, or measure the full lit span explicitly."
+            },
+            "measurements": {
+              "profile": {
+                "device_id": "00000000-0000-4000-8000-000000000004",
+                "revision": 1,
+                "active_width_mm": 150,
+                "active_height_mm": 200,
+                "bezels": {
+                  "left": 10,
+                  "top": 10,
+                  "right": 10,
+                  "bottom": 10
+                },
+                "panel_pixels": {
+                  "width": 768,
+                  "height": 1024
+                },
+                "label": "Contract tablet",
+                "provenance": "manual",
+                "created_at": "2026-11-15T22:16:47.855483+00:00"
+              },
+              "calibration": {
+                "device_id": "00000000-0000-4000-8000-000000000004",
+                "revision": 1,
+                "profile_revision": 1,
+                "viewport_width": 768,
+                "viewport_height": 1024,
+                "dpr": 1,
+                "orientation": 0,
+                "mode": "tab",
+                "quarter_turn": 0,
+                "panel_offset_mm": [
+                  0,
+                  0
+                ],
+                "mm_per_css": [
+                  0.1953125,
+                  0.1953125
+                ],
+                "anchor_edge": "top-left",
+                "uncertainty_mm": 0.5,
+                "method": "manual",
+                "created_at": "2026-11-15T22:16:47.887755+00:00"
+              },
+              "lit_dimensions_mm": [
+                150,
+                200
+              ],
+              "calibration_mm_per_css": [
+                0.1953125,
+                0.1953125
+              ],
+              "model_mm_per_css": null,
+              "uncertainty_mm": 0.5,
+              "model_uncertainty_mm": null
+            },
+            "assumptions": [
+              "The caller supplied the pinned profile and calibration revisions; this helper performs no database or global reads and does not substitute the latest record.",
+              "Every supplied measured value is echoed unchanged; no averaging or rewriting occurred.",
+              "No real-world accuracy is claimed.",
+              "Only fullscreen is treated as a full-panel launch mode; a tab or standalone viewport may include browser or PWA insets."
+            ],
+            "notes": [
+              "A signature match is a suggestion, not proof.",
+              "A model plan is never presented as a plain verified ok."
+            ]
+          }
+        },
+        "render": {
+          "state": "stale",
+          "current": false,
+          "expected_token": {
+            "connection_id": "b39b498096144b36ac298c78203e9893",
+            "generation": "1ce83911",
+            "revision": 3,
+            "render_seq": 12,
+            "mapping_revision": "80448c7f297fd5bc4532a1bcbb5bac1e",
+            "asset": null
+          },
+          "accepted_token": {
+            "connection_id": "b39b498096144b36ac298c78203e9893",
+            "generation": "1ce83911",
+            "revision": 2,
+            "render_seq": 11,
+            "mapping_revision": "8176eee2229947cac548fbcbbdab4eef",
+            "asset": null
+          },
+          "accepted_status": "loading",
+          "received_at": 65135.8843522,
+          "age_ms": 33,
+          "reason": "superseded"
+        },
+        "identify": null,
+        "model_suggestions": [],
+        "wake_lock": "released"
+      }
+    },
+    "observed_at": "2026-11-15T22:16:47.898978+00:00",
+    "presentation": {
+      "owner": "static",
+      "state": "static"
+    }
+  },
+  "previous_layout_saved": "Before physical 31ee4d8486f1"
+}

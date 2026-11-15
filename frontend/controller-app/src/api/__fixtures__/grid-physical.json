@@ -1,0 +1,115 @@
+{
+  "layout": {
+    "kind": "physical",
+    "bounds": {
+      "x": 0,
+      "y": 0,
+      "width": 340,
+      "height": 440
+    },
+    "slots": {
+      "00000000-0000-4000-8000-000000000001": {
+        "center_x_mm": 85,
+        "center_y_mm": 110,
+        "mount_angle": 0,
+        "nudge_x_mm": 0,
+        "nudge_y_mm": 0,
+        "profile_revision": 1,
+        "calibration_revision": 1,
+        "participating": true
+      },
+      "00000000-0000-4000-8000-000000000002": {
+        "center_x_mm": 255,
+        "center_y_mm": 110,
+        "mount_angle": 0,
+        "nudge_x_mm": 0,
+        "nudge_y_mm": 0,
+        "profile_revision": 1,
+        "calibration_revision": 1,
+        "participating": true
+      },
+      "00000000-0000-4000-8000-000000000003": {
+        "center_x_mm": 85,
+        "center_y_mm": 330,
+        "mount_angle": 0,
+        "nudge_x_mm": 0,
+        "nudge_y_mm": 0,
+        "profile_revision": 1,
+        "calibration_revision": 1,
+        "participating": true
+      },
+      "00000000-0000-4000-8000-000000000004": {
+        "center_x_mm": 255,
+        "center_y_mm": 330,
+        "mount_angle": 0,
+        "nudge_x_mm": 0,
+        "nudge_y_mm": 0,
+        "profile_revision": 1,
+        "calibration_revision": 1,
+        "participating": true
+      }
+    },
+    "sizing": {
+      "mode": "tablets",
+      "padding": 0
+    }
+  },
+  "order": [
+    "00000000-0000-4000-8000-000000000001",
+    "00000000-0000-4000-8000-000000000002",
+    "00000000-0000-4000-8000-000000000003",
+    "00000000-0000-4000-8000-000000000004"
+  ],
+  "warnings": [
+    "estimated measurement used for 00000000-0000-4000-8000-000000000001, 00000000-0000-4000-8000-000000000002, 00000000-0000-4000-8000-000000000003, 00000000-0000-4000-8000-000000000004; confirm the model or measure the tablet"
+  ],
+  "guards": {
+    "00000000-0000-4000-8000-000000000001": {
+      "connection_id": "907c91195f344e94ba37e50ac091fb08",
+      "viewport": {
+        "width": 768,
+        "height": 1024,
+        "dpr": 1,
+        "orientation": 0,
+        "mode": "tab",
+        "visual_scale": 1
+      }
+    },
+    "00000000-0000-4000-8000-000000000002": {
+      "connection_id": "403210bb8e70444286fed7bfa05ced87",
+      "viewport": {
+        "width": 768,
+        "height": 1024,
+        "dpr": 1,
+        "orientation": 0,
+        "mode": "tab",
+        "visual_scale": 1
+      }
+    },
+    "00000000-0000-4000-8000-000000000003": {
+      "connection_id": "ff80063717024ef6acc97304f76f7498",
+      "viewport": {
+        "width": 768,
+        "height": 1024,
+        "dpr": 1,
+        "orientation": 0,
+        "mode": "tab",
+        "visual_scale": 1
+      }
+    },
+    "00000000-0000-4000-8000-000000000004": {
+      "connection_id": "b39b498096144b36ac298c78203e9893",
+      "viewport": {
+        "width": 768,
+        "height": 1024,
+        "dpr": 1,
+        "orientation": 0,
+        "mode": "tab",
+        "visual_scale": 1
+      }
+    }
+  },
+  "base_etag": "ef99c7ff608edc0a9498591c749fe944",
+  "reservations_removed": [],
+  "previous_kind": "physical"
+}

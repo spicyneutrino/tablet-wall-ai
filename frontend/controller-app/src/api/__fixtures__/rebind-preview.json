@@ -1,0 +1,47 @@
+{
+  "base_etag": "ef99c7ff608edc0a9498591c749fe944",
+  "old_id": "00000000-0000-4000-8000-000000000001",
+  "new_id": "00000000-0000-4000-8000-000000000002",
+  "affected_active": false,
+  "affected_saved": [],
+  "untouched_saved": [
+    {
+      "name": "Before physical 31ee4d8486f1",
+      "etag": "b8eec867f7c675d8f3e2fb44e59ad04a",
+      "kind": "logical",
+      "valid": true
+    },
+    {
+      "name": "Contract logical",
+      "etag": "b8eec867f7c675d8f3e2fb44e59ad04a",
+      "kind": "logical",
+      "valid": true
+    },
+    {
+      "name": "Contract physical",
+      "etag": "8ee6293d75fe115941c8a3a758f4ae60",
+      "kind": "physical",
+      "valid": true
+    }
+  ],
+  "conflicts": [
+    {
+      "code": "old_connected",
+      "message": "Rebind requires the old owned socket to be absent",
+      "details": {}
+    },
+    {
+      "code": "target_already_present",
+      "message": "Target is already in the active layout",
+      "details": {
+        "layout": "active"
+      }
+    }
+  ],
+  "profile_revision_map": {},
+  "calibration_revision_map": {},
+  "label_after": null,
+  "number_after": 1,
+  "old_offline": false,
+  "new_connection_id": "403210bb8e70444286fed7bfa05ced87"
+}

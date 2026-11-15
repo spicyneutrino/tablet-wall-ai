@@ -1,0 +1,13 @@
+{
+  "playlist": {
+    "items": [
+      {
+        "asset": "sha256:a53f024a78fc8a01e0164cb737b72b447fe3f175bcd22972f66d1308409dae7c",
+        "dwell_ms": 10000
+      }
+    ],
+    "loop": true,
+    "revision": 1
+  },
+  "etag": "c2075bb9db3d8a8f86fd1459f347c47c"
+}

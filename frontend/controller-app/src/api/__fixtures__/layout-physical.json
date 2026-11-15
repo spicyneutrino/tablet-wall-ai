@@ -1,0 +1,51 @@
+{
+  "kind": "physical",
+  "bounds": {
+    "x": 0,
+    "y": 0,
+    "width": 340,
+    "height": 440
+  },
+  "slots": {
+    "00000000-0000-4000-8000-000000000001": {
+      "center_x_mm": 85,
+      "center_y_mm": 110,
+      "mount_angle": 0,
+      "nudge_x_mm": 0,
+      "nudge_y_mm": 0,
+      "profile_revision": 1,
+      "calibration_revision": 1
+    },
+    "00000000-0000-4000-8000-000000000002": {
+      "center_x_mm": 255,
+      "center_y_mm": 110,
+      "mount_angle": 0,
+      "nudge_x_mm": 0,
+      "nudge_y_mm": 0,
+      "profile_revision": 1,
+      "calibration_revision": 1
+    },
+    "00000000-0000-4000-8000-000000000003": {
+      "center_x_mm": 85,
+      "center_y_mm": 330,
+      "mount_angle": 0,
+      "nudge_x_mm": 0,
+      "nudge_y_mm": 0,
+      "profile_revision": 1,
+      "calibration_revision": 1
+    },
+    "00000000-0000-4000-8000-000000000004": {
+      "center_x_mm": 255,
+      "center_y_mm": 330,
+      "mount_angle": 0,
+      "nudge_x_mm": 0,
+      "nudge_y_mm": 0,
+      "profile_revision": 1,
+      "calibration_revision": 1
+    }
+  },
+  "sizing": {
+    "mode": "fixed",
+    "padding": 0
+  }
+}

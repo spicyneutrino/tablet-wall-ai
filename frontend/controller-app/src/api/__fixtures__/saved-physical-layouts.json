@@ -1,0 +1,61 @@
+{
+  "layouts": [
+    {
+      "name": "Contract physical",
+      "etag": "8ee6293d75fe115941c8a3a758f4ae60",
+      "kind": "physical",
+      "valid": true,
+      "layout": {
+        "bounds": {
+          "height": 440,
+          "width": 340,
+          "x": 0,
+          "y": 0
+        },
+        "kind": "physical",
+        "sizing": {
+          "mode": "fixed",
+          "padding": 0
+        },
+        "slots": {
+          "00000000-0000-4000-8000-000000000001": {
+            "calibration_revision": 1,
+            "center_x_mm": 85,
+            "center_y_mm": 110,
+            "mount_angle": 0,
+            "nudge_x_mm": 0,
+            "nudge_y_mm": 0,
+            "profile_revision": 1
+          },
+          "00000000-0000-4000-8000-000000000002": {
+            "calibration_revision": 1,
+            "center_x_mm": 255,
+            "center_y_mm": 110,
+            "mount_angle": 0,
+            "nudge_x_mm": 0,
+            "nudge_y_mm": 0,
+            "profile_revision": 1
+          },
+          "00000000-0000-4000-8000-000000000003": {
+            "calibration_revision": 1,
+            "center_x_mm": 85,
+            "center_y_mm": 330,
+            "mount_angle": 0,
+            "nudge_x_mm": 0,
+            "nudge_y_mm": 0,
+            "profile_revision": 1
+          },
+          "00000000-0000-4000-8000-000000000004": {
+            "calibration_revision": 1,
+            "center_x_mm": 255,
+            "center_y_mm": 330,
+            "mount_angle": 0,
+            "nudge_x_mm": 0,
+            "nudge_y_mm": 0,
+            "profile_revision": 1
+          }
+        }
+      }
+    }
+  ]
+}

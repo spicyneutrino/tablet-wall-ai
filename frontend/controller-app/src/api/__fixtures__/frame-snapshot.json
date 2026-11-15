@@ -1,0 +1,110 @@
+{
+  "type": "snapshot",
+  "devices": [],
+  "config": {
+    "schema": 2,
+    "revision": 0,
+    "generation": "1ce83911",
+    "layout": {
+      "kind": "logical",
+      "width": 2000,
+      "height": 1000,
+      "placements": {},
+      "sizing": {
+        "mode": "fixed",
+        "padding": 0
+      }
+    },
+    "scene": {
+      "content": {
+        "type": "color"
+      },
+      "layout": "active"
+    },
+    "displays": [],
+    "calibrations": [],
+    "tablet_models": {
+      "ipad-air-2": {
+        "label": "iPad Air 2",
+        "active_width_mm": 146.75,
+        "active_height_mm": 196,
+        "bezels": {
+          "left": 10.52,
+          "right": 10.52,
+          "top": 21.1,
+          "bottom": 21.1
+        },
+        "screen_width": 768,
+        "screen_height": 1024,
+        "portrait_angle": 0,
+        "dpr": 2,
+        "platform": "ios",
+        "mm_per_css": [
+          0.187725,
+          0.187725
+        ],
+        "uncertainty_mm": 3
+      },
+      "google-pixel-c": {
+        "label": "Google Pixel C",
+        "active_width_mm": 147,
+        "active_height_mm": 210,
+        "bezels": {
+          "left": 15.2,
+          "right": 15.2,
+          "top": 15.2,
+          "bottom": 15.2
+        },
+        "screen_width": 900,
+        "screen_height": 1280,
+        "portrait_angle": 270,
+        "dpr": 2,
+        "platform": "android",
+        "mm_per_css": [
+          0.16195,
+          0.16195
+        ],
+        "uncertainty_mm": 3
+      }
+    },
+    "tablet_assignments": {},
+    "operator_state_version": 1,
+    "referenced_displays": [],
+    "referenced_calibrations": [],
+    "device_labels": {},
+    "snapshots": {
+      "layouts": [],
+      "scenes": []
+    },
+    "capabilities": {
+      "layout_kinds": [
+        "logical",
+        "physical"
+      ],
+      "fits": [
+        "cover",
+        "contain"
+      ],
+      "render_ack": true,
+      "identify": true,
+      "image_contain": true,
+      "grid": true,
+      "test_patterns": [
+        "grid",
+        "black"
+      ],
+      "uploads": true,
+      "diagnostics": true,
+      "login_supported": false
+    },
+    "runtime": {
+      "observed_at": null,
+      "devices": {},
+      "presentation": {
+        "owner": "static",
+        "state": "static"
+      }
+    },
+    "etag": "6e4f86df1be9c9fec40e587b64dfa83c"
+  }
+}

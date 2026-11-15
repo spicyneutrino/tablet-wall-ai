@@ -1,0 +1,39 @@
+{
+  "type": "device_online",
+  "device": {
+    "device_id": "00000000-0000-4000-8000-000000000001",
+    "width": 768,
+    "height": 1024,
+    "type": "other",
+    "color": null,
+    "label": null,
+    "protocol": 3,
+    "caps": [
+      "calibration",
+      "image",
+      "physical",
+      "render_ack",
+      "identify",
+      "image_contain",
+      "video"
+    ],
+    "number": 1,
+    "last_seen": "2026-11-15T22:16:47.356028+00:00",
+    "wake_lock": "released",
+    "screen_width": 768,
+    "screen_height": 1024,
+    "screen_dpr": 1,
+    "platform_family": "other",
+    "connection_id": "907c91195f344e94ba37e50ac091fb08",
+    "viewport": {
+      "width": 768,
+      "height": 1024,
+      "dpr": 1,
+      "visual_scale": 1,
+      "orientation": 0,
+      "mode": "tab"
+    },
+    "render_seq": 1,
+    "online": true
+  }
+}

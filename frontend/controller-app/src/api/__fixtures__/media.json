@@ -1,0 +1,23 @@
+{
+  "assets": [
+    {
+      "id": "sha256:d5e15b5f2a74e4beb135bd223aa05489317d065c2aa945f9f354de991bfc0d16",
+      "asset_id": "972e77ee-4165-4b6d-91a6-2be01f37b3c1",
+      "name": "Contract.png",
+      "mime": "image/jpeg",
+      "intrinsicWidth": 1582,
+      "intrinsicHeight": 2048,
+      "bytes": 144113,
+      "url": "/assets/sha256:d5e15b5f2a74e4beb135bd223aa05489317d065c2aa945f9f354de991bfc0d16",
+      "state": "ready",
+      "created_at": "2026-11-15T22:16:49.176998+00:00",
+      "thumbnail": {
+        "id": "sha256:306122c12845987742c6e0637897c2f286ef6d5cad7865657dea48a23d29d5be",
+        "url": "/assets/sha256:306122c12845987742c6e0637897c2f286ef6d5cad7865657dea48a23d29d5be",
+        "width": 197,
+        "height": 256
+      }
+    }
+  ],
+  "pipeline_version": 1
+}
