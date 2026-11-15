@@ -1,3 +1,7 @@
+import { entries } from "./layout";
+import type { Layout as LayoutDoc } from "./layout";
+import { rosterStatus } from "./status";
+
 export interface Bezel { left?: number; top?: number; right?: number; bottom?: number }
 
 export interface Placement { x: number; y: number; w: number; h: number; bezel?: Bezel | null; participating?: boolean }
@@ -76,24 +80,6 @@ export interface PowerReadiness {
 
 const EXCEPTION_LABELS: Record<string, string> = { loading: "Loading", unknown: "Unconfirmed", excluded: "Excluded", identifying: "Identify", playback: "Playback" };
 
-// Copied from operator-state.js until the layout and status modules land (U06).
-function entries(layout: Layout): Record<string, Placement | Slot> {
-    return (layout.kind === "physical" ? layout.slots : layout.placements) || {};
-}
-
-const WRONG_CONTENT = new Set(["failed", "blocked", "hidden", "unsupported", "unsupported_client", "unsupported_content", "viewport_mismatch", "zoom_changed",
-    "mapping_mismatch", "invalid", "invalid_mapping", "stale_calibration", "needs_calibration", "needs_profile", "missing_profile", "missing_calibration"]);
-
-function rosterStatus(item: { status: string; online?: boolean }, { stale = false }: { stale?: boolean } = {}): { key: string; word: string; tone: string } {
-    const result = (key: string, word: string, tone: string) => ({ key, word, tone });
-    if (stale) return result("stale", "Stale", "failure");
-    if (item.status === "unplaced") return item.online ? result("not-placed", "Not placed", "progress") : result("offline", "Offline", "quiet");
-    if (item.status === "offline" || (item.status === "unknown" && !item.online)) return result("offline", "Offline", "failure");
-    if (item.status === "stale") return result("stale", "Stale", "failure");
-    if (WRONG_CONTENT.has(item.status)) return result("wrong-content", "Wrong content", "failure");
-    return result("connected", "Connected", "ok");
-}
-
 export function exceptionLabel(status?: string | null): string {
     if (!status || status === "displayed" || status === "preview") return "";
     const roster = rosterStatus({ status, online: status !== "offline" });
@@ -136,7 +122,7 @@ const powerHelp = "Screen wake locks are browser reports, not proof the operatin
     + "The operator cannot wake a sleeping tablet remotely.";
 
 export function panels(layout: Layout, profileFor: (id: string, revision?: number | string) => PanelProfile | null | undefined): Panel[] {
-    return Object.entries(entries(layout)).map(([id, entry]) => {
+    return Object.entries(entries(layout as unknown as LayoutDoc)).map(([id, entry]) => {
         if (layout.kind !== "physical") {
             const slot = entry as Placement;
             const bezel = slot.bezel || {};

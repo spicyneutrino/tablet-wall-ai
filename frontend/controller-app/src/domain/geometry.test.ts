@@ -1,0 +1,133 @@
+import { expect, it } from "vitest";
+import * as state from "./layout";
+import * as sizing from "./physicalSizing";
+import * as stageModel from "./stagePanels";
+
+it("operator_geometry.test.js", () => {
+    const a: state.Placement = { x: -20, y: 10, w: 100, h: 70, bezel: { top: 3, right: 5, bottom: 7, left: 11 } };
+    const b: state.Placement = { x: 150, y: -10, w: 80, h: 120, bezel: { top: 0, right: 0, bottom: 0, left: 0 } };
+    const layout: state.LogicalLayout = { kind: "logical", width: 1000, height: 700, sizing: { mode: "tablets", padding: 4 }, placements: { a: structuredClone(a), b: structuredClone(b) } };
+    state.fitLogical(layout);
+    expect(layout.width).toBe(258);
+    expect(layout.height).toBe(128);
+    expect(layout.placements.a!.x).toBe(4);
+    expect(layout.placements.b!.y).toBe(4);
+    expect(layout.placements.b!.x - layout.placements.a!.x, "fit preserves relative positions").toBe(b.x - a.x);
+    expect(layout.placements.a!.bezel).toEqual(a.bezel);
+    const source = structuredClone(layout);
+    const packed = state.arrangeLogical(layout, ["b", "a"], { columns: 2, gap: 6 });
+    expect(packed.placements.a!.x - packed.placements.b!.x).toBe(b.w + 6);
+    expect(layout, "packing is a local proposal without mutating its input").toEqual(source);
+    const fixed: state.LogicalLayout = { ...layout, width: 1000, height: 700, sizing: { mode: "fixed", padding: 0 } };
+    const tiled = state.arrangeLogical(fixed, ["a", "b"], { columns: 2, gap: 10, tile: true, preserveAspect: true });
+    expect(tiled.width).toBe(1000);
+    expect(tiled.height).toBe(700);
+    expect(tiled.placements.a!.x + tiled.placements.a!.w <= tiled.placements.b!.x).toBeTruthy();
+    expect(tiled.placements.a!.bezel).toEqual(a.bezel);
+    expect(tiled.placements.a!.h < 700, "keep-aspect tiling leaves room instead of stretching the screen").toBeTruthy();
+    const sparse = state.arrangeLogical(fixed, ["a"], { columns: 2, rows: 2, gap: 10, tile: true, preserveAspect: false });
+    expect(sparse.placements.a!.h, "explicit rows reserve empty trailing cells").toBe(345);
+    expect(sparse.placements.b, "a scoped tile preserves unselected placements").toEqual(fixed.placements.b);
+    const screen = state.arrangeLogical(fixed, ["b"], { columns: 1, rows: 1, gap: 0, tile: true, aspects: { b: 2 } });
+    expect(screen.placements.b!.w / screen.placements.b!.h, "known screen aspect is retained instead of a stretched draft shape").toBe(2);
+    expect(() => state.arrangeLogical(fixed, ["a", "b"], { columns: 1, rows: 1, gap: 0, tile: true })).toThrow(/do not fit/);
+    const rotated = state.rotateLogical(a);
+    expect(rotated.w).toBe(a.h);
+    expect(rotated.h).toBe(a.w);
+    expect(rotated.bezel).toEqual({ top: 11, right: 3, bottom: 5, left: 7 });
+    expect(() => state.arrangeLogical(fixed, ["a"], { columns: 0, gap: 0 })).toThrow(/whole/);
+    expect(() => state.arrangeLogical(fixed, ["missing"], { columns: 1, gap: 0 })).toThrow(/order changed/);
+
+    const logical: state.LogicalLayout = { kind: "logical", width: 1000, height: 700, sizing: { mode: "fixed", padding: 0 },
+        placements: {
+            a: { x: 100, y: 100, w: 100, h: 70, bezel: { top: 3, right: 5, bottom: 7, left: 11 } },
+            b: { x: 300, y: 250, w: 80, h: 120, bezel: { top: 0, right: 0, bottom: 0, left: 0 } }
+        } };
+    const baseSlot = logical.placements.a!;
+    expect(sizing.LOGICAL_EDGE_THRESHOLD_PX).toBe(8);
+    expect(sizing.edgeThreshold(8, 4)).toBe(2);
+    expect(sizing.edgeThreshold(8, 0), "an unavailable scale disables edge snapping instead of snapping to pixels").toBe(0);
+    const gridOnly = sizing.snapLogical({ ...baseSlot, x: 123, y: 144 }, logical, { id: "a", step: 4, threshold: 10 })!;
+    expect(gridOnly.x, "grid spacing rounds wall coordinates, not pixels").toBe(124);
+    expect(gridOnly.y).toBe(144);
+    expect(gridOnly.w, "a move leaves the reviewed size unchanged").toBe(100);
+    const edge = sizing.snapLogical({ ...baseSlot, x: 197, y: 177 }, logical, { id: "a", step: 4, threshold: 10 })!;
+    expect(edge.x, "the nearest tablet body edge wins before grid spacing").toBe(200);
+    expect(edge.y).toBe(180);
+    const active = sizing.snapLogical({ ...baseSlot, x: 288 }, logical, { id: "a", step: 1, threshold: 10 })!;
+    expect(active.x, "the active screen edge can align through the left bezel").toBe(289);
+    const bypassed = sizing.snapLogical({ ...baseSlot, x: 197, y: 177 }, logical, { id: "a", step: 4, enabled: false, threshold: 10 })!;
+    expect([bypassed.x, bypassed.y], "Alt bypass rounds to whole logical units only").toEqual([197, 177]);
+    const resize = sizing.snapLogical({ ...baseSlot, w: 97.2, h: 50.1 }, logical, { id: "a", mode: "resize", step: 4, threshold: 10 })!;
+    expect(resize.w).toBe(96);
+    expect(resize.h).toBe(52);
+    expect(resize.x, "resize does not move the selected body").toBe(100);
+    const resizeBypassed = sizing.snapLogical({ ...baseSlot, w: 97.2, h: 50.1 }, logical, { id: "a", mode: "resize", step: 4, enabled: false })!;
+    expect([resizeBypassed.w, resizeBypassed.h]).toEqual([97, 50]);
+    const tiedLayout = { ...logical, placements: { ...logical.placements, c: { x: 10, y: 400, w: 1, h: 10, bezel: {} } } } as unknown as state.LogicalLayout;
+    const tied = sizing.snapLogical({ ...baseSlot, x: 5 }, tiedLayout, { id: "a", step: 1, threshold: 10 })!;
+    expect(tied.x, "equal distances resolve deterministically to the lower body edge").toBe(0);
+    const physical = sizing.snapLogical({ center_x_mm: 10.25, center_y_mm: 20.5 } as unknown as state.Placement, { kind: "physical" } as unknown as state.LogicalLayout, { id: "a" });
+    expect(physical, "measured millimetres never enter logical snapping").toEqual({ center_x_mm: 10.25, center_y_mm: 20.5 });
+
+    const matched = sizing.matchScreenShape(baseSlot, { width: 1600, height: 1000 });
+    expect(matched.changed).toBe(true);
+    expect(matched.placement!.w, "active width is preserved").toBe(100);
+    expect(matched.placement!.x, "body x is preserved").toBe(100);
+    expect(matched.placement!.bezel, "bezels are preserved exactly").toEqual(baseSlot.bezel);
+    expect(matched.placement!.h, "active height plus bezels rounds to a positive integer").toBe(63);
+    expect(matched.placement!.y, "the active centre is preserved as closely as integer geometry permits").toBe(104);
+    expect((matched.placement!.y + 3 + (63 - 3 - 7) / 2)).toBe(133.5);
+    expect((baseSlot.y + 3 + (70 - 3 - 7) / 2)).toBe(133);
+    const already = sizing.matchScreenShape(baseSlot, { width: 1400, height: 1000 });
+    expect(already.changed, "an already matching shape is not rewritten").toBe(false);
+    expect(sizing.matchScreenShape(baseSlot, { width: 0, height: 1000 }).error!.includes("viewport")).toBe(true);
+    expect(sizing.matchScreenShape({ ...baseSlot, w: 12 }, { width: 1600, height: 1000 }).error!.includes("active screen width")).toBe(true);
+    const fresh = sizing.freshViewport({ online: true, viewport: { width: 1600, height: 1000 } });
+    expect(fresh.available).toBe(true);
+    expect(fresh.viewport).toEqual({ width: 1600, height: 1000 });
+    expect(sizing.freshViewport({ online: false, viewport: { width: 1600, height: 1000 } }).available).toBe(false);
+    expect(sizing.freshViewport({ online: true, viewport: null } as unknown as Parameters<typeof sizing.freshViewport>[0]).available).toBe(false);
+    expect(sizing.freshViewport({ online: true, viewport: { width: 1600, height: 1000 } }, { stale: true }).reason!.includes("stale")).toBe(true);
+    expect(sizing.freshViewport({ online: true, viewport: { width: 1600, height: 1000 } }, { expected: { width: 1200, height: 1000 } }).available).toBe(false);
+
+    const fixedDraft: state.LogicalLayout = { kind: "logical", width: 3600, height: 2400, sizing: { mode: "fixed", padding: 0 }, placements: { a: baseSlot } };
+    expect(sizing.validateLogicalField("w", "0", fixedDraft, baseSlot).valid).toBe(false);
+    expect(sizing.validateLogicalField("w", "0", fixedDraft, baseSlot).message).toMatch(/at least 1/);
+    expect(sizing.validateLogicalField("w", "999999", fixedDraft, baseSlot).valid).toBe(false);
+    expect(sizing.validateLogicalField("w", "999999", fixedDraft, baseSlot).message).toMatch(/wall width 3600/);
+    expect(sizing.validateLogicalField("h", "999999", fixedDraft, baseSlot).valid).toBe(false);
+    expect(sizing.validateLogicalField("h", "999999", fixedDraft, baseSlot).message).toMatch(/wall height 2400/);
+    expect(sizing.validateLogicalField("w", "1.5", fixedDraft, baseSlot).valid).toBe(false);
+    expect(sizing.validateLogicalField("w", "1.5", fixedDraft, baseSlot).message).toMatch(/whole number/);
+    expect(sizing.validateLogicalField("w", "", fixedDraft, baseSlot).valid).toBe(false);
+    expect(sizing.validateLogicalField("w", "1300", fixedDraft, baseSlot).valid).toBe(true);
+    expect(sizing.validateLogicalField("w", "3600", fixedDraft, baseSlot).valid, "a body exactly as wide as the wall is allowed").toBe(true);
+    expect(sizing.validateLogicalField("x", "-20", fixedDraft, baseSlot).valid, "a partial off-wall position stays editable").toBe(true);
+    expect(sizing.validateLogicalField("bezel-left", "-1", fixedDraft, baseSlot).valid).toBe(false);
+    expect(sizing.validateLogicalField("bezel-left", "-1", fixedDraft, baseSlot).message).toMatch(/negative/);
+    expect(sizing.validateLogicalField("bezel-left", "100", fixedDraft, baseSlot).message).toMatch(/no visible width/);
+    expect(sizing.validateLogicalField("bezel-left", "100", fixedDraft, baseSlot).valid).toBe(false);
+    const tabletsDraft = { ...fixedDraft, sizing: { mode: "tablets" as const, padding: 0 } };
+    expect(sizing.validateLogicalField("w", "999999", tabletsDraft, baseSlot).valid,
+        "fit-to-tablets mode may grow the wall instead of rejecting the requested body").toBe(true);
+    expect(sizing.validateLogicalField("width", "0", fixedDraft, null).valid).toBe(false);
+    expect(sizing.validateLogicalField("padding", "-1", fixedDraft, null).valid).toBe(false);
+    expect(sizing.validateLogicalField("height", "2400", fixedDraft, null).valid).toBe(true);
+    const wallWithBodies = { ...fixedDraft, placements: { a: { ...baseSlot, w: 1200, h: 800, x: -50 } } };
+    expect(sizing.validateLogicalField("width", "1000", wallWithBodies, null).valid,
+        "shrinking a fixed wall below a body width requires an explicit correction").toBe(false);
+    expect(sizing.validateLogicalField("height", "700", wallWithBodies, null).valid).toBe(false);
+    expect(sizing.validateLogicalField("width", "1200", wallWithBodies, null).valid,
+        "partial off-wall positioning does not invalidate the body-size check").toBe(true);
+    expect(sizing.validateLogicalField("width", "1000", { ...wallWithBodies, sizing: { mode: "tablets" } } as unknown as state.LogicalLayout, null).valid).toBe(true);
+    const help = stageModel.helpText(true);
+    for (const phrase of ["Shift", "Escape", "Alt", "touch", "Numeric", "Fit and 2x"]) expect(help.includes(phrase), "help names " + phrase).toBeTruthy();
+    expect(stageModel.helpText(false).includes("Numeric")).toBeTruthy();
+    expect(stageModel.helpText(true, "physical").includes("millimetre"), "measured help names millimetres").toBeTruthy();
+    expect(stageModel.helpText(true, "physical").includes("snap checkbox"), "measured help does not claim logical snap").toBe(false);
+    expect(stageModel.viewZoom({ ownerDocument: { body: { dataset: { viewZoom: "2x" } } } } as unknown as SVGSVGElement)).toBe("2x");
+    expect(stageModel.viewZoom({ ownerDocument: { body: { dataset: {} } } } as unknown as SVGSVGElement)).toBe("fit");
+    expect(stageModel.viewSize(300, 200, "fit")).toEqual({ zoom: "fit", inlineSize: 300, blockSize: 200, fieldBlockSize: null, overflow: "" });
+    expect(stageModel.viewSize(300, 200, "2x")).toEqual({ zoom: "2x", inlineSize: 600, blockSize: 400, fieldBlockSize: 200, overflow: "auto" });
+});
