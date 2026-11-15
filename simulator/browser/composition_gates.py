@@ -1,4 +1,4 @@
-"""Measure the workspace-wall composition gates G1-G6 against a live operator console.
+"""Measure the workspace-wall composition gates G1-G6 and G8 against a live operator console.
 
 Works on the five-tab console and on the workspace shell (see the DOM contract in the
 redesign spec). Every gate records the measured value next to its threshold. Run with the
@@ -83,6 +83,15 @@ def fully_inside(box: dict | None, viewport: tuple[int, int], slack: float = 0.5
         and box["x"] + box["width"] <= viewport[0] + slack
         and box["y"] + box["height"] <= viewport[1] + slack
     )
+
+
+def region_overlaps(boxes: dict[str, dict], slack: float = 0.5) -> list[str]:
+    names = list(boxes)
+    return [f"{a}×{b}" for i, a in enumerate(names) for b in names[i + 1:]
+            if min(boxes[a]["x"] + boxes[a]["width"], boxes[b]["x"] + boxes[b]["width"])
+            - max(boxes[a]["x"], boxes[b]["x"]) > slack
+            and min(boxes[a]["y"] + boxes[a]["height"], boxes[b]["y"] + boxes[b]["height"])
+            - max(boxes[a]["y"], boxes[b]["y"]) > slack]
 
 
 def verdict(passed: bool, value: Any, threshold: str, detail: Any = None) -> dict:
@@ -229,12 +238,47 @@ def commit_primary(page: Any, ids: tuple[str, ...]) -> dict:
         const scope = document.querySelector('#commit-bar') || document;
         for (const id of ids) {
           const e = scope.querySelector('#' + id) || document.querySelector('#' + id);
-          if (e && vis(e)) return {id, box: rect(e), enabled: !e.disabled, inBar: !!document.querySelector('#commit-bar #' + id)};
+          if (e && vis(e)) return {id, box: rect(e), enabled: !e.disabled,
+            hit: e.contains(document.elementFromPoint(e.getBoundingClientRect().x + e.getBoundingClientRect().width / 2,
+              e.getBoundingClientRect().y + e.getBoundingClientRect().height / 2)), inBar: !!document.querySelector('#commit-bar #' + id)};
         }
         return {id: null, box: null, enabled: false, inBar: false};
         }""",
         list(ids),
     )
+
+
+def draft_layout(page: Any) -> dict:
+    return page.evaluate("() => {" + VISIBLE_JS + """
+        const bar = document.querySelector('#commit-bar'), image = bar.dataset.commit === 'image';
+        const primary = bar.querySelector(image ? '#show-image' : '#btn-apply');
+        const discard = bar.querySelector(image ? '#image-discard' : '#btn-cancel');
+        const scaling = bar.querySelector('#image-preview-controls');
+        const range = document.createRange(); range.selectNodeContents(primary);
+        return {height: rect(bar).height, primary: rect(primary), discard: rect(discard),
+          scaling_height: vis(scaling) ? rect(scaling).height : 0,
+          primary_lines: image ? range.getClientRects().length : null};
+    }""")
+
+
+def phone_regions(page: Any) -> dict:
+    return page.evaluate("() => {" + VISIBLE_JS + """
+        const selectors = {header: 'header.topbar', toolbar: '.stage-toolbar', well: '[data-stage-well]',
+          commit: '#commit-bar', inspector: '#inspector', nav: '#bottom-nav'};
+        return Object.fromEntries(Object.entries(selectors).map(([name, selector]) => [name, rect(document.querySelector(selector))]));
+    }""")
+
+
+def reach_control(page: Any, selector: str, last: bool = False) -> dict:
+    return page.evaluate("([selector, last]) => {" + VISIBLE_JS + """
+        const controls = [...document.querySelectorAll(selector)].filter(e => vis(e) && !e.disabled);
+        const e = controls[last ? controls.length - 1 : 0];
+        if (!e) return {box: null, hit: false};
+        e.scrollIntoView({block: 'center', inline: 'nearest'});
+        e.focus({preventScroll: true});
+        const r = e.getBoundingClientRect(), top = document.elementFromPoint(r.x + r.width / 2, r.y + r.height / 2);
+        return {id: e.id, box: rect(e), hit: !!top && e.contains(top), scrollY};
+    }""", [selector, last])
 
 
 # --- the run --------------------------------------------------------------------------------
@@ -284,6 +328,19 @@ def run(out: Path, port_range: str) -> dict:
 
             # Fixture: 6 tablets, 3x2, one image shown.
             clients = [rig.new_client(ra.CLIENT_SPECS[i % len(ra.CLIENT_SPECS)], i) for i in range(6)]
+            unplaced: dict[str, Any] = {}
+            for width in (1440, 1366, 1280):
+                set_viewport(page, (width, 900))
+                fit = page.evaluate("""() => {
+                    const chips = [...document.querySelectorAll('#roster > [data-device-id]')].map(e => e.getBoundingClientRect().top);
+                    const mode = document.querySelector('.mode-switch').getBoundingClientRect();
+                    const tools = document.querySelector('.toolbar-tools').getBoundingClientRect();
+                    return {chip_tops: chips, mode: {top: mode.top, bottom: mode.bottom},
+                      tools: {top: tools.top, bottom: tools.bottom}};
+                }""")
+                fit["pass"] = len(fit["chip_tops"]) == 6 and max(fit["chip_tops"]) - min(fit["chip_tops"]) <= 0.5 and max(fit["mode"]["top"], fit["tools"]["top"]) < min(fit["mode"]["bottom"], fit["tools"]["bottom"])
+                unplaced[f"unplaced6/{width}x900"] = fit
+                shot(page, f"g6-unplaced6-{width}x900", state="six Not placed chips")
             ra._place_grid(rig, clients, 1800, 1000, 3)
             set_viewport(page, (1440, 900))
             open_mode(page, "content")
@@ -340,9 +397,9 @@ def run(out: Path, port_range: str) -> dict:
             gates["G1b"] = verdict(all(value >= 0.40 for value in content_areas.values()), content_areas,
                                      "drawn wall content >=40% of viewport for the 3x2 fixture")
 
-            g6: dict[str, Any] = {}
+            g6: dict[str, Any] = dict(unplaced)
             narrow = {mode: grid[f"390x844/{mode}"] for mode in MODES}
-            ok6 = True
+            ok6 = all(value["pass"] for value in unplaced.values())
             for mode, m in narrow.items():
                 ctrl = m["firstControl"]
                 top_ok = bool(m["wellVisible"] and ctrl and m["well"]["y"] < ctrl["box"]["y"])
@@ -357,16 +414,17 @@ def run(out: Path, port_range: str) -> dict:
             g6["max_overflow_px"] = {"value": worst, "worst_cases": {k: v for k, v in overflow.items() if v > 0},
                                      "pass": worst <= 0}
             gates["G6"] = verdict(ok6, g6, "stage top above first inspector control at 390x844; "
-                                  "scrollWidth<=innerWidth at all 7 viewports x 3 modes")
+                                  "scrollWidth<=innerWidth at all 7 viewports x 3 modes; six Not placed chips share a row at 1440, 1366 and 1280")
 
             # G2 (with every disclosure open) and G3 (with a draft open).
             g2: dict[str, Any] = {}
             draft_primaries: dict[str, list] = {}
+            phone_drafts: dict[str, dict] = {}
             set_viewport(page, (1440, 900))
             open_mode(page, "content")
             if not ra._select_gallery_image(rig, 1):
                 raise RuntimeError("no second gallery image for a draft")
-            for size in VIEWPORTS:
+            for size in [*VIEWPORTS, (320, 740)]:
                 set_viewport(page, size)
                 open_mode(page, "content")
                 opened = open_all_details(page)
@@ -374,6 +432,8 @@ def run(out: Path, port_range: str) -> dict:
                 page.evaluate("window.scrollTo(0, 0)")
                 cp = commit_primary(page, ("show-image",))
                 inside = fully_inside(cp["box"], size)
+                if size[0] < 768:
+                    phone_drafts[f"{cp['id']}/{size[0]}"] = draft_layout(page)
                 g2[f"image/{size[0]}x{size[1]}"] = {"details_opened": opened, "box": cp["box"], "in_commit_bar": cp["inBar"],
                                                       "pass": inside}
                 draft_primaries[f"image/{size[0]}x{size[1]}"] = measure_view(page)["primaries"]
@@ -386,7 +446,7 @@ def run(out: Path, port_range: str) -> dict:
             page.fill("#grid-columns", "2")
             page.locator("#grid-preview").click()
             page.wait_for_function("() => document.getElementById('btn-apply')?.disabled === false", timeout=25000)
-            for size in VIEWPORTS:
+            for size in [*VIEWPORTS, (320, 740)]:
                 set_viewport(page, size)
                 open_mode(page, "arrange")
                 opened = open_all_details(page)
@@ -394,14 +454,23 @@ def run(out: Path, port_range: str) -> dict:
                 page.evaluate("window.scrollTo(0, 0)")
                 cp = commit_primary(page, ("btn-apply",))
                 inside = fully_inside(cp["box"], size)
+                if size[0] < 768:
+                    phone_drafts[f"{cp['id']}/{size[0]}"] = draft_layout(page)
                 g2[f"arrangement/{size[0]}x{size[1]}"] = {"details_opened": opened, "box": cp["box"],
                                                            "in_commit_bar": cp["inBar"], "pass": inside}
                 draft_primaries[f"arrangement/{size[0]}x{size[1]}"] = measure_view(page)["primaries"]
                 shot(page, f"g2-arrangement-draft-{size[0]}x{size[1]}", viewport=list(size),
                      state="arrangement draft, disclosures open")
+            for width in (390, 320):
+                image = phone_drafts[f"show-image/{width}"]
+                arrangement = phone_drafts[f"btn-apply/{width}"]
+                rows_ok = all(abs(layout["primary"]["y"] - layout["discard"]["y"]) <= 0.5 for layout in (image, arrangement))
+                g2[f"phone_draft_layout/{width}"] = {"image": image, "arrangement": arrangement,
+                    "pass": rows_ok and image["primary_lines"] == 1
+                    and abs(image["height"] - arrangement["height"]) <= 8 + image["scaling_height"]}
             gates["G2"] = verdict(all(v["pass"] for v in g2.values()), g2,
                                   "commit primary fully inside viewport, 7 viewports x (image, arrangement) draft, "
-                                  "all inspector disclosures open")
+                                  "all inspector disclosures open; phone draft rows match with one-line Show image")
             primaries_grid = {k: m["primaries"] for k, m in grid.items()}
             counts = {k: len(v) for k, v in {**primaries_grid, **draft_primaries}.items()}
             worst3 = max(counts.values())
@@ -453,6 +522,56 @@ def run(out: Path, port_range: str) -> dict:
                                                                       "tile_text_label")}},
                                   f"header names it, roster text 'Offline', tile text label, within {OFFLINE_SECONDS}s, "
                                   "order unchanged", {"last_sample": seen, "order_before": before, "order_after": after})
+            for client_page, device_id in clients[-3:-1]:
+                ra._close_client(rig, client_page, device_id)
+            page.wait_for_function("() => document.querySelectorAll('#roster [data-status=offline]').length === 3")
+            open_mode(page, "content")
+            if not ra._select_gallery_image(rig, 1):
+                raise RuntimeError("no second gallery image for the compound failure draft")
+            set_viewport(page, (390, 844))
+            opened = open_all_details(page)
+            page.wait_for_timeout(150)
+            page.evaluate("window.scrollTo(0, 0)")
+            cp = commit_primary(page, ("show-image",))
+            header_height = page.locator("header.topbar").bounding_box()["height"]
+            chip_tops = page.locator("#exception-strip > li").evaluate_all("rows => rows.map(e => e.getBoundingClientRect().top)")
+            page.locator("#exception-strip [data-status=more] button").click()
+            more_opens_all = page.locator("body").get_attribute("data-view") == "tablets" and page.locator("#device-list [data-status=offline]").count() == 3
+            page.locator("#exception-strip [data-status=more] button").click()
+            more_stays_open = page.locator("body").get_attribute("data-view") == "tablets"
+            open_mode(page, "content")
+            g2["image/offline3/390x844"] = {"details_opened": opened, **cp,
+                "header_height": header_height, "chip_tops": chip_tops, "more_opens_all": more_opens_all,
+                "more_stays_open": more_stays_open,
+                "pass": fully_inside(cp["box"], (390, 844)) and cp["hit"] and header_height <= 93
+                and len(chip_tops) == 2 and max(chip_tops) - min(chip_tops) <= 0.5 and more_opens_all and more_stays_open}
+            gates["G2"] = verdict(all(v["pass"] for v in g2.values()), g2,
+                "commit primary fully inside viewport, 7 viewports x (image, arrangement) draft, "
+                "all inspector disclosures open; phone draft rows match with one-line Show image; "
+                "three offline plus image draft at 390x844 hit-testable, header <=93px, all failures reachable via +N")
+            shot(page, "g2-image-draft-offline3-390x844", state="three offline, image draft, disclosures open")
+
+            g8: dict[str, Any] = {}
+            for size in ((390, 844), (320, 740)):
+                for percent in (100, 200):
+                    page.evaluate("p => document.documentElement.style.fontSize = p === 100 ? '' : p + '%'", percent)
+                    set_viewport(page, size)
+                    page.evaluate("window.scrollTo(0, 0)")
+                    boxes = phone_regions(page)
+                    overlaps = region_overlaps(boxes)
+                    primary = reach_control(page, "#show-image")
+                    last = reach_control(page, "#inspector :is(button, input, select, textarea, summary, a[href])", last=True)
+                    reachable = all(fully_inside(control["box"], size) and control["hit"] for control in (primary, last))
+                    doc = page.evaluate("({height: document.documentElement.scrollHeight, viewport: innerHeight, width: document.documentElement.scrollWidth, viewportWidth: innerWidth})")
+                    g8[f"{size[0]}x{size[1]}/text{percent}"] = {"boxes": boxes, "regionOverlaps": overlaps,
+                        "primary": primary, "last_control": last, "document": doc,
+                        "pass": not overlaps and reachable and doc["width"] <= doc["viewportWidth"]}
+                    page.evaluate("window.scrollTo(0, 0)")
+                    shot(page, f"g8-offline3-{size[0]}x{size[1]}-text{percent}", state="three offline, image draft", root_font_percent=percent)
+            page.evaluate("document.documentElement.style.fontSize = ''")
+            gates["G8"] = verdict(all(v["pass"] for v in g8.values()), g8,
+                "phone regions pairwise disjoint at 390x844 and 320x740, root text 100% and 200%; "
+                "draft primary and last inspector control reachable and hit-testable; no horizontal overflow")
             result["console"] = rig.console
             result["page_errors"] = rig.page_errors
         except Exception:
@@ -460,7 +579,7 @@ def run(out: Path, port_range: str) -> dict:
             raise
         finally:
             result["cleanup"] = rig.close()
-            result["pass"] = len(gates) == 7 and all(g["pass"] for g in gates.values()) and "error" not in result
+            result["pass"] = len(gates) == 8 and all(g["pass"] for g in gates.values()) and "error" not in result
             result["gate_summary"] = {k: gates[k]["pass"] for k in sorted(gates)}
             (out / "gates.json").write_text(json.dumps(result, indent=2, default=str))
     for name in ("home", "xdg-config", "xdg-cache", "xdg-data", "tmp", "runtime"):

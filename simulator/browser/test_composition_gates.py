@@ -46,3 +46,14 @@ def test_fully_inside_edges():
 def test_verdict_shape():
     v = g.verdict(0, 3, ">=4")
     assert v == {"pass": False, "value": 3, "threshold": ">=4"}
+
+
+def test_region_overlaps_checks_both_axes_and_containment():
+    boxes = {"header": box(0, 0, 390, 93), "well": box(8, 145, 374, 253),
+             "commit": box(8, 406, 374, 148), "inspector": box(0, 495, 390, 296)}
+    assert g.region_overlaps(boxes) == ["commit×inspector"]
+    boxes["inspector"] = box(0, 562, 390, 229)
+    assert g.region_overlaps(boxes) == []
+    assert g.region_overlaps({"outer": box(0, 0, 100, 100), "inner": box(10, 10, 10, 10)}) == ["outer×inner"]
+    assert g.region_overlaps({"left": box(0, 0, 10, 10), "right": box(10, 0, 10, 10)}) == []
+    assert g.region_overlaps({"top": box(0, 0, 10, 10), "bottom": box(0, 10, 10, 10)}) == []
