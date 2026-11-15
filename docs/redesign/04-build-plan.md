@@ -364,6 +364,8 @@ A visually hidden `aria-live="polite"` region announces "Tablet 2 moved". Numeri
 
 Every unit runs in its own git worktree from the latest integration branch. "Files" lists every file the unit may create or change. A unit that needs to change any other file stops and reports the need. Run all commands from `frontend/controller-app/` unless a command says otherwise. Tiers: **CH** is Codex 6.1 Sol high, **CM** is Codex medium, and **DS** is DeepSeek.
 
+**Shared wiring files.** Any unit may make small additive changes to `src/main.tsx`, `src/App.tsx` and anything under `src/dev/` to mount and test its work, without that file being on its Files line. List those changes in the commit body. Units U01, U04, U13, U14 and U15 each stopped on this before the rule existed.
+
 **Standard checks**, referred to as `STD` below. Run them in this order. Each must exit 0:
 1. `npm run typecheck`
 2. `npm run lint`
