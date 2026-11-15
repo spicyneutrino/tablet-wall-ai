@@ -24,6 +24,7 @@ from typing import Any
 REPO = Path(__file__).resolve().parents[2]
 
 VIEWPORTS = [(1920, 1080), (1440, 900), (1366, 768), (1280, 800), (1024, 768), (768, 1024), (390, 844)]
+SHORT_VIEWPORTS = ((844, 390), (667, 375), (1024, 600), (1280, 600))
 MODES = ("content", "arrange", "test")
 AREA_SIZES = [(1366, 768), (1280, 800)]
 STAGE_AREA_MIN = 0.45
@@ -279,6 +280,19 @@ def reach_control(page: Any, selector: str, last: bool = False) -> dict:
         const r = e.getBoundingClientRect(), top = document.elementFromPoint(r.x + r.width / 2, r.y + r.height / 2);
         return {id: e.id, box: rect(e), hit: !!top && e.contains(top), scrollY};
     }""", [selector, last])
+
+
+def reach_inspector_controls(page: Any) -> list[dict]:
+    return page.evaluate("() => {" + VISIBLE_JS + """
+        return [...document.querySelectorAll(
+          '#inspector :is(button, input:not([type=hidden]), select, textarea, summary, a[href])')]
+          .filter(vis).map(e => {
+            e.scrollIntoView({block: 'center', inline: 'nearest'});
+            const r = e.getBoundingClientRect();
+            const top = document.elementFromPoint(r.x + r.width / 2, r.y + r.height / 2);
+            return {id: e.id, tag: e.tagName, box: rect(e), hit: !!top && e.contains(top), scrollY};
+          });
+    }""")
 
 
 # --- the run --------------------------------------------------------------------------------
@@ -569,9 +583,28 @@ def run(out: Path, port_range: str) -> dict:
                     page.evaluate("window.scrollTo(0, 0)")
                     shot(page, f"g8-offline3-{size[0]}x{size[1]}-text{percent}", state="three offline, image draft", root_font_percent=percent)
             page.evaluate("document.documentElement.style.fontSize = ''")
+            set_viewport(page, (1440, 900))
+            page.locator("#image-discard").click()
+            for size in SHORT_VIEWPORTS:
+                set_viewport(page, size)
+                for mode in MODES:
+                    open_mode(page, mode)
+                    open_all_details(page)
+                    boxes = phone_regions(page)
+                    overlaps = region_overlaps(boxes)
+                    controls = reach_inspector_controls(page)
+                    reachable = bool(controls) and all(fully_inside(c["box"], size) and c["hit"] for c in controls)
+                    doc = page.evaluate("({width: document.documentElement.scrollWidth, viewportWidth: innerWidth})")
+                    g8[f"{size[0]}x{size[1]}/{mode}"] = {"boxes": boxes, "regionOverlaps": overlaps,
+                        "controls": controls, "document": doc,
+                        "pass": not overlaps and reachable and doc["width"] <= doc["viewportWidth"]}
+                    page.evaluate("document.querySelector('.inspector-scroll').scrollTop = 1e9")
+                    shot(page, f"g8-{mode}-{size[0]}x{size[1]}-bottom", mode=mode, state="inspector bottom, disclosures open")
             gates["G8"] = verdict(all(v["pass"] for v in g8.values()), g8,
                 "phone regions pairwise disjoint at 390x844 and 320x740, root text 100% and 200%; "
-                "draft primary and last inspector control reachable and hit-testable; no horizontal overflow")
+                "draft primary and last inspector control reachable and hit-testable; "
+                "at 844x390, 667x375, 1024x600 and 1280x600 in every mode, regions disjoint and every inspector "
+                "control reachable and hit-testable after scrolling; no horizontal overflow")
             result["console"] = rig.console
             result["page_errors"] = rig.page_errors
         except Exception:
