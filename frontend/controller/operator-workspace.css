@@ -457,21 +457,21 @@ dialog.server-drawer::backdrop { background: var(--backdrop); }
 .stage-toolbar[data-roster-row="true"] .roster-strip { grid-row: 2; grid-column: 1 / -1; min-block-size: 44px; }
 .stage-toolbar[data-roster-row="true"] .roster-add { margin-inline-start: auto; }
 
-/* Below 64rem: stage and commit bar stay pinned; the inspector scrolls inside the remaining space */
+/* Below 64rem: pin the stage when chrome and the minimum inspector fit; otherwise scroll the page. */
 @media (max-width: 63.99rem) {
+    body.physical { grid-template-rows: minmax(min-content, auto) minmax(min-content, 1fr); overflow-y: auto; }
     .topbar:has(.problem-chip) { flex-wrap: wrap; }
     .topbar:has(.problem-chip) .wall-summary { display: contents; }
     .topbar:has(.problem-chip) .problem-chips { order: 1; flex-basis: 100%; flex-wrap: wrap; padding-block-end: var(--space-1); }
-    .workspace { grid-template-columns: minmax(0, 1fr); grid-template-rows: auto auto minmax(0, 1fr); grid-template-areas: "notices" "stage" "inspector"; }
+    .workspace { grid-template-columns: minmax(0, 1fr); grid-template-rows: auto auto minmax(12rem, 1fr); grid-template-areas: "notices" "stage" "inspector"; }
     .stage-column { padding-block-end: var(--space-2); }
     .stage-well { flex: none; block-size: 42dvh; }
-    .inspector { border-inline-start: 0; border-block-start: 1px solid var(--border); }
+    .inspector { contain: size; border-inline-start: 0; border-block-start: 1px solid var(--border); }
 }
 
 /* Phone */
 @media (max-width: 47.99rem) {
     :root { --page-pad: 16px; --tool-h: 44px; --control-primary: 44px; --control-min: 44px; --control-form: 44px; --control-compact: 44px; --commit-h: auto; }
-    body.physical { grid-template-rows: minmax(min-content, auto) minmax(min-content, 1fr); overflow-y: auto; }
     .topbar-actions { flex-wrap: wrap; justify-content: flex-end; min-inline-size: 0; }
     .topbar { display: grid; grid-template-columns: auto minmax(3rem, 1fr) auto; grid-template-areas: "brand summary actions"; gap: 0 var(--space-2); padding: 0 var(--space-2); }
     .brand { grid-area: brand; font-size: 0; gap: 0; }
@@ -508,7 +508,6 @@ dialog.server-drawer::backdrop { background: var(--backdrop); }
     #commit-bar:is([data-commit="image"], [data-commit="arrangement"]) .image-primary-actions { flex-basis: 100%; }
     #commit-bar .image-primary-actions .btn { flex: 1; }
     #image-fit-field { flex: 0 1 auto; }
-    .inspector { contain: size; }
     .inspector-scroll { padding-inline: var(--space-4); }
     .bottom-nav { grid-area: nav; display: flex; border-block-start: 1px solid var(--border-strong); background: var(--surface); padding-block-end: env(safe-area-inset-bottom); }
     .bottom-nav-item { position: relative; flex: 1; min-inline-size: 0; padding-inline: var(--space-1); font-size: var(--text-sm); min-block-size: 52px; border: 0; background: transparent; color: var(--muted); font-weight: 500; border-block-start: 2px solid transparent; }
