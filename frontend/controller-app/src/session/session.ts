@@ -1,13 +1,20 @@
+import { ErrorBodySchema, errorMessage } from '../api/errors';
+import { ConfigSchema } from '../api/config';
+import type { Config } from '../api/config';
+import type { DeviceStatus as Device } from '../api/devices';
+import { DeviceIdSchema } from '../api/devices';
+import { ConfigEtagSchema } from '../api/etag';
+import type { ConfigEtag } from '../api/etag';
 import { readFence } from './readFence';
-import { ApiError, errorMessage, isRecord } from './outcome';
+import { ApiError, isRecord } from './outcome';
 import type { CommandOutcome } from './outcome';
-import { createSync, deviceMap, observeDevice } from './sync';
+import { createSync, observeDevice } from './sync';
 import type { SyncDependencies, Timers } from './sync';
 
-export type Device = Record<string, unknown>;
-export type Config = Record<string, unknown> & { layout: Record<string, unknown> };
+export type { Config } from '../api/config';
+export type { DeviceStatus as Device } from '../api/devices';
 export type ServerState = {
-  config: Config | null; etag: string | null; etagState: 'current' | 'stale' | 'missing';
+  config: Config | null; etag: ConfigEtag | null; etagState: 'current' | 'stale' | 'missing';
   roster: Record<string, Device>; connectionVersions: Record<string, number>;
   rosterError: string | null; rosterUnreachable: boolean; rosterCheckedAt: string | null;
   transportText: string; uncertain: boolean; supported: boolean; busy: boolean; adoption: number;
@@ -35,12 +42,9 @@ function freeze<T>(value: T): T {
 }
 
 export function parseConfig(value: unknown): Config {
-  if (!isRecord(value) || !isRecord(value.layout)
-    || value.layout.kind !== undefined && value.layout.kind !== 'logical' && value.layout.kind !== 'physical'
-    || value.operator_state_version !== undefined && value.operator_state_version !== 1) {
-    throw new Error('Unsupported wall configuration. Update the console before editing.');
-  }
-  return { ...value, layout: value.layout };
+  const parsed = ConfigSchema.safeParse(value);
+  if (!parsed.success) throw new Error('Unsupported wall configuration. Update the console before editing.');
+  return parsed.data;
 }
 
 export function createSession(deps: Dependencies) {
@@ -80,11 +84,10 @@ export function createSession(deps: Dependencies) {
     supported = true;
     state.readFence.event();
     adoption += 1;
-    const runtime = isRecord(config.runtime) ? config.runtime : {};
-    const devices = deviceMap(runtime.devices);
-    if (devices) state.roster = Object.fromEntries(Object.entries(devices).map(([id, device]) => [id, observeDevice(device, now())]));
+    const runtime = config.runtime;
+    state.roster = Object.fromEntries(Object.entries(runtime.devices).map(([id, device]) => [id, observeDevice(device, now())]));
     state.operatorConfig = { ...structuredClone(config), runtime: { ...runtime, devices: state.roster } };
-    state.etag = typeof config.etag === 'string' && config.etag ? config.etag : null;
+    state.etag = config.etag;
     state.etagState = state.etag ? 'current' : 'missing';
     state.rosterCheckedAt = new Date().toISOString();
     state.rosterError = null;
@@ -108,14 +111,13 @@ export function createSession(deps: Dependencies) {
       let payload: unknown;
       try { payload = await response.json(); } catch { payload = null; }
       if (!response.ok) {
-        const message = errorMessage(isRecord(payload) ? payload.detail : null, response.status)
-          .replace(/\b[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\b/gi, (id) => {
-            const labels = state.operatorConfig?.device_labels;
-            const label = isRecord(labels) ? labels[id] : null;
-            const device = state.roster[id];
-            return typeof label === 'string' ? label : typeof device?.label === 'string' ? device.label
-              : device?.number ? `Tablet ${String(device.number)}` : 'Unregistered tablet';
-          });
+        const errorBody = ErrorBodySchema.safeParse(payload);
+        const message = errorBody.success ? errorMessage(errorBody.data.detail, (id) => {
+          const deviceId = DeviceIdSchema.safeParse(id).data;
+          const label = deviceId ? state.operatorConfig?.device_labels[deviceId] : null;
+          const device = state.roster[id];
+          return label || device?.label || (device?.number ? `Tablet ${String(device.number)}` : 'Unregistered tablet');
+        }) : `HTTP ${response.status}`;
         if (response.status === 401) {
           state.transportText = 'Signed out';
           publish();
@@ -149,6 +151,19 @@ export function createSession(deps: Dependencies) {
     if (durable) { state.busy = true; publish(); }
     try {
       let payload = await send(method, path, body, expected, durable);
+      if (!durable && options.fenced === 'durable') {
+        if (atSend?.etag !== state.operatorConfig?.etag || state.etagState === 'stale') {
+          return { kind: 'rejected', status: 409, message: 'Saved wall data changed during this read. Refresh this task.' };
+        }
+      } else if (!durable && options.fenced && !state.readFence.current(ticket)) {
+        return { kind: 'rejected', status: 409, message: 'A newer update arrived. Refresh this task.' };
+      }
+      if (path === '/api/v3/config' || durable && isRecord(payload) && payload.layout) {
+        try { payload = parseConfig(payload); } catch {
+          supported = false; state.etagState = 'stale'; publish();
+          throw new ApiError(0, 'The response was unsupported. Update the console and refresh status before retrying.');
+        }
+      }
       if (durable) {
         if (!payload) throw new ApiError(0, 'The command may have completed, but its response was unreadable. Refresh status and review before retrying.');
         state.readFence.event();
@@ -156,7 +171,7 @@ export function createSession(deps: Dependencies) {
         if (isRecord(payload) && payload.layout && current && current !== atSend
           && (current.etag === payload.etag || current.etag !== expected)) {
           void sync.reconcile(true);
-          const commandEtag = typeof payload.etag === 'string' ? payload.etag : undefined;
+          const commandEtag = ConfigEtagSchema.safeParse(payload.etag).data;
           payload = { ...payload, ...current };
           let value: unknown;
           try { value = options.parse ? options.parse.parse(payload) : payload; } catch {
@@ -164,12 +179,6 @@ export function createSession(deps: Dependencies) {
           }
           return { kind: 'ok', value, commandEtag };
         }
-      } else if (options.fenced === 'durable') {
-        if (atSend?.etag !== state.operatorConfig?.etag || state.etagState === 'stale') {
-          return { kind: 'rejected', status: 409, message: 'Saved wall data changed during this read. Refresh this task.' };
-        }
-      } else if (options.fenced && !state.readFence.current(ticket)) {
-        return { kind: 'rejected', status: 409, message: 'A newer update arrived. Refresh this task.' };
       }
       let value: unknown;
       try { value = options.parse ? options.parse.parse(payload) : payload; } catch {

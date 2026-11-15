@@ -1,11 +1,11 @@
+import gridPreview from '../api/__fixtures__/grid-logical.json';
+import { GridPreviewSchema } from '../api/grid';
+import { A, configFixture as config } from './testFixtures';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { createSession, parseConfig } from './session';
 import type { Session } from './session';
 import { isRecord } from './outcome';
 
-const config = (etag: string, paint = 'loading') => ({ etag, revision: 1, generation: 'session',
-  layout: { kind: 'logical', width: 100, height: 100, placements: {} },
-  runtime: { devices: { a: { online: true, render: { state: paint } } } } });
 const response = (payload: unknown, status = 200) => new Response(JSON.stringify(payload), { status });
 function deferred<T>() {
   let resolve!: (value: T) => void;
@@ -21,7 +21,7 @@ function setup(transport: typeof fetch) {
 }
 function paint(value: unknown) {
   if (!isRecord(value) || !isRecord(value.runtime) || !isRecord(value.runtime.devices)) return;
-  const device = value.runtime.devices.a;
+  const device = value.runtime.devices[A];
   return isRecord(device) && isRecord(device.render) ? device.render.state : undefined;
 }
 
@@ -35,7 +35,7 @@ describe('ported operator_session assertions', () => {
       ? Promise.resolve(response(config('reconciled'))) : pending.promise);
     const session = setup(transport);
     expect(Reflect.get(session, 'state')).toBeUndefined();
-    expect(() => Object.assign(session.view().roster.a!, { online: false })).toThrow(TypeError);
+    expect(() => Object.assign(session.view().roster[A]!, { online: false })).toThrow(TypeError);
     const old = session.request('PUT', '/api/v3/scene', {}, { useCurrentEtag: true });
     expect(await session.request('POST', '/api/v3/layout/clear', { confirm: true }, { useCurrentEtag: true }))
       .toEqual({ kind: 'refused-locally', reason: 'busy' });
@@ -149,8 +149,9 @@ describe('command and refresh boundaries', () => {
     const session = setup(transport);
     expect(() => session.ingest({ layout: { kind: 'future' } })).toThrow(/Update the console/);
     expect(await session.request('PUT', '/api/v3/scene', {})).toEqual({ kind: 'refused-locally', reason: 'unsupported' });
-    session.ingest({ layout: { kind: 'logical' } });
-    expect(await session.request('PUT', '/api/v3/scene', {}, { useCurrentEtag: true }))
+    expect(() => session.ingest({ ...config('valid'), etag: null })).toThrow(/Unsupported/);
+    session.ingest(config('valid'));
+    expect(await session.request('PUT', '/api/v3/scene', {}, { ifMatch: '' }))
       .toEqual({ kind: 'refused-locally', reason: 'stale-etag' });
     expect(transport).not.toHaveBeenCalled();
     expect(() => parseConfig({ layout: { kind: 'logical' }, operator_state_version: 2 })).toThrow(/Unsupported/);
@@ -179,7 +180,7 @@ describe('command and refresh boundaries', () => {
 });
 
 it('adopts a successful config once, preserves unknown fields, and publishes the same frozen snapshot to the store', async () => {
-  const configWithExtensions = { ...config('saved'), extension: { keep: true }, layout: { kind: 'logical', future: { keep: true } } };
+  const configWithExtensions = { ...config('saved'), extension: { keep: true }, layout: { ...config('saved').layout, future: { keep: true } } };
   const setState = vi.fn();
   const session = createSession({ store: { setState }, fetch: async () => response(configWithExtensions), isDirty: () => false });
   sessions.push(session);
@@ -202,7 +203,7 @@ it('normalizes error details and uses tablet labels, and a 401 publishes Signed 
   expect(await session.request('POST', '/api/v3/grid', {}))
     .toEqual({ kind: 'rejected', status: 409, message: 'Tablet North wall is unready' });
   expect(await session.request('POST', '/api/v3/grid', {}))
-    .toMatchObject({ kind: 'rejected', status: 422, message: '[{"msg":"bad value","loc":["body","name"]}]' });
+    .toMatchObject({ kind: 'rejected', status: 422, message: 'bad value' });
   expect(await session.request('GET', '/api/v3/config')).toMatchObject({ kind: 'rejected', status: 401 });
   expect(session.view().transportText).toBe('Signed out');
   expect(session.view().uncertain).toBe(false);
@@ -224,4 +225,38 @@ it('refresh waits for a newer adoption and retains uncertainty on timeout', asyn
   expect(session.view().uncertain).toBe(true);
   pending.resolve(response(config('late-read')));
   await vi.advanceTimersByTimeAsync(0);
+});
+
+it('schema-invalid config responses cannot be hidden by a newer socket adoption', async () => {
+  const pending = deferred<Response>();
+  const session = setup(() => pending.promise);
+  const writing = session.request('PUT', '/api/v3/scene', {}, { useCurrentEtag: true });
+  session.ingest(config('newer'));
+  pending.resolve(response({ ...config('invalid'), layout: { kind: 'logical', width: 'bad' } }));
+  expect(await writing).toMatchObject({ kind: 'uncertain' });
+  expect(session.view()).toMatchObject({ supported: false, etagState: 'stale', etag: 'newer', uncertain: true });
+});
+it('invalid config reads and invalid roster values fail the shared schemas', async () => {
+  const session = setup(async () => response({ ...config('invalid'), revision: 'bad' }));
+  expect(await session.request('GET', '/api/v3/config')).toMatchObject({ kind: 'rejected' });
+  expect(session.view().supported).toBe(false);
+  expect(session.view().config?.revision).toBe(1);
+});
+
+it('a fenced obsolete config response cannot mark newer valid authority unsupported', async () => {
+  const pending = deferred<Response>(), session = setup(() => pending.promise);
+  const reading = session.request('GET', '/api/v3/config', undefined, { fenced: true });
+  session.ingest(config('newer'));
+  pending.resolve(response({ layout: { kind: 'future' } }));
+  expect(await reading).toMatchObject({ kind: 'rejected', status: 409 });
+  expect(session.view()).toMatchObject({ supported: true, etag: 'newer', etagState: 'current' });
+});
+
+it('a real grid preview layout is parsed as GridPreview and never treated as an authoritative Config', async () => {
+  const session = setup(async () => response(gridPreview));
+  const before = session.view();
+  const result = await session.request('POST', '/api/v3/grid/preview', {}, { parse: GridPreviewSchema });
+  expect(result).toEqual({ kind: 'ok', value: GridPreviewSchema.parse(gridPreview) });
+  expect(session.view()).toBe(before);
+  expect(session.view()).toMatchObject({ supported: true, etag: 'first', uncertain: false });
 });

@@ -1,3 +1,5 @@
+import { ConfigEtagSchema } from '../api/etag';
+import { B, configFixture as config, deviceFixture, renderFixture } from './testFixtures';
 import { createRequire } from 'node:module';
 import { readFileSync } from 'node:fs';
 import { runInNewContext } from 'node:vm';
@@ -17,8 +19,6 @@ const legacy = require('../../../controller/operator-session.js') as {
 };
 const model: unknown = require('../../../controller/operator-state.js');
 const syncSource = readFileSync(require.resolve('../../../controller/operator-sync.js'), 'utf8');
-const config = (etag: string, paint = 'loading') => ({ etag, revision: 1, generation: 'session',
-  layout: { kind: 'logical', placements: {} }, runtime: { devices: { a: { online: true, render: { state: paint } } } } });
 
 async function runScript(version: 'old' | 'new') {
   vi.useFakeTimers(); vi.setSystemTime(new Date('2026-11-15T12:00:00Z'));
@@ -67,7 +67,7 @@ async function runScript(version: 'old' | 'new') {
         const value = await (session as LegacySession).request(method, path, method === 'GET' ? undefined : {}, { etag: method !== 'GET', fenced });
         if (isRecord(value) && typeof value.commandEtag === 'string') {
           const { commandEtag, ...receipt } = value;
-          result = { kind: 'ok', value: receipt, commandEtag };
+          result = { kind: 'ok', value: receipt, commandEtag: ConfigEtagSchema.parse(commandEtag) };
         } else result = { kind: 'ok', value };
       } else {
         result = await (session as ReturnType<typeof createSession>).request(method, path, method === 'GET' ? undefined : {}, { useCurrentEtag: method !== 'GET', fenced });
@@ -122,13 +122,13 @@ async function runScript(version: 'old' | 'new') {
     const read = request('GET', '/api/v3/layouts', true);
     sockets[0]!.frame({ type: 'snapshot', config: config('newer') });
     reply({ layouts: [] }); await read;
-    sockets[0]!.frame({ type: 'config_updated', etag: 'next' });
+    sockets[0]!.frame({ type: 'config_updated', etag: 'next', revision: 2, generation: 'session' });
     await request('PUT', '/api/v3/scene');
     reply(config('next')); await flush();
-    sockets[0]!.frame({ type: 'device_online', device: { device_id: 'b', online: true } });
-    sockets[0]!.frame({ type: 'device_updated', device: { device_id: 'b', render: { state: 'displayed', age_ms: 20 } } });
-    sockets[0]!.frame({ type: 'device_offline', device_id: 'b' });
-    sockets[0]!.frame({ type: 'device_removed', device_id: 'b' });
+    sockets[0]!.frame({ type: 'device_online', device: deviceFixture(B) });
+    sockets[0]!.frame({ type: 'device_updated', device: deviceFixture(B, { render: renderFixture('displayed', { age_ms: 20 }) }) });
+    sockets[0]!.frame({ type: 'device_offline', device_id: B, last_seen: 'now' });
+    sockets[0]!.frame({ type: 'device_removed', device_id: B });
     sockets[0]!.close(); sockets[0]!.onclose?.(); reply(config('reconnected')); await flush();
     await vi.advanceTimersByTimeAsync(3000);
     const urls = sockets.map((socket) => socket.url);

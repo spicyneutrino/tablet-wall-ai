@@ -1,3 +1,5 @@
+import { A, B, C, configFixture, deviceFixture, renderFixture } from './testFixtures';
+import { ConfigSchema } from '../api/config';
 import { afterEach, beforeEach, expect, it, vi } from 'vitest';
 import { createSync } from './sync';
 import { createSession } from './session';
@@ -18,7 +20,7 @@ class FakeSocket {
   disconnect() { this.close(); this.onclose?.(); }
 }
 class Visibility extends EventTarget { visibilityState: DocumentVisibilityState = 'visible'; }
-const config = (revision: number) => ({ revision, etag: String(revision), layout: { kind: 'logical' }, runtime: { devices: {} } });
+const config = (revision: number) => ConfigSchema.parse({ ...configFixture(String(revision)), revision, runtime: { ...configFixture(String(revision)).runtime, devices: {} } });
 const cleanups: (() => void)[] = [];
 const flush = async () => { await vi.advanceTimersByTimeAsync(0); };
 function harness(failure?: ApiError) {
@@ -35,8 +37,8 @@ function harness(failure?: ApiError) {
     adoptions.push(options);
     if (!isRecord(value) || !isRecord(value.layout)) throw new Error('bad config');
     received.push(value.revision);
-    state.operatorConfig = { ...value, layout: value.layout };
-    state.etag = String(value.etag); state.etagState = 'current';
+    state.operatorConfig = ConfigSchema.parse(value);
+    state.etag = state.operatorConfig.etag; state.etagState = 'current';
   }, publish, onConflict, isDirty: () => true, now: () => 1000,
   timers: { setTimeout, clearTimeout, setInterval, clearInterval },
   WebSocket: FakeSocket, document, window, href: 'https://example.test/controller/app/' });
@@ -57,7 +59,7 @@ it('ports operator_sync: late reads, stale ETags, queued reconciliation, runtime
   expect(received).toEqual([8]);
   expect(adoptions[0]).toEqual({ preserveDraft: true, remote: true });
   const first = sync.reconcile();
-  socket.message({ type: 'config_updated', etag: '9' });
+  socket.message({ type: 'config_updated', etag: '9', revision: 9, generation: 'session' });
   expect(state.etagState).toBe('stale');
   pending.shift()!(config(7)); await first; await flush();
   expect(pending.length).toBe(1);
@@ -65,12 +67,12 @@ it('ports operator_sync: late reads, stale ETags, queued reconciliation, runtime
   expect(state.etagState).toBe('current');
   expect(received).toEqual([8, 9]);
   const interrupted = sync.reconcile();
-  socket.message({ type: 'device_online', device: { device_id: 'joined', online: true } });
+  socket.message({ type: 'device_online', device: deviceFixture(B) });
   pending.shift()!(config(10)); await interrupted; await flush();
   expect(pending.length).toBe(1);
   pending.shift()!(config(11)); await flush();
   expect(received).toEqual([8, 9, 11]);
-  socket.message({ type: 'config_updated', etag: '12' });
+  socket.message({ type: 'config_updated', etag: '12', revision: 12, generation: 'session' });
   expect(state.etagState).toBe('stale');
   state.readFence.event();
   pending.shift()!(config(12)); await flush();
@@ -79,18 +81,18 @@ it('ports operator_sync: late reads, stale ETags, queued reconciliation, runtime
   pending.shift()!(config(12)); await flush();
   expect(state.etagState).toBe('current');
   expect(received).toEqual([8, 9, 11, 12]);
-  state.roster.other = { render: { state: 'displayed', age_ms: 100, observed_mono: 10 } };
-  socket.message({ type: 'device_updated', device: { device_id: 'tablet', online: true, render: { state: 'loading' } } });
-  expect(state.roster.tablet?.render).toMatchObject({ state: 'loading' });
-  expect(state.operatorConfig?.runtime).toMatchObject({ devices: { tablet: { render: { state: 'loading' } } } });
-  expect(state.roster.tablet?.render).toMatchObject({ observed_mono: 1000 });
-  expect(state.roster.other.render).toMatchObject({ observed_mono: 10 });
-  socket.message({ type: 'device_offline', device_id: 'tablet' });
-  expect(state.roster.tablet?.online).toBe(false);
-  const version = state.connectionVersions.tablet!;
-  socket.message({ type: 'device_removed', device_id: 'tablet' });
-  expect(state.roster.tablet).toBeUndefined();
-  expect(state.connectionVersions.tablet).toBe(version + 1);
+  state.roster[C] = deviceFixture(C, { render: renderFixture('displayed', { age_ms: 100, observed_mono: 10 }) });
+  socket.message({ type: 'device_updated', device: deviceFixture(A, { render: renderFixture('loading') }) });
+  expect(state.roster[A]?.render).toMatchObject({ state: 'loading' });
+  expect(state.operatorConfig?.runtime).toMatchObject({ devices: { [A]: { render: { state: 'loading' } } } });
+  expect(state.roster[A]?.render).toMatchObject({ observed_mono: 1000 });
+  expect(state.roster[C]!.render).toMatchObject({ observed_mono: 10 });
+  socket.message({ type: 'device_offline', device_id: A, last_seen: 'now' });
+  expect(state.roster[A]?.online).toBe(false);
+  const version = state.connectionVersions[A]!;
+  socket.message({ type: 'device_removed', device_id: A });
+  expect(state.roster[A]).toBeUndefined();
+  expect(state.connectionVersions[A]).toBe(version + 1);
   sync.destroy();
   expect(socket.readyState).toBe(3);
 });
@@ -151,7 +153,7 @@ it('config_updated marks the session ETag stale and refuses a guarded command wh
   const session = createSession({ fetch, WebSocket: FakeSocket, document: new Visibility(), window: new EventTarget(), isDirty: () => true });
   cleanups.push(session.destroy);
   session.ingest(config(1)); session.start();
-  FakeSocket.sockets[0]!.message({ type: 'config_updated', etag: '2' });
+  FakeSocket.sockets[0]!.message({ type: 'config_updated', etag: '2', revision: 2, generation: 'session' });
   expect(session.view().etagState).toBe('stale');
   expect(await session.request('PUT', '/api/v3/scene', {}, { useCurrentEtag: true }))
     .toEqual({ kind: 'refused-locally', reason: 'stale-etag' });
@@ -168,25 +170,26 @@ it('drops malformed frames and reconciles, ignores unknown frame types and retai
   pending.shift()!(config(2)); await flush();
   socket.message({ type: 'unknown' });
   expect(api).toHaveBeenCalledTimes(2);
-  state.operatorConfig!.layout.placements = { a: { x: 1 } };
-  state.roster.a = { online: true };
-  socket.message({ type: 'device_offline', device_id: 'a' });
-  expect(state.operatorConfig?.layout.placements).toEqual({ a: { x: 1 } });
-  expect(state.roster.a.online).toBe(false);
+  const placement = { x: 1, y: 0, w: 10, h: 10, bezel: { top: 0, right: 0, bottom: 0, left: 0 } };
+  if (state.operatorConfig!.layout.kind === 'logical') state.operatorConfig!.layout.placements = { [A]: placement };
+  state.roster[A] = deviceFixture(A);
+  socket.message({ type: 'device_offline', device_id: A, last_seen: 'now' });
+  expect(state.operatorConfig?.layout.placements).toEqual({ [A]: placement });
+  expect(state.roster[A]!.online).toBe(false);
 });
 
 it('falls back to /devices only when config has no runtime devices, fencing the fallback read too', async () => {
   const { sync, api, pending, received } = harness();
   const first = sync.reconcile();
-  pending.shift()!({ etag: 'legacy', revision: 1, layout: { kind: 'logical' } }); await flush();
+  pending.shift()!({ ...config(1), runtime: undefined }); await flush();
   expect(api).toHaveBeenCalledTimes(2);
-  pending.shift()!({ a: { online: true } }); await first;
+  pending.shift()!({ [A]: deviceFixture(A) }); await first;
   expect(received).toEqual([1]);
   const read = sync.reconcile();
-  pending.shift()!({ etag: 'legacy', revision: 2, layout: { kind: 'logical' } }); await flush();
+  pending.shift()!({ ...config(2), runtime: undefined }); await flush();
   sync.start();
   FakeSocket.sockets[0]!.message({ type: 'snapshot', config: config(3) });
-  pending.shift()!({ obsolete: { online: true } }); await read;
+  pending.shift()!({ [C]: deviceFixture(C) }); await read;
   expect(received).toEqual([1, 3]);
 });
 
@@ -201,4 +204,37 @@ it('a signed-out reconcile remains Signed out and an unsupported config blocks c
   await expect(unsupported.refresh()).rejects.toThrow(/Update the console/);
   expect(unsupported.view().supported).toBe(false);
   expect(await unsupported.request('PUT', '/api/v3/scene', {})).toEqual({ kind: 'refused-locally', reason: 'unsupported' });
+});
+
+it('drops schema-invalid known frames and reconciles without merging malformed devices', async () => {
+  const { sync, api, pending, state } = harness();
+  sync.start(); pending.shift()!(config(1)); await flush();
+  const socket = FakeSocket.sockets[0]!;
+  socket.message({ type: 'device_online', device: { device_id: A, online: 'yes' } });
+  expect(state.roster[A]).toBeUndefined(); expect(api).toHaveBeenCalledTimes(2);
+  pending.shift()!(config(2)); await flush();
+  socket.message({ type: 'snapshot', config: { ...config(3), operator_state_version: 2 } });
+  expect(state.operatorConfig?.revision).toBe(2); expect(api).toHaveBeenCalledTimes(3);
+  pending.shift()!(config(4)); await flush();
+  expect(state.operatorConfig?.revision).toBe(4);
+});
+
+it('a real session validates a legacy config plus fallback roster with the shared schemas', async () => {
+  const transport = vi.fn<typeof fetch>()
+    .mockResolvedValueOnce(new Response(JSON.stringify({ ...config(1), runtime: undefined })))
+    .mockResolvedValueOnce(new Response(JSON.stringify({ [A]: deviceFixture(A) })));
+  const session = createSession({ fetch: transport, isDirty: () => false }); cleanups.push(session.destroy);
+  await session.refresh();
+  expect(session.view()).toMatchObject({ supported: true, etag: '1', roster: { [A]: { online: true } } });
+  expect(transport.mock.calls.map(call => call[0])).toEqual(['/api/v3/config', '/devices']);
+});
+it('malformed config devices block writes without a fallback masking the failed Config parse', async () => {
+  const invalid = { ...config(2), runtime: { ...config(2).runtime, devices: { [A]: { online: 'bad' } } } };
+  const transport = vi.fn<typeof fetch>(async () => new Response(JSON.stringify(invalid)));
+  const session = createSession({ fetch: transport, isDirty: () => false }); cleanups.push(session.destroy);
+  session.ingest(config(1));
+  await expect(session.refresh()).rejects.toThrow(/Update the console/);
+  expect(session.view()).toMatchObject({ supported: false, etagState: 'stale', etag: '1' });
+  expect(transport).toHaveBeenCalledTimes(1);
+  expect(await session.request('PUT', '/api/v3/scene', {})).toEqual({ kind: 'refused-locally', reason: 'unsupported' });
 });
