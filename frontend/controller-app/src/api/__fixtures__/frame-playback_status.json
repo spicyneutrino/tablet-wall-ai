@@ -1,0 +1,80 @@
+{
+  "type": "playback_status",
+  "now_ms": 65137190.179657,
+  "session_id": "ca0fc61eb0af41c4856689222d451738",
+  "version": 1,
+  "generation": "1ce83911",
+  "clock_epoch": "3c565d01",
+  "state": "preparing",
+  "current": null,
+  "displayed": null,
+  "current_effective_ms": null,
+  "pending": {
+    "preparation_id": "ed6f0d69e1da4d5790d8dae69b20977a",
+    "version": 1,
+    "occurrence": {
+      "playlist_revision": 1,
+      "item_index": 0,
+      "loop": 0
+    },
+    "asset": "sha256:a53f024a78fc8a01e0164cb737b72b447fe3f175bcd22972f66d1308409dae7c",
+    "prepare_deadline_ms": 65168185.714801,
+    "effective_server_ms": 65138185.714801
+  },
+  "playlist_revision": 1,
+  "live": {
+    "current": null,
+    "displayed": null,
+    "pending": {
+      "occurrence": {
+        "playlist_revision": 1,
+        "item_index": 0,
+        "loop": 0
+      },
+      "asset": "sha256:a53f024a78fc8a01e0164cb737b72b447fe3f175bcd22972f66d1308409dae7c",
+      "kind": "still",
+      "duration_ms": null,
+      "dwell_ms": 10000
+    }
+  },
+  "cohort": [
+    "00000000-0000-4000-8000-000000000001",
+    "00000000-0000-4000-8000-000000000002",
+    "00000000-0000-4000-8000-000000000003",
+    "00000000-0000-4000-8000-000000000004"
+  ],
+  "required": [
+    "00000000-0000-4000-8000-000000000001",
+    "00000000-0000-4000-8000-000000000002",
+    "00000000-0000-4000-8000-000000000003",
+    "00000000-0000-4000-8000-000000000004"
+  ],
+  "excluded": [],
+  "missed": [],
+  "held": false,
+  "hold_deadline_ms": null,
+  "policy": "online",
+  "blocked_reason": null,
+  "final": false,
+  "paused_at_ms": null,
+  "recovery": null,
+  "video": {},
+  "members": {
+    "00000000-0000-4000-8000-000000000001": {
+      "ready": false,
+      "video": null
+    },
+    "00000000-0000-4000-8000-000000000002": {
+      "ready": false,
+      "video": null
+    },
+    "00000000-0000-4000-8000-000000000003": {
+      "ready": false,
+      "video": null
+    },
+    "00000000-0000-4000-8000-000000000004": {
+      "ready": false,
+      "video": null
+    }
+  }
+}

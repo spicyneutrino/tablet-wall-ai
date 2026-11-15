@@ -1,0 +1,14 @@
+{
+  "detail": [
+    {
+      "type": "extra_forbidden",
+      "loc": [
+        "body",
+        "content",
+        "url"
+      ],
+      "msg": "Extra inputs are not permitted",
+      "input": "x"
+    }
+  ]
+}

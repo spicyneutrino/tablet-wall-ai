@@ -1,0 +1,236 @@
+{
+  "00000000-0000-4000-8000-000000000001": {
+    "device_id": "00000000-0000-4000-8000-000000000001",
+    "width": 768,
+    "height": 1024,
+    "type": "other",
+    "color": null,
+    "label": null,
+    "protocol": 3,
+    "caps": [
+      "calibration",
+      "image",
+      "physical",
+      "render_ack",
+      "identify",
+      "image_contain",
+      "video"
+    ],
+    "number": 1,
+    "last_seen": "2026-11-15T22:16:47.359046+00:00",
+    "viewport": {
+      "width": 768,
+      "height": 1024,
+      "dpr": 1,
+      "visual_scale": 1,
+      "orientation": 0,
+      "mode": "tab"
+    },
+    "connection_id": "907c91195f344e94ba37e50ac091fb08",
+    "render_seq": 1,
+    "wake_lock": "denied",
+    "screen_width": 768,
+    "screen_height": 1024,
+    "screen_dpr": 1,
+    "platform_family": "other",
+    "clock_pending": {},
+    "clock_samples": [
+      {
+        "server_ms": 65135345.290469,
+        "offset_ms": 65135305.421162,
+        "rtt_ms": 4.861386001110077,
+        "uncertainty_ms": 2.4306930005550385
+      },
+      {
+        "server_ms": 65135444.16061,
+        "offset_ms": 65135307.18919851,
+        "rtt_ms": 0.6571770086884499,
+        "uncertainty_ms": 0.32858850434422493
+      },
+      {
+        "server_ms": 65135544.766254,
+        "offset_ms": 65135307.4919515,
+        "rtt_ms": 1.0513949990272522,
+        "uncertainty_ms": 0.5256974995136261
+      }
+    ],
+    "clock": {
+      "offset_ms": 65135307.18919851,
+      "rtt_ms": 0.6571770086884499,
+      "uncertainty_ms": 0.32858850434422493,
+      "age_ms": 101.06668300181627,
+      "server_ms": 65135444.16061,
+      "fresh": true
+    },
+    "clock_ok": true,
+    "online": true
+  },
+  "00000000-0000-4000-8000-000000000002": {
+    "device_id": "00000000-0000-4000-8000-000000000002",
+    "width": 768,
+    "height": 1024,
+    "type": "other",
+    "color": null,
+    "label": null,
+    "protocol": 3,
+    "caps": [
+      "calibration",
+      "image",
+      "physical",
+      "render_ack",
+      "identify",
+      "image_contain",
+      "video"
+    ],
+    "number": 2,
+    "last_seen": "2026-11-15T22:16:47.430577+00:00",
+    "viewport": {
+      "width": 768,
+      "height": 1024,
+      "dpr": 1,
+      "visual_scale": 1,
+      "orientation": 0,
+      "mode": "tab"
+    },
+    "connection_id": "403210bb8e70444286fed7bfa05ced87",
+    "render_seq": 1,
+    "wake_lock": "denied",
+    "screen_width": 768,
+    "screen_height": 1024,
+    "screen_dpr": 1,
+    "platform_family": "other",
+    "clock_pending": {},
+    "clock_samples": [
+      {
+        "server_ms": 65135416.714213,
+        "offset_ms": 65135373.076822504,
+        "rtt_ms": 1.1252189949154854,
+        "uncertainty_ms": 0.5626094974577427
+      },
+      {
+        "server_ms": 65135516.088115,
+        "offset_ms": 65135372.957856,
+        "rtt_ms": 1.1394819989800453,
+        "uncertainty_ms": 0.5697409994900227
+      }
+    ],
+    "clock": {
+      "offset_ms": 65135373.076822504,
+      "rtt_ms": 1.1252189949154854,
+      "uncertainty_ms": 0.5626094974577427,
+      "age_ms": 99.88941399753094,
+      "server_ms": 65135416.714213,
+      "fresh": true
+    },
+    "clock_ok": true,
+    "online": true
+  },
+  "00000000-0000-4000-8000-000000000003": {
+    "device_id": "00000000-0000-4000-8000-000000000003",
+    "width": 768,
+    "height": 1024,
+    "type": "other",
+    "color": null,
+    "label": null,
+    "protocol": 3,
+    "caps": [
+      "calibration",
+      "image",
+      "physical",
+      "render_ack",
+      "identify",
+      "image_contain",
+      "video"
+    ],
+    "number": 3,
+    "last_seen": "2026-11-15T22:16:47.496020+00:00",
+    "viewport": {
+      "width": 768,
+      "height": 1024,
+      "dpr": 1,
+      "visual_scale": 1,
+      "orientation": 0,
+      "mode": "tab"
+    },
+    "connection_id": "ff80063717024ef6acc97304f76f7498",
+    "render_seq": 1,
+    "wake_lock": "denied",
+    "screen_width": 768,
+    "screen_height": 1024,
+    "screen_dpr": 1,
+    "platform_family": "other",
+    "clock_pending": {},
+    "clock_samples": [
+      {
+        "server_ms": 65135482.157241,
+        "offset_ms": 65135447.5199665,
+        "rtt_ms": 0.5254509896039963,
+        "uncertainty_ms": 0.26272549480199814
+      }
+    ],
+    "clock": {
+      "offset_ms": 65135447.5199665,
+      "rtt_ms": 0.5254509896039963,
+      "uncertainty_ms": 0.26272549480199814,
+      "age_ms": 0.2541089951992035,
+      "server_ms": 65135482.157241,
+      "fresh": true
+    },
+    "clock_ok": true,
+    "online": true
+  },
+  "00000000-0000-4000-8000-000000000004": {
+    "device_id": "00000000-0000-4000-8000-000000000004",
+    "width": 768,
+    "height": 1024,
+    "type": "other",
+    "color": null,
+    "label": null,
+    "protocol": 3,
+    "caps": [
+      "calibration",
+      "image",
+      "physical",
+      "render_ack",
+      "identify",
+      "image_contain",
+      "video"
+    ],
+    "number": 4,
+    "last_seen": "2026-11-15T22:16:47.551514+00:00",
+    "wake_lock": "released",
+    "screen_width": 768,
+    "screen_height": 1024,
+    "screen_dpr": 1,
+    "platform_family": "other",
+    "connection_id": "b39b498096144b36ac298c78203e9893",
+    "viewport": {
+      "width": 768,
+      "height": 1024,
+      "dpr": 1,
+      "visual_scale": 1,
+      "orientation": 0,
+      "mode": "tab"
+    },
+    "render_seq": 1,
+    "clock_pending": {},
+    "clock_samples": [
+      {
+        "server_ms": 65135537.631168,
+        "offset_ms": 65135504.95036051,
+        "rtt_ms": 0.4383850023150444,
+        "uncertainty_ms": 0.2191925011575222
+      }
+    ],
+    "clock": {
+      "offset_ms": 65135504.95036051,
+      "rtt_ms": 0.4383850023150444,
+      "uncertainty_ms": 0.2191925011575222,
+      "age_ms": 0.214539997279644,
+      "server_ms": 65135537.631168,
+      "fresh": true
+    },
+    "clock_ok": true,
+    "online": true
+  }
+}

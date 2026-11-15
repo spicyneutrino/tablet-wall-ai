@@ -1,0 +1,13 @@
+{
+  "images": [
+    {
+      "id": "sha256:a53f024a78fc8a01e0164cb737b72b447fe3f175bcd22972f66d1308409dae7c",
+      "name": "wall-pattern-a53f024a78fc8a01e0164cb737b72b447fe3f175bcd22972f66d1308409dae7c.png",
+      "width": 3045,
+      "height": 3940,
+      "url": "/assets/sha256:a53f024a78fc8a01e0164cb737b72b447fe3f175bcd22972f66d1308409dae7c",
+      "thumbnail_url": "/assets/sha256:a53f024a78fc8a01e0164cb737b72b447fe3f175bcd22972f66d1308409dae7c",
+      "source": "curated"
+    }
+  ]
+}

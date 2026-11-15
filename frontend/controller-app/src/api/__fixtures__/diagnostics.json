@@ -1,0 +1,29 @@
+{
+  "media": {
+    "quota_bytes": 2147483648,
+    "used_bytes": 0,
+    "free_bytes": 13061357568,
+    "reserve_bytes": 536870912,
+    "objects": 0,
+    "assets": 0,
+    "orphans": 0
+  },
+  "db": {
+    "schema": 3,
+    "bytes": 90112
+  },
+  "backup": {
+    "last_manifest_at": null
+  },
+  "clients": {
+    "online": 4,
+    "total": 4,
+    "wake_lock": {
+      "denied": 3,
+      "held": 0,
+      "insecure": 0,
+      "released": 1,
+      "unsupported": 0
+    }
+  }
+}

@@ -1,0 +1,22 @@
+{
+  "display": {
+    "device_id": "00000000-0000-4000-8000-000000000004",
+    "revision": 1,
+    "active_width_mm": 150,
+    "active_height_mm": 200,
+    "bezels": {
+      "left": 10,
+      "top": 10,
+      "right": 10,
+      "bottom": 10
+    },
+    "panel_pixels": {
+      "width": 768,
+      "height": 1024
+    },
+    "label": "Contract tablet",
+    "provenance": "manual",
+    "created_at": "2026-11-15T22:16:47.855483+00:00"
+  },
+  "etag": "56dd51fa557c6805ad36f78fe5454486"
+}
