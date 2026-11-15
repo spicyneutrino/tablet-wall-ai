@@ -146,9 +146,9 @@ body:is([data-stage-mode="image-preview"], [data-stage-mode="arrangement-preview
 body[data-test-live="true"][data-stage-mode="live"] .stage-tally::before { background: var(--stage-warning); }
 body[data-test-live="true"][data-stage-mode="live"] .tally-live { display: none; }
 body[data-test-live="true"][data-stage-mode="live"] .tally-test { display: inline; }
-.well-tally:has(#image-title[data-empty="true"]) .stage-tally::before { background: var(--stage-line); }
-body[data-stage-mode="live"] .well-tally:has(#image-title[data-empty="true"]) .tally-live { display: none; }
-body[data-stage-mode="live"] .well-tally:has(#image-title[data-empty="true"]) .tally-empty { display: inline; }
+body[data-no-image="true"][data-stage-mode="live"] .stage-tally::before { background: var(--stage-line); }
+body[data-no-image="true"][data-stage-mode="live"] .tally-live { display: none; }
+body[data-no-image="true"][data-stage-mode="live"] .tally-empty { display: inline; }
 .image-title { min-inline-size: 0; font-size: var(--text-label); font-weight: 500; color: var(--stage-text); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .well-tally .btn { margin-inline-start: auto; min-block-size: var(--control-compact); background: transparent; border-color: var(--stage-line); color: var(--stage-text); }
 .stage-chip { color: var(--stage-line); font-size: var(--text-sm); }

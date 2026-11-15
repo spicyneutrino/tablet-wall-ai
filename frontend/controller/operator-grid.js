@@ -252,6 +252,7 @@
             for (const id of order) if (!ids.has(id)) selected.delete(id);
             order = order.filter(id => ids.has(id));
             if (additions.length && !edited) order.sort((a, b) => model.compareIds(state.roster, state.deviceLabels || {}, a, b));
+            if (!edited && !Object.keys(model.entries(state.base)).length) selectedPreset = "grid-2x2";
             updatePreset();
         }
         function render() {
