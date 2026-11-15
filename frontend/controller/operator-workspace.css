@@ -484,6 +484,7 @@ dialog.server-drawer::backdrop { background: var(--backdrop); }
     .arrangement-history .btn { min-inline-size: 44px; }
     .topbar:has(.problem-chip) .problem-chips { grid-area: problems; flex-wrap: nowrap; padding-block-end: var(--space-1); }
     .problem-chips li { min-inline-size: 0; max-inline-size: 100%; }
+    .problem-chips li[data-status="more"] { flex: none; }
     .problem-chip { display: block; min-block-size: 44px; max-inline-size: 100%; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
     .topbar .btn, .icon-button, .theme-toggle { min-block-size: 44px; min-inline-size: 44px; }
     .workspace { grid-template-rows: auto auto minmax(12rem, 1fr) auto; grid-template-areas: "notices" "stage" "inspector" "nav"; }
