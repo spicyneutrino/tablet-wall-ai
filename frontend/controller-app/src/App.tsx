@@ -1,31 +1,32 @@
-import { useSyncExternalStore } from 'react';
-import { PanelsTopLeft } from 'lucide-react';
-import { z } from 'zod';
+import { useMemo } from 'react';
 import type { Session } from './session/session';
+import type { WallStoreApi } from './state/store';
+import { ShellContext } from './features/preview/ShellContext';
+import Header from './features/header';
+import Preview from './features/preview';
+import Sources from './features/sources';
+import OnWall from './features/onwall';
+import Board from './features/board';
+import Tablet from './features/tablet';
+import Measure from './features/measure';
+import NextStep from './features/nextstep';
+import Server from './features/server';
+import Conflict from './features/conflict';
+import './features/preview/shell.css';
 
-z.config({ jitless: true });
-
-export default function App({ session }: { session: Session }) {
-  const server = useSyncExternalStore(session.subscribe, session.view);
-  const transportText = server.transportText.startsWith('Live operator updates connected.')
-    ? 'Live operator updates connected.' : server.transportText;
-  return (
-    <main className="mx-auto max-w-5xl p-6 sm:p-10">
-      <header className="flex items-center gap-3">
-        <PanelsTopLeft aria-hidden="true" className="size-6 text-primary" />
-        <h1 className="t-title">Tablet wall</h1>
-      </header>
-      <p role="status" className="mt-6 text-muted">{transportText}</p>
-      {server.transportText === 'Signed out'
-        ? <a href="/auth/login?next=/controller/app/">Sign in</a> : null}
-      {!server.supported && server.config
-        ? <p role="alert">Update the console before editing.</p> : null}
-      <ul aria-label="Tablets">
-        {Object.entries(server.roster).map(([id, device]) => (
-          <li key={id}>{typeof device.label === 'string' && device.label
-            ? device.label : `Tablet ${String(device.number ?? id)}`}</li>
-        ))}
-      </ul>
-    </main>
-  );
+export default function App({ session, store }: { session: Session; store: WallStoreApi }) {
+  const value = useMemo(() => ({ session, store }), [session, store]);
+  return <ShellContext value={value}>
+    <div className="controller-shell">
+      <a className="skip" href="#preview">Skip to preview</a>
+      <Header />
+      <main className="controller-workspace" id="preview" tabIndex={-1} aria-label="Wall controller">
+        <div className="preview-column"><Preview /><Sources /></div>
+        <aside className="side wall-sidebar" aria-label="Wall status">
+          <div className="sidebar-scroll"><OnWall /><NextStep /><Conflict /><Tablet /><Measure /><Board /></div>
+        </aside>
+      </main>
+      <Server />
+    </div>
+  </ShellContext>;
 }

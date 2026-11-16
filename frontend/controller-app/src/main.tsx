@@ -1,26 +1,37 @@
+import './styles/app.css';
+import './features/preview/configureValidation';
 import { StrictMode } from 'react';
 import { createRoot } from 'react-dom/client';
 import App from './App';
 import StageFixture from './dev/StageFixture';
 import PrimitivesGallery from './dev/PrimitivesGallery';
 import { createSession } from './session/session';
-import type { ServerState } from './session/session';
-import { createStore } from 'zustand/vanilla';
-import './styles/app.css';
+import { createWallStore, startClock } from './state/store';
+import { hasUnsavedEdits } from './state/unsaved';
 
 const root = document.getElementById('root');
 if (!root) throw new Error('Controller root is missing');
 
-const store = createStore<{ server: ServerState | null }>(() => ({ server: null }));
-const session = createSession({ store, isDirty: () => false });
+const store = createWallStore();
+const session = createSession({ store, isDirty: () => hasUnsavedEdits(store) });
+const stopClock = startClock(store);
 session.start();
-window.addEventListener('pagehide', () => session.destroy(), { once: true });
-if (import.meta.hot) import.meta.hot.dispose(() => session.destroy());
+const beforeUnload = (event: BeforeUnloadEvent) => {
+  if (hasUnsavedEdits(store)) event.preventDefault();
+};
+window.addEventListener('beforeunload', beforeUnload);
+const destroy = () => {
+  session.destroy();
+  stopClock();
+  window.removeEventListener('beforeunload', beforeUnload);
+};
+window.addEventListener('pagehide', destroy, { once: true });
+if (import.meta.hot) import.meta.hot.dispose(destroy);
 
 createRoot(root).render(
   <StrictMode>
     {import.meta.env.MODE === 'e2e' && location.hash === '#stage-fixture'
       ? <StageFixture /> : import.meta.env.MODE === 'e2e' && location.hash === '#primitives-gallery'
-        ? <PrimitivesGallery /> : <App session={session} />}
+        ? <PrimitivesGallery /> : <App store={store} session={session} />}
   </StrictMode>,
 );
