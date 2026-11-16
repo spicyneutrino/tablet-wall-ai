@@ -20,7 +20,9 @@ test('real tablets join, display a wall image and paint the expected pixels', as
       workers = await Promise.all(files.map(async (file) => recordSchema.parse(JSON.parse(await readFile(join(directory, file), 'utf8')))));
       return new Set(workers.map((worker) => worker.worker)).size;
     }, { timeout: 10_000, message: 'Two Playwright workers must start isolated servers' }).toBeGreaterThanOrEqual(2);
-    expect(new Set(workers.map((worker) => worker.port)).size).toBe(workers.length);
+    // Later workers start after earlier ones exit (per-file serverScope), so the OS may reuse a port; only the first batch runs at once.
+    const concurrent = workers.filter((worker) => worker.worker < testInfo.config.workers);
+    expect(new Set(concurrent.map((worker) => worker.port)).size).toBe(concurrent.length);
     console.log(`Worker ports ${JSON.stringify(workers)}`);
   }
 
