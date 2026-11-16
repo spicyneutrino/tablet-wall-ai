@@ -60,7 +60,8 @@ export function TabletShape({ panel, id, status, selected, wallClip, hatch, imag
           </g>
         </g>
       ) : null}
-      {exception ? <rect {...panel.active} transform={rotation} fill={`url(#${hatch})`}
+      {offline ? <rect {...panel.active} transform={rotation} fill="var(--stage-body)" /> : null}
+      {offline ? <rect {...panel.active} transform={rotation} fill={`url(#${hatch})`}
         stroke={offline ? 'var(--stage-warn)' : undefined} strokeDasharray={offline ? '6 5' : undefined}
         vectorEffect="non-scaling-stroke" /> : null}
       {selected ? <rect {...panel.body} transform={rotation} fill="none" stroke="var(--stage-sel)"
@@ -79,9 +80,15 @@ export function TabletShape({ panel, id, status, selected, wallClip, hatch, imag
           <path d="M0 -4.5 L5 4.5 L-5 4.5 Z" fill="var(--stage-warn)"
             transform={`translate(${labelX - size * 24 / 13} ${labelY}) scale(${size / 13})`} />
           <text x={labelX - size * 14 / 13} y={labelY + size * 0.36} fontSize={size} fill="var(--stage-warn)">Offline</text>
-        </g> : exception ? <text x={labelX} y={labelY} textAnchor="middle"
-          fontSize={Math.min(size, panel.active.width / (exception.length * 0.65))}
-          paintOrder="stroke" stroke="var(--stage)" strokeWidth={size / 3}>{exception}</text> : null}
+        </g> : exception ? (() => {
+          const fit = Math.min(size, (bodyWidth * 0.9) / (exception.length * 0.6 + 1.6));
+          return <g>
+            <rect x={labelX - (exception.length * 0.3 + 0.8) * fit} y={labelY - fit * 12 / 13}
+              width={(exception.length * 0.6 + 1.6) * fit} height={fit * 24 / 13} rx={fit * 6 / 13}
+              fill="var(--stage-pill)" stroke="var(--stage-line)" vectorEffect="non-scaling-stroke" />
+            <text x={labelX} y={labelY + fit * 0.36} textAnchor="middle" fontSize={fit}>{exception}</text>
+          </g>;
+        })() : null}
       </g>
     </g>
   );
