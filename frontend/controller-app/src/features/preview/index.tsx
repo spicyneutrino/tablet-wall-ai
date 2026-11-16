@@ -15,14 +15,17 @@ export default function Preview() {
   const { loading, firstRun, unreachable, lastReport, config, statuses, profileFor, tablets } = useShellView();
   const layout = useWallStore(store, selectPreviewLayout);
   const content = useWallStore(store, selectPreviewContent);
+  const savedScene = useWallStore(store, state => state.content.savedScene);
   const selected = useWallStore(store, state => state.ui.selected);
   const editing = useWallStore(store, state => state.ui.editLayout);
   const mode = useWallStore(store, selectStageMode);
   const testPattern = useWallStore(store, state => state.ui.testPattern);
   const [liveExpanded, setLiveExpanded] = useState(false);
+  const savedLabel = savedScene && content?.type === 'image'
+    ? `${savedScene.name}, ${content.fit === 'contain' ? 'Fit' : 'Fill'}` : null;
   const label = loading ? 'Loading the wall…' : firstRun ? 'Waiting for tablets' : unreachable ? 'Last known wall'
     : editing || mode === 'arrangement-preview' ? 'Your layout'
-      : testPattern ? testPatternName(testPattern) : mode === 'image-preview' ? contentName(content) : 'Same as the wall';
+      : testPattern ? testPatternName(testPattern) : mode === 'image-preview' ? savedLabel ?? contentName(content) : 'Same as the wall';
   function reportStamp(className: string) {
     return <span className={`chip chip-err ${className}`}><Clock aria-hidden="true" />
       {lastReport ? <>As of <time data-report-time dateTime={lastReport.dateTime}>{lastReport.label}</time></> : 'Last known wall'}</span>;

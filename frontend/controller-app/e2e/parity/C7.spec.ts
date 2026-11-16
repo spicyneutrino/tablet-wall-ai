@@ -1,4 +1,5 @@
 import { DatabaseSync } from 'node:sqlite';
+import { mkdir } from 'node:fs/promises';
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import type { Request } from '@playwright/test';
@@ -15,8 +16,9 @@ function summary(request: Request) {
     ifMatch: request.headers()['if-match'] ?? null, body: request.postData() };
 }
 
-test('C7 Saved content: an invalid name sends 0 requests. Save, replace, delete, and recall then Show work', async ({ server, api, tablets, page, writes, tabletPixel, guard }) => {
+test('C7 Saved content: an invalid name sends 0 requests. Save, replace, delete, and recall then Show work', async ({ server, api, tablets, page, writes, tabletPixel, guard }, info) => {
   test.setTimeout(180_000);
+  await mkdir('/tmp/U18-shots', { recursive: true });
   await guard(page, { allow: [/\/api\/v3\/scenes\/[^/]+\/recall/] });
   const fleet = await tablets(2, { viewport: { width: 800, height: 800 } });
   await api.placeLogical({ columns: 2, rows: 1, cellWidth: 800, cellHeight: 800,
@@ -43,9 +45,11 @@ test('C7 Saved content: an invalid name sends 0 requests. Save, replace, delete,
 
   const database = new DatabaseSync(join(server.directory, 'wall.db'));
   try {
-    database.prepare('INSERT OR REPLACE INTO saved_scenes (name, content) VALUES (?, ?)')
-      .run('Gone', JSON.stringify({ type: 'image', asset: `sha256:${'b'.repeat(64)}`, fit: 'cover',
-        background: '#0b1120', intrinsicWidth: 1600, intrinsicHeight: 900 }));
+    const insert = database.prepare('INSERT OR REPLACE INTO saved_scenes (name, content) VALUES (?, ?)');
+    insert.run('Gone', JSON.stringify({ type: 'image', asset: `sha256:${'b'.repeat(64)}`, fit: 'cover',
+      background: '#0b1120', intrinsicWidth: 1600, intrinsicHeight: 900 }));
+    insert.run('Studio', JSON.stringify({ type: 'image', asset: asset.id, fit: 'contain',
+      background: '#0b1120', intrinsicWidth: asset.intrinsicWidth, intrinsicHeight: asset.intrinsicHeight }));
   } finally { database.close(); }
 
   await page.reload({ waitUntil: 'networkidle' });
@@ -64,9 +68,19 @@ test('C7 Saved content: an invalid name sends 0 requests. Save, replace, delete,
   await expect(page.locator('.desktop-onwall')).toContainText('Calibration grid');
 
   await page.getByRole('button', { name: 'Lobby', exact: true }).click();
-  await expect(page.getByRole('region', { name: 'Preview', exact: true })).toContainText('two-colour.png, Fill');
+  await expect(page.getByRole('region', { name: 'Preview', exact: true })).toContainText('Lobby, Fill');
   await expect(page.getByRole('button', { name: 'Lobby', exact: true })).toHaveAttribute('aria-pressed', 'true');
   expect(sent).toHaveLength(1);
+  await page.emulateMedia({ reducedMotion: 'reduce' });
+  for (const theme of ['light', 'dark']) {
+    await page.evaluate(value => {
+      localStorage.setItem('tablet-wall-theme', value);
+      document.documentElement.dataset.theme = value;
+    }, theme);
+    await page.evaluate(() => document.fonts.ready);
+    await page.screenshot({ path: `/tmp/U18-shots/saved-selected-${info.project.name}-${theme}.png`, fullPage: true });
+  }
+  await page.emulateMedia({ reducedMotion: 'no-preference' });
 
   const recallEtag = (await api.config()).etag;
   await page.getByRole('button', { name: 'Actions for Lobby' }).click();
@@ -87,6 +101,13 @@ test('C7 Saved content: an invalid name sends 0 requests. Save, replace, delete,
     await expect.poll(async () => Math.max(...(await tabletPixel(tablet, centre.x, centre.y)).slice(0, 3)
       .map((value, channel) => Math.abs(value - (expected[channel] ?? 0)))), { timeout: 10_000 }).toBeLessThanOrEqual(30);
   }
+
+  await page.getByRole('button', { name: 'Lobby', exact: true }).click();
+  await expect(page.getByRole('region', { name: 'Preview', exact: true })).toContainText('Lobby, Fill');
+  const primary = page.getByRole('button', { name: 'Show on wall', exact: true });
+  await expect(primary).toBeDisabled();
+  await expect(primary).toHaveAccessibleDescription('This is already on the wall.');
+  await page.getByRole('button', { name: 'Discard', exact: true }).click();
 
   await page.getByRole('button', { name: 'Save current…' }).click();
   await save.getByLabel('Name').fill('Lobby');
@@ -119,18 +140,28 @@ test('C7 Saved content: an invalid name sends 0 requests. Save, replace, delete,
   await page.getByRole('menuitem', { name: 'Delete' }).click();
   await remove.getByRole('button', { name: 'Delete', exact: true }).click();
   await expect.poll(() => sent.length).toBe(4);
-  expect(summary(sent[3]!)).toMatchObject({ method: 'DELETE', path: '/api/v3/scenes/Lobby' });
-  await expect(page.getByRole('button', { name: 'Lobby', exact: true })).toHaveCount(0);
+  expect(summary(sent[3]!)).toMatchObject({ method: 'DELETE', path: '/api/v3/scenes/Lobby' });  await expect(page.getByRole('button', { name: 'Lobby', exact: true })).toHaveCount(0);
+
+  const studioEtag = (await api.config()).etag;
+  await page.getByRole('button', { name: 'Studio', exact: true }).click();
+  await expect(page.getByRole('region', { name: 'Preview', exact: true })).toContainText('Studio, Fit');
+  await expect(primary).toBeEnabled();
+  await primary.click();
+  await expect.poll(() => sent.length).toBe(5);
+  expect(summary(sent[4]!)).toEqual({ method: 'POST', path: '/api/v3/scenes/Studio/recall',
+    ifMatch: studioEtag, body: null });
+  await expect(page.getByText('Content “Studio” is on the wall.')).toBeVisible();
 
   await page.getByRole('button', { name: 'Gone', exact: true }).click();
   await expect(page.getByRole('region', { name: 'Preview', exact: true })).toContainText('Image unavailable');
-  await page.getByRole('button', { name: 'Actions for Gone' }).click();
-  await page.getByRole('menuitem', { name: 'Show on wall' }).click();
-  await expect.poll(() => sent.length).toBe(5);
-  expect(summary(sent[4]!)).toMatchObject({ method: 'POST', path: '/api/v3/scenes/Gone/recall' });
+  await primary.click();
+  await expect.poll(() => sent.length).toBe(6);
+  expect(summary(sent[5]!)).toMatchObject({ method: 'POST', path: '/api/v3/scenes/Gone/recall' });
   await expect(page.getByText('The image for this saved content was deleted.')).toBeVisible();
   await expect(page.getByRole('button', { name: 'Gone', exact: true })).toHaveAttribute('aria-pressed', 'true');
   await expect(page.getByRole('region', { name: 'Preview', exact: true })).toContainText('Image unavailable');
+  expect(sent.filter(request => request.method() === 'PUT'
+    && new URL(request.url()).pathname === '/api/v3/scene')).toEqual([]);
 
   const saved = await (await api.request.get('/api/v3/scenes')).json() as { scenes: { name: string }[] };
   expect(saved.scenes.map(entry => entry.name)).not.toContain('Lobby');

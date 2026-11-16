@@ -11,11 +11,18 @@ test('C5 Focus after Show stays on the trigger, or moves as `operator-content.js
   await page.goto(`${server.origin}/controller/app/`, { waitUntil: 'networkidle' });
   const pick = page.getByRole('button', { name: 'two-colour.png', exact: true });
   const show = page.getByRole('button', { name: 'Show on wall', exact: true });
+  async function setFit(fit: 'Fill' | 'Fit') {
+    await page.getByRole('button', { name: /Fit and crop/ }).click();
+    const sheet = page.getByRole('dialog', { name: 'Fit and crop', exact: true });
+    await sheet.getByRole('radio', { name: fit, exact: true }).click();
+    await sheet.getByRole('button', { name: 'Close Fit and crop', exact: true }).click();
+  }
   await pick.click();
   await show.focus();
   await show.press('Enter');
   await expect(page.getByRole('button', { name: 'All images' })).toBeFocused();
   await pick.click();
+  await setFit('Fit');
   await page.route('**/api/v3/scene', route => route.fulfill({ status: 422, contentType: 'application/json', body: JSON.stringify({ detail: 'Image rejected. Choose another image.' }) }), { times: 1 });
   await show.focus();
   await show.press('Enter');
@@ -32,6 +39,7 @@ test('C5 Focus after Show stays on the trigger, or moves as `operator-content.js
   await expect(page.getByRole('status').filter({ hasText: 'Content applied.' })).toBeVisible();
   await expect(all).toBeFocused();
   await pick.click();
+  await setFit('Fill');
   await page.locator('[data-stage="preview"] [data-device-id]').click();
   await show.focus();
   await show.press('Enter');

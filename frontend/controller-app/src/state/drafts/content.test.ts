@@ -7,5 +7,6 @@ it('selections keep the original guard and saved scenes cannot be rebased with K
   expect(contentReducer(saved, { type: 'rebuild', etag: ConfigEtagSchema.parse('new'), version: saved.version })).toBe(saved);
   const changed = contentReducer(saved, { type: 'select', selection: { type: 'calibration' }, etag: ConfigEtagSchema.parse('new') });
   expect(changed.baseEtag).toBe('base');
+  expect(changed.savedScene).toBeNull();
   expect(contentReducer(changed, { type: 'rebuild', etag, version: changed.version - 1 })).toBe(changed);
 });

@@ -6,7 +6,7 @@ import { createSession } from '../../session/session';
 import { createWallStore } from '../store';
 import {
   SAVED_IMAGE_GONE, deleteSavedContent, loadSavedContent, previewSavedContent, recallSavedContent,
-  savedContentOutcomeMessage, saveCurrentContent,
+  recallSavedScene, savedContentOutcomeMessage, saveCurrentContent,
 } from './savedScenes';
 import type { SavedContent } from './savedScenes';
 import { SNAPSHOT_NAME_RULE } from './savedLayouts';
@@ -122,6 +122,21 @@ it('recalls a saved scene with the draft guard, then clears the preview', async 
   expect(sent(transport).body).toBeUndefined();
   expect(store.getState().content.selection).toBeNull();
   expect(store.getState().content.version).toBe(version + 1);
+});
+
+it('recalls the saved scene behind the draft, keeping it when the image is gone', async () => {
+  const { store, session, transport } = setup();
+  expect(previewSavedContent(store, savedImage, null)).toBe(true);
+  respond(transport, { detail: 'Unknown asset' }, 422);
+  expect(await recallSavedScene(store, session, 'Lobby')).toEqual({ kind: 'rejected', status: 422,
+    message: SAVED_IMAGE_GONE });
+  expect(store.getState().content.savedScene).toEqual({ name: 'Lobby', etag: 'saved-digest' });
+  expect(store.getState().content.selection).toMatchObject({ type: 'image', asset });
+  respond(transport, configFixture('recalled'));
+  expect((await recallSavedScene(store, session, 'Lobby')).kind).toBe('ok');
+  expect(sent(transport, 1)).toMatchObject({ path: '/api/v3/scenes/Lobby/recall', method: 'POST',
+    headers: { 'If-Match': 'base' } });
+  expect(store.getState().content.selection).toBeNull();
 });
 
 it('keeps the preview when recall answers 422 because the image is gone', async () => {

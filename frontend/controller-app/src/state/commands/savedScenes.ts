@@ -52,14 +52,19 @@ export function previewSavedContent(store: WallStoreApi, saved: SavedContent, im
   return true;
 }
 
+export async function recallSavedScene(store: WallStoreApi, session: Session,
+  name: string): Promise<CommandOutcome<Config>> {
+  const outcome = await run(store, { kind: 'content' }, guard => session.request('POST',
+    paths.recallScene(name), undefined, { ifMatch: guard ?? undefined, parse: ConfigSchema }));
+  return outcome.kind === 'rejected' && outcome.status === 422 && /unknown asset/i.test(outcome.message)
+    ? { ...outcome, message: SAVED_IMAGE_GONE } : outcome;
+}
+
 export async function recallSavedContent(store: WallStoreApi, session: Session,
   saved: SavedContent): Promise<CommandOutcome<Config>> {
   if (!saved.valid) return { kind: 'rejected', status: 422,
     message: 'This saved content is damaged. Delete it and save the wall again.' };
-  const outcome = await run(store, { kind: 'content' }, guard => session.request('POST',
-    paths.recallScene(saved.name), undefined, { ifMatch: guard ?? undefined, parse: ConfigSchema }));
-  return outcome.kind === 'rejected' && outcome.status === 422 && /unknown asset/i.test(outcome.message)
-    ? { ...outcome, message: SAVED_IMAGE_GONE } : outcome;
+  return recallSavedScene(store, session, saved.name);
 }
 
 export async function saveCurrentContent(store: WallStoreApi, session: Session, rawName: string,
