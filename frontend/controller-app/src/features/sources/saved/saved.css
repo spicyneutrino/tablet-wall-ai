@@ -1,0 +1,5 @@
+.saved-thumb { position: relative; }
+.saved-thumb img { inline-size: 100%; block-size: 100%; object-fit: cover; }
+.saved-fit { position: absolute; inset-block-end: var(--space-1); inset-inline-end: var(--space-1);
+  height: auto; padding: 0 var(--space-1); border-radius: var(--radius-sm); background: var(--stage-pill);
+  color: var(--stage-text); font-size: var(--text-caption); line-height: var(--leading-caption); pointer-events: none; }
