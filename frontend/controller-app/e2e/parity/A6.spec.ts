@@ -2,6 +2,8 @@ import type { Request } from '@playwright/test';
 import { expect, test } from '../fixtures';
 import { fleet } from '../fixtures/fleet';
 
+test.use({ serverScope: 'parity-A6' });
+
 function summary(request: Request) {
   const url = new URL(request.url());
   return { method: request.method(), path: url.pathname + url.search,
@@ -22,6 +24,7 @@ test('A6 Empty wall needs confirmation and sends 1 POST `/api/v3/layout/clear`',
     await page.getByRole('button', { name: 'Server', exact: true }).click();
     const sheet = page.getByRole('dialog', { name: 'Server' });
     await expect(sheet).toBeVisible();
+    await sheet.getByRole('tab', { name: 'Backup and reset' }).click();
 
     await sheet.getByRole('button', { name: 'Clear wall…' }).click();
     const dialog = page.getByRole('dialog', { name: 'Clear every position?' });

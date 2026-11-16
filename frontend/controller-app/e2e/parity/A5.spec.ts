@@ -4,6 +4,8 @@ import type { Request } from '@playwright/test';
 import { expect, test } from '../fixtures';
 import { fleet } from '../fixtures/fleet';
 
+test.use({ serverScope: 'parity-A5' });
+
 function summary(request: Request) {
   const url = new URL(request.url());
   return { method: request.method(), path: url.pathname + url.search,

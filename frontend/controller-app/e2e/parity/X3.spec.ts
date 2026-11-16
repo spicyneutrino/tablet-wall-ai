@@ -1,2 +1,4 @@
 import { test } from '../fixtures';
+
+test.use({ serverScope: 'parity-X3' });
 test.fixme('X3 Every action is reachable by keyboard. Focus is visible on every control. Dialogs return focus', async () => {});

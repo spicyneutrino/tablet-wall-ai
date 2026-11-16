@@ -2,6 +2,8 @@ import { readFile } from 'node:fs/promises';
 import { z } from 'zod';
 import { expect, test } from '../fixtures';
 
+test.use({ serverScope: 'parity-V2' });
+
 const healthSchema = z.object({ ready: z.literal(true), schema: z.number() });
 const diagnosticsSchema = z.object({
   media: z.object({ assets: z.number(), objects: z.number() }),

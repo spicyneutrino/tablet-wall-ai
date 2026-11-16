@@ -2,6 +2,8 @@ import { mkdir, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import { expect, test } from '../fixtures';
 
+test.use({ serverScope: 'parity-V3' });
+
 test('V3 Backup facts show the last manifest and restore rehearsal, or "not recorded"', async ({ page, server, guard }) => {
   await guard(page);
   await page.goto(`${server.origin}/controller/app/`, { waitUntil: 'domcontentloaded' });

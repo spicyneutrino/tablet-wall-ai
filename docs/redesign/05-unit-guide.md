@@ -18,7 +18,7 @@ Read this whole file before you start. Follow it literally.
 - Shell: `src/App.tsx` and `src/features/*/index.tsx`. Each feature folder already has a stub created by the shell. Fill the stub; do not move it.
 - Old code to match behaviour: the files named in your unit's brief under `frontend/controller/`. Read them to learn what the feature does. Do not copy their DOM code.
 - Test harness: `e2e/fixtures.ts`. A test gets `server` (a real FastAPI server), `tablets(n)` (n real tablet pages joined), `api` (direct API calls with the right headers), `writes(page)` (records every write request the page makes), `axe(page)` (accessibility scan), `guard(page)` (fails on console errors), `tabletPixel` (reads a colour from a real tablet screen). Look at `e2e/shell.spec.ts` and `e2e/harness.spec.ts` for working examples.
-- Parity test stubs: `e2e/parity/<ID>.spec.ts`. Each has one `test.fixme(...)`. Your unit's rows are named in its brief. Replace `test.fixme` with `test` and write the real test. Keep the test title exactly as it is.
+- Parity test stubs: `e2e/parity/<ID>.spec.ts`. Each has one `test.fixme(...)`. Your unit's rows are named in its brief. Replace `test.fixme` with `test` and write the real test. Keep the test title exactly as it is, and keep the `test.use({ serverScope: 'parity-<ID>' })` line: it gives each parity file its own server so tests cannot leak wall state into each other.
 
 ## Rules
 

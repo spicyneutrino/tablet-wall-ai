@@ -1,6 +1,8 @@
 import { z } from 'zod';
 import { expect, test } from '../fixtures';
 
+test.use({ serverScope: 'parity-V1' });
+
 const operatorConfig = z.object({ tablet_origin: z.string().nullable() });
 
 test('V1 The Joining section shows the tablet URL, QR and Copy link. Without a tablet origin it says why', async ({ page, server, api, guard }) => {

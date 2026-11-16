@@ -2,6 +2,8 @@ import { test, expect } from '../fixtures';
 import type { Tablet } from '../fixtures';
 import { ConfigSchema } from '../../src/api/config';
 
+test.use({ serverScope: 'parity-C8' });
+
 const background = (pixel: number[]) => pixel.slice(0, 3).every(channel => channel >= 200);
 const black = (pixel: number[]) => pixel.slice(0, 3).every(channel => channel <= 20);
 
