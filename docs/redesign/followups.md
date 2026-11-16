@@ -9,3 +9,4 @@
 - U19: the Preview stage does not paint test patterns (grid/black) for a selected test source; WallSvg only draws server scene content. U16 should make the stage draw the content draft, including test patterns.
 - U19 added ui.testPattern to the store and a test-pattern branch to useContentAction; U16 owns useContentAction and must keep it.
 - Stage label falls back to the raw device UUID for an unnamed tablet (seen in U20 screenshots: '4e7c531d-d258-…'). Use 'Tablet' plus a short id, as the tablet list does.
+- At 1440x900 with an offline tablet, the side column clips 'Add a tablet' at the bottom (Next step card + 4 rows). The column should scroll inside itself or the card should be more compact (U31).
