@@ -18,6 +18,6 @@
 - FIXED: U26: during Measure the Preview label should read "Measuring Tablet N" (app shows "Same as the wall"); the disabled Show on wall reason should be "Finish measuring first." (app: "Pick a source to preview it."); the On wall line should name the content plus "Measuring blanks only Tablet N" as in final.html?state=measure-size.
 - FIXED: U21 (WIP on t3/controller-grid-builder, merged with integration at 494c6e7+merge): unit tests pass, but A1/A2/A8 fail 9/9. A1 asks tablets(6) for 2x3/3x2 while e2e/fixtures/fleet.ts has only 4 ids ("Tablet count exceeds fleet"); extend the fleet to 8 deterministic ids. A2 and A8 fail on an `expect(...).not.toBe(undefined)` lookup; debug after the fleet fix.
 
-- Hovered tablet-board row drops the green 'Showing' text to 4.44:1 in light theme (below 4.5:1). Fix the hover tone or status colour; A1 parks the pointer to avoid sampling it (X15).
+- FIXED: Hovered tablet-board row drops the green 'Showing' text to 4.44:1 in light theme (below 4.5:1). Fix the hover tone or status colour; A1 parks the pointer to avoid sampling it (X15).
 - src/session/session.ts collapses every 412 into a bare conflict, so a grid guard refusal (412 guard_changed) loses the server's detail; the grid builder shows its own wording. Pass the detail through (U29).
-- Measure On wall line uses ' · Measuring blanks only Tablet N'; mockup reads '. Measuring blanks only Tablet N’s preview.' (U31 copy pass).
+- FIXED: Measure On wall line uses ' · Measuring blanks only Tablet N'; mockup reads '. Measuring blanks only Tablet N’s preview.' (U31 copy pass).
