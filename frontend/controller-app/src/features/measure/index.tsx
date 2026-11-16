@@ -13,6 +13,7 @@ import { Select } from '../../ui/Input';
 import { Tally } from '../../ui/Tally';
 import { useShell } from '../preview/ShellContext';
 import { useShellView } from '../preview/useShellView';
+import { useAppliedContentName } from '../onwall';
 import { calibrationBody, latestProfile, liveViewport, measurementValues, modelChoice, payloads, profileBody, stepNames, steps } from './model';
 import type { Values } from './model';
 import MeasureField from './MeasureField';
@@ -42,6 +43,7 @@ function MeasureScreen({ id }: { id: DeviceId }) {
   const index = steps.findIndex(item => item === step);
   const tablet = tablets.find(tablet => tablet.id === id);
   const name = tablet?.name ?? 'tablet';
+  const wallName = useAppliedContentName(config?.scene.content ?? null);
   const choice = modelChoice(state, id);
   const model = config?.tablet_models[choice];
   const viewport = liveViewport(state, id);
@@ -186,7 +188,7 @@ function MeasureScreen({ id }: { id: DeviceId }) {
   const summaries = [model?.label ?? (choice === 'manual' ? 'Manual' : ''), `${values.profileActiveWidth} × ${values.profileActiveHeight} mm`,
     review.kind === 'review' && review.choice === 'use_ruler' ? 'Ruler values' : 'Model values'];
   return <section className="measure-stepper" aria-labelledby="measure-title">
-    <div className="monitor-label"><Tally kind="live" /><span className="t-caption monitor-description">The wall keeps its saved measurements.</span></div>
+    <div className="monitor-label"><Tally kind="live" /><span className="t-caption monitor-description">{wallName} · Measuring blanks only {name}</span></div>
     <Button variant="ghost" className="measure-back" onClick={() => close()} aria-disabled={busy}><ChevronLeft aria-hidden="true" />{name}</Button>
     <div><h2 className="t-title" id="measure-title">Measure {name}</h2><p className="t-caption">{model?.label ?? (choice === 'manual' ? 'Manual measurements' : tablet?.model)}. Nothing is saved until the last step.</p></div>
     <fieldset disabled={busy} className="measure-controls"><ol className="measure-steps">
