@@ -6,10 +6,12 @@ export const emptyPlaylist = (): PlaylistDraft => ({ saved: null, draft: null, e
 export type PlaylistEvent =
   | { type: 'edit'; value: Playlist | null }
   | { type: 'observe' | 'discard'; value: Playlist | null; etag: PlaylistEtag }
+  | { type: 'keep'; etag: PlaylistEtag }
   | { type: 'saved'; value: Playlist | null; etag: PlaylistEtag; version: number };
 export function playlistReducer(draft: PlaylistDraft, event: PlaylistEvent): PlaylistDraft {
   if (event.type === 'edit') return { ...draft, draft: structuredClone(event.value), version: draft.version + 1,
     dirty: JSON.stringify(draft.saved) !== JSON.stringify(event.value) };
+  if (event.type === 'keep') return { ...draft, etag: event.etag, conflict: false };
   if (event.type === 'observe' && draft.dirty) return { ...draft, conflict: draft.etag !== event.etag };
   const keep = event.type === 'saved' && event.version !== draft.version;
   const value = keep ? draft.draft : structuredClone(event.value);

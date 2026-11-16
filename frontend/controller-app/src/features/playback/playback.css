@@ -1,0 +1,26 @@
+.playback { display: grid; gap: var(--space-8); min-width: 0; }
+.playback-block { display: grid; gap: var(--space-3); min-width: 0; }
+.playback-head { display: flex; align-items: baseline; justify-content: space-between; gap: var(--space-3); }
+.playback-transport { display: flex; flex-wrap: wrap; align-items: flex-start; gap: var(--space-2); }
+.playback-actions { display: flex; flex-wrap: wrap; align-items: flex-start; justify-content: flex-end; gap: var(--space-2); }
+.playback-copy { display: grid; gap: var(--space-1); }
+.playback-dialog { display: grid; gap: var(--space-4); }
+.playback-tablets { display: grid; gap: var(--space-3); margin: 0; padding: 0; border: 0; min-width: 0; }
+.playback-tablets legend { padding: 0; margin-bottom: var(--space-3); }
+.playback-tablet { display: flex; align-items: flex-start; gap: var(--space-3); }
+
+.playlist-rows { display: grid; gap: var(--space-1); margin: 0 calc(var(--space-2) * -1); padding: 0; list-style: none; }
+.playlist-row { display: flex; flex-wrap: wrap; align-items: center; gap: var(--space-2) var(--space-3); padding: var(--space-2); border-radius: var(--radius-control); }
+.playlist-row:hover { background: var(--tonal); }
+.playlist-thumb { display: grid; place-items: center; flex: none; width: 48px; height: 32px; border-radius: var(--radius-sm); overflow: hidden; background: var(--well); color: var(--text-muted); }
+.playlist-thumb img { width: 100%; height: 100%; object-fit: cover; }
+.playlist-name { flex: 1 1 7rem; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.playlist-controls { display: flex; flex: none; align-items: center; gap: var(--space-3); margin-inline-start: auto; }
+.playlist-dwell { flex: none; width: 96px; }
+.playlist-actions { display: flex; flex: none; justify-content: flex-end; gap: var(--space-1); width: calc(3 * var(--control-h) + 2 * var(--space-1)); }
+.playlist-error { flex-basis: 100%; }
+.playlist-undo { display: flex; flex-wrap: wrap; align-items: center; gap: var(--space-2); }
+.playback-add { display: flex; gap: var(--space-2); align-items: flex-start; }
+.playback-add .select-wrap { flex: 1; min-width: 0; }
+.playback-footer { display: flex; flex-wrap: wrap; align-items: flex-start; justify-content: space-between; gap: var(--space-3); padding-top: var(--space-2); }
+.playback-loop { display: flex; align-items: center; gap: var(--space-3); min-height: var(--control-h); }

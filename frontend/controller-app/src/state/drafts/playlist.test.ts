@@ -11,6 +11,8 @@ it('playlist observation keeps dirty values and late saves preserve newer input'
   const newer = playlistReducer(remote, { type: 'edit', value: { ...playlist, items: [...playlist.items, ...playlist.items] } });
   const saved = playlistReducer(newer, { type: 'saved', value: dirty.draft, etag: PlaylistEtagSchema.parse('p3'), version: dirty.version });
   expect(saved.draft!.items).toHaveLength(2); expect(saved.dirty).toBe(true);
+  const kept = playlistReducer(remote, { type: 'keep', etag: PlaylistEtagSchema.parse('p2') });
+  expect(kept).toMatchObject({ draft: { loop: true }, dirty: true, conflict: false, etag: 'p2' });
   const discarded = playlistReducer(saved, { type: 'discard', value: playlist, etag: PlaylistEtagSchema.parse('p3') });
   expect(discarded).toMatchObject({ draft: playlist, dirty: false, conflict: false });
 });
