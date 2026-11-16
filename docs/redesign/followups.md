@@ -5,3 +5,6 @@
 - U13 follow-up (U22): canvas readout shows position including nudge (x 224.89 = X 209.89 + nudge 15) while the fields show base position; label the readout or show base + nudge so they don't look contradictory.
 - U28a follow-up (U31 cleanup): the roster-to-domain device projection now exists three times (store.ts, features/preview/useShellView.ts, domain/nextStep.ts). Extract one function. Replacement offer is derived from roster data (operator-devices.js:213-225), not a store field.
 - Phone unreachable: the 'As of' badge overlaps tablet 1 at 390px. Move it outside the wall area on small stages (U31).
+- stage-edit.spec.ts:576 (desktop) times out at 30 s under full-suite load and once logged an SVG negative-width console error; passes 3/3 alone. Investigate before U32 parity gate.
+- U19: the Preview stage does not paint test patterns (grid/black) for a selected test source; WallSvg only draws server scene content. U16 should make the stage draw the content draft, including test patterns.
+- U19 added ui.testPattern to the store and a test-pattern branch to useContentAction; U16 owns useContentAction and must keep it.
