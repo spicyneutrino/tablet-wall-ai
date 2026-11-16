@@ -2,6 +2,7 @@ import { Move, TabletSmartphone, Clock } from 'lucide-react';
 import { useState } from 'react';
 import { WallSvg } from '../../stage/WallSvg';
 import { useWallStore, selectPreviewLayout, selectPreviewContent, selectStageMode } from '../../state/hooks';
+import { testPatternName } from '../../state/commands/testPatterns';
 import { Button } from '../../ui/Button';
 import { Tally } from '../../ui/Tally';
 import { useShell } from './ShellContext';
@@ -17,9 +18,11 @@ export default function Preview() {
   const selected = useWallStore(store, state => state.ui.selected);
   const editing = useWallStore(store, state => state.ui.editLayout);
   const mode = useWallStore(store, selectStageMode);
+  const testPattern = useWallStore(store, state => state.ui.testPattern);
   const [liveExpanded, setLiveExpanded] = useState(false);
   const label = loading ? 'Loading the wall…' : firstRun ? 'Waiting for tablets' : unreachable ? 'Last known wall'
-    : editing || mode === 'arrangement-preview' ? 'Your layout' : mode === 'image-preview' ? contentName(content) : 'Same as the wall';
+    : editing || mode === 'arrangement-preview' ? 'Your layout'
+      : testPattern ? testPatternName(testPattern) : mode === 'image-preview' ? contentName(content) : 'Same as the wall';
   function selectFromStage(target: EventTarget | null) {
     if (!(target instanceof Element)) return;
     const key = target.closest('[data-device-id]')?.getAttribute('data-device-id');
@@ -36,7 +39,7 @@ export default function Preview() {
         </Button> : null}
       </div>
     </div>
-    <div className={`stage-well preview-stage${mode !== 'live' ? ' is-draft' : ''}`} data-stage="preview" tabIndex={0} role="group"
+    <div className={`stage-well preview-stage${mode !== 'live' || testPattern ? ' is-draft' : ''}`} data-stage="preview" tabIndex={0} role="group"
       aria-label="Preview wall. Use Left and Right to select a tablet."
       onClick={event => selectFromStage(event.target)}
       onKeyDown={event => {

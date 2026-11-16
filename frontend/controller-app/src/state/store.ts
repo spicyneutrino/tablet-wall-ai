@@ -25,7 +25,7 @@ export type WallStore = {
   clock: { nowMono: number };
   ui: { selected: DeviceId | null; source: 'images' | 'saved' | 'layouts' | 'tests'; editLayout: boolean;
     drill: DeviceId | null; measureStep: 'model' | 'profile' | 'calibration' | 'ruler' | null; serverOpen: boolean;
-    activeImageUnavailableId: string | null };
+    activeImageUnavailableId: string | null; testPattern: 'grid' | 'black' | null };
   arrangement: ArrangementDraft | null; grid: GridDraft | null; content: ContentDraft;
   forms: Partial<Record<FormKey, TabletForm>>;
   rulerReview: { deviceId: DeviceId; version: number; result: RulerCheckResult } | null;
@@ -39,7 +39,7 @@ export function createWallStore(nowMono = performance.now()): WallStoreApi {
       rosterUnreachable: false, rosterCheckedAt: null, transportText: 'Connecting to the wall…',
       uncertain: false, supported: false, busy: false, adoption: 0 },
     clock: { nowMono }, ui: { selected: null, source: 'images', editLayout: false, drill: null,
-      measureStep: null, serverOpen: false, activeImageUnavailableId: null },
+      measureStep: null, serverOpen: false, activeImageUnavailableId: null, testPattern: null },
     arrangement: null, grid: null, content: emptyContent(), forms: {}, rulerReview: null,
     playlist: emptyPlaylist(), playback: { status: null, version: null, optedIn: false, exclusions: [] },
   }));
