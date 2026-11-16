@@ -8,3 +8,4 @@
 - stage-edit.spec.ts:576 (desktop) times out at 30 s under full-suite load and once logged an SVG negative-width console error; passes 3/3 alone. Investigate before U32 parity gate.
 - U19: the Preview stage does not paint test patterns (grid/black) for a selected test source; WallSvg only draws server scene content. U16 should make the stage draw the content draft, including test patterns.
 - U19 added ui.testPattern to the store and a test-pattern branch to useContentAction; U16 owns useContentAction and must keep it.
+- Stage label falls back to the raw device UUID for an unnamed tablet (seen in U20 screenshots: '4e7c531d-d258-…'). Use 'Tablet' plus a short id, as the tablet list does.
