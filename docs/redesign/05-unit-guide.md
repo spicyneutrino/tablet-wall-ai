@@ -59,3 +59,17 @@ Do not push. Do not open a pull request. Use a free port for any server you star
 ## Final message
 
 Branch name, head SHA, files changed, the output of every command above, screenshot paths, and anything you could not do with the reason.
+
+## Lessons from earlier units (read these, they prevent the common failures)
+
+1. **Never end your turn while a command is still running.** Run the whole suite in the foreground and wait for it (it takes about 8 minutes; use a long timeout). Do not say "the suite is running, I'll report later": your turn ends there and the work is left uncommitted.
+2. **Finish with a commit.** The unit is not done until `git log -1` shows your commit and `git status --short` is empty. Check both before your final message.
+3. **Read before you write.** Before changing a file, read it fully and read one existing feature that does something similar (the brief names one). Copy its structure, naming and test style.
+4. **Find the root cause.** When a test fails, open `test-results/<test>/error-context.md`, read the page snapshot and the error, and say in one sentence why it failed before changing anything. Fix the feature when the feature is wrong; fix the test only when its lookup is wrong. Never remove or loosen an assertion to make it pass.
+5. **Field names come from the code, not guesses.** Before using a field from the server or the store, find it in `src/api/*.ts` (zod schemas) or `src/state/store.ts`. If it is not there, it does not exist.
+6. **Tablet counts.** `tablets(n)` supports up to 8 tablets (`e2e/fixtures/fleet.ts`).
+7. **Mockups.** `final.html` cannot be opened as a file in the browser tools. Serve it: `cd docs/redesign/mockups && python3 -m http.server <free port>` and open `http://127.0.0.1:<port>/final.html?state=<name>`. Stop the server afterwards.
+8. **Screenshot baselines.** `--update-snapshots=changed` skips small diffs. When your change touches the shell, open the old and new image of each affected state and say what changed. Only update baselines whose difference is your change.
+9. **Exit codes and coloured output.** Playwright output contains colour codes; read the summary lines (`N passed`, `N failed`) rather than grepping with `^`. A pipeline's exit code is the last command's, so check the real result.
+10. **When blocked, ask once with the exact file and reason**, then wait. Small additive changes to `src/main.tsx`, `src/App.tsx` and `src/dev/**` never need asking.
+11. **Report format.** Lead with what changed for the operator, then root causes, then each command with its real output, then deviations. Keep it factual.
