@@ -1,3 +1,4 @@
+import { Send } from 'lucide-react';
 import { Button } from '../../ui/Button';
 import { useShellView } from './useShellView';
 import { usePlaybackAction } from './usePlaybackAction';
@@ -19,7 +20,7 @@ export default function PrimaryAction() {
   return <div className="primary-action">
     {disabledReason ? <Button size="lg" disabled disabledReason={disabledReason}>{action?.label ?? 'Show on wall'}</Button>
       : server.busy ? <Button size="lg" busy busyLabel={action?.busyLabel ?? 'Working…'}>{action?.label ?? 'Show on wall'}</Button>
-        : <Button size="lg" busyLabel={action?.busyLabel} onClick={action?.onClick}>{action?.label ?? 'Show on wall'}</Button>}
+        : <Button size="lg" busyLabel={action?.busyLabel} onClick={action?.onClick}>{action?.label === 'Show on wall' ? <Send aria-hidden="true" /> : null}{action?.label ?? 'Show on wall'}</Button>}
     {action?.secondary}
   </div>;
 }

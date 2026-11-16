@@ -12,11 +12,12 @@ import Measure from './features/measure';
 import NextStep from './features/nextstep';
 import Server from './features/server';
 import Conflict from './features/conflict';
+import { ImagesProvider } from './features/sources/images/ImagesContext';
 import './features/preview/shell.css';
 
 export default function App({ session, store }: { session: Session; store: WallStoreApi }) {
   const value = useMemo(() => ({ session, store }), [session, store]);
-  return <ShellContext value={value}>
+  return <ShellContext value={value}><ImagesProvider>
     <div className="controller-shell">
       <a className="skip" href="#preview">Skip to preview</a>
       <Header />
@@ -28,5 +29,5 @@ export default function App({ session, store }: { session: Session; store: WallS
       </main>
       <Server />
     </div>
-  </ShellContext>;
+  </ImagesProvider></ShellContext>;
 }

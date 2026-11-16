@@ -31,7 +31,7 @@ export default function Preview() {
   }
   return <section className="preview-pinned" aria-label="Preview">
     <div className="monitor-label">
-      <Tally kind="preview" /><span className="t-body t-muted monitor-description">{label}</span>
+      <Tally kind="preview" /><span className="t-body t-muted monitor-description">{content?.type === 'image' && 'available' in content && content.available === false ? 'Image unavailable' : label}</span>
       <div className="preview-tools">
         {!loading && !firstRun && !unreachable && config ? <Button variant="secondary" aria-pressed={editing}
           aria-label="Edit layout" onClick={() => store.setState(state => ({ ui: { ...state.ui, editLayout: !editing } }))}>
@@ -53,7 +53,7 @@ export default function Preview() {
       }}>
       {loading ? <WallPlaceholder loading />
         : layout && !firstRun ? <div className="wall-frame"><WallSvg layout={layout} content={content} profileFor={profileFor}
-          statuses={statuses} selected={selected ?? undefined} interactive /></div>
+          statuses={statuses} testPattern={testPattern} preview={mode !== 'live' || !!testPattern} selected={selected ?? undefined} interactive /></div>
         : <><WallPlaceholder /><div className="stage-empty"><TabletSmartphone aria-hidden="true" /><p className="t-heading">No tablets on the wall yet</p>
           <p className="t-body">They appear here as they join.</p></div></>}
       {unreachable ? <span className="chip chip-err stage-stamp"><Clock aria-hidden="true" />
