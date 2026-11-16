@@ -7,6 +7,10 @@
 .image-tile.btn:focus-visible { outline-offset: 6px; }
 .image-tile.btn:hover { background: transparent; }
 .image-tile:hover .thumb { box-shadow: var(--shadow-float); }
+.image-tile .thumb.add { background: var(--tonal); }
+.image-tile:not(:disabled):hover .thumb.add { background: var(--tonal-hover); }
+.images-strip .btn-reason { inline-size: 120px; flex: none; }
+.images-strip .btn-reason > .btn { inline-size: 100%; }
 .image-tile[aria-pressed="true"] .thumb { outline: 2px solid var(--primary); outline-offset: 2px; }
 .image-tile[aria-pressed="true"] .source-name { color: var(--primary); }
 .source-name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-weight: 600; }

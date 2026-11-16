@@ -1,9 +1,10 @@
 import { startTransition, useId, useState } from 'react';
-import { ChevronRight, Images as ImagesIcon } from 'lucide-react';
+import { ChevronRight, Images as ImagesIcon, Upload as UploadIcon } from 'lucide-react';
 import type { Image } from '../../../api/images';
 import { HexColorSchema } from '../../../api/scene';
 import { selectTestPattern, testPatterns } from '../../../state/commands/testPatterns';
 import type { TestPattern } from '../../../state/commands/testPatterns';
+import { UPLOADS_OFF } from '../../../state/commands/upload';
 import { editContent } from '../../../state/store';
 import { useWallStore } from '../../../state/hooks';
 import { Button } from '../../../ui/Button';
@@ -13,7 +14,7 @@ import { useShell } from '../../preview/ShellContext';
 import { useShellView } from '../../preview/useShellView';
 import { useImages } from './ImagesContext';
 import { ImageTile } from './ImageTile';
-import { Upload, useUploadQueueLength } from './Upload';
+import { Upload, openUploadPicker, useUploadQueueLength } from './Upload';
 import './images.css';
 
 export default function Images() {
@@ -24,6 +25,7 @@ export default function Images() {
   const pattern = useWallStore(store, state => state.ui.testPattern);
   const selection = useWallStore(store, state => state.content.selection);
   const uploads = useWallStore(store, state => state.server.config?.capabilities.uploads);
+  const uploadEnabled = uploads === true;
   const queueLength = useUploadQueueLength();
   const [open, setOpen] = useState(false);
   const [query, setQuery] = useState('');
@@ -45,6 +47,9 @@ export default function Images() {
     if (store.getState().content.selection) editContent(store, { type: 'discard' });
     selectTestPattern(store, value);
   }
+  function chooseFiles() {
+    openUploadPicker(() => setOpen(true));
+  }
   const visible = images.filter(image => image.name.toLocaleLowerCase().includes(filter.toLocaleLowerCase()));
   const empty = uploads ? 'Add a JPEG or PNG image to this server, then refresh images.'
     : 'Uploads are off on this server. Add a JPEG or PNG to the server’s image folder, then refresh images.';
@@ -52,7 +57,7 @@ export default function Images() {
     selected={selection?.type === 'image' && selection.asset === image.id} onSelect={() => choose(image)} />);
   return <div className="images-source">
     {!loading ? <Button variant="ghost" size="sm" className="all-images" data-all-images aria-label="All images" onClick={() => setOpen(true)}><span className="all-images-label">All images</span><span className="all-images-short">All</span><ChevronRight aria-hidden="true" /></Button> : null}
-    <div className="source-strip" role="group" aria-label="Image sources" aria-busy={loading}>
+    <div className="source-strip images-strip" role="group" aria-label="Image sources" aria-busy={loading}>
       {loading ? [0, 1, 2].map(index => <div className="source-preview" aria-hidden="true" key={index}>
         <span className="thumb skel" /><span className={`skel h-3 ${['w-20', 'w-16', 'w-12'][index]}`} /></div>) : tiles(images.slice(0, 8))}
       {!loading ? testPatterns.map(entry => <Button variant="ghost" className="source-preview image-tile"
@@ -64,6 +69,10 @@ export default function Images() {
       </Button>) : null}
       {!loading ? <Button variant="ghost" className="source-preview image-tile" onClick={() => setOpen(true)}>
         <span className="thumb"><ImagesIcon aria-hidden="true" /></span><span className="t-caption source-name">Library…</span>
+      </Button> : null}
+      {!loading ? <Button variant="ghost" className="source-preview image-tile" onClick={chooseFiles}
+        {...(uploadEnabled ? { disabled: false as const } : { disabled: true as const, disabledReason: UPLOADS_OFF })}>
+        <span className="thumb add"><UploadIcon aria-hidden="true" /></span><span className="t-caption source-name">Upload…</span>
       </Button> : null}
     </div>
     <SideSheet open={open} onOpenChange={setOpen} title="Library">

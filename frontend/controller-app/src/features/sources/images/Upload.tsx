@@ -31,6 +31,12 @@ export function useUploadQueueLength(): number {
   return useSyncExternalStore(subscribeQueueLength, () => queueLength);
 }
 
+let requestPicker: ((afterPick: () => void) => void) | null = null;
+
+export function openUploadPicker(afterPick: () => void) {
+  requestPicker?.(afterPick);
+}
+
 function selectUploaded(store: WallStoreApi, asset: ManagedAsset) {
   const { server, content } = store.getState();
   if (!server.etag) return;
@@ -57,11 +63,20 @@ export function Upload() {
   const running = useRef(false);
   const nextId = useRef(1);
   const input = useRef<HTMLInputElement>(null);
+  const afterPick = useRef<(() => void) | null>(null);
   const titleId = useId();
 
   useEffect(() => {
     publishQueueLength(itemsRef.current.length);
     return () => publishQueueLength(0);
+  }, []);
+
+  useEffect(() => {
+    requestPicker = after => {
+      afterPick.current = after;
+      input.current?.click();
+    };
+    return () => { requestPicker = null; };
   }, []);
 
   function commit(next: QueueItem[]) {
@@ -107,6 +122,8 @@ export function Upload() {
     }
   }
   function addFiles(files: FileList | null) {
+    const after = afterPick.current;
+    afterPick.current = null;
     if (!files || !enabled) return;
     const list = Array.from(files).filter(file => file.size > 0);
     if (!list.length) return;
@@ -114,6 +131,7 @@ export function Upload() {
       progress: 0, transferComplete: false, batch: list.length }));
     commit([...itemsRef.current, ...additions]);
     void start();
+    after?.();
   }
   function cancel(id: number) {
     const item = itemsRef.current.find(candidate => candidate.id === id);

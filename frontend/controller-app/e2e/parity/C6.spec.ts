@@ -52,6 +52,27 @@ test('C6 Upload: progress, a refusal message, and an uncertain state on timeout,
   const emptyLibrary = 'Add a JPEG or PNG image to this server, then refresh images.';
   await expect(sheet.getByText(emptyLibrary)).toBeVisible();
 
+  // The strip's Upload… tile opens the file picker directly, and the chosen files show up in the Library sheet.
+  await page.keyboard.press('Escape');
+  await expect(sheet).not.toBeVisible();
+  const uploadTile = page.getByRole('button', { name: 'Upload…', exact: true });
+  await expect(uploadTile).toBeVisible();
+  await uploadTile.focus();
+  await expect(uploadTile).toBeFocused();
+  const picker = page.waitForEvent('filechooser');
+  await uploadTile.click();
+  await picker;
+  let releaseStrip = () => {};
+  const stripGate = new Promise<void>(resolve => { releaseStrip = resolve; });
+  await page.route('**/uploads?*', async route => { await stripGate; await route.continue(); }, { times: 1 });
+  await page.setInputFiles('input[type="file"]', imageFile('strip-upload.png', [20, 120, 200]));
+  await expect(sheet).toBeVisible();
+  await expect(queue.getByRole('listitem')).toHaveCount(1);
+  await expect(queue.getByText('strip-upload.png')).toBeVisible();
+  releaseStrip();
+  await expect(sheet.getByRole('button', { name: 'strip-upload.png', exact: true })).toBeVisible();
+  await expect(sheet.getByText(emptyLibrary)).toHaveCount(0);
+
   // One real upload: the library refreshes, the single file is selected as a preview, nothing reaches the wall.
   // While the transfer is held, the queue counts it and the empty-library sentence goes away.
   let releaseInitial = () => {};
@@ -180,6 +201,10 @@ test('C6 Upload: progress, a refusal message, and an uncertain state on timeout,
   });
   await page.routeWebSocket('**/ws/controller?protocol=3', () => {});
   await page.reload({ waitUntil: 'networkidle' });
+  // The strip tile is off too, and says why next to it.
+  const offTile = page.getByRole('button', { name: 'Upload…', exact: true });
+  await expect(offTile).toBeDisabled();
+  await expect(page.locator('.images-strip .btn-reason')).toContainText('Uploads are off on this server');
   await page.getByRole('button', { name: 'All images' }).click();
   await expect(sheet).toBeVisible();
   await expect(sheet.getByRole('button', { name: 'Choose files…', exact: true })).toBeDisabled();
