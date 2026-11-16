@@ -13,6 +13,7 @@ import { useShell } from '../../preview/ShellContext';
 import { useShellView } from '../../preview/useShellView';
 import { useImages } from './ImagesContext';
 import { ImageTile } from './ImageTile';
+import { Upload } from './Upload';
 import './images.css';
 
 export default function Images() {
@@ -74,6 +75,7 @@ export default function Images() {
           }} /></label>
           <Button variant="secondary" onClick={refresh} aria-disabled={loading}>{loading ? 'Loading…' : 'Refresh images'}</Button>
         </search>
+        <Upload />
         {error ? <p className="t-body" role="alert">{error}</p> : null}
         {!images.length && !loading ? <p className="t-body">{empty}</p> : null}
         {images.length > 0 && !visible.length ? <p className="t-body">No images match “{query}”. Try another name.</p> : null}
