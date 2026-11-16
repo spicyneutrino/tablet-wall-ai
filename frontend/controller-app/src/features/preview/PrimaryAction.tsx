@@ -1,6 +1,7 @@
 import { Send } from 'lucide-react';
 import { useWallStore } from '../../state/hooks';
 import { Button } from '../../ui/Button';
+import { GridApplyAction } from '../sources/layouts/GridBuilder';
 import { useShellView } from './useShellView';
 import { usePlaybackAction } from './usePlaybackAction';
 import { useArrangementAction } from './useArrangementAction';
@@ -13,10 +14,14 @@ export type PreviewAction = { label: string; busyLabel: string; onClick: () => v
 export default function PrimaryAction() {
   const { store } = useShell();
   const measuring = useWallStore(store, state => !!state.ui.measureStep);
+  const gridPreview = useWallStore(store, state => !!state.grid?.preview);
+  const gridBuilderOpen = useWallStore(store, state => state.ui.gridBuilderOpen);
   const playback = usePlaybackAction();
   const arrangement = useArrangementAction();
   const content = useContentAction();
   const { loading, unreachable, firstRun, server } = useShellView();
+  if (gridBuilderOpen) return <div className="primary-action" />;
+  if (gridPreview) return <GridApplyAction />;
   const action = playback ?? arrangement ?? content;
   const reason = loading ? 'Loading…' : unreachable ? 'The server can’t be reached.' : server.uncertain ? 'Refresh first.'
     : !server.supported ? 'Update the console before editing.' : firstRun ? 'Add a tablet first.'

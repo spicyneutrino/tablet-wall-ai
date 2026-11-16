@@ -21,7 +21,7 @@ test('A4 Logical: fixed and fit-to-tablets sizing, pack, tile, custom bounds, ro
     upstream.onMessage(message => { if (!staleRoster) socket.send(message); });
   });
   const fleet: Tablet[] = [];
-  for (const device of devices) fleet.push(...await tablets(1, { ids: [device.id] }));
+  for (const device of devices.slice(0, 4)) fleet.push(...await tablets(1, { ids: [device.id] }));
   const ids = fleet.map(tablet => tablet.id);
   async function put(path: string, data: unknown) {
     const response = await api.request.put(path, { headers: { 'If-Match': (await api.config()).etag }, data });

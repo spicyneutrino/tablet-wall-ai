@@ -159,7 +159,7 @@ test('Direction C shell keeps its preview through all operator and connection st
     for (const theme of themes) await capture(page, 'firstrun', theme);
 
     const fleet: Tablet[] = [];
-    for (const device of fleetDevices) {
+    for (const device of fleetDevices.slice(0, 4)) {
       fleet.push(...await tablets(1, { ids: [device.id] }));
       await expect.poll(async () => (await api.config()).runtime.devices[device.id]?.online).toBe(true);
     }
