@@ -3,3 +3,4 @@
 - U06 follow-up: operator_state.test.js stageView/stageEditable assertions (18) go to U11/U12; readFence (2) to U04. U06 met the count floor with 39 extra characterization assertions, not the deferred ones.
 - U04 follow-up (fold into U11): replace session local guards with src/api schemas; port operator_late_join.test.js lines 26,27,30,31,37,46,47,48 (grid/draft).
 - U13 follow-up (U22): canvas readout shows position including nudge (x 224.89 = X 209.89 + nudge 15) while the fields show base position; label the readout or show base + nudge so they don't look contradictory.
+- U28a follow-up (U31 cleanup): the roster-to-domain device projection now exists three times (store.ts, features/preview/useShellView.ts, domain/nextStep.ts). Extract one function. Replacement offer is derived from roster data (operator-devices.js:213-225), not a store field.
