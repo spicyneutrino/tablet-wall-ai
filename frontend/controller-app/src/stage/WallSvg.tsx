@@ -53,9 +53,10 @@ export function WallSvg({ layout, content, profileFor, statuses, selected, inter
         background: 'var(--stage)', color: 'var(--stage-text)' }}>
       <defs>
         <clipPath id={`${id}-wall`} clipPathUnits="userSpaceOnUse"><rect {...wall} /></clipPath>
-        <pattern id={`${id}-hatch`} width={wall.width / 80} height={wall.width / 80} patternUnits="userSpaceOnUse">
-          <path d={`M0 ${wall.width / 80} L${wall.width / 80} 0`} stroke="var(--stage-line)"
-            strokeWidth={wall.width / 700} strokeOpacity="0.45" />
+        <pattern id={`${id}-hatch`} width={wall.width / 80} height={wall.width / 80} patternUnits="userSpaceOnUse" patternTransform="rotate(45)">
+          <rect width={wall.width / 80} height={wall.width / 80} fill="var(--stage-body)" />
+          <path d={`M0 0 L0 ${wall.width / 80}`} stroke="var(--stage-hatch)"
+            strokeWidth={wall.width / 160} />
         </pattern>
         {image && content?.type === 'image' && content.url ? (
           <image id={`${id}-image`} href={content.url} x={image.x} y={image.y}

@@ -4,7 +4,7 @@
 .wall-mark i { inline-size: 8px; block-size: 8px; border-radius: 2px; background: var(--text); }
 .wall-mark i:nth-child(2) { background: var(--primary); }
 .app-name { min-inline-size: 0; white-space: nowrap; overflow: clip; text-overflow: ellipsis; }
-.appbar .chip { min-inline-size: 0; }
+.appbar .chip { min-inline-size: 0; flex: none; block-size: 32px; min-block-size: 32px; padding-block: 0; white-space: nowrap; }
 .appbar .status-compact { display: none; }
 .header-actions { margin-inline-start: auto; display: flex; align-items: center; gap: var(--space-1); flex: none; }
 .controller-workspace { flex: 1; min-inline-size: 0; display: flex; flex-direction: column; }
@@ -14,7 +14,7 @@
 .monitor-description { min-inline-size: 0; white-space: nowrap; text-overflow: ellipsis; overflow: clip; }
 .preview-tools { display: flex; gap: var(--space-1); margin-inline-start: auto; flex: none; }
 .preview-stage { aspect-ratio: 3 / 2; flex: none; }
-.wall-frame { position: absolute; inset: 12%; }
+.wall-frame { position: absolute; inset: var(--space-4); }
 .preview-stage.is-draft .wall-frame { outline: 1.5px dashed var(--stage-sel); outline-offset: var(--space-2); border-radius: var(--radius-control); }
 .stage-empty { position: absolute; inset: 0; display: flex; flex-direction: column; justify-content: center; align-items: center; gap: var(--space-2); padding: var(--space-4); text-align: center; color: var(--stage-text); }
 .preview-stage svg.lucide { position: static; inset: auto; inline-size: 18px; block-size: 18px; }

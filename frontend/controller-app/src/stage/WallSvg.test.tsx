@@ -31,7 +31,7 @@ describe('WallSvg read-only drawing', () => {
   });
 
   it('defines one wall-wide image and clips its uses to screens and wall bounds', () => {
-    const { container } = render(<WallSvg {...props} />);
+    const { container } = render(<WallSvg {...props} statuses={{ a: { status: 'showing', text: 'Showing' } }} />);
     const images = container.querySelectorAll('image');
     expect(images).toHaveLength(1);
     expect(['x', 'y', 'width', 'height'].map((name) => images[0]?.getAttribute(name))).toEqual(['-60', '0', '320', '200']);
@@ -48,6 +48,8 @@ describe('WallSvg read-only drawing', () => {
     expect(container.querySelectorAll('[tabindex]')).toHaveLength(0);
     expect(container.querySelector('[data-device-id]')?.textContent).toContain('Offline');
     expect(container.querySelector('rect[fill^="url"]')).not.toBeNull();
+    expect(container.querySelector('use')).toBeNull();
+    expect(container.querySelector('rect[stroke="var(--stage-warn)"]')).not.toBeNull();
     expect(container.querySelector('rect[stroke="var(--stage-sel)"]')).not.toBeNull();
   });
 
