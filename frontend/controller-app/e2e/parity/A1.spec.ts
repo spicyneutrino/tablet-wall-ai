@@ -52,7 +52,6 @@ test('A1 Grid preview then apply for 1×3, 2×3, 3×2, 2×2 with a trailing hole
       .filter(row => row.querySelector('button[aria-label^="Exclude "]')).map(row => row.getAttribute('data-grid-device')));
     if (caseIndex === 4) {
       expect(order[0]).toBe(chosen.at(-1)!.id);
-      await page.mouse.move(0, 0);
       await sheet.locator('.dialog-body').evaluate(node => { node.scrollTop = 0; });
       for (const theme of ['light', 'dark']) {
         await page.evaluate(theme => { document.documentElement.dataset.theme = theme; }, theme);
@@ -87,7 +86,6 @@ test('A1 Grid preview then apply for 1×3, 2×3, 3×2, 2×2 with a trailing hole
     await writeFile(imagePath, new Uint8Array(bytes));
     const asset = await api.upload(imagePath);
     if (caseIndex === 4) {
-      await page.mouse.move(0, 0);
       for (const theme of ['light', 'dark']) {
         await page.evaluate(theme => { document.documentElement.dataset.theme = theme; }, theme);
         expect((await axe(page)).violations).toEqual([]);

@@ -38,7 +38,7 @@
   --tally-live: #c4221a;
 
   /* Status. Green only ever means healthy. */
-  --ok: #11733b;      --ok-bg: #e2f3e8;
+  --ok: #0f6a36;      --ok-bg: #e2f3e8;
   --warn: #875000;    --warn-bg: #fcefd6;
   --err: #b3261e;     --err-bg: #fbe9e7;
   --err-hover: #8f1d17;

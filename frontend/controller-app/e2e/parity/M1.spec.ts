@@ -44,7 +44,7 @@ test("M1 Saving a profile appends a revision. The active layout's `profile_revis
   await expect(page.getByText('Measuring Tablet 1', { exact: true })).toBeVisible();
   if (info.project.name === 'desktop') {
     await expect(page.getByText('Finish measuring first.', { exact: true })).toBeVisible();
-    await expect(page.getByText('two-colour.png, Fit · Measuring blanks only Tablet 1', { exact: true })).toBeVisible();
+    await expect(page.getByText('two-colour.png, Fit. Measuring blanks only Tablet 1’s preview.', { exact: true })).toBeVisible();
   }
   await page.getByLabel('Which model is it?').selectOption('manual');
   await mkdir('/tmp/u26-shots/3170a157', { recursive: true });
