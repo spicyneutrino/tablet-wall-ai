@@ -1,9 +1,9 @@
-import { useId, useRef, useState } from 'react';
+import { useEffect, useId, useRef, useState, useSyncExternalStore } from 'react';
 import { FileX, ImageUp, Upload as UploadIcon, X } from 'lucide-react';
 import type { ManagedAsset } from '../../../api/images';
 import { HexColorSchema } from '../../../api/scene';
-import { formatBytes, UPLOAD_FAILED, UPLOAD_REFUSED, UPLOADS_OFF, uploadFile } from '../../../state/commands/upload';
-import type { UploadHandle } from '../../../state/commands/upload';
+import { formatBytes, queueHeading, rowActionLabel, UPLOAD_FAILED, UPLOAD_REFUSED, UPLOADS_OFF, uploadFile } from '../../../state/commands/upload';
+import type { UploadHandle, UploadStatus } from '../../../state/commands/upload';
 import { useWallStore } from '../../../state/hooks';
 import { editContent } from '../../../state/store';
 import type { WallStoreApi } from '../../../state/store';
@@ -11,8 +11,25 @@ import { Button } from '../../../ui/Button';
 import { useShell } from '../../preview/ShellContext';
 import { useImages } from './ImagesContext';
 
-type Status = 'queued' | 'uploading' | 'cancelled' | 'refused' | 'failed';
-type QueueItem = { id: number; file: File; status: Status; progress: number; transferComplete: boolean; batch: number };
+type QueueItem = { id: number; file: File; status: UploadStatus; progress: number; transferComplete: boolean; batch: number };
+
+let queueLength = 0;
+const queueListeners = new Set<() => void>();
+
+function publishQueueLength(next: number) {
+  if (queueLength === next) return;
+  queueLength = next;
+  for (const listener of queueListeners) listener();
+}
+
+function subscribeQueueLength(listener: () => void) {
+  queueListeners.add(listener);
+  return () => { queueListeners.delete(listener); };
+}
+
+export function useUploadQueueLength(): number {
+  return useSyncExternalStore(subscribeQueueLength, () => queueLength);
+}
 
 function selectUploaded(store: WallStoreApi, asset: ManagedAsset) {
   const { server, content } = store.getState();
@@ -34,7 +51,6 @@ export function Upload() {
   const enabled = uploads === true;
   const [items, setItems] = useState<QueueItem[]>([]);
   const [over, setOver] = useState(false);
-  const [total, setTotal] = useState(0);
   const [finished, setFinished] = useState(0);
   const itemsRef = useRef<QueueItem[]>([]);
   const active = useRef<UploadHandle | null>(null);
@@ -43,25 +59,21 @@ export function Upload() {
   const input = useRef<HTMLInputElement>(null);
   const titleId = useId();
 
+  useEffect(() => {
+    publishQueueLength(itemsRef.current.length);
+    return () => publishQueueLength(0);
+  }, []);
+
   function commit(next: QueueItem[]) {
     itemsRef.current = next;
+    publishQueueLength(next.length);
     setItems(next);
   }
   function patch(id: number, changes: Partial<QueueItem>) {
     commit(itemsRef.current.map(item => item.id === id ? { ...item, ...changes } : item));
   }
   function remove(id: number) {
-    const item = itemsRef.current.find(candidate => candidate.id === id);
-    if (item?.status === 'queued') setTotal(value => value - 1);
     commit(itemsRef.current.filter(candidate => candidate.id !== id));
-  }
-  function finish(item: QueueItem, changes: Partial<QueueItem>) {
-    patch(item.id, changes);
-    setFinished(value => value + 1);
-  }
-  function drop(item: QueueItem, changes: Partial<QueueItem>) {
-    patch(item.id, changes);
-    setTotal(value => value - 1);
   }
   async function uploadItem(item: QueueItem) {
     patch(item.id, { status: 'uploading', progress: 0, transferComplete: false });
@@ -72,9 +84,9 @@ export function Upload() {
     active.current = handle;
     const result = await handle.done;
     active.current = null;
-    if (result.kind === 'cancelled') return drop(item, { status: 'cancelled', progress: 0 });
-    if (result.kind === 'refused') return drop(item, { status: 'refused' });
-    if (result.kind === 'failed') return finish(item, { status: 'failed' });
+    if (result.kind === 'cancelled') return patch(item.id, { status: 'cancelled', progress: 0 });
+    if (result.kind === 'refused') return patch(item.id, { status: 'refused' });
+    if (result.kind === 'failed') return patch(item.id, { status: 'failed' });
     setFinished(value => value + 1);
     refresh();
     if (item.batch === 1) selectUploaded(store, result.asset);
@@ -91,6 +103,7 @@ export function Upload() {
       }
     } finally {
       running.current = false;
+      setFinished(0);
     }
   }
   function addFiles(files: FileList | null) {
@@ -99,7 +112,6 @@ export function Upload() {
     if (!list.length) return;
     const additions = list.map(file => ({ id: nextId.current++, file, status: 'queued' as const,
       progress: 0, transferComplete: false, batch: list.length }));
-    setTotal(value => value + additions.length);
     commit([...itemsRef.current, ...additions]);
     void start();
   }
@@ -110,11 +122,10 @@ export function Upload() {
   }
   function retry(id: number) {
     patch(id, { status: 'queued', progress: 0, transferComplete: false });
-    setFinished(value => value - 1);
     void start();
   }
 
-  const inFlight = items.some(item => item.status === 'queued' || item.status === 'uploading');
+  const queueTitle = queueHeading(items.map(item => item.status), finished);
   const reason = uploads === false ? UPLOADS_OFF : 'Checking upload availability…';
   const heading = uploads === false ? UPLOADS_OFF : uploads === true ? 'Drop images here, or' : 'Checking upload availability…';
   return <>
@@ -131,13 +142,13 @@ export function Upload() {
         onClick={() => input.current?.click()}><UploadIcon aria-hidden="true" />Choose files…</Button>
     </div>
     {items.length ? <section aria-labelledby={titleId} className="grid gap-3">
-      <h3 id={titleId} className="t-label">{inFlight ? `Uploading ${Math.min(finished + 1, total)} of ${total}` : 'Upload queue'}</h3>
+      <h3 id={titleId} className="t-label">{queueTitle}</h3>
       <ul className="grid gap-4">
         {items.map(item => {
           const percent = Math.round(item.progress);
           const label = item.status === 'queued' ? 'Waiting'
             : item.status === 'uploading' ? item.transferComplete ? 'Processing…' : `${percent}% · ${formatBytes(item.file.size)}`
-              : item.status === 'cancelled' ? 'Cancelled' : formatBytes(item.file.size);
+              : item.status === 'cancelled' ? 'Cancelled' : null;
           return <li key={item.id} className="flex items-center gap-3">
             <span className="w-12 h-8 rounded-sm bg-well grid place-items-center flex-none" aria-hidden="true">
               {item.status === 'refused' || item.status === 'failed'
@@ -146,7 +157,7 @@ export function Upload() {
             <div className="flex-1 min-w-0 grid gap-1">
               <div className="flex justify-between gap-2">
                 <span className="t-label truncate">{item.file.name}</span>
-                <span className="t-caption">{label}</span>
+                {label ? <span className="t-caption">{label}</span> : null}
               </div>
               {item.status === 'uploading' ? <div className="meter" role="progressbar" aria-label={item.file.name}
                 aria-valuenow={percent} aria-valuemin={0} aria-valuemax={100}><span style={{ width: `${percent}%` }} /></div>
@@ -155,11 +166,11 @@ export function Upload() {
               {item.status === 'failed' ? <span className="t-caption text-err">{UPLOAD_FAILED}</span> : null}
             </div>
             {item.status === 'uploading' && !item.transferComplete
-              ? <Button variant="ghost" size="icon" aria-label={`Cancel upload of ${item.file.name}`}
+              ? <Button variant="ghost" size="icon" aria-label={rowActionLabel(item.status, item.file.name)}
                 onClick={() => cancel(item.id)}><X aria-hidden="true" /></Button> : null}
             {item.status === 'failed' ? <Button variant="ghost" size="sm" onClick={() => retry(item.id)}>Retry</Button> : null}
             {item.status !== 'uploading' ? <Button variant="ghost" size="icon"
-              aria-label={item.status === 'queued' ? `Remove ${item.file.name} from the queue` : `Dismiss ${item.file.name}`}
+              aria-label={rowActionLabel(item.status, item.file.name)}
               onClick={() => remove(item.id)}><X aria-hidden="true" /></Button> : null}
           </li>;
         })}

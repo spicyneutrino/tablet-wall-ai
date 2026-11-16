@@ -13,7 +13,7 @@ import { useShell } from '../../preview/ShellContext';
 import { useShellView } from '../../preview/useShellView';
 import { useImages } from './ImagesContext';
 import { ImageTile } from './ImageTile';
-import { Upload } from './Upload';
+import { Upload, useUploadQueueLength } from './Upload';
 import './images.css';
 
 export default function Images() {
@@ -24,6 +24,7 @@ export default function Images() {
   const pattern = useWallStore(store, state => state.ui.testPattern);
   const selection = useWallStore(store, state => state.content.selection);
   const uploads = useWallStore(store, state => state.server.config?.capabilities.uploads);
+  const queueLength = useUploadQueueLength();
   const [open, setOpen] = useState(false);
   const [query, setQuery] = useState('');
   const [filter, setFilter] = useState('');
@@ -77,7 +78,7 @@ export default function Images() {
         </search>
         <Upload />
         {error ? <p className="t-body" role="alert">{error}</p> : null}
-        {!images.length && !loading ? <p className="t-body">{empty}</p> : null}
+        {!images.length && !loading && !queueLength ? <p className="t-body">{empty}</p> : null}
         {images.length > 0 && !visible.length ? <p className="t-body">No images match “{query}”. Try another name.</p> : null}
         <div className="image-library-grid" role="group" aria-label="Library images">{tiles(visible)}</div>
       </div>

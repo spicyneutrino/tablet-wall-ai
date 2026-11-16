@@ -48,9 +48,22 @@ test('C6 Upload: progress, a refusal message, and an uncertain state on timeout,
   await page.getByRole('button', { name: 'All images' }).click();
   await expect(sheet).toBeVisible();
 
+  // An empty library with an empty queue says what to add.
+  const emptyLibrary = 'Add a JPEG or PNG image to this server, then refresh images.';
+  await expect(sheet.getByText(emptyLibrary)).toBeVisible();
+
   // One real upload: the library refreshes, the single file is selected as a preview, nothing reaches the wall.
+  // While the transfer is held, the queue counts it and the empty-library sentence goes away.
+  let releaseInitial = () => {};
+  const initialHeld = new Promise<void>(resolve => { releaseInitial = resolve; });
+  await page.route('**/uploads?*', async route => { await initialHeld; await route.continue(); }, { times: 1 });
   await input.setInputFiles(imageFile('single-upload.png', [200, 60, 40]));
+  await expect(queue.getByRole('listitem')).toHaveCount(1);
+  await expect(sheet.getByRole('heading', { name: 'Uploading 1 of 1', exact: true })).toBeVisible();
+  await expect(sheet.getByText(emptyLibrary)).toHaveCount(0);
+  releaseInitial();
   await expect(sheet.getByRole('button', { name: 'single-upload.png', exact: true })).toBeVisible();
+  await expect(sheet.getByText(emptyLibrary)).toHaveCount(0);
   await expect(preview).toContainText('single-upload.png, Fill');
   expect(sceneWrites()).toEqual([]);
 
@@ -80,6 +93,10 @@ test('C6 Upload: progress, a refusal message, and an uncertain state on timeout,
   await input.setInputFiles({ name: 'banner.heic', mimeType: 'image/heic', buffer: Buffer.from('not an image') });
   const refused = queue.getByRole('listitem').filter({ hasText: 'banner.heic' });
   await expect(refused.getByText('This file type is not accepted')).toBeVisible();
+  // The refused row shows its size once, under the name, and nothing is left to upload.
+  await expect(refused.getByText('12 B', { exact: true })).toHaveCount(1);
+  await expect(refused.getByRole('button', { name: 'Cancel upload of banner.heic' })).toHaveCount(0);
+  await expect(sheet.getByRole('heading', { name: 'Uploads finished', exact: true })).toBeVisible();
   expect(sceneWrites()).toEqual([]);
 
   // Cancel is offered while the transfer is held; aborting marks the row and adds nothing.
@@ -95,9 +112,17 @@ test('C6 Upload: progress, a refusal message, and an uncertain state on timeout,
   await input.setInputFiles(imageFile('cancelled.png', [40, 120, 200]));
   const cancelledRow = queue.getByRole('listitem').filter({ hasText: 'cancelled.png' });
   await expect(cancelledRow.getByRole('progressbar', { name: 'cancelled.png' })).toHaveAttribute('aria-valuemax', '100');
+  await expect(cancelledRow.getByRole('button', { name: 'Cancel upload of cancelled.png' })).toBeVisible();
+  // Only the held transfer counts now; the refused row is left out of the total.
+  await expect(sheet.getByRole('heading', { name: 'Uploading 1 of 1', exact: true })).toBeVisible();
+  // A refused row's X is Remove, and it removes the row.
+  await refused.getByRole('button', { name: 'Remove banner.heic', exact: true }).click();
+  await expect(refused).toHaveCount(0);
   await cancelledRow.getByRole('button', { name: 'Cancel upload of cancelled.png' }).click();
   await expect(cancelledRow.getByText('Cancelled', { exact: true })).toBeVisible();
   await expect(cancelledRow.getByRole('button', { name: 'Cancel upload of cancelled.png' })).toHaveCount(0);
+  await expect(cancelledRow.getByRole('button', { name: 'Remove cancelled.png', exact: true })).toBeVisible();
+  await expect(sheet.getByRole('heading', { name: 'Uploads finished', exact: true })).toBeVisible();
   releaseCancel();
   await cancelRouteDone;
   await expect(sheet.getByRole('button', { name: 'cancelled.png', exact: true })).toHaveCount(0);
@@ -114,6 +139,8 @@ test('C6 Upload: progress, a refusal message, and an uncertain state on timeout,
   releaseStall();
   await expect(stalledRow.getByText('Upload failed. Try again.')).toBeVisible();
   await expect(stalledRow.getByRole('button', { name: 'Retry', exact: true })).toBeVisible();
+  await expect(stalledRow.getByRole('button', { name: 'Remove stalled.png', exact: true })).toBeVisible();
+  await expect(stalledRow.getByRole('button', { name: 'Cancel upload of stalled.png' })).toHaveCount(0);
   expect(sceneWrites()).toEqual([]);
 
   // A 500 is retryable, and Retry uploads the same file again.

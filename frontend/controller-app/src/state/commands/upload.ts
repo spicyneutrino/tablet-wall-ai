@@ -7,6 +7,22 @@ export const UPLOAD_REFUSED = 'This file type is not accepted';
 export const UPLOAD_FAILED = 'Upload failed. Try again.';
 export const UPLOADS_OFF = 'Uploads are off on this server';
 
+export type UploadStatus = 'queued' | 'uploading' | 'cancelled' | 'refused' | 'failed';
+
+const WILL_UPLOAD: ReadonlySet<UploadStatus> = new Set(['queued', 'uploading']);
+
+export function queueHeading(statuses: readonly UploadStatus[], done: number): string {
+  const pending = statuses.filter(status => WILL_UPLOAD.has(status)).length;
+  if (!pending) return 'Uploads finished';
+  return `Uploading ${done + 1} of ${done + pending}`;
+}
+
+export function rowActionLabel(status: UploadStatus, name: string): string {
+  if (status === 'uploading') return `Cancel upload of ${name}`;
+  if (status === 'queued') return `Remove ${name} from the queue`;
+  return `Remove ${name}`;
+}
+
 export type UploadResult =
   | { kind: 'ready'; asset: ManagedAsset }
   | { kind: 'refused' }

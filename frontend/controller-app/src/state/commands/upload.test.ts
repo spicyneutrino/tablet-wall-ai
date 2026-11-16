@@ -1,6 +1,6 @@
 import { expect, it, vi } from 'vitest';
 import upload from '../../api/__fixtures__/upload.json';
-import { UPLOAD_FAILED, UPLOAD_REFUSED, UPLOAD_TIMEOUT_MS, formatBytes, uploadFile } from './upload';
+import { UPLOAD_FAILED, UPLOAD_REFUSED, UPLOAD_TIMEOUT_MS, formatBytes, queueHeading, rowActionLabel, uploadFile } from './upload';
 import type { UploadXhr } from './upload';
 
 function fakeXhr() {
@@ -94,4 +94,21 @@ it('formats byte sizes for the queue', () => {
   expect(formatBytes(900)).toBe('900 B');
   expect(formatBytes(2048)).toBe('2.0 KB');
   expect(formatBytes(2.5 * 1024 * 1024)).toBe('2.5 MB');
+});
+
+it('counts only the files that will upload in the queue heading', () => {
+  expect(queueHeading(['queued'], 0)).toBe('Uploading 1 of 1');
+  expect(queueHeading(['refused', 'uploading', 'queued'], 0)).toBe('Uploading 1 of 2');
+  expect(queueHeading(['refused', 'uploading'], 1)).toBe('Uploading 2 of 2');
+  expect(queueHeading(['failed', 'uploading'], 0)).toBe('Uploading 1 of 1');
+  expect(queueHeading(['refused', 'cancelled', 'failed'], 0)).toBe('Uploads finished');
+  expect(queueHeading([], 0)).toBe('Uploads finished');
+});
+
+it('names each row X by what it does to the row', () => {
+  expect(rowActionLabel('uploading', 'poster.png')).toBe('Cancel upload of poster.png');
+  expect(rowActionLabel('queued', 'poster.png')).toBe('Remove poster.png from the queue');
+  expect(rowActionLabel('refused', 'banner.heic')).toBe('Remove banner.heic');
+  expect(rowActionLabel('failed', 'poster.png')).toBe('Remove poster.png');
+  expect(rowActionLabel('cancelled', 'poster.png')).toBe('Remove poster.png');
 });
