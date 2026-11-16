@@ -15,10 +15,12 @@ export type WallSvgProps = {
   profileFor: Parameters<typeof panels>[1];
   statuses: Readonly<Record<string, WallStatus>>;
   selected?: string;
+  preview?: boolean;
+  testPattern?: 'grid' | 'black' | null;
   interactive: boolean;
 };
 
-export function WallSvg({ layout, content, profileFor, statuses, selected, interactive }: WallSvgProps) {
+export function WallSvg({ layout, content, profileFor, statuses, selected, interactive, testPattern, preview }: WallSvgProps) {
   const id = useId();
   const svg = useRef<SVGSVGElement>(null);
   const frame = layout.kind === 'physical' ? { kind: layout.kind, bounds: layout.bounds } :
@@ -37,7 +39,7 @@ export function WallSvg({ layout, content, profileFor, statuses, selected, inter
     return () => observer.disconnect();
   }, [viewWidth, viewHeight]);
   const image = content?.type === 'image' && content.available !== false
-    ? fitTransform(frame, content) : null;
+    && !testPattern ? fitTransform(frame, content) : null;
   const list = panels(layout, profileFor).sort((a, b) =>
     (statuses[a.id]?.number ?? Infinity) - (statuses[b.id]?.number ?? Infinity) || a.id.localeCompare(b.id));
   const labelSize = Math.max(1, Math.min(16, ...list.flatMap((panel) => panel.missing ? [] : [
@@ -52,6 +54,13 @@ export function WallSvg({ layout, content, profileFor, statuses, selected, inter
       style={{ display: 'block', inlineSize: '100%', blockSize: '100%', minInlineSize: 0, minBlockSize: 0,
         background: 'var(--stage)', color: 'var(--stage-text)' }}>
       <defs>
+        <pattern id={`${id}-grid`} width={layout.kind === 'physical' ? 50 : wall.width / 16}
+          height={layout.kind === 'physical' ? 50 : wall.height / 9} patternUnits="userSpaceOnUse">
+          <path d={`M0 ${layout.kind === 'physical' ? 50 : wall.height / 9} V0 H${layout.kind === 'physical' ? 50 : wall.width / 16}`}
+            fill="none" stroke="var(--stage-line)" strokeWidth={1 / scale} />
+        </pattern>
+        {testPattern === 'grid' ? <rect id={`${id}-pattern`} {...wall}
+          data-preview-pattern="grid" fill={`url(#${id}-grid)`} /> : null}
         <clipPath id={`${id}-wall`} clipPathUnits="userSpaceOnUse"><rect {...wall} /></clipPath>
         <pattern id={`${id}-hatch`} width={wall.width / 80} height={wall.width / 80} patternUnits="userSpaceOnUse" patternTransform="rotate(45)">
           <path d={`M0 0 L0 ${wall.width / 80}`} stroke="var(--stage-hatch)"
@@ -71,10 +80,12 @@ export function WallSvg({ layout, content, profileFor, statuses, selected, inter
         <TabletShape key={panel.id} panel={panel} id={`${id}-panel-${index}`}
           status={statuses[panel.id] ?? { status: 'unknown', text: 'Unconfirmed' }}
           selected={selected === panel.id} wallClip={`${id}-wall`} hatch={`${id}-hatch`}
-          image={image && content?.type === 'image' && content.url ? `${id}-image` : null}
-          background={content?.type === 'image' ? content.background : undefined}
+          image={testPattern === 'grid' ? `${id}-pattern` : image && content?.type === 'image' && content.url ? `${id}-image` : null}
+          background={testPattern ? 'black' : content?.type === 'image' ? content.background : undefined}
           labelSize={labelSize} markerSize={wall.width / 70} />
       ))}
+      {preview ? <rect {...wall} fill="none" stroke="var(--stage-sel)" strokeDasharray="6 5"
+        strokeWidth="1.5" vectorEffect="non-scaling-stroke" pointerEvents="none" /> : null}
     </svg>
   );
 }

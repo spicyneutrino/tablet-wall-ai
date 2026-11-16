@@ -110,6 +110,21 @@ describe('WallSvg read-only drawing', () => {
     expect(props.content).toEqual(applied.content);
   });
 
+  it('paints draft patterns in Preview without changing the applied image on On wall', () => {
+    const showing = { a: { status: 'showing', text: 'Showing' } };
+    const { container, rerender } = render(<><WallSvg {...props} statuses={showing} testPattern="grid" preview />
+      <WallSvg {...props} statuses={showing} /></>);
+    const [preview, live] = container.querySelectorAll('svg');
+    expect(preview?.querySelector('image')).toBeNull();
+    expect(preview?.querySelector('[data-preview-pattern="grid"]')).not.toBeNull();
+    expect(live?.querySelector('image')?.getAttribute('href')).toBe('/assets/a');
+    expect(live?.querySelector('[data-preview-pattern]')).toBeNull();
+    rerender(<WallSvg {...props} statuses={showing} testPattern="black" preview />);
+    expect(container.querySelector('image')).toBeNull();
+    expect(container.querySelector('[data-preview-pattern]')).toBeNull();
+    expect(container.querySelector('rect[fill="black"]')).not.toBeNull();
+  });
+
   it('shows an explicit empty state', () => {
     render(<WallSvg {...props} layout={{ kind: 'logical', width: 200, height: 100, placements: {} }} content={null} />);
     expect(screen.getByText('No tablets placed')).toBeTruthy();
