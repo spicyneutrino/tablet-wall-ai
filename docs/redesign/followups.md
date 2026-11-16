@@ -15,3 +15,4 @@
 - FIXED: U18: with a saved item selected that equals what is on the wall, Show on wall stays enabled and the Preview label shows the file name, not the saved name ("Lobby"). Disable when draft equals the wall; label with the saved name.
 - FIXED: U18: C7 omits guard(page) because the deliberate 422 logs a failed-resource console entry. Teach guard to accept an explicit expected-failure URL instead, and restore it in C7.
 - FIXED: U28b: the Next step card's action ('Show tablet') is a filled primary button next to the disabled primary Show on wall, which breaks X9 (one primary per view). Card actions should be tonal, as in the mockup.
+- U26: during Measure the Preview label should read "Measuring Tablet N" (app shows "Same as the wall"); the disabled Show on wall reason should be "Finish measuring first." (app: "Pick a source to preview it."); the On wall line should name the content plus "Measuring blanks only Tablet N" as in final.html?state=measure-size.
