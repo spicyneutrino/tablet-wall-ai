@@ -1,4 +1,4 @@
-import { Move, TabletSmartphone, Clock } from 'lucide-react';
+import { Move, TabletSmartphone, Clock, Undo2, Redo2 } from 'lucide-react';
 import { useState } from 'react';
 import { WallSvg } from '../../stage/WallSvg';
 import { useWallStore, selectPreviewLayout, selectPreviewContent, selectStageMode } from '../../state/hooks';
@@ -9,14 +9,18 @@ import { useShell } from './ShellContext';
 import { useShellView, contentName } from './useShellView';
 import { MobileOnWall } from '../onwall';
 import WallPlaceholder from './WallPlaceholder';
+import { EditOverlay } from '../../stage/EditOverlay';
+import EditToolbar, { useArrangementEditor } from './EditToolbar';
 
 export default function Preview() {
   const { store } = useShell();
+  const { gesture, snap, setSnap, enabled } = useArrangementEditor();
   const { loading, firstRun, unreachable, lastReport, config, statuses, profileFor, tablets } = useShellView();
   const layout = useWallStore(store, selectPreviewLayout);
   const content = useWallStore(store, selectPreviewContent);
   const savedScene = useWallStore(store, state => state.content.savedScene);
   const selected = useWallStore(store, state => state.ui.selected);
+  const arrangement = useWallStore(store, state => state.arrangement);
   const editing = useWallStore(store, state => state.ui.editLayout);
   const mode = useWallStore(store, selectStageMode);
   const testPattern = useWallStore(store, state => state.ui.testPattern);
@@ -41,8 +45,10 @@ export default function Preview() {
       <Tally kind="preview" /><span className="t-body t-muted monitor-description">{content?.type === 'image' && 'available' in content && content.available === false ? 'Image unavailable' : label}</span>
       {unreachable ? reportStamp('monitor-stamp') : null}
       <div className="preview-tools">
+        {editing ? <><Button variant="ghost" size="icon" className="sm:hidden" aria-label="Undo layout edit" aria-disabled={!enabled || !arrangement?.undo.length} onClick={() => gesture.history('undo')}><Undo2 aria-hidden="true" /></Button>
+          <Button variant="ghost" size="icon" className="sm:hidden" aria-label="Redo layout edit" aria-disabled={!enabled || !arrangement?.redo.length} onClick={() => gesture.history('redo')}><Redo2 aria-hidden="true" /></Button><EditToolbar /></> : null}
         {!loading && !firstRun && !unreachable && config ? <Button variant="secondary" aria-pressed={editing}
-          aria-label="Edit layout" onClick={() => store.setState(state => ({ ui: { ...state.ui, editLayout: !editing } }))}>
+          aria-label="Edit layout" onClick={() => store.setState(state => ({ ui: { ...state.ui, editLayout: !editing, drill: null } }))}>
           <Move aria-hidden="true" /><span className="edit-label">Edit layout</span>
         </Button> : null}
       </div>
@@ -51,7 +57,7 @@ export default function Preview() {
       aria-label="Preview wall. Use Left and Right to select a tablet."
       onClick={event => selectFromStage(event.target)}
       onKeyDown={event => {
-        if (event.target !== event.currentTarget || !tablets.length || !['ArrowLeft', 'ArrowRight', 'Enter', ' '].includes(event.key)) return;
+        if (editing || event.target !== event.currentTarget || !tablets.length || !['ArrowLeft', 'ArrowRight', 'Enter', ' '].includes(event.key)) return;
         event.preventDefault();
         const index = tablets.findIndex(tablet => tablet.id === selected);
         const next = event.key === 'ArrowRight' ? index + 1
@@ -60,8 +66,10 @@ export default function Preview() {
         if (tablet) store.setState(state => ({ ui: { ...state.ui, selected: tablet.id, drill: null } }));
       }}>
       {loading ? <WallPlaceholder loading />
-        : layout && !firstRun ? <div className="wall-frame"><WallSvg layout={layout} content={content} profileFor={profileFor}
-          statuses={statuses} testPattern={testPattern} preview={mode !== 'live' || !!testPattern} selected={selected ?? undefined} interactive /></div>
+        : layout && !firstRun ? <div className="wall-frame max-sm:[&_[role=toolbar]]:hidden max-sm:[&_.bottom-2]:hidden max-sm:[&_[data-layout-readout]]:top-auto max-sm:[&_[data-layout-readout]]:bottom-2"><WallSvg layout={layout} content={content} profileFor={profileFor}
+          statuses={statuses} testPattern={testPattern} preview={mode !== 'live' || !!testPattern} selected={selected ?? undefined} interactive />
+          {editing ? <EditOverlay store={store} layout={layout} profileFor={profileFor} statuses={statuses}
+            selected={selected} editable={enabled} gesture={gesture} snap={snap} onSnapChange={setSnap} /> : null}</div>
         : <><WallPlaceholder /><div className="stage-empty"><TabletSmartphone aria-hidden="true" /><p className="t-heading">No tablets on the wall yet</p>
           <p className="t-body">They appear here as they join.</p></div></>}
       {unreachable ? <span className="chip chip-err stage-stamp"><Clock aria-hidden="true" />

@@ -25,10 +25,10 @@ export default function Tablet() {
     }}><ChevronLeft aria-hidden="true" />All tablets</Button> : null}
     <div className="detail-heading"><span className="num is-current">{tablet.number ?? '?'}</span>
       <div><h2 ref={title} tabIndex={-1} id="tablet-title" className="t-title">{tablet.name}</h2><p className="t-caption">{tablet.model}</p></div></div>
-    <Facts /><MeasureEntry /><Commands />
+    {ui.editLayout ? null : <><Facts /><MeasureEntry /><Commands /></>}
     {ui.editLayout ? <PlacementFields /> : null}
-    {!ui.drill ? <Button variant="ghost" className="justify-self-start" onClick={() => store.setState(state => ({ ui: { ...state.ui, drill: tablet.id } }))}>
+    {!ui.editLayout && !ui.drill ? <Button variant="ghost" className="justify-self-start" onClick={() => store.setState(state => ({ ui: { ...state.ui, drill: tablet.id } }))}>
       Tablet details<ChevronRight aria-hidden="true" /></Button> : null}
-    <Lifecycle />
+    {ui.editLayout ? null : <Lifecycle />}
   </section>;
 }
