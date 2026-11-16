@@ -1,3 +1,5 @@
+import { MeasureOverlay } from './MeasureOverlay';
+import type { StageMeasurement } from './MeasureOverlay';
 import { exceptionLabel } from '../domain/stagePanels';
 import type { Panel } from '../domain/stagePanels';
 import type { WallStatus } from './WallSvg';
@@ -13,9 +15,11 @@ type TabletShapeProps = {
   background?: string;
   markerSize: number;
   labelSize: number;
+  measurement?: StageMeasurement | null;
+  scale?: number;
 };
 
-export function TabletShape({ panel, id, status, selected, wallClip, hatch, image, background, markerSize, labelSize }: TabletShapeProps) {
+export function TabletShape({ panel, id, status, selected, wallClip, hatch, image, background, markerSize, labelSize, measurement, scale = 1 }: TabletShapeProps) {
   const label = status.label ?? (status.number ? `Tablet ${status.number}` : `Tablet ${panel.id.slice(-6)}`);
   const exception = panel.missing ? 'Missing profile' : panel.slot.participating === false ? 'Excluded' : exceptionLabel(status.status);
   const description = [label, status.text, exception !== status.text ? exception : '', selected ? 'selected' : ''].filter(Boolean).join(', ');
@@ -66,6 +70,7 @@ export function TabletShape({ panel, id, status, selected, wallClip, hatch, imag
         vectorEffect="non-scaling-stroke" /> : null}
       {selected ? <rect {...panel.body} transform={rotation} fill="none" stroke="var(--stage-sel)"
         strokeWidth="3" vectorEffect="non-scaling-stroke" /> : null}
+      {measurement ? <MeasureOverlay panel={panel} measurement={measurement} scale={scale} /> : null}
       <g aria-hidden="true" fill="var(--stage-text)">
         {pillWidth > 0 ? <rect x={chipX} y={chipY} width={pillWidth} height={size * 22 / 13} rx={size * 11 / 13}
           fill="var(--stage-pill)" stroke="var(--stage-line)" vectorEffect="non-scaling-stroke" /> : null}

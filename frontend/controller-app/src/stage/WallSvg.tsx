@@ -1,10 +1,11 @@
-import { useEffect, useId, useRef, useState } from 'react';
+import { useContext, useEffect, useId, useRef, useState } from 'react';
 import type { Scene } from '../api/scene';
 import { bounds, fitTransform } from '../domain/layout';
 import { panels } from '../domain/stagePanels';
 import type { Layout, PanelRect } from '../domain/stagePanels';
 import type { TabletState } from '../domain/status';
 import { TabletShape } from './TabletShape';
+import { MeasurementContext } from './MeasureOverlay';
 
 export type WallLayout = Extract<Layout, { kind: 'logical' }> |
   (Extract<Layout, { kind: 'physical' }> & { bounds: PanelRect });
@@ -21,6 +22,8 @@ export type WallSvgProps = {
 };
 
 export function WallSvg({ layout, content, profileFor, statuses, selected, interactive, testPattern, preview }: WallSvgProps) {
+  const context = useContext(MeasurementContext);
+  const measurement = interactive ? context : null;
   const id = useId();
   const svg = useRef<SVGSVGElement>(null);
   const frame = layout.kind === 'physical' ? { kind: layout.kind, bounds: layout.bounds } :
@@ -77,12 +80,12 @@ export function WallSvg({ layout, content, profileFor, statuses, selected, inter
           fill="currentColor" fontSize={wall.width / 30}>No tablets placed</text>
       ) : null}
       {list.map((panel, index) => (
-        <TabletShape key={panel.id} panel={panel} id={`${id}-panel-${index}`}
+        <g key={panel.id} opacity={measurement && measurement.id !== panel.id ? 0.3 : undefined}><TabletShape panel={panel} id={`${id}-panel-${index}`}
           status={statuses[panel.id] ?? { status: 'unknown', text: 'Unconfirmed' }}
           selected={selected === panel.id} wallClip={`${id}-wall`} hatch={`${id}-hatch`}
           image={testPattern === 'grid' ? `${id}-pattern` : image && content?.type === 'image' && content.url ? `${id}-image` : null}
           background={testPattern ? 'black' : content?.type === 'image' ? content.background : undefined}
-          labelSize={labelSize} markerSize={wall.width / 70} />
+          labelSize={labelSize} markerSize={wall.width / 70} measurement={measurement?.id === panel.id ? measurement : null} scale={scale} /></g>
       ))}
       {preview ? <rect {...wall} fill="none" stroke="var(--stage-sel)" strokeDasharray="6 5"
         strokeWidth="1.5" vectorEffect="non-scaling-stroke" pointerEvents="none" /> : null}
