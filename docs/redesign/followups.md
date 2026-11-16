@@ -14,3 +14,4 @@
 - U18: the shared Show on wall button sends PUT /api/v3/scene for a selected saved item instead of POST .../recall (only the tile menu recalls). Route the primary action through recall for saved items so a deleted image gives the 422 message (U29).
 - U18: with a saved item selected that equals what is on the wall, Show on wall stays enabled and the Preview label shows the file name, not the saved name ("Lobby"). Disable when draft equals the wall; label with the saved name.
 - U18: C7 omits guard(page) because the deliberate 422 logs a failed-resource console entry. Teach guard to accept an explicit expected-failure URL instead, and restore it in C7.
+- U28b: the Next step card's action ('Show tablet') is a filled primary button next to the disabled primary Show on wall, which breaks X9 (one primary per view). Card actions should be tonal, as in the mockup.
