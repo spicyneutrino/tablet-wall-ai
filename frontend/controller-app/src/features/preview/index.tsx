@@ -23,6 +23,10 @@ export default function Preview() {
   const label = loading ? 'Loading the wall…' : firstRun ? 'Waiting for tablets' : unreachable ? 'Last known wall'
     : editing || mode === 'arrangement-preview' ? 'Your layout'
       : testPattern ? testPatternName(testPattern) : mode === 'image-preview' ? contentName(content) : 'Same as the wall';
+  function reportStamp(className: string) {
+    return <span className={`chip chip-err ${className}`}><Clock aria-hidden="true" />
+      {lastReport ? <>As of <time data-report-time dateTime={lastReport.dateTime}>{lastReport.label}</time></> : 'Last known wall'}</span>;
+  }
   function selectFromStage(target: EventTarget | null) {
     if (!(target instanceof Element)) return;
     const key = target.closest('[data-device-id]')?.getAttribute('data-device-id');
@@ -32,6 +36,7 @@ export default function Preview() {
   return <section className="preview-pinned" aria-label="Preview">
     <div className="monitor-label">
       <Tally kind="preview" /><span className="t-body t-muted monitor-description">{content?.type === 'image' && 'available' in content && content.available === false ? 'Image unavailable' : label}</span>
+      {unreachable ? reportStamp('monitor-stamp') : null}
       <div className="preview-tools">
         {!loading && !firstRun && !unreachable && config ? <Button variant="secondary" aria-pressed={editing}
           aria-label="Edit layout" onClick={() => store.setState(state => ({ ui: { ...state.ui, editLayout: !editing } }))}>

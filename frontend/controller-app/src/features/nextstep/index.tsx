@@ -102,7 +102,7 @@ export default function NextStep() {
         <div className="nextstep-join-copy">
           {join ? <>
             <a className="t-heading join-address" href={join.url} translate="no">{join.host}</a>
-            <Button className="justify-self-start" onClick={() => void copy()}><Copy aria-hidden="true" />Copy link</Button>
+            <Button variant="secondary" className="justify-self-start" onClick={() => void copy()}><Copy aria-hidden="true" />Copy link</Button>
             <p className="t-caption" aria-live="polite">{copyStatus}</p>
           </> : <p className="t-caption">Reading the tablet address…</p>}
         </div>
@@ -110,18 +110,18 @@ export default function NextStep() {
       <p className="t-caption">Then measure each tablet and pick an image. Tablets keep their place if they restart.</p>
     </> : null}
     {step.kind !== 'add-tablet' ? <div className="nextstep-actions">
-      {step.kind === 'uncertain' ? <Button onClick={refresh}><RefreshCw aria-hidden="true" />Refresh status</Button> : null}
+      {step.kind === 'uncertain' ? <Button variant="secondary" onClick={refresh}><RefreshCw aria-hidden="true" />Refresh status</Button> : null}
       {step.kind === 'unreachable' ? <Button variant="secondary" onClick={refresh}><RefreshCw aria-hidden="true" />Try now</Button> : null}
-      {step.kind === 'conflict' ? <Button onClick={reviewChanges}>Review changes</Button> : null}
-      {step.kind === 'tablet-offline' || step.kind === 'wrong-content' ? <Button onClick={() => showTablet(store, step.tablet.deviceId)}>
+      {step.kind === 'conflict' ? <Button variant="secondary" onClick={reviewChanges}>Review changes</Button> : null}
+      {step.kind === 'tablet-offline' || step.kind === 'wrong-content' ? <Button variant="secondary" onClick={() => showTablet(store, step.tablet.deviceId)}>
         <MonitorSmartphone aria-hidden="true" />Show tablet</Button> : null}
-      {step.kind === 'replacement' ? <Button onClick={() => showTablet(store, step.candidate.deviceId)}>
+      {step.kind === 'replacement' ? <Button variant="secondary" onClick={() => showTablet(store, step.candidate.deviceId)}>
         <Replace aria-hidden="true" />Review replacement</Button> : null}
       {step.kind === 'arrange'
-        ? <Button onClick={() => store.setState(value => ({ ui: { ...value.ui, source: 'layouts' } }))}>
+        ? <Button variant="secondary" onClick={() => store.setState(value => ({ ui: { ...value.ui, source: 'layouts' } }))}>
           <LayoutGrid aria-hidden="true" />Arrange tablets</Button> : null}
       {step.kind === 'show-image'
-        ? <Button onClick={() => store.setState(value => ({ ui: { ...value.ui, source: 'images' } }))}>
+        ? <Button variant="secondary" onClick={() => store.setState(value => ({ ui: { ...value.ui, source: 'images' } }))}>
           <ImagesIcon aria-hidden="true" />Choose an image</Button> : null}
     </div> : null}
     {refreshError ? <p className="t-caption" aria-live="polite">{refreshError}</p> : null}

@@ -9,7 +9,7 @@
 .header-actions { margin-inline-start: auto; display: flex; align-items: center; gap: var(--space-1); flex: none; }
 .controller-workspace { flex: 1; min-inline-size: 0; display: flex; flex-direction: column; }
 .preview-column { display: contents; }
-.preview-pinned { position: sticky; inset-block-start: 0; z-index: 20; display: flex; flex-direction: column; gap: var(--space-2); background: var(--bg); padding: 0 var(--space-4) var(--space-2); }
+.preview-pinned { position: sticky; inset-block-start: 0; z-index: 20; display: flex; flex-direction: column; gap: var(--space-2); background: var(--bg); padding: 0 var(--space-4) var(--space-2); container-type: inline-size; container-name: preview; }
 .monitor-label { display: flex; align-items: center; gap: var(--space-3); block-size: var(--control-h); flex: none; min-inline-size: 0; }
 .monitor-description { min-inline-size: 0; white-space: nowrap; text-overflow: ellipsis; overflow: clip; }
 .preview-tools { display: flex; gap: var(--space-1); margin-inline-start: auto; flex: none; }
@@ -19,6 +19,11 @@
 .preview-stage svg.lucide { position: static; inset: auto; inline-size: 18px; block-size: 18px; }
 .stage-empty > svg.lucide { inline-size: var(--space-6); block-size: var(--space-6); }
 .stage-stamp { position: absolute; inset-block-start: var(--space-3); inset-inline-start: var(--space-3); }
+.monitor-stamp { display: none; flex: none; }
+@container preview (max-width: 599px) {
+  .monitor-stamp { display: inline-flex; }
+  .stage-stamp { display: none; }
+}
 .mobile-onwall-line { display: flex; align-items: center; gap: var(--space-3); min-block-size: 36px; }
 .mobile-onwall-line .monitor-description { flex: 1; }
 .live-line-skeleton { flex: 1; block-size: var(--space-4); }
@@ -79,7 +84,7 @@
 }
 @media (min-width: 1024px) {
   .controller-shell { block-size: 100dvh; }
-  .controller-workspace { min-block-size: 0; display: grid; grid-template-columns: minmax(0, 1fr) var(--side-w); gap: var(--space-4); padding: 0 var(--space-4) var(--space-4); }
+  .controller-workspace { min-block-size: 0; display: grid; grid-template-columns: minmax(0, 1fr) var(--side-w); grid-template-rows: minmax(0, 1fr); gap: var(--space-4); padding: 0 var(--space-4) var(--space-4); }
   .preview-column { min-block-size: 0; display: grid; grid-template-rows: minmax(0, 1fr) 152px; gap: var(--space-3); }
   .preview-pinned { min-block-size: 0; position: static; padding: 0; gap: var(--space-3); }
   .preview-stage { flex: 1; min-block-size: 0; aspect-ratio: auto; }

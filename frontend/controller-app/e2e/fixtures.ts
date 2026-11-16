@@ -45,12 +45,13 @@ type Api = {
   upload: (file: string) => Promise<z.infer<typeof assetSchema>>;
   scene: (input: SceneInput) => Promise<Config>;
 };
+type GuardOptions = { allow?: readonly RegExp[] };
 type Fixtures = {
   api: Api;
   tablets: (count: number, options?: BrowserContextOptions & { ids?: readonly string[] }) => Promise<Tablet[]>;
   writes: (page: Page) => Request[];
   tabletPixel: (tablet: Tablet, x: number, y: number) => Promise<number[]>;
-  guard: (page: Page) => Promise<void>;
+  guard: (page: Page, options?: GuardOptions) => Promise<void>;
   axe: (page: Page) => Promise<Awaited<ReturnType<AxeBuilder['analyze']>>>;
   stageBox: (page: Page) => Promise<{ x: number; y: number; width: number; height: number }>;
 };
@@ -203,8 +204,15 @@ export const test = base.extend<Fixtures, { server: Server; serverScope: string 
     const errors: string[] = [];
     const cleanups: (() => void)[] = [];
     try {
-      await use(async (page) => {
+      await use(async (page, { allow = [] } = {}) => {
         const report = (message: string) => { errors.push(message); };
+        const allowed = (message: import('@playwright/test').ConsoleMessage) => {
+          const url = message.location().url;
+          return allow.some(pattern => [message.text(), url].some(value => {
+            pattern.lastIndex = 0;
+            return pattern.test(value);
+          }));
+        };
         const binding = `reportGuard${cleanups.length}`;
         await page.exposeBinding(binding, (_, message: string) => report(message));
         await page.addInitScript((name) => {
@@ -215,7 +223,7 @@ export const test = base.extend<Fixtures, { server: Server; serverScope: string 
         }, binding);
         const onError = (error: Error) => report(error.message);
         const onConsole = (message: import('@playwright/test').ConsoleMessage) => {
-          if (message.type() === 'error') report(message.text());
+          if (message.type() === 'error' && !allowed(message)) report(message.text());
         };
         const onRequest = (request: Request) => {
           if (new URL(request.url()).origin !== server.origin) report(`External request ${request.url()}`);

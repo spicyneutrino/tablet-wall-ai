@@ -15,8 +15,9 @@ function summary(request: Request) {
     ifMatch: request.headers()['if-match'] ?? null, body: request.postData() };
 }
 
-test('C7 Saved content: an invalid name sends 0 requests. Save, replace, delete, and recall then Show work', async ({ server, api, tablets, page, writes, tabletPixel }) => {
+test('C7 Saved content: an invalid name sends 0 requests. Save, replace, delete, and recall then Show work', async ({ server, api, tablets, page, writes, tabletPixel, guard }) => {
   test.setTimeout(180_000);
+  await guard(page, { allow: [/\/api\/v3\/scenes\/[^/]+\/recall/] });
   const fleet = await tablets(2, { viewport: { width: 800, height: 800 } });
   await api.placeLogical({ columns: 2, rows: 1, cellWidth: 800, cellHeight: 800,
     deviceIds: fleet.map(tablet => tablet.id) });
