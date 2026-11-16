@@ -5,8 +5,9 @@
 - U13 follow-up (U22): canvas readout shows position including nudge (x 224.89 = X 209.89 + nudge 15) while the fields show base position; label the readout or show base + nudge so they don't look contradictory.
 - U28a follow-up (U31 cleanup): the roster-to-domain device projection now exists three times (store.ts, features/preview/useShellView.ts, domain/nextStep.ts). Extract one function. Replacement offer is derived from roster data (operator-devices.js:213-225), not a store field.
 - Phone unreachable: the 'As of' badge overlaps tablet 1 at 390px. Move it outside the wall area on small stages (U31).
-- stage-edit.spec.ts:576 (desktop) times out at 30 s under full-suite load and once logged an SVG negative-width console error; passes 3/3 alone. Investigate before U32 parity gate.
+- FIXED (stage label negative width): stage-edit.spec.ts:576 desktop flake was a real negative-width label pill.
 - U19: the Preview stage does not paint test patterns (grid/black) for a selected test source; WallSvg only draws server scene content. U16 should make the stage draw the content draft, including test patterns.
 - U19 added ui.testPattern to the store and a test-pattern branch to useContentAction; U16 owns useContentAction and must keep it.
 - Stage label falls back to the raw device UUID for an unnamed tablet (seen in U20 screenshots: '4e7c531d-d258-…'). Use 'Tablet' plus a short id, as the tablet list does.
 - At 1440x900 with an offline tablet, the side column clips 'Add a tablet' at the bottom (Next step card + 4 rows). The column should scroll inside itself or the card should be more compact (U31).
+- U17: the mockup's 'Upload…' tile in the source strip was not added (upload is reached from Library… and All images). Queue polish: size shown twice on a refused row, 'Uploading 1 of 2' miscounts with a refused file, the empty-library sentence shows under a non-empty queue, refused rows offer a Cancel X (should be Remove).
