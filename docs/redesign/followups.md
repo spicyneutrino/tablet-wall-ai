@@ -11,3 +11,6 @@
 - Stage label falls back to the raw device UUID for an unnamed tablet (seen in U20 screenshots: '4e7c531d-d258-…'). Use 'Tablet' plus a short id, as the tablet list does.
 - At 1440x900 with an offline tablet, the side column clips 'Add a tablet' at the bottom (Next step card + 4 rows). The column should scroll inside itself or the card should be more compact (U31).
 - U17: the mockup's 'Upload…' tile in the source strip was not added (upload is reached from Library… and All images). Queue polish: size shown twice on a refused row, 'Uploading 1 of 2' miscounts with a refused file, the empty-library sentence shows under a non-empty queue, refused rows offer a Cancel X (should be Remove).
+- U18: the shared Show on wall button sends PUT /api/v3/scene for a selected saved item instead of POST .../recall (only the tile menu recalls). Route the primary action through recall for saved items so a deleted image gives the 422 message (U29).
+- U18: with a saved item selected that equals what is on the wall, Show on wall stays enabled and the Preview label shows the file name, not the saved name ("Lobby"). Disable when draft equals the wall; label with the saved name.
+- U18: C7 omits guard(page) because the deliberate 422 logs a failed-resource console entry. Teach guard to accept an explicit expected-failure URL instead, and restore it in C7.
