@@ -5,6 +5,16 @@
 .tablet-row:focus { outline: 2px solid var(--focus); outline-offset: 2px; }
 .tablet-row[aria-current="true"]:hover .num { background: var(--primary); }
 .wall-summary { display: flex; min-inline-size: 0; }
+.section-tools { display: flex; align-items: center; gap: var(--space-2); min-inline-size: 0; flex-wrap: wrap; justify-content: end; }
+.tablet-facts-block { display: grid; gap: var(--space-3); }
+.tablet-fleet-power { display: grid; gap: var(--space-1); padding: var(--space-2) var(--space-3); border-radius: var(--radius-control); background: var(--warn-bg); }
+.batch-check { display: inline-flex; flex: none; color: var(--text-muted); }
+.tablet-batch { display: grid; gap: var(--space-2); padding: var(--space-3); border-radius: var(--radius-surface); background: var(--sel-bg); }
+.batch-results { display: grid; gap: var(--space-1); }
+.batch-results li { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: var(--space-1) var(--space-2); align-items: baseline; }
+.batch-results li .t-caption { grid-column: 1 / -1; overflow-wrap: anywhere; }
+.tablet-commands { display: grid; gap: var(--space-4); }
+.tablet-model-field { display: grid; gap: var(--space-2); }
 @media (min-width: 1024px) {
   .tablet-list .tablet-row { scroll-margin-block-start: var(--space-6); }
 }

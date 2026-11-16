@@ -104,7 +104,7 @@ export function powerReadiness(device: PowerDevice | null | undefined, options: 
         short: stale ? "Last known wake lock " + entry.label : "Wake lock " + entry.label,
         fact: stale ? "Last known browser wake-lock state: " + entry.label + "." : entry.guidance,
         guidance: stale ? (offline ? "Tablet is offline; this is the last known report." : "Status is stale; this is the last known report.")
-            + stamp + " Last known browser wake-lock state: " + entry.label + ". " + powerHelp : entry.guidance,
+            + stamp + " Last known browser wake-lock state: " + entry.label + ". " + POWER_HELP : entry.guidance,
         checkedAt };
 }
 
@@ -117,7 +117,7 @@ export function fleetPower(entries: Array<{ online?: boolean; power?: PowerReadi
     return { state: power.state, label: WAKE_STATES[power.state].label, count: online.length };
 }
 
-const powerHelp = "Screen wake locks are browser reports, not proof the operating system will keep the screen on. "
+export const POWER_HELP = "Screen wake locks are browser reports, not proof the operating system will keep the screen on. "
     + "Check Auto-Lock, charging and kiosk settings. An insecure origin cannot take a wake lock, so open the wall over its trusted HTTPS origin. "
     + "The operator cannot wake a sleeping tablet remotely.";
 
@@ -171,15 +171,15 @@ export function viewSize(width: number, height: number, zoom?: string): ViewSize
 
 export function helpText(editable: boolean, kind?: string): string {
     if (!editable) {
-        return "Wall preview. Select a tablet to inspect its identity and status. Numeric position and size fields are available in Arrange when a draft is editable. " + powerHelp;
+        return "Wall preview. Select a tablet to inspect its identity and status. Numeric position and size fields are available in Arrange when a draft is editable. " + POWER_HELP;
     }
     if (kind === "physical") {
         return "Wall. Select a tablet and drag it, or use the arrow keys to nudge it by 1 millimetre, or Shift with an arrow for 10 millimetres. "
-            + "Escape cancels a drag. Measured positions use decimal millimetres and pinned measurements; numeric centre, nudge, angle and measurement fields are in Arrange. " + powerHelp;
+            + "Escape cancels a drag. Measured positions use decimal millimetres and pinned measurements; numeric centre, nudge, angle and measurement fields are in Arrange. " + POWER_HELP;
     }
     return "Wall. Select a tablet and drag it, or use the arrow keys to move it by 1 wall unit, or Shift with an arrow for 10 units. "
         + "Escape cancels a drag. Alt pauses snapping while dragging with a mouse or pen; on touch use the snap checkbox. "
-        + "Numeric position, size and bezel fields are available in Arrange. Fit and 2x change the view only. " + powerHelp;
+        + "Numeric position, size and bezel fields are available in Arrange. Fit and 2x change the view only. " + POWER_HELP;
 }
 
 const LABEL_MAX = 16;
