@@ -55,8 +55,11 @@ type Fixtures = {
   stageBox: (page: Page) => Promise<{ x: number; y: number; width: number; height: number }>;
 };
 
-export const test = base.extend<Fixtures, { server: Server }>({
-  server: [async ({}, use, workerInfo) => {
+export const test = base.extend<Fixtures, { server: Server; serverScope: string }>({
+  // ponytail: a spec that needs an empty wall sets test.use({ serverScope: '<name>' }); a different value forces its own worker and server.
+  serverScope: ['shared', { scope: 'worker', option: true }],
+  server: [async ({ serverScope }, use, workerInfo) => {
+    void serverScope;
     const listener = createServer();
     listener.listen(0, '127.0.0.1');
     await once(listener, 'listening');

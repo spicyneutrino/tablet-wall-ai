@@ -12,6 +12,8 @@ const image = fileURLToPath(new URL('./fixtures/images/EXLENT_Cohort_3_Flyer_Tem
 const themes = ['light', 'dark'] as const;
 const evidence = '/tmp/u15-finish';
 
+test.use({ serverScope: 'shell' });
+
 test('Direction C shell keeps its preview through all operator and connection states', async ({ browser, server, api, tablets, guard, writes, axe, stageBox }, info) => {
   test.setTimeout(300_000);
   const viewport = info.project.use.viewport;
