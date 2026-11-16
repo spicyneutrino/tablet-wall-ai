@@ -1,21 +1,26 @@
 import { Send } from 'lucide-react';
+import { useWallStore } from '../../state/hooks';
 import { Button } from '../../ui/Button';
 import { useShellView } from './useShellView';
 import { usePlaybackAction } from './usePlaybackAction';
 import { useArrangementAction } from './useArrangementAction';
 import { useContentAction } from './useContentAction';
+import { useShell } from './ShellContext';
 import type { ReactNode } from 'react';
 
 export type PreviewAction = { label: string; busyLabel: string; onClick: () => void; disabledReason?: string; secondary?: ReactNode };
 
 export default function PrimaryAction() {
+  const { store } = useShell();
+  const measuring = useWallStore(store, state => !!state.ui.measureStep);
   const playback = usePlaybackAction();
   const arrangement = useArrangementAction();
   const content = useContentAction();
   const { loading, unreachable, firstRun, server } = useShellView();
   const action = playback ?? arrangement ?? content;
   const reason = loading ? 'Loading…' : unreachable ? 'The server can’t be reached.' : server.uncertain ? 'Refresh first.'
-    : !server.supported ? 'Update the console before editing.' : firstRun ? 'Add a tablet first.' : action?.disabledReason;
+    : !server.supported ? 'Update the console before editing.' : firstRun ? 'Add a tablet first.'
+      : measuring ? 'Finish measuring first.' : action?.disabledReason;
   const disabledReason = reason ?? (!action ? 'Pick a source to preview it.' : undefined);
   return <div className={`primary-action${arrangement ? ' max-lg:!grid max-lg:!grid-cols-[minmax(0,1fr)_auto] max-lg:items-start' : ''}`}>
     {disabledReason ? <Button size="lg" disabled disabledReason={disabledReason}>{action?.label ?? 'Show on wall'}</Button>

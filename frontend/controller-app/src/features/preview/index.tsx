@@ -24,10 +24,13 @@ export default function Preview() {
   const editing = useWallStore(store, state => state.ui.editLayout);
   const mode = useWallStore(store, selectStageMode);
   const testPattern = useWallStore(store, state => state.ui.testPattern);
+  const measureStep = useWallStore(store, state => state.ui.measureStep);
+  const measureId = useWallStore(store, state => state.ui.drill ?? state.ui.selected);
   const [liveExpanded, setLiveExpanded] = useState(false);
   const savedLabel = savedScene && content?.type === 'image'
     ? `${savedScene.name}, ${content.fit === 'contain' ? 'Fit' : 'Fill'}` : null;
-  const label = loading ? 'Loading the wall…' : firstRun ? 'Waiting for tablets' : unreachable ? 'Last known wall'
+  const measureName = tablets.find(tablet => tablet.id === measureId)?.name ?? 'tablet';
+  const label = measureStep ? `Measuring ${measureName}` : loading ? 'Loading the wall…' : firstRun ? 'Waiting for tablets' : unreachable ? 'Last known wall'
     : editing || mode === 'arrangement-preview' ? 'Your layout'
       : testPattern ? testPatternName(testPattern) : mode === 'image-preview' ? savedLabel ?? contentName(content) : 'Same as the wall';
   function reportStamp(className: string) {

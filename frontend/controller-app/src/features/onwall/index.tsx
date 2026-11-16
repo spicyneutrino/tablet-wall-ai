@@ -15,7 +15,7 @@ function Monitor() {
   </div>;
 }
 
-function useAppliedContentName(content: Parameters<typeof contentName>[0]) {
+export function useAppliedContentName(content: Parameters<typeof contentName>[0]) {
   const { images } = useImages();
   return contentName(content?.type === 'image'
     ? { ...content, name: images.find(image => image.id === content.asset)?.name ?? content.name } : content);
