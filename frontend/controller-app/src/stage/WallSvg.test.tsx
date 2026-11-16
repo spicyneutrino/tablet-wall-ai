@@ -53,6 +53,14 @@ describe('WallSvg read-only drawing', () => {
     expect(container.querySelector('rect[stroke="var(--stage-sel)"]')).not.toBeNull();
   });
 
+  it('never draws a negative width when a tablet is smaller than its label', () => {
+    const tiny: WallLayout = { kind: 'logical', width: 8000, height: 200, placements: {
+      a: { x: 10, y: 10, w: 2, h: 2, bezel: { left: 0, top: 0, right: 0, bottom: 0 } } } };
+    const { container } = render(<WallSvg {...props} layout={tiny} />);
+    const widths = [...container.querySelectorAll('rect')].map((rect) => Number(rect.getAttribute('width') ?? 0));
+    expect(widths.filter((width) => width < 0)).toEqual([]);
+  });
+
   it('does not draw unavailable images or invent missing physical screens', () => {
     const profileFor = (id: string, revision?: number | string) => {
       expect([id, revision]).toEqual(['a', 7]);

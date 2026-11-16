@@ -67,8 +67,8 @@ export function TabletShape({ panel, id, status, selected, wallClip, hatch, imag
       {selected ? <rect {...panel.body} transform={rotation} fill="none" stroke="var(--stage-sel)"
         strokeWidth="3" vectorEffect="non-scaling-stroke" /> : null}
       <g aria-hidden="true" fill="var(--stage-text)">
-        <rect x={chipX} y={chipY} width={pillWidth} height={size * 22 / 13} rx={size * 11 / 13}
-          fill="var(--stage-pill)" stroke="var(--stage-line)" vectorEffect="non-scaling-stroke" />
+        {pillWidth > 0 ? <rect x={chipX} y={chipY} width={pillWidth} height={size * 22 / 13} rx={size * 11 / 13}
+          fill="var(--stage-pill)" stroke="var(--stage-line)" vectorEffect="non-scaling-stroke" /> : null}
         <text data-tablet-label={panel.id} x={chipX + size * 8 / 13} y={chipY + size * 1.2}
           fontSize={size}>{number ?? label}</text>
         {number && !compact ? <text x={chipX + size * 1.8} y={chipY + size * 1.2}

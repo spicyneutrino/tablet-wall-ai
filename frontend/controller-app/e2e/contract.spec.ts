@@ -135,9 +135,12 @@ test('parses the real controller HTTP and WebSocket contract', async ({ browser,
     await request('playlist', PlaylistResponseSchema, 'PUT', paths.playlist, { items: [{ asset: pattern.id, dwell_ms: 10000 }], loop: true }, playlist.etag);
     await request('playback-stopped', PlaybackStatusSchema, 'GET', paths.playback);
     await request('playback-start', PlaybackStatusSchema, 'POST', paths.playbackCommand('start'), { policy: 'online', exclusions: [] });
-    const status = await request('playback', PlaybackStatusSchema, 'GET', paths.playback);
-    if (!('version' in status) || typeof status.version !== 'string') throw new Error('Started playback must have a version');
-    await request('playback-stop', PlaybackStatusSchema, 'POST', paths.playbackCommand('stop'), undefined, status.version);
+    // The playback version advances as tablets acknowledge items; a 412 means re-read and retry, as the controller does.
+    await expect(async () => {
+      const status = await request('playback', PlaybackStatusSchema, 'GET', paths.playback);
+      if (!('version' in status) || typeof status.version !== 'string') throw new Error('Started playback must have a version');
+      await request('playback-stop', PlaybackStatusSchema, 'POST', paths.playbackCommand('stop'), undefined, status.version);
+    }).toPass({ timeout: 5_000 });
     await write(paths.device(first), { label: 'North tablet' }, 'PATCH');
     await write(paths.identify(first), { duration_ms: 1000 });
     await request('color', ColorDeliverySchema, 'POST', paths.color(), { color: '#123456' });
