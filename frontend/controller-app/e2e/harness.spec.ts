@@ -93,9 +93,8 @@ test('accessibility helper checks the served controller and stageBox reads rende
   const results = await axe(page);
   expect(results.violations).toEqual([]);
   await page.goto(`${server.origin}/controller/app-e2e/#stage-fixture`);
-  const stage = page.getByRole('main', { name: 'Stage fixture' });
-  await expect(stage).toBeAttached();
-  await stage.evaluate((element) => { element.dataset.stage = 'preview'; });
+  await expect(page.getByRole('main', { name: 'Stage fixture' })).toBeAttached();
+  const stage = page.locator('[data-stage="preview"]');
   const box = await stageBox(page);
   const rect = await stage.boundingBox();
   expect(box).toEqual(rect);

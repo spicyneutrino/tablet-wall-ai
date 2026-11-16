@@ -34,7 +34,8 @@ test('periodic reconcile shows an API label change within 16 seconds while socke
   });
   await page.routeWebSocket('**/ws/controller?protocol=3', () => { sockets += 1; });
   await page.goto(`${server.origin}/controller/app/`, { waitUntil: 'networkidle' });
-  await expect(page.getByRole('list', { name: 'Tablets' }).getByRole('listitem')).toHaveCount(1);
+  // ponytail: the worker-scoped server keeps tablets from earlier specs, so wait for the list rather than an exact count.
+  await expect(page.getByRole('list', { name: 'Tablets' }).getByRole('listitem').first()).toBeVisible();
   const readsBefore = reads;
   const { etag } = await api.config();
   const changedAt = Date.now();

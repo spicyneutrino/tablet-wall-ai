@@ -108,7 +108,7 @@ export default function EditableStageFixture({ fixture, content }: { fixture: Wa
           <button type="button" onClick={gesture.remove}>Remove placement…</button>
           {slot && fixture.profile ? <p>Size comes from the pinned profile. Bezels are read-only.</p> : null}
         </div> : null}
-        <p className="text-sm text-[var(--muted)]">Arrow keys move one step; Shift moves ten. R turns 90°. Escape cancels a drag. Alt pauses logical snapping or adjusts physical nudge.</p>
+        <p className="text-sm text-[var(--text-muted)]">Arrow keys move one step; Shift moves ten. R turns 90°. Escape cancels a drag. Alt pauses logical snapping or adjusts physical nudge.</p>
       </div> : <p>On wall. Editing is off.</p>}
     </section>
     <output aria-label="Draft layout" className="sr-only">{JSON.stringify({ layout, undo: arrangement.undo.length, redo: arrangement.redo.length, version: arrangement.version })}</output>
