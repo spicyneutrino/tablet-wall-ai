@@ -70,3 +70,4 @@ frontend/controller-app/test-results/
 frontend/controller-app/playwright-report/
 !frontend/controller/app/assets/
 !frontend/controller/app/assets/**
+frontend/controller-app/.vitest/
