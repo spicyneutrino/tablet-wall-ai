@@ -1,4 +1,53 @@
-import { test } from '../fixtures';
+import { test, expect } from '../fixtures';
 
 test.use({ serverScope: 'parity-D2' });
-test.fixme('D2 `device_offline`, `device_online` and `device_removed` update the board. An open draft and the focused field are unchanged', async () => {});
+test('D2 `device_offline`, `device_online` and `device_removed` update the board. An open draft and the focused field are unchanged', async ({ page, server, api, tablets, guard, writes }) => {
+  await guard(page);
+  const fleet = await tablets(2);
+  const [first, second] = fleet;
+  if (!first || !second) throw new Error('Expected two joined tablets.');
+  await expect.poll(async () => Object.keys((await api.config()).runtime.devices).length).toBe(2);
+  const placed = await api.placeLogical({ columns: 1, rows: 1, deviceIds: [first.id] });
+  const saved = await api.request.put('/api/v3/logical-layouts/Board%20draft', { headers: { 'If-Match': placed.etag } });
+  expect(saved.ok(), await saved.text()).toBe(true);
+  await api.placeLogical({ columns: 1, rows: 1, deviceIds: [first.id], cellWidth: 900 });
+  await page.goto(`${server.origin}/controller/app/`);
+  const mutations = writes(page);
+  await page.getByRole('tab', { name: 'Layouts', exact: true }).click();
+  await page.getByRole('button', { name: 'Board draft', exact: true }).click();
+  const draft = await page.locator('[data-stage="preview"] svg').getAttribute('viewBox');
+  await page.getByRole('button', { name: 'Save current…', exact: true }).click();
+  const field = page.getByRole('textbox', { name: 'Name', exact: true });
+  await field.fill('Kept while tablets reconnect');
+  const caret = await field.evaluate(input => input instanceof HTMLInputElement ? input.selectionStart : null);
+  const row = page.locator(`#tablet-row-${first.id}`);
+  const order = await page.locator('#tablet-health .row').evaluateAll(rows => rows.map(row => row.id));
+  await first.page.close();
+  await expect(row).toHaveAttribute('data-status', 'offline', { timeout: 2000 });
+  await expect(field).toBeFocused();
+  await expect(field).toHaveValue('Kept while tablets reconnect');
+  const returned = await first.context.newPage();
+  await guard(returned);
+  await returned.goto(`${server.origin}/client/`);
+  await expect(row).toHaveAttribute('data-status', 'displayed', { timeout: 5000 });
+  await expect(page.locator('#tablet-health .row')).toHaveCount(2);
+  expect(await page.locator('#tablet-health .row').evaluateAll(rows => rows.map(row => row.id))).toEqual(order);
+  await expect(field).toBeFocused();
+  await expect(field).toHaveValue('Kept while tablets reconnect');
+  await second.page.close();
+  await expect.poll(async () => (await api.config()).runtime.devices[second.id]?.online).toBe(false);
+  const config = await api.config();
+  const removed = await api.request.delete(`/api/v3/devices/${second.id}`, {
+    headers: { 'If-Match': config.etag }, data: { remove_active: false, saved_layouts: 'keep' },
+  });
+  expect(removed.ok(), await removed.text()).toBe(true);
+  await expect(page.locator(`#tablet-row-${second.id}`)).toHaveCount(0, { timeout: 2000 });
+  await expect(field).toBeFocused();
+  await expect(field).toHaveValue('Kept while tablets reconnect');
+  expect(await field.evaluate(input => input instanceof HTMLInputElement ? input.selectionStart : null)).toBe(caret);
+  await page.getByRole('button', { name: 'Cancel', exact: true }).click();
+  await expect(page.getByRole('button', { name: 'Board draft', exact: true })).toHaveAttribute('aria-pressed', 'true');
+  await expect(page.locator('[data-stage="preview"]')).toHaveClass(/is-draft/);
+  expect(await page.locator('[data-stage="preview"] svg').getAttribute('viewBox')).toBe(draft);
+  expect(mutations).toEqual([]);
+});

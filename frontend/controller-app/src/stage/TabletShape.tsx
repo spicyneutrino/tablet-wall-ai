@@ -16,7 +16,7 @@ type TabletShapeProps = {
 };
 
 export function TabletShape({ panel, id, status, selected, wallClip, hatch, image, background, markerSize, labelSize }: TabletShapeProps) {
-  const label = status.label ?? (status.number ? `Tablet ${status.number}` : panel.id);
+  const label = status.label ?? (status.number ? `Tablet ${status.number}` : `Tablet ${panel.id.slice(-6)}`);
   const exception = panel.missing ? 'Missing profile' : panel.slot.participating === false ? 'Excluded' : exceptionLabel(status.status);
   const description = [label, status.text, exception !== status.text ? exception : '', selected ? 'selected' : ''].filter(Boolean).join(', ');
   if (panel.missing) {

@@ -1,0 +1,10 @@
+.tablet-list .tablet-row { block-size: auto; justify-content: start; font-size: var(--text-body); font-weight: var(--weight-body); white-space: normal; scroll-margin-block-start: 60dvh; }
+.tablet-report { display: grid; justify-items: end; gap: var(--space-1); max-inline-size: 46%; flex: none; }
+.tablet-report .state { max-inline-size: none; font-size: var(--text-label); }
+.tablet-age { white-space: nowrap; }
+.tablet-row:focus { outline: 2px solid var(--focus); outline-offset: 2px; }
+.tablet-row[aria-current="true"]:hover .num { background: var(--primary); }
+.wall-summary { display: flex; min-inline-size: 0; }
+@media (min-width: 1024px) {
+  .tablet-list .tablet-row { scroll-margin-block-start: var(--space-6); }
+}

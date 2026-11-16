@@ -3,6 +3,7 @@ import type { DeviceId, DeviceStatus } from '../api/devices';
 import type { WallStore } from '../state/store';
 import { entries } from './layout';
 import { rosterStatus, tabletState } from './status';
+import { projectRoster } from './roster';
 
 export type TabletName = { deviceId: DeviceId; name: string };
 export type DraftKind = 'arrangement' | 'content' | 'grid' | 'form';
@@ -26,21 +27,6 @@ function tabletName(config: Config, roster: Record<string, DeviceStatus>, id: st
   const name = config.device_labels[deviceId] || device?.label
     || (device?.number ? `Tablet ${device.number}` : 'Unregistered tablet');
   return { deviceId, name };
-}
-
-function projected(config: Config, roster: Record<string, DeviceStatus>) {
-  const devices = Object.fromEntries(Object.entries(roster).map(([id, device]) => [id, {
-    online: device.online, protocol: device.protocol ?? undefined, caps: device.caps, connection_id: device.connection_id,
-    mapping: device.mapping ? { state: device.mapping.state, reason: device.mapping.reason ?? undefined,
-      profile_revision: device.mapping.profile_revision ?? undefined,
-      calibration_revision: device.mapping.calibration_revision ?? undefined } : undefined,
-    identify: device.identify ?? undefined,
-    render: device.render ? { ...device.render, age_ms: device.render.age_ms ?? undefined,
-      expected_token: device.render.expected_token ?? undefined, accepted_token: device.render.accepted_token ?? undefined,
-      reason: device.render.reason ?? undefined,
-      observed_mono: typeof device.render.observed_mono === 'number' ? device.render.observed_mono : undefined } : undefined,
-  }]));
-  return { ...config, runtime: { ...config.runtime, devices } };
 }
 
 function conflictDraft(state: WallStore): DraftKind | null {
@@ -76,7 +62,7 @@ export function nextStep(state: WallStore): NextStep | null {
   if (!config || server.rosterError) return null;
   const roster = server.roster;
   const placed = Object.keys(entries(config.layout));
-  const view = projected(config, roster);
+  const view = projectRoster(config, roster);
   const stateOf = (id: string) => rosterStatus(tabletState(view, id, clock.nowMono));
 
   const offline = placed.find((id) => stateOf(id).key === 'offline');
