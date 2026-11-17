@@ -870,6 +870,8 @@ Every scenario in the rewritten drivers maps to rows above. U32 proves the index
 
 ## 9. Risks and open questions
 
+**Owner decision, 2026-11-17 (X1 / G1b).** On laptop screens (1366×768, 1280×800) the drawn 3×2 wall must cover at least 25% of the viewport, not the old 40%. Measured: about 30–32% at 1366×768 and 26–37% at 1280×800. The preview stage still covers at least 45%. Reason: Direction C keeps the On wall view and tablet list always visible; reaching 40% would mean hiding that column below 1440px. The X1 test title keeps the original row text; its assertion uses 25%.
+
 **Risks**
 
 | Risk | Mitigation |

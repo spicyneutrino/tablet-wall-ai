@@ -35,7 +35,6 @@ function drift(current: Box, baseline: Box, viewport: readonly [number, number])
 
 test.use({ serverScope: 'parity-X1' });
 test('X1 G1 and G1b thresholds from `composition_gates.py:29-33`: at 1366×768 and 1280×800 the preview stage covers at least 45% of the viewport, the wall fills at least 90% of it, and the drawn 3×2 wall covers at least 40%. The stage box drifts at most 0.02 across all states at each width. The phone preview stays pinned', async ({ page, server, api, tablets, guard }) => {
-  test.fail(true, 'Owner decision pending: the drawn 3x2 wall covers 30.5% of the viewport at 1366x768 and 25.8% at 1280x800 (G1b asks 40%); the stage itself passes 45%.');
   test.setTimeout(240_000);
   const fleet = await tablets(6);
   await expect.poll(async () => Object.values((await api.config()).runtime.devices).filter(device => device.online).length).toBe(6);
@@ -102,9 +101,9 @@ test('X1 G1 and G1b thresholds from `composition_gates.py:29-33`: at 1366×768 a
       expect(occupancy, `${width}x${height}/${state} stage covers at least 45% of the viewport`).toBeGreaterThanOrEqual(0.45);
       const fill = Math.max(stateBox.wall.width / stateBox.stage.width, stateBox.wall.height / stateBox.stage.height);
       expect(fill, `${width}x${height}/${state} wall fills at least 90% of the stage`).toBeGreaterThanOrEqual(0.90);
-      // composition_gates G1b: the drawn 3x2 wall is at least 40% of the viewport. Soft, so the other X1 checks still run.
+      // composition_gates G1b asked 40%. The owner accepted 25% on laptop screens (2026-11-17) to keep the always-visible On wall view and tablet list; see 04-build-plan.md §9.
       const covers = area(stateBox.wall) / (width * height);
-      expect.soft(covers, `${width}x${height}/${state} drawn 3x2 wall covers at least 40% of the viewport (G1b)`).toBeGreaterThanOrEqual(0.40);
+      expect.soft(covers, `${width}x${height}/${state} drawn 3x2 wall covers at least 25% of the viewport (G1b, owner-accepted)`).toBeGreaterThanOrEqual(0.25);
       const moved = drift(stateBox.stage, main.stage, viewport);
       expect(moved, `${width}x${height}/${state} stage drift from the main state`).toBeLessThanOrEqual(0.02);
       const pixels = Math.max(

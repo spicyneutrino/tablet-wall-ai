@@ -46,3 +46,5 @@ Plain, short sentences. No filler or hype. Cite file:line for claims about code.
   1. During a conflict the "On wall" view shows what the wall actually shows now (server truth); the incoming change appears in the conflict review.
   2. Preview is marked with the primary action colour, not green; green stays reserved for healthy status.
   3. Phone: one "On wall" line under the preview that expands to the small live view on tap.
+
+- Owner decision (2026-11-17): on laptop screens the drawn 3×2 wall needs ≥25% of the viewport (was 40%); the right column stays visible.
