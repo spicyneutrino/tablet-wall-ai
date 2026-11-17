@@ -47,9 +47,9 @@
 .primary-action .t-caption { max-inline-size: none; }
 .wall-sidebar { flex: 1; margin-block-start: var(--space-2); border-end-start-radius: 0; border-end-end-radius: 0; }
 .sidebar-scroll { padding: var(--space-4); display: grid; grid-template-columns: minmax(0, 1fr); gap: var(--space-6); align-content: start; }
-.tablet-section { display: grid; gap: var(--space-2); scroll-margin-block-start: 60dvh; }
+.tablet-section { display: grid; grid-template-columns: minmax(0, 1fr); gap: var(--space-2); scroll-margin-block-start: 60dvh; }
 .section-heading { display: flex; align-items: baseline; justify-content: space-between; gap: var(--space-2); }
-.tablet-list { display: grid; gap: var(--space-1); margin-inline: -8px; }
+.tablet-list { display: grid; grid-template-columns: minmax(0, 1fr); gap: var(--space-1); margin-inline: -8px; }
 .tablet-list[aria-busy="true"] { margin-inline: 0; }
 .tablet-identity { flex: 1; min-inline-size: 0; }
 .tablet-identity > span { display: block; overflow: clip; text-overflow: ellipsis; white-space: nowrap; }
@@ -81,6 +81,10 @@
   .server-button > span, .edit-label { display: none; }
   .preview-tools .btn { inline-size: var(--control-h); padding: 0; }
   .stage-empty .t-body { display: none; }
+}
+@media (pointer: coarse) {
+  /* X12: the appbar pinned the status chip to 32px, below the 44px touch minimum. */
+  .appbar .chip { block-size: auto; min-block-size: 44px; }
 }
 @media (min-width: 1024px) {
   .controller-shell { block-size: 100dvh; }

@@ -41,7 +41,7 @@ export function EditOverlay({ store, layout, profileFor, statuses, selected, edi
   const draft = store.getState().arrangement;
   return <>
     <svg ref={svg} data-edit-overlay="" role="group" aria-label="Layout canvas" tabIndex={0} aria-describedby={helpId}
-      className="[&[data-dragging]_[data-edit-hit]_rect]:cursor-grabbing"
+      className="focus-visible:outline-2 focus-visible:outline-[var(--stage-sel)] [&[data-dragging]_[data-edit-hit]_rect]:cursor-grabbing"
       viewBox={`${wall.x - margin} ${wall.y - margin} ${width} ${height}`} preserveAspectRatio="xMidYMid meet"
       onPointerDown={gesture.onPointerDown} onPointerMove={gesture.onPointerMove} onPointerUp={gesture.onPointerUp}
       onPointerCancel={gesture.onPointerCancel} onLostPointerCapture={gesture.onLostPointerCapture}
@@ -93,16 +93,16 @@ export function EditOverlay({ store, layout, profileFor, statuses, selected, edi
     {editable ? <>
       <div role="toolbar" aria-label="Canvas tools" className="absolute left-2 top-2 flex flex-col gap-1 rounded-[var(--radius-control)] bg-[var(--surface)] p-1 text-[var(--text)] shadow-[var(--shadow-float)]">
         <button type="button" aria-label="Move selected tablet" aria-pressed="true" title="Move. Arrow keys nudge; Shift moves ten steps."
-          className="grid size-9 place-items-center rounded bg-[var(--sel-bg)] text-[var(--sel-text)]" onClick={() => svg.current?.focus()}><MousePointer2 size={18} /></button>
+          className="grid size-[var(--control-h)] place-items-center rounded bg-[var(--sel-bg)] text-[var(--sel-text)]" onClick={() => svg.current?.focus()}><MousePointer2 size={18} /></button>
         <button type="button" aria-label="Snap to grid and edges" aria-pressed={snap} title="Snap to grid and edges. Alt pauses snapping."
-          className={`grid size-9 place-items-center rounded hover:bg-[var(--surface-2)] ${snap ? 'bg-[var(--sel-bg)] text-[var(--sel-text)]' : ''}`} onClick={() => onSnapChange(!snap)}><Magnet size={18} /></button>
-        <button type="button" aria-label="Undo layout edit" disabled={!draft?.undo.length} className="grid size-9 place-items-center rounded hover:bg-[var(--surface-2)] disabled:opacity-50" onClick={() => gesture.history('undo')}><Undo2 size={18} /></button>
-        <button type="button" aria-label="Redo layout edit" disabled={!draft?.redo.length} className="grid size-9 place-items-center rounded hover:bg-[var(--surface-2)] disabled:opacity-50" onClick={() => gesture.history('redo')}><Redo2 size={18} /></button>
+          className={`grid size-[var(--control-h)] place-items-center rounded hover:bg-[var(--tonal)] ${snap ? 'bg-[var(--sel-bg)] text-[var(--sel-text)]' : ''}`} onClick={() => onSnapChange(!snap)}><Magnet size={18} /></button>
+        <button type="button" aria-label="Undo layout edit" disabled={!draft?.undo.length} className="grid size-[var(--control-h)] place-items-center rounded hover:bg-[var(--tonal)] disabled:opacity-50" onClick={() => gesture.history('undo')}><Undo2 size={18} /></button>
+        <button type="button" aria-label="Redo layout edit" disabled={!draft?.redo.length} className="grid size-[var(--control-h)] place-items-center rounded hover:bg-[var(--tonal)] disabled:opacity-50" onClick={() => gesture.history('redo')}><Redo2 size={18} /></button>
       </div>
       {selected ? <div data-layout-readout="" className="pointer-events-none absolute right-2 top-2 max-w-[calc(100%-4rem)] rounded bg-[var(--stage-sel)] px-2 py-1 text-[13px] font-semibold text-[var(--stage)]">{layout.kind === 'physical' ? <span>Centre + nudge · </span> : null}<span data-position-readout="">{positionReadout(layout, selected)}</span></div> : null}
       {selected ? <div className="absolute bottom-2 right-2 flex gap-1 rounded bg-[var(--surface)] p-1 text-[var(--text)] shadow-[var(--shadow-float)]">
-        <button type="button" aria-label="Rotate selected tablet minus 90 degrees" className="grid size-9 place-items-center rounded hover:bg-[var(--surface-2)]" onClick={() => gesture.rotate(-90)}><RotateCcw size={18} /></button>
-        <button type="button" aria-label="Rotate selected tablet 90 degrees" className="grid size-9 place-items-center rounded hover:bg-[var(--surface-2)]" onClick={() => gesture.rotate(90)}><RotateCw size={18} /></button>
+        <button type="button" aria-label="Rotate selected tablet minus 90 degrees" className="grid size-[var(--control-h)] place-items-center rounded hover:bg-[var(--tonal)]" onClick={() => gesture.rotate(-90)}><RotateCcw size={18} /></button>
+        <button type="button" aria-label="Rotate selected tablet 90 degrees" className="grid size-[var(--control-h)] place-items-center rounded hover:bg-[var(--tonal)]" onClick={() => gesture.rotate(90)}><RotateCw size={18} /></button>
       </div> : null}
     </> : null}
     <p id={helpId} className="sr-only">Select a tablet. Arrow keys move by the step; Shift moves ten steps. R turns 90 degrees. Escape cancels a drag. Control or Command Z undoes. Use numeric fields to move, resize or turn without dragging.</p>
