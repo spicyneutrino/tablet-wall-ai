@@ -29,3 +29,4 @@
 - U25: board row status "Not placed" wraps onto two lines at 1440 in the right column; keep status words on one line.
 - U25: the Replace hardware choice is a Select because there is no radio primitive; add a RadioGroup primitive if more choice lists appear.
 - WebKit (webkit-desktop project) fails the X14 beforeunload test; Chromium passes. Check before switch-over whether Safari operators get the unsaved-changes prompt.
+- P2 (tablet) failed once under full-suite load: an alert stayed in the Server sheet after the forced stale-version retry (line 169); passed 3/3 alone. Watch in the parity gate.
