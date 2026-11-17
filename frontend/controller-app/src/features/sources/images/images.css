@@ -1,5 +1,8 @@
-.images-source { position: relative; }
+.images-source { position: relative; display: grid; gap: var(--space-1); }
 .images-source .all-images { position: absolute; inset-block-end: calc(100% + var(--space-2)); inset-inline-end: 0; }
+@media (max-width: 1023px), (max-height: 700px) {
+  .images-source .all-images { position: static; justify-self: end; }
+}
 .image-tile.btn { min-block-size: 0; block-size: auto; display: grid; gap: var(--space-2); font-size: var(--text-caption); line-height: inherit;
  text-align: start; color: var(--text); cursor: pointer; border: 0; background: transparent; border-radius: var(--radius-control); padding: 0; }
 .image-tile .thumb { transition: box-shadow var(--dur-fast) var(--ease-out); }

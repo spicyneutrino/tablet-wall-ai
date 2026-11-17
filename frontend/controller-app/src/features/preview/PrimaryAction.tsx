@@ -27,10 +27,12 @@ export default function PrimaryAction() {
     : !server.supported ? 'Update the console before editing.' : firstRun ? 'Add a tablet first.'
       : measuring ? 'Finish measuring first.' : action?.disabledReason;
   const disabledReason = reason ?? (!action ? 'Pick a source to preview it.' : undefined);
-  return <div className={`primary-action${arrangement ? ' max-lg:!grid max-lg:!grid-cols-[minmax(0,1fr)_auto] max-lg:items-start' : ''}`}>
-    {disabledReason ? <Button size="lg" disabled disabledReason={disabledReason}>{action?.label ?? 'Show on wall'}</Button>
-      : server.busy ? <Button size="lg" busy busyLabel={action?.busyLabel ?? 'Working…'}>{action?.label ?? 'Show on wall'}</Button>
-        : <Button size="lg" busyLabel={action?.busyLabel} onClick={action?.onClick}>{action?.label === 'Show on wall' ? <Send aria-hidden="true" /> : null}{action?.label ?? 'Show on wall'}</Button>}
+  // While measuring, the measure stepper owns the primary action; keep this one secondary.
+  const variant = measuring ? 'secondary' : 'primary';
+  return <div className={`primary-action${action ? ' is-draft' : ''}${arrangement ? ' max-lg:!grid max-lg:!grid-cols-[minmax(0,1fr)_auto] max-lg:items-start' : ''}`}>
+    {disabledReason ? <Button variant={variant} size="lg" disabled disabledReason={disabledReason}>{action?.label ?? 'Show on wall'}</Button>
+      : server.busy ? <Button variant={variant} size="lg" busy busyLabel={action?.busyLabel ?? 'Working…'}>{action?.label ?? 'Show on wall'}</Button>
+        : <Button variant={variant} size="lg" busyLabel={action?.busyLabel} onClick={action?.onClick}>{action?.label === 'Show on wall' ? <Send aria-hidden="true" /> : null}{action?.label ?? 'Show on wall'}</Button>}
     {action?.secondary}
   </div>;
 }
