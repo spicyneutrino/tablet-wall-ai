@@ -18,7 +18,8 @@ export default function Sources() {
   const { store } = useShell();
   const source = useWallStore(store, state => state.ui.source);
   const unreachable = useWallStore(store, state => state.server.rosterUnreachable);
-  return <section className="sources-section" aria-label="Sources">
+  const gridPreview = useWallStore(store, state => !!state.grid?.preview);
+  return <section className={`sources-section${gridPreview ? ' has-grid-preview' : ''}`} aria-label="Sources">
     <fieldset className="measure-source-controls sources-paused" disabled={unreachable}><Tabs className="source-tabs" value={source} onValueChange={value => {
       const entry = sources.find(entry => entry.value === value);
       if (entry) store.setState(state => ({ ui: { ...state.ui, source: entry.value } }));

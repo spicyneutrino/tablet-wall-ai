@@ -7,7 +7,6 @@ const secondImage = fileURLToPath(new URL('../fixtures/images/two-colour.png', i
 test.use({ serverScope: 'parity-X9' });
 test('X9 At most one primary-styled button is visible per view, with or without a draft', async ({ server, api, tablets, page, guard }, info) => {
   test.setTimeout(240_000);
-  test.fail(true, 'In the selected state the page shows two primary-styled buttons at once, "Show on wall" and "Measure…", instead of at most one.');
   const viewport = info.project.use.viewport;
   if (!viewport) throw new Error('X9 requires an explicit viewport.');
   const width = viewport.width;

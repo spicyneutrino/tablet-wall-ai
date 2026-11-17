@@ -22,7 +22,6 @@ function inside(box: Box, width: number, height: number) {
 test.use({ serverScope: 'parity-X8' });
 test('X8 With an image or arrangement draft open, the primary action is fully inside the viewport at all seven `composition_gates.py:26` viewports', async ({ server, api, tablets, page, guard }, info) => {
   test.setTimeout(300_000);
-  test.fail(true, 'With an image draft open the primary action is below the viewport at 844x390 (y=871.33, height 44) and 667x375 (y=753.33, height 44), so it is not fully inside it.');
   const viewport = info.project.use.viewport;
   if (!viewport) throw new Error('X8 requires an explicit viewport.');
   const projectWidth = viewport.width;

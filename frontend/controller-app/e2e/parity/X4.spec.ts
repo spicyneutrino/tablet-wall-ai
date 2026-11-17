@@ -9,7 +9,6 @@ type ClippedButton = { description: string; x: number; right: number; scrollWidt
 test.use({ serverScope: 'parity-X4' });
 test('X4 200% zoom and enlarged text leave no clipped controls and no horizontal page scroll', async ({ server, api, tablets, page, guard }, info) => {
   test.setTimeout(240_000);
-  test.fail(info.project.name === 'phone', 'At 390px the "4 of 4" status chip is clipped at 200% text (scrollWidth 102 > clientWidth 91) and the "Calibration grid" and "Tests" controls extend past the viewport (right 408 and 468 > 390).');
   const viewport = info.project.use.viewport;
   if (!viewport) throw new Error('X4 requires an explicit viewport.');
   const width = viewport.width;
