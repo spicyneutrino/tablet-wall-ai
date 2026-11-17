@@ -7,7 +7,6 @@ import { Button } from '../../ui/Button';
 import Facts from './Facts';
 import Commands from './Commands';
 import Lifecycle from './Lifecycle';
-import MeasureEntry from './MeasureEntry';
 import PlacementFields from './PlacementFields';
 
 export default function Tablet() {
@@ -25,7 +24,7 @@ export default function Tablet() {
     }}><ChevronLeft aria-hidden="true" />All tablets</Button> : null}
     <div className="detail-heading"><span className="num is-current">{tablet.number ?? '?'}</span>
       <div><h2 ref={title} tabIndex={-1} id="tablet-title" className="t-title">{tablet.name}</h2><p className="t-caption">{tablet.model}</p></div></div>
-    {ui.editLayout ? null : <><Facts /><MeasureEntry /><Commands /></>}
+    {ui.editLayout ? null : <><Facts /><Commands key={tablet.id} /></>}
     {ui.editLayout ? <PlacementFields /> : null}
     {!ui.editLayout && !ui.drill ? <Button variant="ghost" className="justify-self-start" onClick={() => store.setState(state => ({ ui: { ...state.ui, drill: tablet.id } }))}>
       Tablet details<ChevronRight aria-hidden="true" /></Button> : null}
