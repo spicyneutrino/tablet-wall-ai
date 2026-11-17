@@ -25,3 +25,6 @@
 - U30: video items in the playlist are not covered by e2e (no video fixture).
 - U29: the conflict review shows "Layout on wall now: 1 resized / Your edit: 1 resized" when only sizes differ; say what changed (which tablet, old and new size). The Next step card and the Review block both appear and repeat the same message; show the card's action only when the Review block is off-screen, or merge them (U31 polish).
 - U29 removed src/state/commands/refresh.ts and the inline Refresh status on the phone On wall line (Next step card carries it).
+- U25: nextStep() returns tablet-offline before replacement, so in the common case (placed tablet offline + new tablet joined) the Next step card says "bring X back" and never offers the replacement (the board offer still does). When a replacement candidate exists for the offline tablet, the card should mention it ("…or use the new tablet in its place").
+- U25: board row status "Not placed" wraps onto two lines at 1440 in the right column; keep status words on one line.
+- U25: the Replace hardware choice is a Select because there is no radio primitive; add a RadioGroup primitive if more choice lists appear.
