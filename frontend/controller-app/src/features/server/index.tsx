@@ -202,6 +202,8 @@ function PlaybackTab() {
   const helpId = useId();
   const [on, setOn] = useState(readPlaybackOptIn);
   const [storageNote, setStorageNote] = useState('');
+  const { store } = useShell();
+  const unreachable = useWallStore(store, state => state.server.rosterUnreachable);
   function change(next: boolean) {
     setOn(next);
     setStorageNote(writePlaybackOptIn(next) ? '' : 'This browser did not store the choice. It lasts for this visit only. Allow site storage, then switch it again.');
@@ -216,7 +218,10 @@ function PlaybackTab() {
     </Label>
     {storageNote ? <p className="t-caption">{storageNote}</p> : null}
     {/* U30 mounts playlist and transport here, and only while this switch is on. */}
-    <div className="server-mount" data-mount="playback">{on ? <Playback /> : null}</div>
+    <div className="server-mount" data-mount="playback">{on ? <fieldset className="measure-source-controls" disabled={unreachable}>
+      {unreachable ? <p className="t-caption" role="status">The server can’t be reached. Playlist and playback controls are paused.</p> : null}
+      <Playback />
+    </fieldset> : null}</div>
   </div>;
 }
 

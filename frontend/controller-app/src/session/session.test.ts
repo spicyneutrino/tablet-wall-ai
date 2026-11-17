@@ -117,7 +117,7 @@ describe('command and refresh boundaries', () => {
     const transport = vi.fn<typeof fetch>().mockResolvedValueOnce(response({ detail: 'stale' }, 412))
       .mockResolvedValueOnce(response({ detail: 'missing' }, 428));
     const session = setup(transport);
-    expect(await session.request('PUT', '/api/v3/scene', draft, { ifMatch: 'draft-etag' })).toEqual({ kind: 'conflict' });
+    expect(await session.request('PUT', '/api/v3/scene', draft, { ifMatch: 'draft-etag' })).toEqual({ kind: 'conflict', detail: 'stale' });
     expect(draft).toEqual({ content: { type: 'color' } });
     expect(session.view().etag).toBe('first');
     expect(session.view().uncertain).toBe(false);

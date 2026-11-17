@@ -43,12 +43,13 @@ export default function Commands() {
   const deviceId: DeviceId = id;
   const device = server.roster[deviceId], online = device?.online === true, caps = device?.caps ?? [];
   const current = server.etagState === 'current';
+  const away = server.rosterUnreachable ? 'The server can’t be reached.' : '';
   const confirm = server.uncertain ? 'The last change was not confirmed. Refresh status first.' : '';
-  const wallBlock = !current ? 'Refresh status before saving.' : confirm
-    || (server.busy ? 'Another change is being sent. Wait for it to finish.' : '');
-  const actionBlock = !online ? 'This tablet is offline. Commands need it online.'
+  const wallBlock = away || (!current ? 'Refresh status before saving.' : confirm
+    || (server.busy ? 'Another change is being sent. Wait for it to finish.' : ''));
+  const actionBlock = away || (!online ? 'This tablet is offline. Commands need it online.'
     : !current ? 'Refresh status before sending commands.'
-      : confirm || (server.busy ? 'Another change is being sent. Wait for it to finish.' : '');
+      : confirm || (server.busy ? 'Another change is being sent. Wait for it to finish.' : ''));
   const name = typeof nameForm?.values.name === 'string' ? nameForm.values.name
     : config?.device_labels[deviceId] ?? device?.label ?? '';
   const nameProblem = labelProblem(name);

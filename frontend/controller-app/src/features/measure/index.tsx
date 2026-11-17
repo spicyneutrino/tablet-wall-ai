@@ -236,7 +236,8 @@ function MeasureScreen({ id }: { id: DeviceId }) {
       {index === 2 ? <Button variant="ghost" className="measure-next" onClick={() => {
         change('rulerX', ''); change('rulerY', ''); change('calMethod', model ? 'model-estimate' : 'manual'); setReview({ kind: 'idle' }); move(3);
       }}>Skip</Button> : null}
-      {index === 3 ? <Button className="measure-next" {...(busy ? { busy: true, busyLabel: 'Saving…' } : { busy: false })} onClick={() => void save()}><Check aria-hidden="true" />Save measurements</Button>
+      {index === 3 && state.server.rosterUnreachable ? <Button className="measure-next" disabled disabledReason="The server can’t be reached."><Check aria-hidden="true" />Save measurements</Button>
+        : index === 3 ? <Button className="measure-next" {...(busy ? { busy: true, busyLabel: 'Saving…' } : { busy: false })} onClick={() => void save()}><Check aria-hidden="true" />Save measurements</Button>
         : <Button className={index === 2 ? '' : 'measure-next'} {...(review.kind === 'checking' ? { busy: true, busyLabel: 'Checking…' } : { busy: false })} onClick={next}>
           {['Next: size and bezels', 'Next: ruler check', 'Next: review'][index]}</Button>}
     </div>

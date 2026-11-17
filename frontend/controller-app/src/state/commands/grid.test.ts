@@ -52,6 +52,12 @@ it('a guard refusal keeps the preview and inputs, and names the connection or vi
   expect(store.getState().grid).toEqual(before);
 });
 
+it('a guard refusal shows the server reason when it sends one', async () => {
+  const store = setup(), send = session({ kind: 'conflict', detail: 'connection or viewport changed since preview' });
+  expect(await applyGrid(store, send)).toMatchObject({ kind: 'rejected', status: 412,
+    message: 'Connection or viewport changed since preview. Review these inputs, then preview again.' });
+});
+
 it('a wall change observed while the command is in flight marks the kept preview stale', async () => {
   const store = setup();
   const send = { request: vi.fn(async () => {

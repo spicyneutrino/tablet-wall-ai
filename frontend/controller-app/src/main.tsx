@@ -17,7 +17,9 @@ const session = createSession({ store, isDirty: () => hasUnsavedEdits(store) });
 const stopClock = startClock(store);
 session.start();
 const beforeUnload = (event: BeforeUnloadEvent) => {
-  if (hasUnsavedEdits(store)) event.preventDefault();
+  if (!hasUnsavedEdits(store)) return;
+  event.preventDefault();
+  event.returnValue = '';
 };
 window.addEventListener('beforeunload', beforeUnload);
 const destroy = () => {

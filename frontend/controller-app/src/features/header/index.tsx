@@ -2,6 +2,7 @@ import { Server, SunMoon } from 'lucide-react';
 import { useState } from 'react';
 import { Button } from '../../ui/Button';
 import StatusSummary from './StatusSummary';
+import SignedOut from './SignedOut';
 import { useShell } from '../preview/ShellContext';
 import { useWallStore } from '../../state/hooks';
 
@@ -21,7 +22,7 @@ export default function Header() {
     <span className="wall-mark" aria-hidden="true"><i /><i /><i /><i /></span>
     <h1 className="t-heading app-name">Tablet wall</h1>
     <StatusSummary />
-    {server.transportText === 'Signed out' ? <a className="link" href="/auth/login?next=/controller/app/">Sign in</a> : null}
+    <SignedOut />
     <div className="header-actions">
       <Button variant="ghost" className="server-button" aria-label="Server" aria-pressed={serverOpen}
         onClick={() => store.setState(state => ({ ui: { ...state.ui, serverOpen: true } }))}>

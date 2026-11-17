@@ -2,7 +2,7 @@ import type { ConfigEtag } from '../api/etag';
 
 export type CommandOutcome<T> =
   | { kind: 'ok'; value: T; commandEtag?: ConfigEtag }
-  | { kind: 'conflict' }
+  | { kind: 'conflict'; detail?: string }
   | { kind: 'precondition-missing' }
   | { kind: 'rejected'; status: number; message: string }
   | { kind: 'refused-locally'; reason: 'busy' | 'uncertain' | 'unsupported' | 'stale-etag' }

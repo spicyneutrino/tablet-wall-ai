@@ -161,6 +161,24 @@ it('config_updated marks the session ETag stale and refuses a guarded command wh
   await flush();
 });
 
+it('a stale config ETag refuses config-guarded writes but not playlist or playback writes that carry their own token', async () => {
+  const fetch = vi.fn<typeof globalThis.fetch>(async (_url, init) => init?.method === 'GET' ? new Promise<Response>(() => {})
+    : new Response(JSON.stringify({ ok: true })));
+  const session = createSession({ fetch, WebSocket: FakeSocket, document: new Visibility(), window: new EventTarget(), isDirty: () => true });
+  cleanups.push(session.destroy);
+  session.ingest(config(1)); session.start();
+  FakeSocket.sockets[0]!.message({ type: 'config_updated', etag: '2', revision: 2, generation: 'session' });
+  expect(session.view().etagState).toBe('stale');
+  fetch.mockClear();
+  expect(await session.request('PUT', '/api/v3/scene', {}, { ifMatch: 'config-etag' })).toEqual({ kind: 'refused-locally', reason: 'stale-etag' });
+  expect(fetch).not.toHaveBeenCalled();
+  expect(await session.request('PUT', '/api/v3/playlist', {}, { ifMatch: 'playlist-etag' })).toMatchObject({ kind: 'ok' });
+  expect(await session.request('POST', '/api/v3/playback/pause', undefined, { ifMatch: '7' })).toMatchObject({ kind: 'ok' });
+  expect(fetch.mock.calls.map(([url, init]) => [String(url), (init?.headers as Record<string, string>)['If-Match']]))
+    .toEqual([['/api/v3/playlist', 'playlist-etag'], ['/api/v3/playback/pause', '7']]);
+  expect(await session.request('PUT', '/api/v3/playlist', {}, { ifMatch: '' })).toEqual({ kind: 'refused-locally', reason: 'stale-etag' });
+});
+
 it('drops malformed frames and reconciles, ignores unknown frame types and retains placements on offline', async () => {
   const { sync, api, pending, state } = harness();
   sync.start(); pending.shift()!(config(1)); await flush();

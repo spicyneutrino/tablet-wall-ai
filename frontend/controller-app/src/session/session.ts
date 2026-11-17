@@ -4,6 +4,7 @@ import type { Config } from '../api/config';
 import type { DeviceStatus as Device } from '../api/devices';
 import { DeviceIdSchema } from '../api/devices';
 import { ConfigEtagSchema } from '../api/etag';
+import { paths } from '../api/paths';
 import type { ConfigEtag } from '../api/etag';
 import { readFence } from './readFence';
 import { ApiError, isRecord } from './outcome';
@@ -146,7 +147,9 @@ export function createSession(deps: Dependencies) {
     if (durable && state.busy) return { kind: 'refused-locally', reason: 'busy' };
     if (durable && uncertain) return { kind: 'refused-locally', reason: 'uncertain' };
     const expected = options.ifMatch || (options.useCurrentEtag ? state.etag : null);
-    if ((options.useCurrentEtag || options.ifMatch !== undefined) && (!expected || state.etagState !== 'current')) return { kind: 'refused-locally', reason: 'stale-etag' };
+    const guarded = options.useCurrentEtag || options.ifMatch !== undefined;
+    const ownToken = path === paths.playlist || path.startsWith(`${paths.playback}/`);
+    if (guarded && (!expected || !ownToken && state.etagState !== 'current')) return { kind: 'refused-locally', reason: 'stale-etag' };
     const atSend = state.operatorConfig, ticket = state.readFence.start();
     if (durable) { state.busy = true; publish(); }
     try {
@@ -193,7 +196,7 @@ export function createSession(deps: Dependencies) {
     } catch (error) {
       if (!(error instanceof ApiError)) throw error;
       if (durable && error.uncertain) { uncertain = true; return { kind: 'uncertain', message: error.message }; }
-      if (error.status === 412) return { kind: 'conflict' };
+      if (error.status === 412) return { kind: 'conflict', detail: error.message };
       if (error.status === 428) return { kind: 'precondition-missing' };
       return { kind: 'rejected', status: error.status, message: error.message };
     } finally { if (durable) { state.busy = false; publish(); } }

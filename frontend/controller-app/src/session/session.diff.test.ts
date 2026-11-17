@@ -72,7 +72,7 @@ async function runScript(version: 'old' | 'new') {
       } else {
         result = await (session as ReturnType<typeof createSession>).request(method, path, method === 'GET' ? undefined : {}, { useCurrentEtag: method !== 'GET', fenced });
       }
-      const outcome = result.kind === 'uncertain' ? { kind: result.kind }
+      const outcome = result.kind === 'uncertain' || result.kind === 'conflict' ? { kind: result.kind }
         : result.kind === 'rejected' ? { kind: result.kind, status: result.status } : result;
       outcomes.push(outcome);
       return outcome;

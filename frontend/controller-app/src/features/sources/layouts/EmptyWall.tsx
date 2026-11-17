@@ -17,6 +17,7 @@ export function EmptyWall() {
   const busy = useWallStore(store, state => state.server.busy);
   const uncertain = useWallStore(store, state => state.server.uncertain);
   const supported = useWallStore(store, state => state.server.supported);
+  const unreachable = useWallStore(store, state => state.server.rosterUnreachable);
   const checkedAt = useWallStore(store, state => state.server.rosterCheckedAt);
   const [open, setOpen] = useState(false);
   const [working, setWorking] = useState(false);
@@ -31,7 +32,7 @@ export function EmptyWall() {
     if (open) cancelRef.current?.focus();
   }, [open]);
 
-  const reason = !config ? 'Waiting for the wall.' : uncertain ? 'Refresh status first.'
+  const reason = unreachable ? 'The server can’t be reached.' : !config ? 'Waiting for the wall.' : uncertain ? 'Refresh status first.'
     : !supported ? 'Update the console before clearing the wall.' : busy ? 'Another change is in progress.'
       : etagState !== 'current' ? 'Refresh status before clearing the wall.'
         : !placements ? 'The wall is already empty.' : null;

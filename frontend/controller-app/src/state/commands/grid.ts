@@ -136,7 +136,9 @@ export async function applyGrid(store: WallStoreApi, session: Session) {
   if (outcome.kind !== 'conflict') return outcome;
   const wallChanged = current.server.etag !== base;
   if (wallChanged && current.grid?.version === version) store.setState({ grid: { ...current.grid, stale: true } });
+  const reason = outcome.detail?.replace(/\.$/, '');
   return { kind: 'rejected' as const, status: 412, message: wallChanged
     ? 'The wall changed since preview. Review these inputs, then rebuild the preview.'
-    : "A tablet's connection or viewport changed since preview. Review these inputs, then preview again." };
+    : reason ? `${reason.charAt(0).toUpperCase()}${reason.slice(1)}. Review these inputs, then preview again.`
+      : "A tablet's connection or viewport changed since preview. Review these inputs, then preview again." };
 }
