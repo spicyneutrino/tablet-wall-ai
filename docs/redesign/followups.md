@@ -28,3 +28,4 @@
 - U25: nextStep() returns tablet-offline before replacement, so in the common case (placed tablet offline + new tablet joined) the Next step card says "bring X back" and never offers the replacement (the board offer still does). When a replacement candidate exists for the offline tablet, the card should mention it ("…or use the new tablet in its place").
 - U25: board row status "Not placed" wraps onto two lines at 1440 in the right column; keep status words on one line.
 - U25: the Replace hardware choice is a Select because there is no radio primitive; add a RadioGroup primitive if more choice lists appear.
+- WebKit (webkit-desktop project) fails the X14 beforeunload test; Chromium passes. Check before switch-over whether Safari operators get the unsaved-changes prompt.
