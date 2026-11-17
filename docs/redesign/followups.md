@@ -30,3 +30,4 @@
 - U25: the Replace hardware choice is a Select because there is no radio primitive; add a RadioGroup primitive if more choice lists appear.
 - WebKit (webkit-desktop project) fails the X14 beforeunload test; Chromium passes. Check before switch-over whether Safari operators get the unsaved-changes prompt.
 - P2 (tablet) failed once under full-suite load: an alert stayed in the Server sheet after the forced stale-version retry (line 169); passed 3/3 alone. Watch in the parity gate.
+- WebKit pass (C*, A*, webkit-desktop): 16 passed, 2 failed before reduced motion; with reducedMotion C4 passes and A1 still fails axe colour-contrast on a board row (#5c67bd on #a4a8af, 2.13:1: "Model not set", "Not placed", "just now") after the grid sheet closes. The grey background looks like the sheet's backdrop still composited in WebKit. Investigate in Safari before switch-over (Sonnet, U32).
