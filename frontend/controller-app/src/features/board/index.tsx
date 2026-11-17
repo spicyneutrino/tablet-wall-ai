@@ -7,6 +7,7 @@ import { useShell } from '../preview/ShellContext';
 import { useShellView } from '../preview/useShellView';
 import { useWallStore } from '../../state/hooks';
 import { Button } from '../../ui/Button';
+import ReplacementOffer from './ReplacementOffer';
 import { reportAge } from './model';
 import './board.css';
 
@@ -83,6 +84,7 @@ export default function Board() {
         </Button><span id={`tablet-report-${tablet.id}`} className="sr-only">{tablet.text}. {age.description}.</span></li>;
       })}
     </ul>
+    <ReplacementOffer />
     {batchMode ? <div className="tablet-batch" role="group" aria-label="Batch tablet commands">
       <div className="flex flex-wrap items-center gap-2">
         <p className="t-caption" aria-live="polite">{batch.length} selected</p>

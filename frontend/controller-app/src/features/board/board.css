@@ -18,3 +18,11 @@
 @media (min-width: 1024px) {
   .tablet-list .tablet-row { scroll-margin-block-start: var(--space-6); }
 }
+.tablet-lifecycle { display: grid; gap: var(--space-2); }
+.lifecycle-actions { display: flex; flex-wrap: wrap; align-items: start; gap: var(--space-2); }
+.lifecycle-dialog { display: grid; gap: var(--space-4); }
+.lifecycle-buttons { display: flex; flex-wrap: wrap; justify-content: end; align-items: start; gap: var(--space-2); }
+.lifecycle-switches { display: grid; gap: var(--space-3); }
+.lifecycle-switch { display: flex; align-items: flex-start; gap: var(--space-3); }
+.lifecycle-copy { display: grid; gap: var(--space-1); }
+.lifecycle-list { display: grid; gap: var(--space-2); padding-inline-start: var(--space-4); list-style: disc; }
