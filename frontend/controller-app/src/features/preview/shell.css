@@ -115,4 +115,6 @@
   .primary-action.is-draft, .sources-section.has-grid-preview .primary-action {
     position: fixed; inset-inline: 0; inset-block-end: 0; z-index: 40;
     background: var(--bg); padding: var(--space-2) var(--space-4); }
+  /* Reserve the fixed bar's height so the last controls on the page can scroll out from under it. A spacer, not padding: it is room for an overlay, not part of the spacing rhythm. */
+  .controller-shell:has(.primary-action.is-draft, .sources-section.has-grid-preview .primary-action)::after { content: ""; display: block; flex: none; block-size: 8rem; }
 }
