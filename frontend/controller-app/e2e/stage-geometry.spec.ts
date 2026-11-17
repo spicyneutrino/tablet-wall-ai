@@ -36,13 +36,16 @@ test.describe('independent screen geometry and visible image pixels at 1440x900'
         const originX = box.x + (box.width - viewWidth * scale) / 2 - (wall.x - margin) * scale;
         const originY = box.y + (box.height - viewHeight * scale) / 2 - (wall.y - margin) * scale;
         expect(await svg.locator('[data-screen]').count()).toBe(Object.keys(fixture.screens).length);
-        const labelSizes = await svg.locator('[data-tablet-label]').evaluateAll((labels) => labels.map((label) => {
-          if (!(label instanceof SVGGraphicsElement)) throw new Error('Tablet label must be SVG');
-          const matrix = label.getScreenCTM();
-          if (!matrix) throw new Error('Visible label must have a screen transform');
-          return Number(label.getAttribute('font-size')) * Math.hypot(matrix.a, matrix.b);
-        }));
-        for (const size of labelSizes) expect(Math.abs(size - 16), 'Labels stay 16px through wall scale and rotation').toBeLessThan(0.01);
+        // The label size follows the measured stage width, which settles one ResizeObserver frame after layout.
+        await expect.poll(async () => {
+          const sizes = await svg.locator('[data-tablet-label]').evaluateAll((labels) => labels.map((label) => {
+            if (!(label instanceof SVGGraphicsElement)) throw new Error('Tablet label must be SVG');
+            const matrix = label.getScreenCTM();
+            if (!matrix) throw new Error('Visible label must have a screen transform');
+            return Number(label.getAttribute('font-size')) * Math.hypot(matrix.a, matrix.b);
+          }));
+          return Math.max(...sizes.map((size) => Math.abs(size - 16)));
+        }, { message: 'Labels stay 16px through wall scale and rotation' }).toBeLessThan(0.01);
         const points: { id: string; x: number; y: number; expected: readonly number[] }[] = [];
         for (const [id, screen] of Object.entries(fixture.screens)) {
           const expected = { x: originX + screen.x * scale, y: originY + screen.y * scale,
