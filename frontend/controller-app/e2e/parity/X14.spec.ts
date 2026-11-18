@@ -54,7 +54,7 @@ test('X14 An unsaved draft asks before the tab is left, and a clean page leaves 
   await expect.poll(() => dialogs.length).toBe(1);
   expect(dialogs[0]!.type()).toBe('beforeunload');
   await dialogs[0]!.dismiss();
-  await left;
+  void left; // WebKit never settles a goto whose beforeunload dialog was dismissed; Chromium does
   expect(page.url()).toBe(app);
   await expect(page.getByRole('button', { name: 'Discard', exact: true })).toBeVisible();
   await page.close();
