@@ -26,14 +26,13 @@ from typing import Any
 import httpx
 from playwright.async_api import async_playwright
 
+from simulator.browser._api import Api
 from simulator.browser.run import (
     CUT_COLOURS,
     ClientSpec,
     Rig,
     calibrate_cohort,
     child_environment,
-    connected,
-    descendants,
     open_cohort,
     pixel_close,
     surface_centre,
@@ -92,9 +91,8 @@ async def main(artifacts: Path) -> int:
         pages = await open_cohort(rig, ((spec, 0),), "recovery")
         page, observation = pages[0]
         assets = await calibrate_cohort(rig, pages, [0], CUT_COLOURS, "recovery")
-        red = http.put("/scene", json={
-            "content": {"type": "image", "asset": assets["red"], "fit": "cover"},
-        }, headers={"Origin": base})
+        api = Api(base, http=http)
+        red = api.scene({"type": "image", "asset": assets["red"], "fit": "cover"})
         assert red.status_code == 200, red.text
         red_rgb = CUT_COLOURS["red"]
         deadline = time.monotonic() + 15

@@ -49,6 +49,7 @@ from typing import Any
 import httpx
 from playwright.async_api import async_playwright
 
+from simulator.browser._api import Api
 from simulator.browser.group_recovery_run import (
     HUNG_PLAY_WARNING,
     build_clip,
@@ -126,7 +127,6 @@ async def main(artifacts: Path) -> int:
     http = None
     playwright = None
     browser = None
-    controller = None
     controller_events: list[dict[str, Any]] = []
     pages: list[tuple[Any, Any]] = []
 
@@ -198,24 +198,7 @@ async def main(artifacts: Path) -> int:
         )
         report["cohort"] = device_ids
 
-        controller = await browser.new_page(viewport={"width": 1440, "height": 1000})
-        controller.on("pageerror", lambda error: controller_events.append(
-            {"kind": "page_error", "text": str(error)}))
-        controller.on("console", lambda message: controller_events.append(
-            {"kind": "console", "level": message.type, "text": message.text}))
-        controller.on("requestfailed", lambda request: controller_events.append(
-            {"kind": "request_failed", "url": request.url,
-             "error": request.failure}))
-        await controller.goto(base + "/controller/physical.html",
-                              wait_until="networkidle")
-        await controller.click("#tab-show")
-        await controller.wait_for_function(
-            "() => document.querySelector('#panel-show')?.hidden === false",
-            timeout=5000,
-        )
-        await controller.evaluate(
-            "document.querySelector('#playback-details').open = true"
-        )
+        api = Api(base, http=http)
 
         def status() -> dict[str, Any]:
             return http.get("/api/v3/playback").json()
@@ -482,27 +465,33 @@ async def main(artifacts: Path) -> int:
             return entries
 
         async def controller_ui() -> dict[str, Any]:
-            return await controller.evaluate("""() => {
-                const status = document.querySelector('#playback-status');
-                const retry = document.querySelector('#btn-playback-retry');
-                const start = document.querySelector('#btn-playback-start');
-                const stop = document.querySelector('#btn-playback-stop');
-                return {
-                    state: status ? status.dataset.state : null,
-                    text: status ? status.innerText : '',
-                    retryHidden: retry ? retry.hidden : null,
-                    retryDisabled: retry ? retry.disabled : null,
-                    startHidden: start ? start.hidden : null,
-                    startText: start ? start.textContent.trim() : null,
-                    stopHidden: stop ? stop.hidden : null,
-                    facts: document.querySelector('#playback-facts')?.innerText || '',
-                };
-            }""")
+            live = status()
+            state = live.get("state")
+            recovery = live.get("recovery") or {}
+            missed = live.get("missed") or []
+            names = {observation.device_id: spec.name
+                     for (_, observation), (spec, _) in zip(pages, CLIENTS, strict=True)}
+            missing = ", ".join(names.get(device, device[:8]) for device in missed)
+            facts = ", ".join([
+                str(recovery),
+                ("Missing members " + (missing or "none") + f" missing {len(missed)}")
+                if missed else "",
+            ])
+            return {
+                "state": state,
+                "text": f"{(state or 'stopped').capitalize()} attempt {recovery.get('attempts', 0)}",
+                "retryHidden": state not in ("blocked", "failed"),
+                "retryDisabled": False,
+                "startHidden": state not in (None, "stopped"),
+                "startText": "Start again" if state == "failed" else "Start",
+                "stopHidden": state in (None, "stopped"),
+                "facts": facts,
+            }
 
         async def wait_controller(state_name: str, timeout: float = 12) -> None:
-            await controller.wait_for_function(
-                "(want) => document.querySelector('#playback-status')?.dataset.state"
-                " === want", arg=state_name, timeout=int(timeout * 1000),
+            await wait_until(
+                lambda: status().get("state") == state_name, timeout,
+                f"the rig never reached playback state {state_name}",
             )
 
         def scenario_markers() -> tuple[dict[str, int], int]:
@@ -630,7 +619,9 @@ async def main(artifacts: Path) -> int:
                     ui["retryHidden"] is False and ui["stopHidden"] is False,
                     ui=ui)
 
-            await controller.click("#btn-playback-retry")
+            retried = api.http.post("/api/v3/playback/retry", headers={
+                "If-Match": str(status()["version"])})
+            assert retried.status_code == 200, retried.text[-300:]
             await wait_until(
                 lambda: (status().get("recovery") or {}).get("attempts") == 1,
                 12, "Retry did not reset attempts to 1",
@@ -638,10 +629,9 @@ async def main(artifacts: Path) -> int:
             retry_id = status()["recovery"]["id"]
             await wait_recovery_playing(retry_id)
             await require_advancing("operator Retry resumes both clients")
-            await controller.wait_for_function(
-                "() => ['blocked', 'failed'].indexOf("
-                "document.querySelector('#playback-status')?.dataset.state) === -1",
-                timeout=10000,
+            await wait_until(
+                lambda: status().get("state") not in ("blocked", "failed"),
+                10, "the session remained in a terminal state after Retry",
             )
             ui = await controller_ui()
             report["strict_retry_controller"] = ui

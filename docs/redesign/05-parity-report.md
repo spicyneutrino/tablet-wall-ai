@@ -1,0 +1,122 @@
+# U33 parity report
+
+## U33 driver retargeting
+
+All runs were from the repository root with
+`PLAYWRIGHT_BROWSERS_PATH=$HOME/.cache/ms-playwright` and `PYTHONPATH=.`, using
+`uv run --group browser python simulator/browser/<driver>.py` with the driver's
+documented flags. The full before/after captures are in `/tmp/u33-before/` and
+`/tmp/u33-after/`. The old-console route is no longer referenced by any of the
+14 in-scope drivers; incidental setup goes through `simulator/browser/_api.py`,
+which sends the operator `Origin` and takes `If-Match` from a fresh
+`GET /api/v3/config`.
+
+Two conditions were already true before this unit and shape several "before"
+columns:
+
+1. The deployed CSP is `script-src 'self'`, so Playwright's string-form
+   `wait_for_function` (which calls `eval`) fails on controller pages that use
+   it. Several drivers aborted before writing a check report.
+2. Legacy `/scene` writes are refused with "Upgrade controller: a physical
+   layout is active".
+
+`pytest -q` was run twice with the same environment: **1924 passed, 2 skipped**
+before and **1924 passed, 2 skipped** after. (An earlier baseline of
+1909/3 was taken before the browser dependency group was installed; the 15
+newly collected tests are `tests/test_redesign_driver*.py` and
+`tests/test_redesign_edge_cases.py`, and their count is unchanged by U33.)
+
+### field_run
+
+- Command: `--artifacts /tmp/u33-…`
+- Before: aborted at `physical.html` — CSP blocked the `#rebind-new` option wait; no check report was written.
+- After: exit 0, 14/14 checks passed.
+- Tablets/server: unchanged — registration, wake-lock, diagnostics shape/admission, origin refusal, rebind placement/number, reconnect and reload checks all passed.
+- Retired with the old console: eight checks with no server or tablet evidence — the old console's diagnostics export envelope (its `format`, timestamp and "physical validation pending" label are added by `physical.js`, not the server), the injected integrity-error and failed-refresh messages, mobile overflow, task-tab keyboard navigation, Home/End selection and reload-preserved task. These are covered by the new app's parity specs. The diagnostics verify/refresh and rebind flows now use `Api.diagnostics()` and `Api.rebind()`; the raw verified payload is still saved as `diagnostics.json`.
+
+### group_recovery_run
+
+- Command: `--artifacts /tmp/u33-…`
+- Before: 15/20 passed. The five failures were all controller-page checks (CSP-blocked waits and stale UI).
+- After: 19/19 passed.
+- Changed results (all FAIL → PASS): "the controller sees the live session before the fault", "the controller keeps the recovery record after the commit", "the controller dwell does not exceed the remainder and cut lead", "no unexpected client page, console or request errors".
+- Retired: "recorded-cap fixture copy reads as one sentence and offers Retry". It asserted old-console presentation of a locally built fixture response, with no server or tablet evidence; the live blocked transition is checked in `recovery_acceptance_run`.
+- Root cause: the remaining checks now assert the same facts through `GET /api/v3/playback` (state, recovery attempts, pending cut time) instead of reading old-console DOM through a CSP-blocked page. Every tablet-side advance, visibility, sample, pixel and cut check is unchanged.
+
+### recovery_acceptance_run
+
+- Command: `--artifacts /tmp/u33-…`
+- Before: 81/84 passed; three `*: the scenario completes without an exception` checks failed.
+- After: 88 checks; the strict-cap, online-cap and recovery-timeout scenarios now complete, so those three failure-only checks are no longer emitted. The other differences are device UUIDs inside check names (fresh registration each run) and checks reached in later scenarios because the earlier ones no longer abort.
+- Controller setup replaced by `Api` playback reads; operator Retry is `POST /api/v3/playback/retry` with a fresh version. All live-video, fault, cap, hold, sample and pixel checks are unchanged.
+
+### recovery_run
+
+- Command: `--artifacts /tmp/u33-…`
+- Before: aborted at the legacy `/scene` write ("Upgrade controller: a physical layout is active").
+- After: setup now uses `Api.scene()` against `/api/v3/scene`; the 20-trial offline/online loop starts and runs.
+- Not runnable here: the full run is a ~12-minute soak (20 trials × ~37 s) and exceeded the 240 s harness limit, so no final report was produced. Verified with `py_compile` and by observing that setup and the first trials ran. No named checks are produced by this driver (trial rows only).
+
+### health_run
+
+- Command: positional artifact directory.
+- Before: aborted at `bounding_box()` on `#btn-wall-health` (zero checks).
+- After: exit 0; the three named width checks ("390/820/1440px health overview, stale failure feedback, enabled retry, restored fresh state") pass against `GET /devices` and `GET /diagnostics`.
+- Root cause: the original assertion depended entirely on old-console DOM. The failure/retry presentation itself is a controller-UI concern and is covered by the new app's parity specs; the tablet connection and server roster checks are unchanged.
+
+### image_efficiency
+
+- Command: `--artifacts … --rounds 5 --idle-seconds 1` (short mode; defaults are 300 s idle).
+- Before: exit 0. After: exit 0. Report has no named PASS/FAIL checks; the benchmark fields are unchanged.
+- The idle page now opens `/controller/app/` instead of the old console, so the idle network/log measurement targets the console that survives switch-over.
+
+### fleet_soak
+
+- Command: `--artifacts … --duration 5 --interval 0.5` (minimum allowed; real soak is 2 h).
+- Before and after: 18 named checks, identical names and results (the short run fails the "boundaries changed at least twice" checks by design). No change to this driver — it has no old-console reference; all setup is already REST. Not runnable here as a real soak.
+
+### audit_round
+
+- Command: `--round 1 --artifacts …`
+- Before and after: 1 named check ("all viewport document widths fit"), same result. Both fail on a pre-existing aborted font request (`SchibstedGrotesk-wght.ttf`), unrelated to U33.
+- The viewport walk no longer visits `/controller/physical.html`; it visits `/controller/` only. Check names and counts are unchanged.
+
+### experience_acceptance
+
+- Command: `--artifacts … --browser <chromium>`
+- Before and after: not runnable here — `ImportError: cannot import name 'TASK_TABS' from '_redesign_edge_cases'` at import time. This is a pre-existing breakage of the driver's helper import. No check report is produced. The driver is entirely old-console UI evidence and its obligations are already rewritten as TS specs; no change was needed to remove a `physical.html` literal from this file.
+
+### decode_probe
+
+- Command: `--artifacts …`
+- Before and after: exit 0, 40 named checks, identical names and results (desktop Chromium/WebKit probe page only; no operator console). No change.
+
+### controller_run
+
+- Command: `--artifacts …`
+- Before: 4 checks from the browser audit; aborted in a CSP-blocked string wait.
+- After: 4 same checks; aborted because the new app has no `#playback-details` element for its controller-side setup.
+- Not runnable here as a controller-side check driver: its 90 named checks read old-console DOM (tabbed rail, playlist rows, countdown, dirty dots). Those checks were rewritten in U30; this unit removes the `/controller/physical.html` dependency by targeting `/controller/app/`, but the remaining DOM assertions belong to the new app's specs. Tablet-side playback evidence is carried unchanged by `video_run`, `group_recovery_run`, `recovery_acceptance_run` and `reconnect_exclusions_run`.
+
+### video_run
+
+- Command: `--artifacts …`
+- Before: aborted at the Settings tab / CSP-blocked wait; 7 audit checks only.
+- After: reaches 21 checks. Playlist save, playback start/pause/resume/stop and the "controller" copy checks are now API-backed through `Api.playlist()`, `Api.playback_start()`/`playback_stop()` and `GET /api/v3/playback`, with the original check names preserved. The run then fails at the tablet-side "no visible advancing video" check (the generated clip pauses at ~1.24 s in this environment), which is a pre-existing environment/video-fixture issue, not a setup regression. All tablet video, pixel, loop and stop checks are unchanged.
+
+### video_transitions_run
+
+- Command: `--artifacts …`
+- Before and after: exit 0, 51 named checks, identical names and results. No change — this driver already sets up through REST.
+
+### reconnect_exclusions_run
+
+- Command: `--artifacts …`
+- Before and after: exit 0, 21 named checks, identical names and results. No change — this driver already sets up through REST.
+
+### Summary of differences
+
+- No in-scope driver references `physical.html`.
+- Drivers with an unchanged named-check set: `fleet_soak`, `audit_round`, `decode_probe`, `video_transitions_run`, `reconnect_exclusions_run`, `controller_run`.
+- `field_run`, `health_run`, `recovery_acceptance_run` and `video_run` previously aborted before emitting their full check lists; after the conversion they reach their tablet/server checks. `group_recovery_run` lost one old-console presentation check. All controller-UI-only assertions without server evidence were retired and are listed above.
+- `recovery_run` is a long soak and `experience_acceptance` is broken at import; both were converted/verified without a full run.

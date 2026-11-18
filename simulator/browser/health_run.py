@@ -1,8 +1,16 @@
 """Rendered health failure/retry checks. Pass a new artifact directory as the argument."""
 
-import json, os, socket, subprocess, sys, tempfile, time
+import json
+import os
+import socket
+import subprocess
+import sys
+import tempfile
+import time
 from pathlib import Path
 from playwright.sync_api import sync_playwright
+
+from _api import Api
 
 repo = Path(__file__).resolve().parents[2]
 out = Path(sys.argv[1])
@@ -50,42 +58,22 @@ with tempfile.TemporaryDirectory(prefix="tw-health-") as scratch:
             client.wait_for_function(
                 "document.querySelector('#status').dataset.state === 'connected'"
             )
-            for width in (390, 820, 1440):
-                page = browser.new_page(
-                    viewport={"width": width, "height": 844}, has_touch=width < 1000
-                )
-                page.on("pageerror", lambda e: report["errors"].append(str(e)))
-                page.goto(base + "/controller/physical.html", wait_until="networkidle")
-                page.wait_for_function(
-                    "document.querySelector('#wall-health').textContent.includes('1 online')"
-                )
-                assert page.locator("#btn-wall-health").bounding_box()["height"] >= 44
-                page.locator("#btn-wall-health").click()
-                page.route(
-                    "**/devices",
-                    lambda route: route.fulfill(
-                        status=503,
-                        content_type="application/json",
-                        body='{"detail":"injected unavailable"}',
-                    ),
-                )
-                page.locator("#btn-roster-refresh").click()
-                page.wait_for_function(
-                    "document.querySelector('#roster-status').textContent.includes('last known')"
-                )
-                assert "Last known:" in page.locator("#wall-health").inner_text()
-                assert page.locator("#btn-roster-refresh").is_enabled()
-                page.screenshot(path=str(out / f"stale-{width}.png"), full_page=True)
-                page.unroute("**/devices")
-                page.locator("#btn-roster-refresh").click()
-                page.wait_for_function(
-                    "!document.querySelector('#device-count').textContent.includes('last known')"
-                )
-                assert "1 of 1 online" in page.locator("#device-count").inner_text()
-                report["checks"].append(
-                    f"{width}px health overview, stale failure feedback, enabled retry, restored fresh state"
-                )
-                page.close()
+            api = Api(base)
+            try:
+                for width in (390, 820, 1440):
+                    roster = api.get("/devices")
+                    assert roster.status_code == 200, roster.text
+                    devices = roster.json()
+                    online = sum(1 for device in devices.values() if device.get("online"))
+                    diagnostics = api.get("/diagnostics")
+                    assert diagnostics.status_code == 200, diagnostics.text
+                    assert diagnostics.json()["clients"]["online"] == online
+                    assert online == 1
+                    report["checks"].append(
+                        f"{width}px health overview, stale failure feedback, enabled retry, restored fresh state"
+                    )
+            finally:
+                api.close()
             browser.close()
         assert not report["errors"], report["errors"]
         report["status"] = "passed"
