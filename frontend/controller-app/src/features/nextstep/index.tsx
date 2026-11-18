@@ -32,7 +32,8 @@ function cardFor(step: Step, lastSeen: string | null, now: number): Card {
     case 'tablet-offline': {
       const age = offlineDuration(lastSeen, now);
       return { tone: 'warn', Icon: TriangleAlert, title: `Next step: bring ${step.tablet.name} back`, alert: true,
-        body: [<>{age ? <>Offline for <time data-report-time dateTime={lastSeen ?? undefined}>{age}</time>. Wake it</> : 'Wake the tablet'} and it reconnects by itself. Its place on the wall is reserved.</>] };
+        body: [<>{age ? <>Offline for <time data-report-time dateTime={lastSeen ?? undefined}>{age}</time>. Wake it</> : 'Wake the tablet'} and it reconnects by itself. Its place on the wall is reserved.</>,
+          ...(step.candidate ? [`A new tablet, ${step.candidate.name}, joined. If it replaces ${step.tablet.name}, review the replacement.`] : [])] };
     }
     case 'wrong-content': return { tone: 'err', Icon: TriangleAlert, title: `Next step: get ${step.tablet.name} showing again`, alert: true,
       body: ['It is not showing the wall image. Open it to try again, or measure it again if its screen changed.'] };
@@ -89,6 +90,7 @@ export default function NextStep() {
 
   if (!step) return null;
   const offlineId = step.kind === 'tablet-offline' ? step.tablet.deviceId : null;
+  const candidate = step.kind === 'tablet-offline' ? step.candidate : undefined;
   const card = cardFor(step, offlineId ? state.server.roster[offlineId]?.last_seen ?? null : null, now);
   const { Icon } = card;
   function refresh() {
@@ -129,6 +131,8 @@ export default function NextStep() {
       {step.kind === 'conflict' ? <Button variant="secondary" onClick={reviewChanges}>Review changes</Button> : null}
       {step.kind === 'tablet-offline' || step.kind === 'wrong-content' ? <Button variant="secondary" onClick={() => showTablet(store, step.tablet.deviceId)}>
         <MonitorSmartphone aria-hidden="true" />Show tablet</Button> : null}
+      {step.kind === 'tablet-offline' && candidate ? <Button variant="secondary" onClick={() => showTablet(store, candidate.deviceId)}>
+        <Replace aria-hidden="true" />Review replacement</Button> : null}
       {step.kind === 'replacement' ? <Button variant="secondary" onClick={() => showTablet(store, step.candidate.deviceId)}>
         <Replace aria-hidden="true" />Review replacement</Button> : null}
       {step.kind === 'arrange'

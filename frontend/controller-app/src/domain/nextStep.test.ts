@@ -91,6 +91,14 @@ describe('nextStep', () => {
       candidate: { deviceId: A, name: 'New iPad' }, previous: { deviceId: C, name: 'Tablet 4' } });
   });
 
+  it('offers the replacement on the offline card when a new tablet joined', () => {
+    const devices: DeviceMap = { [A]: deviceFixture(A), [C]: deviceFixture(C, { online: false }) };
+    const state = wall({ server: synced(configOf({ layout: plot(C), devices, scene: IMAGE,
+      labels: { [A]: 'New iPad', [C]: 'Tablet 4' } })) });
+    expect(nextStep(state)).toEqual({ kind: 'tablet-offline',
+      tablet: { deviceId: C, name: 'Tablet 4' }, candidate: { deviceId: A, name: 'New iPad' } });
+  });
+
   it('asks for a tablet when none has joined', () => {
     const state = wall({ server: synced(configOf({ layout: plot(), devices: {}, scene: IMAGE })) });
     expect(nextStep(state)).toEqual({ kind: 'add-tablet' });
@@ -127,7 +135,8 @@ describe('nextStep', () => {
     state = { ...state, server: { ...state.server, rosterError: null, rosterUnreachable: false } };
     expect(nextStep(state)).toEqual({ kind: 'conflict', draft: 'arrangement' });
     state = { ...state, arrangement: null };
-    expect(nextStep(state)).toEqual({ kind: 'tablet-offline', tablet: { deviceId: A, name: 'Tablet 4' } });
+    expect(nextStep(state)).toEqual({ kind: 'tablet-offline',
+      tablet: { deviceId: A, name: 'Tablet 4' }, candidate: { deviceId: B, name: 'Tablet 1' } });
 
     const nextDevices: DeviceMap = { [A]: deviceFixture(A), [B]: deviceFixture(B),
       [C]: deviceFixture(C, { online: false }) };
