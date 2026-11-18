@@ -12,7 +12,7 @@ export type NextStep =
   | { kind: 'uncertain' }
   | { kind: 'unreachable' }
   | { kind: 'conflict'; draft: DraftKind }
-  | { kind: 'tablet-offline'; tablet: TabletName }
+  | { kind: 'tablet-offline'; tablet: TabletName; candidate?: TabletName }
   | { kind: 'wrong-content'; tablet: TabletName }
   | { kind: 'replacement'; candidate: TabletName; previous: TabletName }
   | { kind: 'add-tablet' }
@@ -66,7 +66,12 @@ export function nextStep(state: WallStore): NextStep | null {
   const stateOf = (id: string) => rosterStatus(tabletState(view, id, clock.nowMono));
 
   const offline = placed.find((id) => stateOf(id).key === 'offline');
-  if (offline) return { kind: 'tablet-offline', tablet: tabletName(config, roster, offline) };
+  if (offline) {
+    const offer = replacementOffer(config, roster, placed);
+    return offer
+      ? { kind: 'tablet-offline', tablet: tabletName(config, roster, offline), candidate: offer.candidate }
+      : { kind: 'tablet-offline', tablet: tabletName(config, roster, offline) };
+  }
   const wrong = placed.find((id) => stateOf(id).key === 'wrong-content');
   if (wrong) return { kind: 'wrong-content', tablet: tabletName(config, roster, wrong) };
 
