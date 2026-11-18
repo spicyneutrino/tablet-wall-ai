@@ -14,7 +14,7 @@ import { arrangementReducer, createArrangement } from '../drafts/arrangement';
 import type { WallStoreApi } from '../store';
 import { run } from './run';
 
-// Ported from frontend/controller/physical.js:16.
+// Behaviour ported from the old operator console, removed in the switch-over.
 export const SNAPSHOT_NAME_RULE = 'Use letters, numbers, spaces, dots, underscores or hyphens. Start with a letter or number. 64 characters at most.';
 export const RESTORE_POINT_NAME = /^Before (physical|logical) [a-f0-9]{12}$/;
 

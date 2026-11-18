@@ -16,42 +16,37 @@ application code and data unchanged.
 
 ## Current image-wall acceptance
 
-From the repository root, install the browser dependencies and run the
-workspace corrections journey:
+Operator-console UI checks now live in the Playwright suite under
+`frontend/controller-app/e2e`. From the repository root, build the app and run
+them with:
 
 ```bash
-uv sync --group dev --group browser
-uv run --group browser python simulator/browser/redesign_acceptance.py \
-	--scenario corrections --artifacts /tmp/new-workspace-corrections
+make app-e2e
 ```
 
-This journey exercises keyboard focus, image and arrangement previews, tablet
-recovery, and Saved feedback. A successful focused journey exits with code 0.
-For the full matrix and its generated-ingress proof, use the
-[redesign verification instructions](../docs/frontend-redesign/VERIFICATION.md#reproduce-safely).
-The full matrix still returns nonzero while native and hardware gates remain open.
+The suite drives the new app against a real server. The old five-tab console
+drivers were removed in the switch-over; their evidence and its scope stay in
+the [frontend verification record](../docs/frontend-redesign/VERIFICATION.md#reproduce-safely).
 
-The older image-first drivers remain focused readiness and accessibility checks:
+The remaining image-first driver is a focused readiness check:
 
 ```bash
 uv sync --group dev --group browser
 uv run --group browser python -m simulator.browser.readiness_acceptance --artifacts /tmp/new-readiness-run
-uv run --group browser python -m simulator.browser.operator_accessibility --artifacts /tmp/new-accessibility-run
 ```
 
-Each artifact directory must be new. The runners use private loopback servers,
-explicit isolated storage, and private browser contexts, and stop their processes
-afterwards. The feature runner also exercises backup/verify/restore into its
-artifact directory. Results include application commit, driver hash, checks,
-retained failures, screenshots and logs. The accessibility matrix checks normal,
-200% zoom and enlarged text at desktop and phone widths.
+Each artifact directory must be new. The runner uses a private loopback server,
+explicit isolated storage, and private browser contexts, and stops its processes
+afterwards. Results include application commit, driver hash, checks, retained
+failures, screenshots and logs. Its join and readiness obligations were
+rewritten in the Playwright suite; the driver keeps its `experimental.html` part.
 
 The [feature record](../docs/tablet-wall-readiness/FEATURE-ACCEPTANCE.md) and
 [accessibility record](../docs/tablet-wall-readiness/ACCESSIBILITY-ACCEPTANCE.md)
-state the measured scope and limits. These are software browser checks, not
-physical-panel accuracy, OS sleep, optical synchronisation or soak evidence.
-Older playback runners below are separate experimental evidence, not the current
-images-only acceptance gate.
+state the measured scope and limits of that earlier evidence. These are software
+browser checks, not physical-panel accuracy, OS sleep, optical synchronisation
+or soak evidence. The playback runners below are separate experimental evidence,
+not the current images-only acceptance gate.
 
 ## Quick start
 
@@ -265,8 +260,8 @@ No report file is written unless `--report` names one.
 
 T1 adds a separate Python Playwright runner in `simulator/browser/run.py`.
 It starts one disposable uvicorn worker over a real loopback TCP socket and
-loads the actual `/client/` and `/controller/` scripts. It does not extend
-the TestClient simulator.
+loads the actual `/client/` page and the experimental editor at
+`/controller/experimental.html`. It does not extend the TestClient simulator.
 
 ### Durable browser acceptance runners
 

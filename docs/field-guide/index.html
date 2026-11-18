@@ -305,10 +305,11 @@ and talks to a room full of tablets. There is no container, no message broker,
 and no cloud service in the runtime. That small shape is deliberate. The hard
 parts are geometry, time, and evidence, not infrastructure.</p>
 <blockquote class="note">
-<p><strong>Operator workspace update, 5 November 2026.</strong> The workspace now provides
-Images, Tablets, Arrange, Saved, and Settings on desktop and phone screens.
-Image upload belongs to Images. <code>/controller/</code> opens the workspace; the old
-logical editor remains at <code>/controller/experimental.html</code>.</p>
+<p><strong>Operator workspace update, 5 November 2026.</strong> The React app at
+<code>/controller/app/</code> replaces the old five-tab console; the old console URLs
+redirect there. Its source tabs are Images, Saved, Layouts and Tests, with a
+Preview stage, a side column and a Server sheet. Image upload lives in the
+Library. The old logical editor remains at <code>/controller/experimental.html</code>.</p>
 <p>The software evidence and remaining native checks are in the
 <a href="../frontend-redesign/VERIFICATION.md">frontend verification record</a>.
 The eight hardware and deployment gates remain open. The older backend and
@@ -335,7 +336,7 @@ tablet has proved it can show it.</li>
 is not a render. A connected socket is not a ready tablet. A clock estimate is
 not an optical measurement. The architecture keeps those claims separate, and
 the tests try to keep them separate too.</p>
-<figure class="figure" id="figure-system-map"><div class="figure-art"><button class="figure-zoom" type="button" aria-label="Enlarge figure 1: The runtime is one FastAPI process with three kinds of clients and two stores. Tablets hold long-lived WebSocket connections, the physical console polls playback, and the legacy console listens on a second WebSocket."><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 960 560" role="img" aria-labelledby="sys-title sys-desc">
+<figure class="figure" id="figure-system-map"><div class="figure-art"><button class="figure-zoom" type="button" aria-label="Enlarge figure 1: The runtime is one FastAPI process with three kinds of clients and two stores. Tablets hold long-lived WebSocket connections, the controller app holds a v3 controller socket, and the compatibility editor listens on a second WebSocket."><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 960 560" role="img" aria-labelledby="sys-title sys-desc">
 <title id="sys-title">One FastAPI process, tablet sockets, two operator pages, and two stores.</title>
 <desc id="sys-desc">One FastAPI process, tablet sockets, two operator pages, and two stores.</desc>
 <defs>
@@ -386,9 +387,9 @@ svg .panel-small { font-family: 'Source Code Pro', ui-monospace, SFMono-Regular,
 
 <rect class="bg" width="960" height="560"/>
 <rect width="960" height="560" fill="url(#sys-dots)" opacity=".55"/>
-<text class="mono" x="52" y="38" text-anchor="start" >RUNTIME TOPOLOGY</text><text class="small" x="908" y="38" text-anchor="end" >one host · one process · one database</text><rect class="surface-2" x="44" y="84" width="190" height="330" rx="6"/><text class="label-strong" x="58" y="110" text-anchor="start" >Tablets</text><text class="small" x="58" y="128" text-anchor="start" >browser clients</text><rect class="wall" x="58" y="150" width="162" height="58" rx="3"/><text class="num" x="72" y="173" text-anchor="start" >#1</text><text class="panel-label" x="104" y="173" text-anchor="start" >client.js</text><text class="panel-small" x="104" y="190" text-anchor="start" >canvas / video</text><circle class="dot" cx="202" cy="164" r="3"/><rect class="wall" x="58" y="226" width="162" height="58" rx="3"/><text class="num" x="72" y="249" text-anchor="start" >#2</text><text class="panel-label" x="104" y="249" text-anchor="start" >client.js</text><text class="panel-small" x="104" y="266" text-anchor="start" >canvas / video</text><circle class="dot" cx="202" cy="240" r="3"/><rect class="wall" x="58" y="302" width="162" height="58" rx="3"/><text class="num" x="72" y="325" text-anchor="start" >#3</text><text class="panel-label" x="104" y="325" text-anchor="start" >client.js</text><text class="panel-small" x="104" y="342" text-anchor="start" >canvas / video</text><circle class="dot" cx="202" cy="316" r="3"/><text class="mono" x="58" y="394" text-anchor="start" >WebSocket v3</text><text class="small" x="58" y="410" text-anchor="start" >HTTP assets</text><rect class="surface" x="322" y="72" width="320" height="384" rx="8"/><text class="label-strong" x="340" y="98" text-anchor="start" >FastAPI process</text><text class="mono" x="340" y="116" text-anchor="start" >main.py</text><rect class="surface-2" x="340" y="140" width="132" height="58" rx="3"/><text class="mono-strong" x="350" y="162" text-anchor="start" >state.py</text><text class="tiny" x="350" y="180" text-anchor="start" >roster · sockets · wall</text><rect class="surface-2" x="486" y="140" width="132" height="58" rx="3"/><text class="mono-strong" x="496" y="162" text-anchor="start" >playback.py</text><text class="tiny" x="496" y="180" text-anchor="start" >leases · commits</text><rect class="surface-2" x="340" y="216" width="132" height="58" rx="3"/><text class="mono-strong" x="350" y="238" text-anchor="start" >geometry.py</text><text class="tiny" x="350" y="256" text-anchor="start" >N → P plans</text><rect class="surface-2" x="486" y="216" width="132" height="58" rx="3"/><text class="mono-strong" x="496" y="238" text-anchor="start" >media.py</text><text class="tiny" x="496" y="256" text-anchor="start" >admit · publish</text><rect class="surface-2" x="340" y="292" width="132" height="58" rx="3"/><text class="mono-strong" x="350" y="314" text-anchor="start" >persist.py</text><text class="tiny" x="350" y="332" text-anchor="start" >SQLite docs</text><rect class="surface-2" x="486" y="292" width="132" height="58" rx="3"/><text class="mono-strong" x="496" y="314" text-anchor="start" >writer.py / hub.py</text><text class="tiny" x="496" y="332" text-anchor="start" >queues · broadcast</text><text class="small" x="340" y="390" text-anchor="start" >one event loop</text><text class="tiny" x="340" y="408" text-anchor="start" >server clock · 100 ms playback tick</text><text class="mono" x="340" y="428" text-anchor="start" >loopback :8000</text><rect class="surface-2" x="724" y="84" width="190" height="144" rx="6"/><text class="label-strong" x="738" y="110" text-anchor="start" >Physical console</text><text class="mono" x="738" y="128" text-anchor="start" >physical.html</text><text class="small" x="738" y="156" text-anchor="start" >HTTP poll 1 s</text><text class="small" x="738" y="174" text-anchor="start" >no controller socket</text><text class="tiny" x="738" y="200" text-anchor="start" >stage + tabs</text><rect class="surface-2" x="724" y="252" width="190" height="128" rx="6"/><text class="label-strong" x="738" y="278" text-anchor="start" >Legacy console</text><text class="mono" x="738" y="296" text-anchor="start" >index.html</text><text class="small" x="738" y="324" text-anchor="start" >WS v2 listener</text><text class="small" x="738" y="342" text-anchor="start" >upload + logical wall</text><text class="tiny" x="738" y="368" text-anchor="start" >phase 3 retirement</text><rect class="surface-accent" x="322" y="484" width="152" height="48" rx="4"/><text class="mono-strong" x="338" y="504" text-anchor="start" >wall_state</text><text class="tiny" x="338" y="520" text-anchor="start" >SQLite schema 3</text><rect class="surface-accent" x="490" y="484" width="152" height="48" rx="4"/><text class="mono-strong" x="506" y="504" text-anchor="start" >objects/</text><text class="tiny" x="506" y="520" text-anchor="start" >content-addressed</text><line class="arrow-accent" x1="234" y1="250" x2="312" y2="250" marker-end="url(#sys-arrow)"/><line class="arrow" x1="312" y1="300" x2="234" y2="300" marker-end="url(#sys-arrow)"/><line class="arrow" x1="724" y1="156" x2="650" y2="156" marker-end="url(#sys-arrow)"/><line class="arrow" x1="724" y1="316" x2="650" y2="316" marker-end="url(#sys-arrow)"/><line class="arrow" x1="410" y1="456" x2="398" y2="476" marker-end="url(#sys-arrow)"/><line class="arrow" x1="560" y1="456" x2="566" y2="476" marker-end="url(#sys-arrow)"/><text class="mono" x="244" y="240" text-anchor="start" >WS</text><text class="tiny" x="244" y="320" text-anchor="start" >frames</text><text class="mono" x="670" y="146" text-anchor="end" >HTTP</text><text class="mono" x="670" y="340" text-anchor="end" >WS</text><text class="small" x="480" y="468" text-anchor="middle" >commit before broadcast</text>
+<text class="mono" x="52" y="38" text-anchor="start" >RUNTIME TOPOLOGY</text><text class="small" x="908" y="38" text-anchor="end" >one host · one process · one database</text><rect class="surface-2" x="44" y="84" width="190" height="330" rx="6"/><text class="label-strong" x="58" y="110" text-anchor="start" >Tablets</text><text class="small" x="58" y="128" text-anchor="start" >browser clients</text><rect class="wall" x="58" y="150" width="162" height="58" rx="3"/><text class="num" x="72" y="173" text-anchor="start" >#1</text><text class="panel-label" x="104" y="173" text-anchor="start" >client.js</text><text class="panel-small" x="104" y="190" text-anchor="start" >canvas / video</text><circle class="dot" cx="202" cy="164" r="3"/><rect class="wall" x="58" y="226" width="162" height="58" rx="3"/><text class="num" x="72" y="249" text-anchor="start" >#2</text><text class="panel-label" x="104" y="249" text-anchor="start" >client.js</text><text class="panel-small" x="104" y="266" text-anchor="start" >canvas / video</text><circle class="dot" cx="202" cy="240" r="3"/><rect class="wall" x="58" y="302" width="162" height="58" rx="3"/><text class="num" x="72" y="325" text-anchor="start" >#3</text><text class="panel-label" x="104" y="325" text-anchor="start" >client.js</text><text class="panel-small" x="104" y="342" text-anchor="start" >canvas / video</text><circle class="dot" cx="202" cy="316" r="3"/><text class="mono" x="58" y="394" text-anchor="start" >WebSocket v3</text><text class="small" x="58" y="410" text-anchor="start" >HTTP assets</text><rect class="surface" x="322" y="72" width="320" height="384" rx="8"/><text class="label-strong" x="340" y="98" text-anchor="start" >FastAPI process</text><text class="mono" x="340" y="116" text-anchor="start" >main.py</text><rect class="surface-2" x="340" y="140" width="132" height="58" rx="3"/><text class="mono-strong" x="350" y="162" text-anchor="start" >state.py</text><text class="tiny" x="350" y="180" text-anchor="start" >roster · sockets · wall</text><rect class="surface-2" x="486" y="140" width="132" height="58" rx="3"/><text class="mono-strong" x="496" y="162" text-anchor="start" >playback.py</text><text class="tiny" x="496" y="180" text-anchor="start" >leases · commits</text><rect class="surface-2" x="340" y="216" width="132" height="58" rx="3"/><text class="mono-strong" x="350" y="238" text-anchor="start" >geometry.py</text><text class="tiny" x="350" y="256" text-anchor="start" >N → P plans</text><rect class="surface-2" x="486" y="216" width="132" height="58" rx="3"/><text class="mono-strong" x="496" y="238" text-anchor="start" >media.py</text><text class="tiny" x="496" y="256" text-anchor="start" >admit · publish</text><rect class="surface-2" x="340" y="292" width="132" height="58" rx="3"/><text class="mono-strong" x="350" y="314" text-anchor="start" >persist.py</text><text class="tiny" x="350" y="332" text-anchor="start" >SQLite docs</text><rect class="surface-2" x="486" y="292" width="132" height="58" rx="3"/><text class="mono-strong" x="496" y="314" text-anchor="start" >writer.py / hub.py</text><text class="tiny" x="496" y="332" text-anchor="start" >queues · broadcast</text><text class="small" x="340" y="390" text-anchor="start" >one event loop</text><text class="tiny" x="340" y="408" text-anchor="start" >server clock · 100 ms playback tick</text><text class="mono" x="340" y="428" text-anchor="start" >loopback :8000</text><rect class="surface-2" x="724" y="84" width="190" height="144" rx="6"/><text class="label-strong" x="738" y="110" text-anchor="start" >Controller app</text><text class="mono" x="738" y="128" text-anchor="start" >/controller/app/</text><text class="small" x="738" y="156" text-anchor="start" >WebSocket v3</text><text class="small" x="738" y="174" text-anchor="start" >live snapshot + drafts</text><text class="tiny" x="738" y="200" text-anchor="start" >stage + source tabs</text><rect class="surface-2" x="724" y="252" width="190" height="128" rx="6"/><text class="label-strong" x="738" y="278" text-anchor="start" >Compatibility editor</text><text class="mono" x="738" y="296" text-anchor="start" >experimental.html</text><text class="small" x="738" y="324" text-anchor="start" >WS v2 listener</text><text class="small" x="738" y="342" text-anchor="start" >upload + logical wall</text><text class="tiny" x="738" y="368" text-anchor="start" >opt-in tools</text><rect class="surface-accent" x="322" y="484" width="152" height="48" rx="4"/><text class="mono-strong" x="338" y="504" text-anchor="start" >wall_state</text><text class="tiny" x="338" y="520" text-anchor="start" >SQLite schema 3</text><rect class="surface-accent" x="490" y="484" width="152" height="48" rx="4"/><text class="mono-strong" x="506" y="504" text-anchor="start" >objects/</text><text class="tiny" x="506" y="520" text-anchor="start" >content-addressed</text><line class="arrow-accent" x1="234" y1="250" x2="312" y2="250" marker-end="url(#sys-arrow)"/><line class="arrow" x1="312" y1="300" x2="234" y2="300" marker-end="url(#sys-arrow)"/><line class="arrow" x1="724" y1="156" x2="650" y2="156" marker-end="url(#sys-arrow)"/><line class="arrow" x1="724" y1="316" x2="650" y2="316" marker-end="url(#sys-arrow)"/><line class="arrow" x1="410" y1="456" x2="398" y2="476" marker-end="url(#sys-arrow)"/><line class="arrow" x1="560" y1="456" x2="566" y2="476" marker-end="url(#sys-arrow)"/><text class="mono" x="244" y="240" text-anchor="start" >WS</text><text class="tiny" x="244" y="320" text-anchor="start" >frames</text><text class="mono" x="670" y="146" text-anchor="end" >HTTP + WS</text><text class="mono" x="670" y="340" text-anchor="end" >WS</text><text class="small" x="480" y="468" text-anchor="middle" >commit before broadcast</text>
 </svg>
-</button></div><figcaption><span class="figure-number">Figure 01</span>The runtime is one FastAPI process with three kinds of clients and two stores. Tablets hold long-lived WebSocket connections, the physical console polls playback, and the legacy console listens on a second WebSocket.</figcaption></figure>
+</button></div><figcaption><span class="figure-number">Figure 01</span>The runtime is one FastAPI process with three kinds of clients and two stores. Tablets hold long-lived WebSocket connections, the controller app holds a v3 controller socket, and the compatibility editor listens on a second WebSocket.</figcaption></figure>
 <h3 id="the-four-nouns">The four nouns<a class="heading-anchor" href="#the-four-nouns" tabindex="-1" aria-label="Link to section: The four nouns">#</a></h3>
 <p>The vocabulary is small, and the code uses it consistently.</p>
 <div class="table-wrap"><table>
@@ -606,10 +607,11 @@ to small modules with clear ownership.</p>
 </table></div>
 <p>The frontend mirrors the split. <code>frontend/client/client.js</code> owns the tablet's
 connection and playback. <code>frontend/client/view.js</code> owns pure transform math.
-<code>frontend/controller/physical.js</code> composes the operator console. The
-<code>operator-*.js</code> modules own image selection, grid previews, tablet commands,
-measurements, state, and synchronization. <code>frontend/controller/controller.js</code>
-serves the experimental compatibility editor; the workspace owns image uploads.</p>
+<code>frontend/controller-app/src/</code> is the React operator app: <code>App.tsx</code> composes the
+shell from <code>src/features/</code>, with state in <code>src/state/</code> and the server session in
+<code>src/session/</code>. The committed build is served at <code>/controller/app/</code>.
+The old <code>frontend/controller/</code> entry pages now only redirect to it;
+<code>experimental.html</code> serves the old logical editor.</p>
 <h3 id="the-boot-path">The boot path<a class="heading-anchor" href="#the-boot-path" tabindex="-1" aria-label="Link to section: The boot path">#</a></h3>
 <p>Startup is a useful trace because it touches most layers.</p>
 <ol>
@@ -711,10 +713,10 @@ client can tell &quot;older&quot; from &quot;different life.&quot;</p>
 <li><code>tabletwall/protocol.py</code> and the WebSocket handlers for the wire contract.</li>
 <li><code>tabletwall/playback.py</code> for the hardest state machine.</li>
 <li><code>frontend/client/view.js</code>, then the render path in <code>client.js</code>.</li>
-<li><code>frontend/controller/physical.html</code>, then <code>physical.js</code>.</li>
+<li><code>frontend/controller-app/src/App.tsx</code>, then <code>src/features/</code>.</li>
 </ol>
-<p>The legacy controller is larger than the current console. Read it only when you
-need to touch uploads or the logical-wall workflow.</p>
+<p>The compatibility editor is larger than the current app. Read it only when you
+need to touch the old upload or logical-wall workflow.</p>
 
         <nav class="chapter-pager" aria-label="Chapter navigation">
 
@@ -939,7 +941,7 @@ guide says one process per wall.</p>
 <p>The transport is HTTP for commands and WebSocket for pushes. The protocol
 version decides which frame shapes a client can understand. The server supports
 v1, v2, and v3 at the same time.</p>
-<figure class="figure" id="figure-protocol"><div class="figure-art"><button class="figure-zoom" type="button" aria-label="Enlarge figure 3: Protocol version decides the frame shape, not the transport. Tablets use a long-lived device socket. The physical console uses HTTP polling. The legacy console uses a controller socket."><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 960 560" role="img" aria-labelledby="proto-title proto-desc">
+<figure class="figure" id="figure-protocol"><div class="figure-art"><button class="figure-zoom" type="button" aria-label="Enlarge figure 3: Protocol version decides the frame shape, not the transport. Tablets use a long-lived device socket. The controller app uses a v3 controller socket. The compatibility editor uses a v2 controller socket."><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 960 560" role="img" aria-labelledby="proto-title proto-desc">
 <title id="proto-title">Three protocol versions share HTTP and WebSocket transport but project different frames.</title>
 <desc id="proto-desc">Three protocol versions share HTTP and WebSocket transport but project different frames.</desc>
 <defs>
@@ -990,9 +992,9 @@ svg .panel-small { font-family: 'Source Code Pro', ui-monospace, SFMono-Regular,
 
 <rect class="bg" width="960" height="560"/>
 <rect width="960" height="560" fill="url(#proto-dots)" opacity=".55"/>
-<text class="mono" x="52" y="38" text-anchor="start" >PROTOCOL VERSIONS</text><text class="small" x="908" y="38" text-anchor="end" >same transport, different frame shapes</text><rect class="surface" x="58" y="76" width="276" height="300" rx="6"/><text class="display" x="74" y="104" text-anchor="start" >v1</text><text class="label-strong" x="74" y="126" text-anchor="start" >legacy client</text><line class="line" x1="74" y1="142" x2="318" y2="142" /><text class="tiny" x="74" y="172" text-anchor="start" >device frame</text><text class="mono-strong" x="74" y="194" text-anchor="start" >welcome + set_color</text><text class="small" x="74" y="220" text-anchor="start" >colour only</text><text class="tiny" x="74" y="258" text-anchor="start" >operator view</text><text class="mono" x="74" y="280" text-anchor="start" >device list only</text><text class="small" x="74" y="314" text-anchor="start" >byte-compatible</text><text class="tiny" x="74" y="332" text-anchor="start" >still served</text><rect class="surface" x="358" y="76" width="276" height="300" rx="6"/><text class="display" x="374" y="104" text-anchor="start" >v2</text><text class="label-strong" x="374" y="126" text-anchor="start" >legacy controller + client</text><line class="line" x1="374" y1="142" x2="618" y2="142" /><text class="tiny" x="374" y="172" text-anchor="start" >device frame</text><text class="mono-strong" x="374" y="194" text-anchor="start" >wall</text><text class="small" x="374" y="220" text-anchor="start" >placement + scene</text><text class="tiny" x="374" y="258" text-anchor="start" >operator view</text><text class="mono" x="374" y="280" text-anchor="start" >snapshot + wall_updated</text><text class="small" x="374" y="314" text-anchor="start" >capability downgrade</text><text class="tiny" x="374" y="332" text-anchor="start" >no unadvertised content</text><rect class="surface" x="658" y="76" width="276" height="300" rx="6"/><text class="display" x="674" y="104" text-anchor="start" >v3</text><text class="label-strong" x="674" y="126" text-anchor="start" >current client + v3 controller</text><line class="line" x1="674" y1="142" x2="918" y2="142" /><text class="tiny" x="674" y="172" text-anchor="start" >device frame</text><text class="mono-strong" x="674" y="194" text-anchor="start" >render</text><text class="small" x="674" y="220" text-anchor="start" >plan or calibration reason</text><text class="tiny" x="674" y="258" text-anchor="start" >operator view</text><text class="mono" x="674" y="280" text-anchor="start" >snapshot + config_updated</text><text class="small" x="674" y="314" text-anchor="start" >physical plan</text><text class="mono" x="674" y="332" text-anchor="start" >calibration.status</text><rect class="surface-2" x="58" y="416" width="852" height="66" rx="4"/><text class="mono-strong" x="74" y="442" text-anchor="start" >HTTP</text><text class="small" x="74" y="462" text-anchor="start" >commands · reads · ranges · uploads</text><text class="mono-strong" x="352" y="442" text-anchor="start" >WebSocket</text><text class="small" x="352" y="462" text-anchor="start" >device push · controller view</text><text class="mono-strong" x="688" y="442" text-anchor="start" >polling</text><text class="small" x="688" y="462" text-anchor="start" >physical console, 1 s while visible</text><text class="small" x="58" y="516" text-anchor="start" >The physical console does not hold a WebSocket. Its Show panel polls playback status.</text>
+<text class="mono" x="52" y="38" text-anchor="start" >PROTOCOL VERSIONS</text><text class="small" x="908" y="38" text-anchor="end" >same transport, different frame shapes</text><rect class="surface" x="58" y="76" width="276" height="300" rx="6"/><text class="display" x="74" y="104" text-anchor="start" >v1</text><text class="label-strong" x="74" y="126" text-anchor="start" >legacy client</text><line class="line" x1="74" y1="142" x2="318" y2="142" /><text class="tiny" x="74" y="172" text-anchor="start" >device frame</text><text class="mono-strong" x="74" y="194" text-anchor="start" >welcome + set_color</text><text class="small" x="74" y="220" text-anchor="start" >colour only</text><text class="tiny" x="74" y="258" text-anchor="start" >operator view</text><text class="mono" x="74" y="280" text-anchor="start" >device list only</text><text class="small" x="74" y="314" text-anchor="start" >byte-compatible</text><text class="tiny" x="74" y="332" text-anchor="start" >still served</text><rect class="surface" x="358" y="76" width="276" height="300" rx="6"/><text class="display" x="374" y="104" text-anchor="start" >v2</text><text class="label-strong" x="374" y="126" text-anchor="start" >legacy controller + client</text><line class="line" x1="374" y1="142" x2="618" y2="142" /><text class="tiny" x="374" y="172" text-anchor="start" >device frame</text><text class="mono-strong" x="374" y="194" text-anchor="start" >wall</text><text class="small" x="374" y="220" text-anchor="start" >placement + scene</text><text class="tiny" x="374" y="258" text-anchor="start" >operator view</text><text class="mono" x="374" y="280" text-anchor="start" >snapshot + wall_updated</text><text class="small" x="374" y="314" text-anchor="start" >capability downgrade</text><text class="tiny" x="374" y="332" text-anchor="start" >no unadvertised content</text><rect class="surface" x="658" y="76" width="276" height="300" rx="6"/><text class="display" x="674" y="104" text-anchor="start" >v3</text><text class="label-strong" x="674" y="126" text-anchor="start" >current client + v3 controller</text><line class="line" x1="674" y1="142" x2="918" y2="142" /><text class="tiny" x="674" y="172" text-anchor="start" >device frame</text><text class="mono-strong" x="674" y="194" text-anchor="start" >render</text><text class="small" x="674" y="220" text-anchor="start" >plan or calibration reason</text><text class="tiny" x="674" y="258" text-anchor="start" >operator view</text><text class="mono" x="674" y="280" text-anchor="start" >snapshot + config_updated</text><text class="small" x="674" y="314" text-anchor="start" >physical plan</text><text class="mono" x="674" y="332" text-anchor="start" >calibration.status</text><rect class="surface-2" x="58" y="416" width="852" height="66" rx="4"/><text class="mono-strong" x="74" y="442" text-anchor="start" >HTTP</text><text class="small" x="74" y="462" text-anchor="start" >commands · reads · ranges · uploads</text><text class="mono-strong" x="352" y="442" text-anchor="start" >WebSocket</text><text class="small" x="352" y="462" text-anchor="start" >device push · controller view</text><text class="mono-strong" x="688" y="442" text-anchor="start" >reconcile</text><text class="small" x="688" y="462" text-anchor="start" >controller app, on demand</text><text class="small" x="58" y="516" text-anchor="start" >The controller app holds a v3 controller socket and reconciles with HTTP reads when a response is uncertain.</text>
 </svg>
-</button></div><figcaption><span class="figure-number">Figure 03</span>Protocol version decides the frame shape, not the transport. Tablets use a long-lived device socket. The physical console uses HTTP polling. The legacy console uses a controller socket.</figcaption></figure>
+</button></div><figcaption><span class="figure-number">Figure 03</span>Protocol version decides the frame shape, not the transport. Tablets use a long-lived device socket. The controller app uses a v3 controller socket. The compatibility editor uses a v2 controller socket.</figcaption></figure>
 <h3 id="the-three-contracts">The three contracts<a class="heading-anchor" href="#the-three-contracts" tabindex="-1" aria-label="Link to section: The three contracts">#</a></h3>
 <div class="table-wrap"><table>
 <thead>
@@ -1024,12 +1026,11 @@ svg .panel-small { font-family: 'Source Code Pro', ui-monospace, SFMono-Regular,
 </tr>
 </tbody>
 </table></div>
-<p>The physical console does not hold a WebSocket. It polls <code>/api/v3/playback</code>
-once a second while the page is visible. The console itself is described in
-chapter 9. Config, library, layouts, diagnostics,
-and saved-state reads use their own startup or action-driven refresh paths, so
-another operator's change may wait for a reload or an explicit refresh. That is
-enough for a single-operator screen and keeps the control page simpler. The
+<p>The controller app holds a v3 controller socket at <code>/ws/controller?protocol=3</code>
+and applies incoming snapshots and device events to its draft state. It also
+reconciles with <code>/api/v3/config</code> and <code>/devices</code>. The app itself is described in
+chapter 9. Server-driven changes arrive without a reload; an explicit
+<strong>Refresh status</strong> is still available after a lost or uncertain response. The
 tablet client needs a socket because the server pushes prepare, commit, cancel,
 and playback frames with timing information.</p>
 <p>The HTTP API is grouped by the thing it owns:</p>
@@ -1068,8 +1069,8 @@ and playback frames with timing information.</p>
 </tbody>
 </table></div>
 <p>The v1 controller view is only the device list. It does not receive the wall.
-The v3 controller protocol can send <code>config</code> snapshots, but the current physical
-console uses HTTP polling instead of opening that socket.</p>
+The v3 controller protocol sends <code>config</code> snapshots, which the controller app
+receives over its v3 socket.</p>
 <p>A v3 <code>render</code> frame is more than a renamed wall frame. In logical mode it carries
 the projected scene and the device's own placement. In physical mode it carries
 the slot, the calibration status, and the affine <code>plan</code> from normalized source
@@ -1362,18 +1363,19 @@ current calibration for the profile revision. A resize, rotation, or mode change
 invalidates the match immediately. The client then shows a &quot;needs calibration&quot;
 state instead of a guessed image.</p>
 <h3 id="the-editor-works-in-millimetres">The editor works in millimetres<a class="heading-anchor" href="#the-editor-works-in-millimetres" tabindex="-1" aria-label="Link to section: The editor works in millimetres">#</a></h3>
-<p>The physical console is not a pixel editor. The operator measures the active
+<p>The controller app is not a pixel editor. The operator measures the active
 panel, records the bezels, and places the body by its centre in wall
 millimetres. The stage scales those numbers into an SVG for editing, but the
 draft keeps millimetres. Dragging changes the centre. The inspector offers one
 millimetre nudges and a 90-degree rotation. A keyboard or numeric path exists for
 every pointer action.</p>
-<p>The editor keeps the committed layout and the draft separately. <code>state.base</code> is
-the server's layout. <code>state.draft</code> is a clone. A change goes through
-<code>mutateDraft()</code>, which records undo history and updates the dirty flag. Apply
+<p>The editor keeps the committed layout and the draft separately. In an
+<code>ArrangementDraft</code>, <code>base</code> is the server's layout and <code>draft</code> is a clone. A change
+goes through <code>arrangementReducer()</code>, which records undo history and updates the
+dirty flag. Apply
 sends the whole draft with <code>If-Match</code>. A 412 keeps the draft and shows the
-conflict. <strong>Discard arrangement</strong> restores the base. Nothing is written until
-<strong>Apply arrangement</strong> succeeds.</p>
+conflict. <strong>Discard</strong> restores the base. Nothing is written until <strong>Apply
+layout</strong> succeeds.</p>
 <h3 id="what-calibration-cannot-prove">What calibration cannot prove<a class="heading-anchor" href="#what-calibration-cannot-prove" tabindex="-1" aria-label="Link to section: What calibration cannot prove">#</a></h3>
 <p>A browser can report a viewport, but it cannot prove the panel's physical size.
 The profile is an operator measurement. A calibration says &quot;for this reported
@@ -1920,14 +1922,14 @@ secure. It retries from the heartbeat. The states are <code>held</code>, <code>r
 <code>unsupported</code>, <code>insecure</code>, and <code>denied</code>. The controller shows the state per
 tablet. A held lock is not a kiosk configuration. It does not stop OS sleep by
 itself.</p>
-<p>In <strong>Settings</strong>, <strong>Measurements and diagnostics</strong> reports media quota, free
-space, object counts, database size, backup age, client counts, and wake locks.
-The diagnostics request can re-hash media with <code>?verify=1</code>.</p>
-<p>In <strong>Tablets</strong>, the selected-tablet inspector can replace an offline tablet
-that changed origin or storage. <strong>Remove, Forget or replace</strong> contains the
-replacement flow. The placement and display number move to the new identity.
-Saved layouts keep the old identity, so the operator must recall and save
-those layouts again.</p>
+<p><strong>Server → Health</strong> reports media quota, free space, object counts, database
+size, backup age, client counts, and wake locks. The diagnostics request can
+re-hash media with <code>?verify=1</code>.</p>
+<p>The <strong>Tablets</strong> board's tablet drill-in can replace an offline tablet that
+changed origin or storage. <strong>Replace or remove</strong> contains <strong>Review replacement</strong>,
+<strong>Remove from wall</strong> and <strong>Forget tablet</strong>. The placement and display number move
+to the new identity. Saved layouts keep the old identity, so the operator must
+recall and save those layouts again.</p>
 <h3 id="what-recovery-does-not-cover">What recovery does not cover<a class="heading-anchor" href="#what-recovery-does-not-cover" tabindex="-1" aria-label="Link to section: What recovery does not cover">#</a></h3>
 <p>There is no automatic return to the exact video frame after a full host suspend.
 The clock epoch changes, the session aborts, and clients restore the persisted
@@ -2030,50 +2032,50 @@ for the next wall frame or a tap. Videos use a pending and active slot with
 strict lineage checks. A stale prepare or commit cannot paint. The client also
 sends drift samples and reacts to a stalled frame callback.</p>
 <h3 id="the-operator-workspace">The operator workspace<a class="heading-anchor" href="#the-operator-workspace" tabindex="-1" aria-label="Link to section: The operator workspace">#</a></h3>
-<p>The workspace separates five tasks:</p>
+<p>The React app at <code>/controller/app/</code> puts a <strong>Preview</strong> stage and a side column
+on one page. Preview shows the draft; <strong>On wall</strong> in the side column always
+shows server truth. On phone, <strong>View</strong> under the On wall line expands that
+monitor.</p>
+<p>Below the stage are four source tabs:</p>
 <ul>
-<li><strong>Images</strong> owns the library, upload, fit, preview, and <strong>Show image</strong>.</li>
-<li><strong>Tablets</strong> owns selection, naming, Identify, recovery, and replacement.</li>
-<li><strong>Arrange</strong> owns grid presets, tablet order, mounting, custom positions,
-preview, and <strong>Apply arrangement</strong>.</li>
-<li><strong>Saved</strong> keeps arrangement records separate from saved content.</li>
-<li><strong>Settings</strong> owns server checks, measurements, diagnostics, and experimental
-playback.</li>
+<li><strong>Images</strong> owns the library, upload, Fill and Fit, crop and background, and
+<strong>Show on wall</strong>.</li>
+<li><strong>Saved</strong> owns saved content and its <strong>Show on wall</strong> and delete actions.</li>
+<li><strong>Layouts</strong> owns the grid builder and saved arrangements.</li>
+<li><strong>Tests</strong> previews a calibration grid or a black wall and sends test colours.</li>
 </ul>
-<p>The stage presents the active task's layout and content. <strong>View applied</strong>
-compares the current wall with a pending preview without clearing local work.
-Only current matching paint reports count as showing an image. A successful
-command or connected socket does not establish a painted screen.</p>
-<p><code>OperatorState.stageView</code> derives the stage's layout, content, and editability.
-<code>OperatorContent</code> owns image previews and content commands. <code>OperatorGrid</code> owns
-grid review and application. <code>OperatorDevices</code> owns tablet commands, while
-<code>OperatorMeasurements</code> owns model, profile, and calibration forms.
-<code>OperatorSession</code> remains the authority and write boundary. The controller
+<p>The side column carries the next-step card, the selected tablet's drill-in and
+the <strong>Tablets</strong> board. From a drill-in you can rename or identify a tablet, open
+<strong>Measure…</strong>, or use its recovery commands. <strong>Edit layout</strong> on the Preview stage
+turns the stage into a draggable layout canvas with a Move/Snap tool rail and a
+Layout tools menu for <strong>Match screen shape</strong>, <strong>Wall bounds</strong>, <strong>Tile tablets</strong>
+and <strong>Pack tablets</strong>. Applying the draft sends one guarded write; Preview alone
+does not.</p>
+<p>Only current matching paint reports count as showing an image. A successful
+command or a connected socket does not establish a painted screen.</p>
+<p>The store in <code>src/state/</code> owns the draft, the preview and the ETag guard.
+Commands that write go through <code>src/state/commands/run.ts</code>; the session in
+<code>src/session/</code> owns the socket, reconciliation and conflict handling. The shell
 coordinates manual geometry and resolution when another task has pending work.</p>
-<p>A selected grid preset follows tablet membership. Editing Rows or Columns ends
-preset ownership on the first input event. A later status render therefore
-preserves the typed value and focus before the field loses focus. Preview and
-Apply remain separate commands. An invalid cell count blocks Preview unless
-the operator explicitly allows empty trailing cells.</p>
-<p>On desktop, Images places its library beside the composer and wall. Portrait
-phones put image choices before the composer and wall. Tablets uses a roster
-and inspector on desktop, with a native selected-tablet dialog on phones.
-Arrange places its controls beside the stage on wide screens and below it on
-phones. All five tasks remain reachable. When the tabs no longer fit, a native
-task selector provides the same navigation and draft resolution.</p>
+<p>A grid follows tablet membership. Editing its fields updates the draft
+directly. Preview and Apply remain separate commands. An invalid cell count
+blocks Preview unless the operator selects <strong>Allow empty trailing cells</strong>.</p>
+<p>Desktop and phone use the same page. The side column scrolls on desktop and
+sits below the pinned preview on phone. During Measure the source tabs are
+paused and the measure stepper replaces the side column's board.</p>
 <h3 id="the-compatibility-editor">The compatibility editor<a class="heading-anchor" href="#the-compatibility-editor" tabindex="-1" aria-label="Link to section: The compatibility editor">#</a></h3>
-<p><code>/controller/</code> forwards to <code>physical.html</code>, retaining the query and fragment.
-<code>experimental.html</code> loads the old logical editor and <code>controller.js</code>. That
-editor retains its own state model and compatibility routes. It refuses logical
-layout mutations while a measured layout is active. Use the workspace for
+<p>The old console URLs forward to <code>/controller/app/</code>, retaining the query and
+fragment. <code>experimental.html</code> loads the old logical editor and <code>controller.js</code>.
+That editor retains its own state model and compatibility routes. It refuses
+logical layout mutations while a measured layout is active. Use the app for
 normal image and arrangement work.</p>
 <h3 id="accessibility-is-designed-in">Accessibility is designed in<a class="heading-anchor" href="#accessibility-is-designed-in" tabindex="-1" aria-label="Link to section: Accessibility is designed in">#</a></h3>
-<p>The console uses one polite page status region for state changes. The playback
+<p>The app uses one polite page status region for state changes. The playback
 countdown is <code>aria-hidden</code>, so a screen reader does not hear a number update
-every second. Tabs use a roving tabindex and Arrow, Home, and End keys. The stage
-is a focusable region. Nudge buttons have full labels. The skip links target the
-active task and the controls. Focus rings are visible, and reduced-motion preferences
-disable smooth scrolling and transitions.</p>
+every second. The source tabs use a roving tabindex. The Preview stage is
+focusable, and Left and Right select a tablet on it. Nudge buttons have full
+labels. The skip link targets the preview. Focus rings are visible, and
+reduced-motion preferences disable smooth scrolling and transitions.</p>
 <p>Phone layouts keep the task forms and explicit commands. Focus stays on an
 edited field during status refresh. A command that hides its trigger returns
 focus to a visible control. Native screen-reader and browser-menu zoom checks
@@ -2083,10 +2085,9 @@ remain separate from the emulated browser evidence.</p>
 explicit Apply is easier to reason about than a form that writes on every
 keystroke. The dirty state can be shown, cancelled, and tested.</p>
 </blockquote>
-<p><strong>Trace it.</strong> Read <code>frontend/controller/physical.html</code>, then <code>init</code>, <code>showTab</code>,
-<code>selectDevice</code>, and <code>applyLayout</code> in <code>physical.js</code>. Follow the module factories
-into <code>operator-state.js</code>, <code>operator-grid.js</code>, <code>operator-content.js</code>, and
-<code>operator-measurements.js</code> for their respective owners.</p>
+<p><strong>Trace it.</strong> Read <code>frontend/controller-app/src/App.tsx</code>, then the <code>index.tsx</code>
+under <code>src/features/{sources,board,tablet,measure,server}/</code>. Follow writes through
+<code>src/state/commands/run.ts</code> and the session in <code>src/session/session.ts</code>.</p>
 
         <nav class="chapter-pager" aria-label="Chapter navigation">
 
@@ -2276,8 +2277,8 @@ accepting the socket.</p>
 <pre><code class="language-bash">uv sync
 make dev          # http://127.0.0.1:8000
 </code></pre>
-<p>The app serves the client, the physical console, and the legacy console from
-static mounts. Uploads are disabled unless you configure a mode. This is a
+<p>The app serves the client, the controller app, and the compatibility editor
+from static mounts. Uploads are disabled unless you configure a mode. This is a
 development and single-laptop mode, not a trusted LAN deployment.</p>
 <p>The two-origin mode uses the hotspot wrapper:</p>
 <pre><code class="language-bash">export WALL_HOTSPOT_IP=192.168.4.1

@@ -48,7 +48,7 @@ These addresses work only on the computer running the server:
 | Page       | URL                            |
 | ---------- | ------------------------------ |
 | Local client test | http://127.0.0.1:8000/client/ |
-| Wall workspace | http://127.0.0.1:8000/controller/ |
+| Wall workspace | http://127.0.0.1:8000/controller/app/ |
 | API docs   | http://127.0.0.1:8000/docs        |
 
 ## Connect tablets to the laptop hotspot
@@ -69,12 +69,12 @@ tablet. For a hotspot at `10.42.0.1`, it is
 its address can change. Both `/client` and `/client/` work. A tablet must never
 use `127.0.0.1` or `localhost` to reach the laptop.
 
-The wall workspace stays at `http://127.0.0.1:8000/controller/` on the laptop.
-**Tablets** shows the exact tablet address, Copy button and join QR.
-**Settings** shows readiness facts. The direct `controller/physical.html` URL
-opens the same workspace.
-A loopback address carries a warning that it only opens on this computer.
-The QR is an address shortcut; it does not authenticate or approve a tablet.
+The wall workspace is at `http://127.0.0.1:8000/controller/app/` on the laptop.
+The old console addresses redirect there. **Server** in the header opens a sheet
+with four tabs. **Joining** shows the exact tablet address, its QR and a
+**Copy link** button. **Health** shows diagnostics and **Backup and reset** shows
+backup facts. The QR is an address shortcut; it does not authenticate or approve
+a tablet.
 
 The launcher saves settings in `~/.config/tablet-wall-ai/hotspot.json` and
 wall data in `~/.local/share/tablet-wall-ai/`, respecting the corresponding
@@ -102,11 +102,9 @@ deploy/                     hotspot proxy reference, service unit template,
 frontend/
   client/                   runs on each tablet; paints its wall slice
     index.html  client.js  client.css  view.js
-  controller/               one operator workspace for tablets, arrangement,
-                            images, saved records and settings
-    physical.html physical.js operator-*.js
-    operator-tokens.css operator-workspace.css operator-stage.css fonts/
-    index.html operator-entry.js (forwards to the workspace)
+  controller-app/           React + TypeScript operator console (source and e2e)
+  controller/               built app at app/, redirects from the old console URLs
+    index.html physical.html redirect.js
     experimental.html controller*.js controller.css (opt-in compatibility tools)
 tests/                      pytest contract tests (HTTP + WebSocket)
 pyproject.toml              deps, dev deps, pytest config
@@ -144,49 +142,54 @@ SQLite database as the active wall, so include it in backups.
 
 ### Use the operator workspace
 
-In **Images**, select a library image, choose **Fill** or **Fit**, then select
-**Show image**. Selection and upload create previews; only **Show image**
-changes the displayed content. To adjust the applied image, select
-**Adjust image**. Missing files stay unavailable until you restore their bytes
-or choose another image. The asset identity remains in **Image details**.
+The app has a **Preview** stage and a side column. The Preview stage shows the
+draft; the **On wall** monitor in the side column always shows server truth. On
+phone, **View** under the On wall line expands that monitor.
 
-In **Tablets**, select a tablet to name or identify it. **Recovery** exposes
-**Retry image** and **Reconnect** when those commands are available. An offline
-tablet needs recovery on the device; the server cannot wake it remotely.
-**Add tablets** contains the join address and QR code.
+In **Images**, pick a thumbnail or open **All images** for the **Library**, choose
+**Fill** or **Fit** in **Fit and crop**, then select **Show on wall**. Selecting
+or uploading an image only creates a preview; only **Show on wall** changes what
+the tablets display. A missing file stays unavailable until its bytes are
+restored or another image is picked.
 
-In **Saved**, save or recall arrangements separately from content. **Recall**
-applies the saved arrangement and keeps the current content. **Preview** beside
-a content record opens a preview for **Show saved content**. Automatic restore points are labelled separately from
-named arrangements. Saving a record does not apply a pending preview.
+The **Tablets** board lists the roster. Select a tablet to open its drill-in,
+where you can rename it, **Identify** it, and use its recovery commands, including
+**Retry image** and **Reconnect** when available. An offline tablet needs
+recovery on the device; the server cannot wake it remotely. **Add a tablet** opens the Server sheet; its **Joining** tab has the full
+address, QR and **Copy link**.
 
-Fit uses the scene background, default `#0b1120`. A custom background from
-an applied or saved scene is retained when that content is adjusted or recalled.
-The workspace has no background colour picker.
+**Saved** holds saved content; **Show on wall** on a record previews it before
+applying. **Layouts** holds saved arrangements and the grid builder. Saving a
+record does not apply a pending preview.
+
+**Fit and crop** also has a **Background** colour input. It starts at the scene
+background, default `#0b1120`, and the choice stays in Preview until you select
+**Show on wall**. A custom background from an applied or saved scene is retained
+when that content is previewed again.
 
 Follow the [image-wall runbook](deploy/IMAGE-WALL-RUNBOOK.md) for startup,
 joining, display checks, backup, and recovery.
 
 ### Operator diagnostics
 
-The workspace has five tasks on desktop and phone screens: **Images**,
-**Tablets**, **Arrange**, **Saved**, and **Settings**. In **Settings**, open
-**Measurements and diagnostics**. Under **Diagnostics**, select
-**Refresh diagnostics** to inspect storage, backup, and client health, or
-**Verify object bytes** to check stored media. Download report saves
-the last successful response as timestamped JSON, including integrity results
-when verification was requested. Failed refreshes disable download until a
-successful retry. Diagnostics use operator-read admission independently of upload
-mode. Reports contain operational metadata; review them before sharing.
-Desktop browser evidence does not replace physical tablet validation.
+The source tabs are **Images**, **Saved**, **Layouts** and **Tests**; the side
+column holds **On wall**, the next-step card, the tablet drill-in and the
+**Tablets** board. **Server** in the header opens a sheet. In its **Health** tab,
+**Download report** saves the last successful response as timestamped JSON.
+**Verify files** checks stored media and adds integrity results to the report.
+A failed refresh disables download until a successful retry. Diagnostics use
+operator-read admission independently of upload mode. Reports contain operational
+metadata; review them before sharing. Desktop browser evidence does not replace
+physical tablet validation.
 
 ### Curating still images
 
 For the trusted hotspot launch, use `make hotspot ARGS='--operator-uploads'`
 to enable image addition from this computer for that launch only. In **Images**,
-choose a PNG or JPEG and select **Upload image**. Uploading selects a preview;
-**Show image** applies it separately. Uploads remain disabled by default, and
-the tablet listener does not admit uploads or operator controls.
+open **All images** for the **Library** and choose a PNG or JPEG under
+**Upload images**, or select the **Upload…** thumbnail. Uploading selects a
+preview; **Show on wall** applies it separately. Uploads remain disabled by
+default, and the tablet listener does not admit uploads or operator controls.
 
 There are also two storage sources. **Curated files**: create an `assets/` directory at the
 repository root (or set `TABLET_WALL_ASSET_DIR` to another server-local
@@ -195,10 +198,10 @@ hotspot launcher**: set
 `TABLET_WALL_MEDIA_DIR` (default `./media`), choose
 `TABLET_WALL_UPLOAD_MODE=loopback` for direct local use or `proxy` with
 `TABLET_WALL_OPERATOR_CREDENTIAL` behind the authenticated operator listener,
-and use the controller's upload panel. Uploads are disabled by default; the
+and upload from the app's **Library** sheet. Uploads are disabled by default; the
 normalized master and renditions are exact-byte objects behind `/assets/{id}`.
-Use the controller's asset
-refresh control to discover newly copied files without restarting the server.
+Use **Refresh images** in the Library to discover newly copied files without
+restarting the server.
 Only top-level, non-symlink, non-animated files are inventoried; the initial
 limits are 10 MiB and 12 megapixels per image. Normalize EXIF rotation before
 copying an image. The controller selects an opaque SHA-256 asset ID rather than
@@ -214,29 +217,25 @@ When authentication is disabled, every client that reaches the backend can read 
 
 ## Change the wall size
 
-Open the [wall workspace](http://127.0.0.1:8000/controller/) and select
-**Arrange**. Choose **Relative** or **Measured**, then a grid preset.
-Open **Tablets and mounting** to review the selected tablets, their order,
-and their mounted top edges. **1 × 4** means one horizontal row with four
-tablets; preset labels follow the selected tablet count.
+Open the [wall workspace](http://127.0.0.1:8000/controller/app/) and choose the
+**Layouts** source tab. **New grid…** opens the **Build grid** sheet. Set
+**Units** to **Logical units** or **Measured millimetres**, then fill **Columns**,
+**Rows**, **Gap** and **Padding**. **Wall sizing** offers **Fit to tablets** and
+**Fixed bounds**; logical grids also have an **Orientation**. **Allow empty
+trailing cells** permits more cells than selected tablets. **Grid tablet order**
+lists the members with **Earlier** and **Later** controls and per-tablet size
+fields.
 
-Select **Preview arrangement**, review the geometry and warnings, then select
-**Apply arrangement**. Preview keeps the current wall active.
-**Discard arrangement** clears the local work. Editing **Rows** or **Columns**
-releases the preset immediately, including while the field still has focus.
-Custom grids must match the selected tablet count unless you select
-**Allow empty trailing cells**.
-
-Extra gap defaults to zero. **Fit wall to tablet bodies** derives the bounds
-from the packed footprints. **View applied** lets you compare the current wall
-with a pending preview without discarding that preview.
+Select **Preview grid**, review the geometry and warnings, then select **Apply
+layout**. Building the preview leaves the wall unchanged. **Keep inputs and
+close** leaves the draft in place.
 
 Measured layouts use pinned screen, bezel and calibration records. Confirm the
 actual model or save measurements before using that mode. Model profiles remain
-approximate; they do not establish seam accuracy. Open **Arrange**, then
-**Custom bounds**, for wall bounds and manual positions. For measurements,
-select a tablet in **Tablets** and select **Review measurements**.
-Missing referenced measurements block fitting rather than guessing a size.
+approximate; they do not establish seam accuracy. For manual positions, use
+**Edit layout** on the Preview stage; for measurements, open a tablet's drill-in
+and select **Measure…**. Missing referenced measurements block fitting rather
+than guessing a size.
 
 The [experimental compatibility editor](http://127.0.0.1:8000/controller/experimental.html)
 retains the old logical width, height, and packing controls under **Layout**.
@@ -467,18 +466,17 @@ Run `uv sync --all-groups` before the checks. `make test` runs Python tests and 
 `make coverage` measures Python lines and branches, including worker subprocesses,
 writes `coverage.xml`, and enforces an 80% combined floor.
 
-Run the workspace corrections journey with a fresh artifact directory:
+Run the operator-console end-to-end suite with:
 
 ```sh
-uv run --group browser python simulator/browser/redesign_acceptance.py \
-	--scenario corrections --artifacts /tmp/new-corrections-run
+make app-e2e
 ```
 
-The complete matrix uses `--scenario all` and a matching `--ingress-proof`
-manifest. See the [frontend verification record](docs/frontend-redesign/VERIFICATION.md#reproduce-safely).
-The readiness and accessibility drivers remain focused checks with their
-recorded scope. The older `controller_run` covers experimental playback; it is
-not the image-wall acceptance gate. See the
+The specs live in `frontend/controller-app/e2e`. Their recorded scope and the
+earlier matrix are in the
+[frontend verification record](docs/frontend-redesign/VERIFICATION.md#reproduce-safely).
+The readiness driver remains a focused check. The older `controller_run` covers
+experimental playback; it is not the image-wall acceptance gate. See the
 [browser runner guide](simulator/README.md#current-image-wall-acceptance).
 
 For repeatable viewport and reconnect checks, run `uv run --group browser python -m simulator.browser.audit_round --round 6 --artifacts /tmp/new-viewport-audit`. The browser runners always use temporary database, media, and asset paths. For any manual app launch, set those paths to a disposable scratch copy before startup; startup creates directories, writes SQLite, and cleans staging.
