@@ -778,7 +778,7 @@ The riskiest unknowns come first. U01 proves serving, CSP, fonts, sockets and au
 	- `make test`, `make sim`, `make app-check` and `make app-e2e` pass.
 	- `rg -l "physical\.js|operator-session|physical-stage" frontend tests deploy simulator` prints nothing.
 	- `e2e/parity/X7.spec.ts` passes: `/controller/?a=1#b` and `/controller/physical.html?a=1#b` both end at `/controller/app/?a=1#b`.
-	- `uv run --group browser python simulator/browser/readiness_acceptance.py` passes its `experimental.html` part.
+	- `uv run --group browser python simulator/browser/readiness_acceptance.py --artifacts <dir>` passes its `experimental.html` part (done: 111/111, see 05-parity-report.md).
 
 ### U35 · Docs after switch-over · DS
 - **Depends on:** U34.
