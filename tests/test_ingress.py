@@ -550,7 +550,7 @@ def test_generated_hotspot_ingress_keeps_loopback_uploads_operator_only(tmp_path
 
             device_id = "00000000-0000-4000-8000-000000000001"
             read_paths = ["/uploads", "/media", "/api/v3/images", "/assets", "/devices",
-                          "/controller/", "/controller/app/", "/controller/physical.html", "/controller/physical.js",
+                          "/controller/", "/controller/app/", "/controller/physical.html", "/controller/redirect.js",
                           "/ws/controller", "/diagnostics", "/healthz", "/operator-config",
                           "/api/v3/config", "/api/v3/readiness", "/api/v3/join-qr",
                           f"/api/v3/devices/{device_id}/impact", "/wall", "/scene", "/docs"]
