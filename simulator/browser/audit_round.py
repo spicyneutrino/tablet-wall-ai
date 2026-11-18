@@ -176,10 +176,7 @@ async def run(round_number: int, artifacts: Path) -> None:
                                     await client.wait_for_function(
                                         "document.querySelector('#status').dataset.state === 'connected'"
                                     )
-                                for path in (
-                                    "/controller/",
-                                    "/controller/physical.html",
-                                ):
+                                for path in ("/controller/",):
                                     await page.goto(
                                         origin + path, wait_until="networkidle"
                                     )

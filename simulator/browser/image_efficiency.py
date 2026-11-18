@@ -985,7 +985,7 @@ class Benchmark:
 
     async def measure_idle(self) -> dict[str, Any]:
         assert self.browser is not None
-        name, path = "physical", "/controller/physical.html"
+        name, path = "operator", "/controller/app/"
         context = await self.browser.new_context(
             viewport={"width": 1440, "height": 1000},
         )
