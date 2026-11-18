@@ -53,7 +53,7 @@
 .tablet-list[aria-busy="true"] { margin-inline: 0; }
 .tablet-identity { flex: 1; min-inline-size: 0; }
 .tablet-identity > span { display: block; overflow: clip; text-overflow: ellipsis; white-space: nowrap; }
-.tablet-list .state { max-inline-size: 42%; white-space: normal; text-align: end; justify-content: end; }
+.tablet-list .state { white-space: normal; text-align: end; justify-content: end; }
 .tablet-loading { display: flex; align-items: center; gap: var(--space-3); block-size: 56px; }
 .tablet-loading > .skel { flex: none; inline-size: 64px; block-size: 12px; }
 .tablet-loading > div { flex: 1; display: grid; gap: var(--space-2); }
