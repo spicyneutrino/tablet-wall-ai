@@ -60,10 +60,11 @@ and talks to a room full of tablets. There is no container, no message broker,
 and no cloud service in the runtime. That small shape is deliberate. The hard
 parts are geometry, time, and evidence, not infrastructure.
 
-> **Operator workspace update, 5 November 2026.** The workspace now provides
-> Images, Tablets, Arrange, Saved, and Settings on desktop and phone screens.
-> Image upload belongs to Images. `/controller/` opens the workspace; the old
-> logical editor remains at `/controller/experimental.html`.
+> **Operator workspace update, 5 November 2026.** The React app at
+> `/controller/app/` replaces the old five-tab console; the old console URLs
+> redirect there. Its source tabs are Images, Saved, Layouts and Tests, with a
+> Preview stage, a side column and a Server sheet. Image upload lives in the
+> Library. The old logical editor remains at `/controller/experimental.html`.
 >
 > The software evidence and remaining native checks are in the
 > [frontend verification record](../frontend-redesign/VERIFICATION.md).
@@ -87,7 +88,7 @@ is not a render. A connected socket is not a ready tablet. A clock estimate is
 not an optical measurement. The architecture keeps those claims separate, and
 the tests try to keep them separate too.
 
-![The runtime is one FastAPI process with three kinds of clients and two stores. Tablets hold long-lived WebSocket connections, the physical console polls playback, and the legacy console listens on a second WebSocket.](figures/system-map.svg)
+![The runtime is one FastAPI process with three kinds of clients and two stores. Tablets hold long-lived WebSocket connections, the controller app holds a v3 controller socket, and the compatibility editor listens on a second WebSocket.](figures/system-map.svg)
 
 ### The four nouns
 
@@ -190,10 +191,11 @@ to small modules with clear ownership.
 
 The frontend mirrors the split. `frontend/client/client.js` owns the tablet's
 connection and playback. `frontend/client/view.js` owns pure transform math.
-`frontend/controller/physical.js` composes the operator console. The
-`operator-*.js` modules own image selection, grid previews, tablet commands,
-measurements, state, and synchronization. `frontend/controller/controller.js`
-serves the experimental compatibility editor; the workspace owns image uploads.
+`frontend/controller-app/src/` is the React operator app: `App.tsx` composes the
+shell from `src/features/`, with state in `src/state/` and the server session in
+`src/session/`. The committed build is served at `/controller/app/`.
+The old `frontend/controller/` entry pages now only redirect to it;
+`experimental.html` serves the old logical editor.
 
 ### The boot path
 
@@ -253,10 +255,10 @@ If you have an hour, read these in order:
 3. `tabletwall/protocol.py` and the WebSocket handlers for the wire contract.
 4. `tabletwall/playback.py` for the hardest state machine.
 5. `frontend/client/view.js`, then the render path in `client.js`.
-6. `frontend/controller/physical.html`, then `physical.js`.
+6. `frontend/controller-app/src/App.tsx`, then `src/features/`.
 
-The legacy controller is larger than the current console. Read it only when you
-need to touch uploads or the logical-wall workflow.
+The compatibility editor is larger than the current app. Read it only when you
+need to touch the old upload or logical-wall workflow.
 
 ## State lives twice, on purpose
 
@@ -371,7 +373,7 @@ The transport is HTTP for commands and WebSocket for pushes. The protocol
 version decides which frame shapes a client can understand. The server supports
 v1, v2, and v3 at the same time.
 
-![Protocol version decides the frame shape, not the transport. Tablets use a long-lived device socket. The physical console uses HTTP polling. The legacy console uses a controller socket.](figures/protocol.svg)
+![Protocol version decides the frame shape, not the transport. Tablets use a long-lived device socket. The controller app uses a v3 controller socket. The compatibility editor uses a v2 controller socket.](figures/protocol.svg)
 
 ### The three contracts
 
@@ -381,12 +383,11 @@ v1, v2, and v3 at the same time.
 | v2 | Legacy controller and v2 clients | `wall` with a per-device placement and scene | `snapshot`, `wall_updated`, device events |
 | v3 | Current tablet client and v3 controller protocol | `render` with a mode, a render sequence, and a physical plan or calibration reason | `snapshot` with `config`, `config_updated` |
 
-The physical console does not hold a WebSocket. It polls `/api/v3/playback`
-once a second while the page is visible. The console itself is described in
-chapter 9. Config, library, layouts, diagnostics,
-and saved-state reads use their own startup or action-driven refresh paths, so
-another operator's change may wait for a reload or an explicit refresh. That is
-enough for a single-operator screen and keeps the control page simpler. The
+The controller app holds a v3 controller socket at `/ws/controller?protocol=3`
+and applies incoming snapshots and device events to its draft state. It also
+reconciles with `/api/v3/config` and `/devices`. The app itself is described in
+chapter 9. Server-driven changes arrive without a reload; an explicit
+**Refresh status** is still available after a lost or uncertain response. The
 tablet client needs a socket because the server pushes prepare, commit, cancel,
 and playback frames with timing information.
 
@@ -402,8 +403,8 @@ The HTTP API is grouped by the thing it owns:
 | Operations | `GET /diagnostics`, `GET\|HEAD /assets/{id}`, `GET /api/v3/layouts` |
 
 The v1 controller view is only the device list. It does not receive the wall.
-The v3 controller protocol can send `config` snapshots, but the current physical
-console uses HTTP polling instead of opening that socket.
+The v3 controller protocol sends `config` snapshots, which the controller app
+receives over its v3 socket.
 
 A v3 `render` frame is more than a renamed wall frame. In logical mode it carries
 the projected scene and the device's own placement. In physical mode it carries
@@ -574,19 +575,20 @@ state instead of a guessed image.
 
 ### The editor works in millimetres
 
-The physical console is not a pixel editor. The operator measures the active
+The controller app is not a pixel editor. The operator measures the active
 panel, records the bezels, and places the body by its centre in wall
 millimetres. The stage scales those numbers into an SVG for editing, but the
 draft keeps millimetres. Dragging changes the centre. The inspector offers one
 millimetre nudges and a 90-degree rotation. A keyboard or numeric path exists for
 every pointer action.
 
-The editor keeps the committed layout and the draft separately. `state.base` is
-the server's layout. `state.draft` is a clone. A change goes through
-`mutateDraft()`, which records undo history and updates the dirty flag. Apply
+The editor keeps the committed layout and the draft separately. In an
+`ArrangementDraft`, `base` is the server's layout and `draft` is a clone. A change
+goes through `arrangementReducer()`, which records undo history and updates the
+dirty flag. Apply
 sends the whole draft with `If-Match`. A 412 keeps the draft and shows the
-conflict. **Discard arrangement** restores the base. Nothing is written until
-**Apply arrangement** succeeds.
+conflict. **Discard** restores the base. Nothing is written until **Apply
+layout** succeeds.
 
 ### What calibration cannot prove
 
@@ -932,15 +934,15 @@ secure. It retries from the heartbeat. The states are `held`, `released`,
 tablet. A held lock is not a kiosk configuration. It does not stop OS sleep by
 itself.
 
-In **Settings**, **Measurements and diagnostics** reports media quota, free
-space, object counts, database size, backup age, client counts, and wake locks.
-The diagnostics request can re-hash media with `?verify=1`.
+**Server → Health** reports media quota, free space, object counts, database
+size, backup age, client counts, and wake locks. The diagnostics request can
+re-hash media with `?verify=1`.
 
-In **Tablets**, the selected-tablet inspector can replace an offline tablet
-that changed origin or storage. **Remove, Forget or replace** contains the
-replacement flow. The placement and display number move to the new identity.
-Saved layouts keep the old identity, so the operator must recall and save
-those layouts again.
+The **Tablets** board's tablet drill-in can replace an offline tablet that
+changed origin or storage. **Replace or remove** contains **Review replacement**,
+**Remove from wall** and **Forget tablet**. The placement and display number move
+to the new identity. Saved layouts keep the old identity, so the operator must
+recall and save those layouts again.
 
 ### What recovery does not cover
 
@@ -989,57 +991,59 @@ sends drift samples and reacts to a stalled frame callback.
 
 ### The operator workspace
 
-The workspace separates five tasks:
+The React app at `/controller/app/` puts a **Preview** stage and a side column
+on one page. Preview shows the draft; **On wall** in the side column always
+shows server truth. On phone, **View** under the On wall line expands that
+monitor.
 
-- **Images** owns the library, upload, fit, preview, and **Show image**.
-- **Tablets** owns selection, naming, Identify, recovery, and replacement.
-- **Arrange** owns grid presets, tablet order, mounting, custom positions,
-  preview, and **Apply arrangement**.
-- **Saved** keeps arrangement records separate from saved content.
-- **Settings** owns server checks, measurements, diagnostics, and experimental
-  playback.
+Below the stage are four source tabs:
 
-The stage presents the active task's layout and content. **View applied**
-compares the current wall with a pending preview without clearing local work.
+- **Images** owns the library, upload, Fill and Fit, crop and background, and
+  **Show on wall**.
+- **Saved** owns saved content and its **Show on wall** and delete actions.
+- **Layouts** owns the grid builder and saved arrangements.
+- **Tests** previews a calibration grid or a black wall and sends test colours.
+
+The side column carries the next-step card, the selected tablet's drill-in and
+the **Tablets** board. From a drill-in you can rename or identify a tablet, open
+**Measure…**, or use its recovery commands. **Edit layout** on the Preview stage
+turns the stage into a draggable layout canvas with a Move/Snap tool rail and a
+Layout tools menu for **Match screen shape**, **Wall bounds**, **Tile tablets**
+and **Pack tablets**. Applying the draft sends one guarded write; Preview alone
+does not.
+
 Only current matching paint reports count as showing an image. A successful
-command or connected socket does not establish a painted screen.
+command or a connected socket does not establish a painted screen.
 
-`OperatorState.stageView` derives the stage's layout, content, and editability.
-`OperatorContent` owns image previews and content commands. `OperatorGrid` owns
-grid review and application. `OperatorDevices` owns tablet commands, while
-`OperatorMeasurements` owns model, profile, and calibration forms.
-`OperatorSession` remains the authority and write boundary. The controller
+The store in `src/state/` owns the draft, the preview and the ETag guard.
+Commands that write go through `src/state/commands/run.ts`; the session in
+`src/session/` owns the socket, reconciliation and conflict handling. The shell
 coordinates manual geometry and resolution when another task has pending work.
 
-A selected grid preset follows tablet membership. Editing Rows or Columns ends
-preset ownership on the first input event. A later status render therefore
-preserves the typed value and focus before the field loses focus. Preview and
-Apply remain separate commands. An invalid cell count blocks Preview unless
-the operator explicitly allows empty trailing cells.
+A grid follows tablet membership. Editing its fields updates the draft
+directly. Preview and Apply remain separate commands. An invalid cell count
+blocks Preview unless the operator selects **Allow empty trailing cells**.
 
-On desktop, Images places its library beside the composer and wall. Portrait
-phones put image choices before the composer and wall. Tablets uses a roster
-and inspector on desktop, with a native selected-tablet dialog on phones.
-Arrange places its controls beside the stage on wide screens and below it on
-phones. All five tasks remain reachable. When the tabs no longer fit, a native
-task selector provides the same navigation and draft resolution.
+Desktop and phone use the same page. The side column scrolls on desktop and
+sits below the pinned preview on phone. During Measure the source tabs are
+paused and the measure stepper replaces the side column's board.
 
 ### The compatibility editor
 
-`/controller/` forwards to `physical.html`, retaining the query and fragment.
-`experimental.html` loads the old logical editor and `controller.js`. That
-editor retains its own state model and compatibility routes. It refuses logical
-layout mutations while a measured layout is active. Use the workspace for
+The old console URLs forward to `/controller/app/`, retaining the query and
+fragment. `experimental.html` loads the old logical editor and `controller.js`.
+That editor retains its own state model and compatibility routes. It refuses
+logical layout mutations while a measured layout is active. Use the app for
 normal image and arrangement work.
 
 ### Accessibility is designed in
 
-The console uses one polite page status region for state changes. The playback
+The app uses one polite page status region for state changes. The playback
 countdown is `aria-hidden`, so a screen reader does not hear a number update
-every second. Tabs use a roving tabindex and Arrow, Home, and End keys. The stage
-is a focusable region. Nudge buttons have full labels. The skip links target the
-active task and the controls. Focus rings are visible, and reduced-motion preferences
-disable smooth scrolling and transitions.
+every second. The source tabs use a roving tabindex. The Preview stage is
+focusable, and Left and Right select a tablet on it. Nudge buttons have full
+labels. The skip link targets the preview. Focus rings are visible, and
+reduced-motion preferences disable smooth scrolling and transitions.
 
 Phone layouts keep the task forms and explicit commands. Focus stays on an
 edited field during status refresh. A command that hides its trigger returns
@@ -1050,10 +1054,9 @@ remain separate from the emulated browser evidence.
 > explicit Apply is easier to reason about than a form that writes on every
 > keystroke. The dirty state can be shown, cancelled, and tested.
 
-**Trace it.** Read `frontend/controller/physical.html`, then `init`, `showTab`,
-`selectDevice`, and `applyLayout` in `physical.js`. Follow the module factories
-into `operator-state.js`, `operator-grid.js`, `operator-content.js`, and
-`operator-measurements.js` for their respective owners.
+**Trace it.** Read `frontend/controller-app/src/App.tsx`, then the `index.tsx`
+under `src/features/{sources,board,tablet,measure,server}/`. Follow writes through
+`src/state/commands/run.ts` and the session in `src/session/session.ts`.
 
 ## Security and deployment
 
@@ -1140,8 +1143,8 @@ uv sync
 make dev          # http://127.0.0.1:8000
 ```
 
-The app serves the client, the physical console, and the legacy console from
-static mounts. Uploads are disabled unless you configure a mode. This is a
+The app serves the client, the controller app, and the compatibility editor
+from static mounts. Uploads are disabled unless you configure a mode. This is a
 development and single-laptop mode, not a trusted LAN deployment.
 
 The two-origin mode uses the hotspot wrapper:
