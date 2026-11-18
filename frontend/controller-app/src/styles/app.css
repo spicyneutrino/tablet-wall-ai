@@ -127,7 +127,7 @@ button, a, summary, [role="tab"] { touch-action: manipulation; }
 
 .btn { display: inline-flex; align-items: center; justify-content: center; gap: 8px; height: var(--control-h); padding: 0 12px; border: 0; border-radius: var(--radius-control);
   background: transparent; color: var(--text); font: inherit; font-size: var(--text-label); line-height: var(--leading-label); font-weight: 600; white-space: nowrap; cursor: pointer;
-  transition: background-color var(--dur-fast) var(--ease-out), color var(--dur-fast) var(--ease-out), box-shadow var(--dur-fast) var(--ease-out); }
+  transition: color var(--dur-fast) var(--ease-out), box-shadow var(--dur-fast) var(--ease-out); }
 .btn-primary { background: var(--primary); color: var(--on-primary); box-shadow: var(--shadow-raised); }
 .btn-primary:hover:not(:disabled):not([aria-disabled="true"]), .btn-primary.is-hover { background: var(--primary-hover); }
 .btn-tonal { background: var(--tonal); }
@@ -171,7 +171,7 @@ button, a, summary, [role="tab"] { touch-action: manipulation; }
 .src:focus-visible { outline-offset: 6px; }
 .src:disabled { cursor: not-allowed; }
 
-.row { display: flex; align-items: center; gap: 12px; width: 100%; min-height: 56px; padding: 8px 12px; border: 0; border-radius: var(--radius-control); background: transparent; color: var(--text); text-align: left; font: inherit; cursor: pointer; transition: background-color var(--dur-fast) var(--ease-out); }
+.row { display: flex; align-items: center; gap: 12px; width: 100%; min-height: 56px; padding: 8px 12px; border: 0; border-radius: var(--radius-control); background: transparent; color: var(--text); text-align: left; font: inherit; cursor: pointer; }
 .row:hover, .row.is-hover { background: var(--tonal); }
 .row[aria-current="true"] { background: var(--sel-bg); }
 .num { display: inline-grid; place-items: center; width: 28px; height: 28px; flex: none; border-radius: var(--radius-pill); background: var(--tonal); color: var(--text); font-size: var(--text-label); font-weight: 700; }
