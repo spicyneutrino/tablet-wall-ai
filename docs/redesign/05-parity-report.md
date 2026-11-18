@@ -120,3 +120,15 @@ newly collected tests are `tests/test_redesign_driver*.py` and
 - Drivers with an unchanged named-check set: `fleet_soak`, `audit_round`, `decode_probe`, `video_transitions_run`, `reconnect_exclusions_run`, `controller_run`.
 - `field_run`, `health_run`, `recovery_acceptance_run` and `video_run` previously aborted before emitting their full check lists; after the conversion they reach their tablet/server checks. `group_recovery_run` lost one old-console presentation check. All controller-UI-only assertions without server evidence were retired and are listed above.
 - `recovery_run` is a long soak and `experience_acceptance` is broken at import; both were converted/verified without a full run.
+
+## Final gate (2026-11-18)
+
+- `uv run pytest -q`: see commit message for the count (1874 passed after the switch-over removed the old drivers' self-tests).
+- Node contract tests: Controller module, wall sizing and URL locality checks passed.
+- `make sim`: 23 of 23 scenarios, 1094 of 1094 checks passed; 18 self-tests passed.
+- `make app-check`: passed (typecheck, unit tests, reproducible committed build).
+- Playwright, Chromium (phone, tablet, desktop): 273 passed, 0 failed, 0 skipped.
+- Playwright, WebKit (content and arrangement parity rows): 18 passed, 0 failed.
+- `grep -rn "test.fixme" e2e`: 0.
+- Backend and tablet client unchanged since the rebuild began (`git diff --stat` on main.py, tabletwall, frontend/client prints nothing).
+- Owner decisions: 25% laptop wall coverage (X1), screenshot set approved (X5), wording aligned with the mockup, How to restore added.
