@@ -126,6 +126,15 @@ class Api:
                                    guarded=True)
         return preview_response, apply_response
 
+    def grid(self, command: dict[str, Any]) -> tuple[httpx.Response, httpx.Response]:
+        """Preview then apply a grid, sending the preview's connection guards."""
+        preview_response = self.post("/api/v3/grid/preview", command, self.etag(), guarded=True)
+        preview_response.raise_for_status()
+        preview = preview_response.json()
+        apply_response = self.post("/api/v3/grid", {**command, "guards": preview["guards"]},
+                                   preview["base_etag"], guarded=True)
+        return preview_response, apply_response
+
     def playlist(self, items: list[dict[str, Any]], *, loop: bool = False) -> httpx.Response:
         response = self.http.get("/api/v3/playlist")
         response.raise_for_status()
