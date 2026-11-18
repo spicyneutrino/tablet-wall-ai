@@ -20,20 +20,26 @@ function moved(kind: Layout['kind'], a: Entry, b: Entry) {
   return (['center_x_mm', 'center_y_mm', 'nudge_x_mm', 'nudge_y_mm'] as const).some(key => hundredths(a[key]) !== hundredths(b[key]));
 }
 
-export function describeLayoutChange(from: Layout, to: Layout): string {
+export function describeLayoutChange(from: Layout, to: Layout, names: Record<string, string> = {}): string {
   if (from.kind !== to.kind) return `Switched to a ${to.kind} layout`;
   if (layoutSignature(from) === layoutSignature(to)) return 'Layout unchanged';
   const before = entriesOf(from), after = entriesOf(to);
   const shared = Object.keys(after).filter(id => before[id]);
   const count = (test: (a: Entry, b: Entry) => boolean) => shared.filter(id => test(before[id]!, after[id]!)).length;
+  const resized = to.kind === 'logical' ? shared.filter(id => before[id]!.w !== after[id]!.w || before[id]!.h !== after[id]!.h) : [];
   const counts: [number, string][] = [
     [count((a, b) => moved(to.kind, a, b)), 'moved'],
     [to.kind === 'physical' ? count((a, b) => a.mount_angle !== b.mount_angle) : 0, 'turned'],
-    [to.kind === 'logical' ? count((a, b) => a.w !== b.w || a.h !== b.h) : 0, 'resized'],
+    [resized.length, 'resized'],
     [Object.keys(after).filter(id => !before[id]).length, 'added'],
     [Object.keys(before).filter(id => !after[id]).length, 'removed'],
   ];
-  const parts = counts.filter(([n]) => n).map(([n, word]) => word === 'moved' ? `${plural(n, 'tablet')} moved` : `${n} ${word}`);
+  const parts = counts.flatMap(([n, word]) => {
+    if (!n) return [];
+    if (word === 'moved') return [`${plural(n, 'tablet')} moved`];
+    if (word === 'resized' && (n === 1 || n === 2)) return resized.map(id => `${names[id] ?? 'Tablet'} now ${after[id]!.w} × ${after[id]!.h}`);
+    return [`${n} ${word}`];
+  });
   if (!parts.length && JSON.stringify(from.sizing) !== JSON.stringify(to.sizing)) parts.push('spacing changed');
   if (!parts.length && from.kind === 'logical' && to.kind === 'logical' && (from.width !== to.width || from.height !== to.height)) parts.push('wall size changed');
   const text = parts.join(', ') || 'layout changed';
@@ -71,16 +77,16 @@ export function conflictItems(state: WallStore): ConflictItem[] {
   if (!config) return [];
   const { arrangement, content, grid } = state;
   const items: ConflictItem[] = [];
+  const names = Object.fromEntries(boardView(state.server, state.clock.nowMono).tablets.map(tablet => [tablet.id, tablet.name]));
   if (arrangement?.conflict) items.push({ kind: 'arrangement', title: 'Layout',
-    wall: describeLayoutChange(arrangement.base, config.layout),
-    mine: describeLayoutChange(arrangement.base, arrangement.draft), keepable: true });
+    wall: describeLayoutChange(arrangement.base, config.layout, names),
+    mine: describeLayoutChange(arrangement.base, arrangement.draft, names), keepable: true });
   if (content.conflict && content.selection) items.push({ kind: 'content', title: 'Image',
     wall: describeScene(config.scene.content), mine: describeScene(content.selection), keepable: !content.savedScene });
   if (grid?.stale) items.push({ kind: 'grid', title: 'Grid', wall: 'The wall or a tablet changed after your preview',
     mine: `${grid.command.columns} × ${grid.command.rows} grid, ${plural(grid.command.device_ids.length, 'tablet')}`, keepable: true });
   const forms = Object.values(state.forms).filter(form => form?.conflict);
   if (forms.length) {
-    const names = Object.fromEntries(boardView(state.server, state.clock.nowMono).tablets.map(tablet => [tablet.id, tablet.name]));
     for (const form of forms) { const item = form && formItem(state, form, names); if (item) items.push(item); }
   }
   return items;

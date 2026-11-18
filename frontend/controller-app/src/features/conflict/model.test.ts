@@ -29,7 +29,7 @@ function wallWith(layout: Layout, overrides: Partial<WallStore> = {}): WallStore
 describe('describeLayoutChange', () => {
   it('counts what moved, turned, resized, added and removed', () => {
     const from = logical({ [A]: { x: 0, y: 0 }, [B]: { x: 10, y: 0 } });
-    expect(describeLayoutChange(from, logical({ [A]: { x: 5, y: 0 }, [B]: { x: 10, y: 0, w: 20 } }))).toBe('1 tablet moved, 1 resized');
+    expect(describeLayoutChange(from, logical({ [A]: { x: 5, y: 0 }, [B]: { x: 10, y: 0, w: 20 } }))).toBe('1 tablet moved, Tablet now 20 × 10');
     expect(describeLayoutChange(from, logical({ [A]: { x: 0, y: 0 } }))).toBe('1 removed');
     expect(describeLayoutChange(physical({ [A]: slot(0) }), physical({ [A]: slot(40, 90), [B]: slot(80) }))).toBe('1 tablet moved, 1 turned, 1 added');
   });
@@ -38,6 +38,15 @@ describe('describeLayoutChange', () => {
     expect(describeLayoutChange(from, physical({ [A]: slot(0) }))).toBe('Switched to a physical layout');
     expect(describeLayoutChange(from, logical({ [A]: { x: 0, y: 0 } }, 200))).toBe('Wall size changed');
     expect(describeLayoutChange(from, logical({ [A]: { x: 0, y: 0 } }))).toBe('Layout unchanged');
+  });
+  it('names up to two resized tablets with their new size', () => {
+    const third = '00000000-0000-4000-8000-000000000003';
+    const from = logical({ [A]: { x: 0, y: 0 }, [B]: { x: 10, y: 0 } });
+    const names = { [A]: 'Wall left', [B]: 'Wall right' };
+    expect(describeLayoutChange(from, logical({ [A]: { x: 0, y: 0, w: 20 }, [B]: { x: 10, y: 0 } }), names)).toBe('Wall left now 20 × 10');
+    expect(describeLayoutChange(from, logical({ [A]: { x: 0, y: 0, w: 20 }, [B]: { x: 10, y: 0, w: 20 } }), names)).toBe('Wall left now 20 × 10, Wall right now 20 × 10');
+    const three = logical({ [A]: { x: 0, y: 0 }, [B]: { x: 10, y: 0 }, [third]: { x: 20, y: 0 } });
+    expect(describeLayoutChange(three, logical({ [A]: { x: 0, y: 0, w: 20 }, [B]: { x: 10, y: 0, w: 20 }, [third]: { x: 20, y: 0, w: 20 } }), names)).toBe('3 resized');
   });
 });
 
