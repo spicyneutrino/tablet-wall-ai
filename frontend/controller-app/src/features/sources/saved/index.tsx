@@ -227,7 +227,7 @@ export default function Saved() {
 
   return <>
     <div className="relative h-[114px] min-w-0">
-      <div ref={stripRef} className="source-strip absolute inset-x-0 top-0" role="group"
+      <div ref={stripRef} className="source-strip absolute inset-0" role="group"
         aria-label="Saved content" aria-busy={status === 'loading' || undefined}>
         {!config && unreachable ? <p className="t-caption self-center">Saved content is unavailable until the server is back. The console reconnects by itself.</p>
           : status === 'loading' ? [0, 1, 2].map(index => <div className="source-preview" aria-hidden="true" key={index}>

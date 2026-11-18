@@ -68,7 +68,7 @@ test('C8 Test patterns (grid, black) and colours (all tablets, one tablet) reach
   recorded.length = 0;
   await page.getByRole('button', { name: 'Calibration grid' }).click();
   await expect(page.getByRole('button', { name: 'Calibration grid' })).toHaveAttribute('aria-pressed', 'true');
-  await expect(page.locator('section[aria-label="Preview"] .monitor-description').first()).toHaveText('Calibration grid');
+  await expect(page.locator('section[aria-label="Preview"] .monitor-description').first()).toHaveText('Calibration grid, not on the wall yet');
   expect(recorded).toEqual([]);
 
   const gridEtag = (await api.config()).etag;

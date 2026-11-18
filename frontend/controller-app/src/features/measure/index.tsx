@@ -185,6 +185,7 @@ function MeasureScreen({ id }: { id: DeviceId }) {
   }
   if (!config) return <p role="status">Loading measurements… Wait for wall status, then try again.</p>;
   const field = (key: string, label: string) => <MeasureField name={key} label={label} value={values[key] ?? ''} onChange={change} error={errors[key]} />;
+  const pairedBezels = Number(values.profileBezelLeft) === Number(values.profileBezelRight) && Number(values.profileBezelTop) === Number(values.profileBezelBottom);
   const summaries = [model?.label ?? (choice === 'manual' ? 'Manual' : ''), `${values.profileActiveWidth} × ${values.profileActiveHeight} mm`,
     review.kind === 'review' && review.choice === 'use_ruler' ? 'Ruler values' : 'Model values'];
   return <section className="measure-stepper" aria-labelledby="measure-title">
@@ -193,7 +194,7 @@ function MeasureScreen({ id }: { id: DeviceId }) {
     <div><h2 className="t-title" id="measure-title">Measure {name}</h2><p className="t-caption">{model?.label ?? (choice === 'manual' ? 'Manual measurements' : tablet?.model)}. Nothing is saved until the last step.</p></div>
     <fieldset disabled={busy} className="measure-controls"><ol className="measure-steps">
       {steps.map((item, i) => <li key={item} aria-current={step === item ? 'step' : undefined} data-done={i < index || undefined}>
-        <div className="measure-step-head"><span className="step-dot">{i < index ? <><Check aria-hidden="true" /><span className="sr-only">Done</span></> : i + 1}</span>
+        <div className="measure-step-head"><span className="step-dot">{i < index ? <><Check aria-hidden="true" /><span className="sr-only">Done:</span></> : i + 1}</span>
           <h3 className="t-label" ref={step === item ? heading : undefined} tabIndex={step === item ? -1 : undefined}>{stepNames[i]}</h3>
           {i < index ? <span className="t-caption measure-summary">{summaries[i]}</span> : i === 2 ? <span className="tag">Optional</span> : null}</div>
         {step === item ? <div className="measure-step-body">
@@ -210,7 +211,7 @@ function MeasureScreen({ id }: { id: DeviceId }) {
             }
             setErrors({}); setMessage('');
           }}><option value="">Choose a confirmed model</option>{Object.entries(config.tablet_models).map(([key, model]) => <option key={key} value={key}>{model.label}</option>)}<option value="manual">Other, enter sizes</option></Select>}</Field>
-            <p className="t-body t-muted">The browser can suggest a model. Confirm the hardware; its screen size and bezels can be corrected next.</p></>
+            <p className="t-body t-muted">The browser can suggest a model. The model gives the screen size and bezels; you can correct them next.</p></>
             : item === 'profile' ? <><p className="t-body t-muted">{model ? `From the ${model.label} model. Change them only if a ruler says otherwise.` : 'Measure the visible screen and the distance from its edges to the case.'}</p>
               <fieldset className="measure-grid"><legend className="t-label">Visible screen</legend>{field('profileActiveWidth', 'Width')}{field('profileActiveHeight', 'Height')}</fieldset>
               <fieldset className="measure-grid"><legend className="t-label">Bezel, screen edge to case edge</legend>
@@ -220,11 +221,12 @@ function MeasureScreen({ id }: { id: DeviceId }) {
                 if (edges) { change('profileBezelRight', values.profileBezelLeft ?? '0'); change('profileBezelBottom', values.profileBezelTop ?? '0'); }
                 setEdges(!edges);
               }}>{edges ? 'Use paired edges' : 'Set each edge separately'}</Button></>
-            : item === 'ruler' ? <RulerStep values={values} change={change} errors={errors} url={address.url} addressLoading={address.loading}
+            : item === 'ruler' ? <RulerStep name={name} values={values} change={change} errors={errors} url={address.url} addressLoading={address.loading}
               review={review} stale={stale} check={() => void check()} canCheck={!!viewport && !!latestProfile(config, id)}
               decide={choice => setReview(current => current.kind === 'review' ? { ...current, choice } : current)} />
-            : <><dl className="measure-review t-body"><dt>Screen</dt><dd>{summaries[1]}</dd><dt>Bezels</dt><dd>{values.profileBezelLeft} / {values.profileBezelTop} / {values.profileBezelRight} / {values.profileBezelBottom} mm <span className="t-caption">left / top / right / bottom</span></dd>
-              <dt>Checked by</dt><dd>{review.kind === 'review' && review.choice === 'use_ruler' ? 'Ruler, each axis measured' : 'Supplied measurements'}</dd></dl>
+            : <><dl className="measure-review t-body"><dt>Screen</dt><dd>{summaries[1]}</dd><dt>Bezels</dt><dd>{pairedBezels ? `${values.profileBezelLeft} mm sides, ${values.profileBezelTop} mm top and bottom`
+                : <>{values.profileBezelLeft} / {values.profileBezelTop} / {values.profileBezelRight} / {values.profileBezelBottom} mm <span className="t-caption">left / top / right / bottom</span></>}</dd>
+              <dt>Checked by</dt><dd>{review.kind === 'review' && review.choice === 'use_ruler' ? `Ruler, ±${Number(Math.max(...review.results.map(result => result.extrapolated_uncertainty.measured_mm)).toFixed(2))} mm` : 'Supplied measurements'}</dd></dl>
               <p className="t-body t-muted">Saving adds profile and calibration revisions. Existing layout pins stay unchanged. Apply a layout with the new revisions to change the wall.</p>
               <AdvancedFields values={values} errors={errors} change={change} /></>}
         </div> : null}

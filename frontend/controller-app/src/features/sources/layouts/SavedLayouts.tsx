@@ -224,7 +224,7 @@ export default function SavedLayouts() {
 
   return <>
     <div className="relative h-[114px] min-w-0">
-      <div ref={stripRef} className="source-strip absolute inset-x-0 top-0" role="group" aria-label="Saved arrangements" aria-busy={status === 'loading' || undefined}>
+      <div ref={stripRef} className="source-strip absolute inset-0" role="group" aria-label="Saved arrangements" aria-busy={status === 'loading' || undefined}>
         {!config && unreachable ? <p className="t-caption self-center">Saved arrangements are unavailable until the server is back. The console reconnects by itself.</p>
           : status === 'loading' ? [0, 1, 2].map(index => <div className="source-preview" aria-hidden="true" key={index}>
           <span className="thumb skel" /><span className={`skel h-3 ${['w-20', 'w-16', 'w-12'][index]}`} /></div>) : <>

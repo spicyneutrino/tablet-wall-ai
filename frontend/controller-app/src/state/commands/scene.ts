@@ -1,3 +1,4 @@
+import { PICK_A_SOURCE } from '../../copy';
 import { ConfigSchema } from '../../api/config';
 import type { SceneInput } from '../../api/scene';
 import type { Session } from '../../session/session';
@@ -6,7 +7,7 @@ import { run } from './run';
 
 export function show(store: WallStoreApi, session: Session) {
   const selection = store.getState().content.selection;
-  if (!selection) return Promise.resolve({ kind: 'rejected' as const, status: 409, message: 'Pick a source to preview it.' });
+  if (!selection) return Promise.resolve({ kind: 'rejected' as const, status: 409, message: PICK_A_SOURCE });
   const content: SceneInput = selection.type === 'image'
     ? { type: 'image', asset: selection.asset, fit: selection.fit, background: selection.background }
     : { type: selection.type };

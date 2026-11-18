@@ -113,7 +113,7 @@ test('C6 Upload: progress, a refusal message, and an uncertain state on timeout,
   // The server decides the type: a real 415 becomes a refusal on its row.
   await input.setInputFiles({ name: 'banner.heic', mimeType: 'image/heic', buffer: Buffer.from('not an image') });
   const refused = queue.getByRole('listitem').filter({ hasText: 'banner.heic' });
-  await expect(refused.getByText('This file type is not accepted')).toBeVisible();
+  await expect(refused.getByText('Not uploaded: only PNG and JPEG. Export it as PNG and try again.')).toBeVisible();
   // The refused row shows its size once, under the name, and nothing is left to upload.
   await expect(refused.getByText('12 B', { exact: true })).toHaveCount(1);
   await expect(refused.getByRole('button', { name: 'Cancel upload of banner.heic' })).toHaveCount(0);

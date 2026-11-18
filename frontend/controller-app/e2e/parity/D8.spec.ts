@@ -35,7 +35,7 @@ test('D8 The Next step card shows the highest-priority problem and its action wo
   const card = sidebar.getByRole('alert');
   await expect(card).toHaveCount(1);
   await expect(card.locator('.note-title')).toHaveText(`Next step: bring ${offlineName} back`);
-  await expect(card).toContainText('Wake the tablet and it reconnects by itself.');
+  await expect(card).toContainText(/Offline for .+\. Wake it and it reconnects by itself\./);
   await card.getByRole('button', { name: 'Show tablet' }).click();
   await expect(offlineRow).toBeFocused();
   await expect(offlineRow).toHaveAttribute('aria-current', 'true');

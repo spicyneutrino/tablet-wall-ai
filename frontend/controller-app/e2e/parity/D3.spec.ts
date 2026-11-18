@@ -53,7 +53,7 @@ test('D3 A second controller\'s write marks the ETag stale. With a dirty draft, 
     expect(await stageWidth(mine, 'onwall')).toBeGreaterThan(await stageWidth(mine, 'preview'));
     expect((await axe(mine)).violations).toEqual([]);
     await expect(apply).toBeDisabled();
-    await expect(mine.getByText('Review the wall change first.')).toBeVisible();
+    await expect(mine.getByText('Review the change first.')).toBeVisible();
     expect(sent).toEqual([]);
 
     await banner.getByRole('button', { name: 'Use theirs', exact: true }).click();

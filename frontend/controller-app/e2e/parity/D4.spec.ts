@@ -104,7 +104,7 @@ test('D4 Server restart (new generation): the new snapshot is adopted, drafts ar
     expect(await width('onwall')).toBeGreaterThan(oldWall);
     expect(await width('onwall')).toBeLessThan(draftWidth);
     await expect(apply).toBeDisabled();
-    await expect(page.getByText('Review the wall change first.')).toBeVisible();
+    await expect(page.getByText('Review the change first.')).toBeVisible();
     await banner.getByRole('button', { name: 'Keep mine', exact: true }).click();
     await expect(banner).toHaveCount(0);
     await expect(apply).toBeEnabled();

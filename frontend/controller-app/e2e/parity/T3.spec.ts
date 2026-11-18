@@ -45,7 +45,7 @@ test('T3 Batch commands report completed, untouched, conflict and uncertain corr
   await expect(page.getByText('The last change was not confirmed. Refresh status first.').first()).toBeVisible();
 
   // Refresh status clears the latch, then a real external durable change makes the third write conflict.
-  await page.getByRole('button', { name: 'Refresh status', exact: true }).click();
+  await page.getByRole('button', { name: 'Refresh', exact: true }).click();
   await expect(identify).not.toHaveAttribute('aria-disabled', 'true');
   await page.route(`**/api/v3/devices/${ids[2]}/identify`, async route => {
     const before = await api.config();

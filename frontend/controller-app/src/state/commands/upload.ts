@@ -3,7 +3,7 @@ import type { ManagedAsset } from '../../api/images';
 import { paths } from '../../api/paths';
 
 export const UPLOAD_TIMEOUT_MS = 120_000;
-export const UPLOAD_REFUSED = 'This file type is not accepted';
+export const UPLOAD_REFUSED = 'Not uploaded: only PNG and JPEG. Export it as PNG and try again.';
 export const UPLOAD_FAILED = 'Upload failed. Try again.';
 export const UPLOADS_OFF = 'Uploads are off on this server';
 
