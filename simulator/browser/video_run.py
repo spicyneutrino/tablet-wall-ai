@@ -481,7 +481,7 @@ async def main(artifacts: Path) -> int:
         saved_playlist = api.playlist([
             {"asset": descriptor["id"], "dwell_ms": descriptor["durationMs"]},
             {"asset": assets["red"], "dwell_ms": 1000},
-        ])
+        ], loop=True)
         check("the editor adds a video and a still from the library",
               saved_playlist.status_code == 200, text=saved_playlist.text[-400:])
         playlist = http.get("/api/v3/playlist").json()["playlist"]
@@ -492,6 +492,11 @@ async def main(artifacts: Path) -> int:
               dwell=playlist["items"][0]["dwell_ms"], duration=descriptor["durationMs"])
 
         started = api.playback_start()
+
+        async def playing() -> bool:
+            return http.get("/api/v3/playback").json().get("state") == "playing"
+
+        await wait_until(playing, 20, "the video session never reached playing")
         check("start from the editor reaches playing", started.status_code == 200)
         session = http.get("/api/v3/playback").json()
         report["session"] = session
@@ -557,8 +562,10 @@ async def main(artifacts: Path) -> int:
         check("pause freezes the video elements",
               all(v["paused"] for s in paused_state.values() for v in s["videos"] if v["visible"]), states=paused_state)
 
-        api.http.post("/api/v3/playback/resume", headers={
-            "If-Match": str(http.get("/api/v3/playback").json()["version"])})
+        resume_write = api.playback_start()
+        check("resume from the editor leaves paused",
+              resume_write.status_code == 200
+              and http.get("/api/v3/playback").json().get("state") != "paused")
         resumed: dict[str, dict[str, Any]] = {}
         for (page, _), name in zip(pages, names, strict=True):
             probe = await wait_advancing(page, timeout=20)

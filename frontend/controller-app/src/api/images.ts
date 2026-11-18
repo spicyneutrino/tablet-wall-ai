@@ -8,6 +8,7 @@ export const ImagesSchema = z.looseObject({ images: z.array(ImageSchema) });
 export const TestPatternCommandSchema = z.strictObject({ pattern: z.enum(['grid', 'black']) });
 export const TestPatternSchema = ImageSchema.extend({ etag: ConfigEtagSchema, metadata: z.record(z.string(), z.unknown()) });
 export const ManagedAssetSchema = z.looseObject({ id: AssetIdSchema, name: z.string(), kind: z.enum(['image', 'video']).optional(),
+  durationMs: z.int().positive().optional(),
   url: z.string(), intrinsicWidth: z.int().positive(), intrinsicHeight: z.int().positive(),
   thumbnail: z.looseObject({ url: z.string() }).nullable() });
 export const UploadResponseSchema = z.looseObject({ state: z.literal('ready'), asset: ManagedAssetSchema });
