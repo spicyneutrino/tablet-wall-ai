@@ -1,5 +1,7 @@
 # X5 screenshot review
 
+**Owner approval, 2026-11-17:** the screenshot set in `docs/redesign/shots/approval/` is approved. The owner also asked for a "How to restore" help link in Backup and reset, and for the app's copy to match the mockup's wording where they differ.
+
 App baselines from `e2e/parity/X5.spec.ts`; mockups from `docs/redesign/mockups/final.html`.
 Sheets: `docs/redesign/shots/approval/app-<width>-<theme>.png` and `mock-<width>-<theme>.png`.
 Each app sheet was opened next to its matching mock sheet. Rows describe the light pair;
