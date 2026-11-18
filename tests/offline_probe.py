@@ -22,7 +22,7 @@ sys.path.insert(0, str(ROOT))
 
 from deploy import drill  # noqa: E402
 
-PAGES = ("/client/", "/controller/", "/controller/physical.html")
+PAGES = ("/client/", "/controller/", "/controller/app/", "/controller/experimental.html")
 URL_ATTRIBUTES = {"src", "href", "action", "data", "poster", "srcset", "formaction"}
 SCHEME_URL = re.compile(r"\b(?:https?|wss?)://([A-Za-z0-9][A-Za-z0-9.-]*)(?::\d+)?")
 CSS_URL = re.compile(r"url\(\s*['\"]?([^)'\"]+)|@import\s+['\"]([^'\"]+)", re.IGNORECASE)
@@ -83,7 +83,10 @@ def crawl(instance: drill.Instance) -> dict:
             references = parser.urls
         elif path.endswith(".css"):
             references = [a or b for a, b in CSS_URL.findall(text)]
-        executable_text = path.endswith(("/", ".html", ".js", ".css", ".svg"))
+        # The built app's strings (React doc links, licence banners, schema ids) are never
+        # fetched; its real requests are checked by the controller-app e2e guard.
+        executable_text = (path.endswith(("/", ".html", ".js", ".css", ".svg"))
+                           and not path.startswith("/controller/app/assets/"))
         for host in SCHEME_URL.findall(text) if executable_text else []:
             if host not in NAMESPACES and host != own_host:
                 foreign.append(f"{path}: {host}")

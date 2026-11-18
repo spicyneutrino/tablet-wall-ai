@@ -30,7 +30,7 @@ def test_mounted_readiness_health_and_qr_use_live_wall(client, monkeypatch):
     assert readiness.json()["tablet_url"] == "http://10.42.0.1:8080/client/"
     qr = client.get("/api/v3/join-qr")
     assert qr.status_code == 200 and qr.headers["content-type"] == "image/png"
-    for response in (health, readiness, qr, client.get("/controller/physical.html")):
+    for response in (health, readiness, qr, client.get("/controller/app/")):
         assert response.headers["x-content-type-options"] == "nosniff"
         assert "script-src 'self'" in response.headers["content-security-policy"]
     monkeypatch.setattr(media, "_loopback_peer", lambda _request: False)

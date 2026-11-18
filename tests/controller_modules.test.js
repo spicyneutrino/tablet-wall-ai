@@ -92,63 +92,16 @@ assert.equal(stageNodes.statusUndo.hidden, false);
 
 // Execute each page's classic scripts in markup order before DOMContentLoaded.
 // This catches missing dependencies and initialization cycles in the VM path.
-for (const page of ["index.html", "physical.html", "experimental.html"]) {
-    const geometryControls = new Set(["btn-match-shape", "view-zoom-fit", "view-zoom-2x", "logical-snap-enabled"]);
+for (const page of ["experimental.html"]) {
     const boot = vm.createContext({ window: {}, document: {
-        readyState: "loading", getElementById: id => geometryControls.has(id) ? { addEventListener() {} } : null,
+        readyState: "loading", getElementById: () => null,
         querySelector: () => null, querySelectorAll: () => [], addEventListener: () => {}
     } });
     const html = fs.readFileSync(path.join(__dirname, "../frontend/controller", page), "utf8");
-    if (page === "physical.html") for (const id of geometryControls) {
-        assert.ok(html.includes('id="' + id + '"'), "boot fixture geometry control exists in the real page: " + id);
-    }
-    if (page === "physical.html") {
-        assert.match(html, /<body class="physical" data-view-zoom="fit" data-mode="content">/,
-            "the initial view zoom state is the truthful Fit default");
-        const shape = html.slice(html.indexOf('id="arrange-shape"'), html.indexOf('id="arrange-custom"'));
-        assert.ok(shape.includes('id="grid-rows"') && shape.includes('id="grid-columns"'),
-            "custom grid rows and columns sit in the wall-shape group, not behind the order disclosure");
-        assert.ok(shape.indexOf('id="grid-rows"') < shape.indexOf('id="grid-2x2"'),
-            "custom rows and columns are adjacent to the presets they feed");
-        assert.ok(shape.includes('id="arrange-grid-heading"') && shape.includes('id="arrange-bounds-heading"'),
-            "the wall-shape group labels grid controls apart from bounds controls");
-        assert.match(html, /<details id="arrange-custom"[^>]*\bopen\b/,
-            "selected geometry and relative arrangement controls are expanded instead of behind a collapsed disclosure");
-        assert.ok(html.includes('id="arrange-model"') && html.includes('id="arrange-membership"'),
-            "order and mounting and model and measurements have separate groups");
-    }
     for (const match of html.matchAll(/<script src="([^"?]+)(?:\?[^\"]*)?"><\/script>/g)) {
         vm.runInContext(fs.readFileSync(path.join(__dirname, "../frontend/controller", match[1]), "utf8"), boot, { filename: match[1] });
     }
 }
-load("physical-playback.js");
-const playback = context.window.PhysicalPlayback.create({}).model;
-const occurrence = { playlist_revision: 3, item_index: 0, loop: 0 };
-const status = {
-    state: "playing", now_ms: 11000, current_effective_ms: 10000,
-    live: { current: { occurrence, asset: "frozen-video", kind: "video", duration_ms: 2500 } }
-};
-assert.equal(playback.liveSlotEntry(status, "current").asset, "frozen-video");
-assert.equal(playback.remainingDwell(status), 1500);
-assert.equal(playback.remainingDwell({ ...status, state: "paused", paused_at_ms: 10500, now_ms: 90000 }), 2000,
-    "paused dwell uses the pause instant rather than the current server clock");
-assert.equal(playback.remainingDwell({ ...status, state: "paused" }), null,
-    "an absent pause instant must not invent a countdown");
-assert.equal(playback.remainingDwell({ ...status, pending: {
-    occurrence: { ...occurrence, item_index: 1 }, effective_server_ms: 12000
-} }), 1000);
-assert.equal(playback.liveSlotEntry({ state: "armed", live: { current: status.live.current } }, "displayed"), null);
-assert.equal(playback.liveSlotEntry({ state: "playing", current: {
-    occurrence, asset_id: "legacy", media: { kind: "video", duration_ms: 3000 }
-} }, "current").duration_ms, 3000);
-const members = playback.memberState({
-    required: ["b", "a"], ready: ["a"], missing: [{ device_id: "b", reason: "offline" }],
-    excluded: ["c"], pending: { leases: { a: { ready: true } } }
-});
-assert.deepEqual([...members.required], ["b", "a"]);
-assert.equal(members.missing.get("b"), "offline");
-assert.equal(members.excluded.has("c"), true);
-assert.equal(members.ready.has("a"), true);
 load("controller-inventory.js");
 const inventoryState = {
     assets: [{ id: "still", name: "Still", kind: "still" }], mediaAssets: [],
@@ -181,127 +134,3 @@ assert.equal(inventoryController.model.normalizeAssets({}), null);
     assert.equal(inventoryRuntime.contentView, "image");
     assert.equal(inventoryRuntime.pendingContent, null);
 })().catch(error => { console.error(error); process.exitCode = 1; });
-load("operator-composition.js");
-load("operator-state.js");
-load("physical-stage.js");
-const physicalEditor = {
-    busy: false, mode: "arrange", selectedId: "tablet", draft: { slots: { tablet: {
-        center_x_mm: 10, center_y_mm: 20, nudge_x_mm: 0, nudge_y_mm: 0, mount_angle: 270
-    } } }
-};
-const physicalHistory = [];
-const physicalStage = context.window.PhysicalStage.create({
-    canManualEdit: () => true, beginManual: () => {},
-    mutateDraft: change => { physicalHistory.push(plain(physicalEditor.draft)); change(physicalEditor.draft); return true; },
-    state: physicalEditor, selectedSlot: () => physicalEditor.draft.slots.tablet,
-    clone: plain, finiteOr: (value, fallback) => Number.isFinite(Number(value)) ? Number(value) : fallback,
-    roundTo: (value, digits) => Math.round(value * 10 ** digits) / 10 ** digits,
-    formatNumber: String, pushUndo: before => physicalHistory.push(before),
-    afterDraftChange: () => {}, announce: () => {},
-    el: { stageSvg: { classList: { remove: () => {} }, hasPointerCapture: () => false } }
-});
-physicalStage.nudgeSelected(0.1, -0.2);
-assert.equal(physicalEditor.draft.slots.tablet.nudge_x_mm, 0.1);
-assert.equal(physicalHistory[0].slots.tablet.nudge_x_mm, 0, "history holds the draft before the nudge");
-physicalStage.rotateSelected();
-assert.equal(physicalEditor.draft.slots.tablet.mount_angle, 0);
-const preDrag = plain(physicalEditor.draft);
-physicalEditor.draft.slots.tablet.center_x_mm = 99;
-physicalEditor.drag = { id: "tablet", pointerId: 3, moved: true, preDraft: preDrag };
-physicalStage.onPointerCancel({ pointerId: 2 });
-assert.equal(physicalEditor.draft.slots.tablet.center_x_mm, 99, "a different pointer cannot cancel a drag");
-physicalStage.onPointerCancel({ pointerId: 3 });
-assert.equal(physicalEditor.draft.slots.tablet.center_x_mm, 10);
-assert.equal(physicalHistory.length, 2, "a cancelled drag adds no history entry");
-const healthState = {
-    roster: { a: { wake_lock: "unsupported" }, b: {} }, rosterCheckedAt: "2026-10-28T12:00:00Z",
-    rosterError: null, base: { slots: { a: {} } }, basePlacements: {}
-};
-const healthNodes = { deviceCount: {}, wallHealth: {}, btnWallHealth: { dataset: {} }, rosterStatus: { dataset: {} } };
-const health = context.window.PhysicalStage.create({
-    state: healthState, el: healthNodes, deviceRows: new Map([["a", {}], ["b", {}]]),
-    isOnline: id => id === "a", validPair: id => id === "a" ? {} : null
-});
-health.renderDeviceHealth();
-assert.equal(healthNodes.wallHealth.textContent, "1 online · 1 offline · 1 needs calibration · 1 unplaced");
-assert.equal(healthNodes.btnWallHealth.dataset.kind, "warn");
-assert.ok(!healthNodes.wallHealth.textContent.includes("wake-lock"), "unsupported wake lock is normal on HTTP");
-healthState.roster.a.wake_lock = "denied";
-health.renderDeviceHealth();
-assert.ok(healthNodes.wallHealth.textContent.includes("1 wake-lock warning"));
-healthState.rosterError = "503 unavailable";
-health.renderDeviceHealth();
-assert.equal(healthNodes.deviceCount.textContent, "1 of 2 last known online");
-assert.ok(healthNodes.wallHealth.textContent.startsWith("Last known:"));
-assert.ok(healthNodes.rosterStatus.textContent.includes("Showing last known status"));
-healthState.rosterCheckedAt = null;
-health.renderDeviceHealth();
-assert.equal(healthNodes.deviceCount.textContent, "Status unknown");
-assert.equal(healthNodes.wallHealth.textContent, "Tablet status unavailable");
-
-for (const kind of ["logical", "physical"]) {
-    for (const compact of [false, true]) {
-        for (const reveal of [false, true]) {
-            const selected = { selectedId: "Beta", busy: false, draft: { kind, placements: {}, slots: {} }, basePlacements: {}, roster: {} };
-            const selectionNodes = { inspectorEmpty: {}, inspectorBody: { hidden: true }, inspectorMissing: {}, btnAddSlot: {}, slotMissingText: {}, deviceCount: {}, wallHealth: {}, btnWallHealth: { dataset: {} }, rosterStatus: { dataset: {} } };
-            const notified = [];
-            const selectionStage = context.window.PhysicalStage.create({ state: selected, el: selectionNodes, deviceRows: new Map(),
-                latestProfile: () => null, deviceLabel: id => id, selectedSlot: () => null, validPair: () => null,
-                compactView: () => compact, showTab: () => {}, selectionChanged: () => notified.push(selected.selectedId) });
-            selectionStage.selectDevice("Beta", { reveal });
-            assert.deepEqual(notified, ["Beta"], "selection actions refresh independently of inspector kind, viewport and reveal");
-        }
-    }
-}
-
-{
-    const source = fs.readFileSync(path.join(__dirname, "../frontend/controller/physical.js"), "utf8");
-    const html = fs.readFileSync(path.join(__dirname, "../frontend/controller/physical.html"), "utf8");
-    const sizing = require("../frontend/controller/physical-sizing.js");
-    const nodes = new Map(), handlers = new Map(), invalid = new Map(), fields = new Map();
-    function node(id = "") {
-        const tag = Array.from(html.matchAll(/<input\b[^>]*>/g)).map(match => match[0])
-            .find(value => value.includes('id="' + id + '"')) || "";
-        return { id, value: "", dataset: { field: (tag.match(/data-field="([^"]+)"/) || [])[1] },
-            handlers: new Map(), append() {}, addEventListener(type, callback) { this.handlers.set(type, callback); } };
-    }
-    const draft = { kind: "logical", width: 3600, height: 2400, sizing: { mode: "fixed" },
-        placements: { a: { x: 0, y: 0, w: 900, h: 700, bezel: { top: 0, right: 0, bottom: 0, left: 0 } } } };
-    let errors = 0;
-    const sandbox = vm.createContext({ window: { PhysicalSizing: sizing }, logicalFields: fields,
-        logicalInvalid: invalid, state: { draft, selectedId: "a" },
-        clearLogicalError: input => invalid.delete(input), setLogicalError: () => { errors++; },
-        clearLogicalErrors: () => invalid.clear(), mutateDraft: callback => callback(draft),
-        renderLogicalEditor() {}, rotateSelected() {}, announce() {},
-        document: { addEventListener: (type, callback) => handlers.set(type, callback),
-            createElement: () => node(), getElementById: id => {
-                if (!nodes.has(id)) nodes.set(id, node(id));
-                return nodes.get(id);
-            } } });
-    const reconcile = source.slice(source.indexOf("    function reconcileLogicalErrors("),
-        source.indexOf("    function renderLogicalEditor("));
-    const bind = source.slice(source.indexOf("    let logicalResetPending ="),
-        source.indexOf("    function syncStageSummary("));
-    vm.runInContext(reconcile + bind + "\nbindLogicalEditor();", sandbox);
-    for (const [id, value, dimension] of [["logical-width", "1000", "width"], ["logical-height", "700", "height"]]) {
-        const input = nodes.get(id); input.value = value; invalid.set(input, "out of wall");
-        vm.runInContext("reconcileLogicalErrors(state.draft)", sandbox);
-        assert.equal(invalid.has(input), false, "real wall markup revalidates " + id);
-        assert.equal(draft[dimension], Number(value));
-    }
-    const width = fields.get("w"); width.dataset.deviceId = "a"; width.value = "0";
-    const button = { disabled: false };
-    handlers.get("pointerdown")({ target: { closest: () => button } });
-    width.handlers.get("change")();
-    assert.equal(errors, 0, "reset pointer intent avoids inserting a blur error before click");
-    handlers.get("pointerup")();
-    width.handlers.get("change")();
-    assert.equal(errors, 1, "later ordinary invalid changes are still reported");
-    handlers.get("pointerdown")({ target: { closest: () => button } });
-    handlers.get("pointercancel")();
-    width.handlers.get("change")();
-    assert.equal(errors, 2, "cancelled pointers do not suppress later validation");
-    handlers.get("pointerdown")({ target: { closest: () => ({ disabled: true }) } });
-    width.handlers.get("change")();
-    assert.equal(errors, 3, "disabled reset controls do not bypass validation");
-}

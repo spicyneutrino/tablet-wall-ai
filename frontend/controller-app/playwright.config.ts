@@ -23,7 +23,7 @@ export default defineConfig({
     { name: 'phone', use: { viewport: { width: 390, height: 844 } } },
     { name: 'tablet', use: { viewport: { width: 820, height: 1180 } } },
     { name: 'desktop', use: { viewport: { width: 1440, height: 900 } } },
-    { name: 'webkit-desktop', use: { browserName: 'webkit', viewport: { width: 1440, height: 900 }, reducedMotion: 'reduce' },
+    { name: 'webkit-desktop', use: { browserName: 'webkit', viewport: { width: 1440, height: 900 }, contextOptions: { reducedMotion: 'reduce' } },
       testIgnore: process.argv.some((arg) => arg === '--project=webkit-desktop' || arg === 'webkit-desktop') ? undefined : '**/*' },
   ],
   use: { ...devices['Desktop Chrome'],

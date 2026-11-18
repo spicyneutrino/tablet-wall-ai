@@ -184,7 +184,7 @@ def startup_checks(tablet: str, operator: str) -> None:
     status, _, _ = http_request(tablet, "/devices/register", "POST", "{}")
     if status != 422:
         raise RuntimeError(f"Registration check returned {status}, expected payload validation.")
-    for path in ("/controller/", "/wall", "/devices", "/ws/controller", "/docs"):
+    for path in ("/controller/app/", "/wall", "/devices", "/ws/controller", "/docs"):
         status, _, _ = http_request(tablet, path)
         if status != 403:
             raise RuntimeError(f"The tablet listener exposes an operator route: {path}.")
@@ -251,7 +251,7 @@ def preflight(settings: Settings, address: str, wifi_name: str | None,
     operator = f"http://127.0.0.1:{settings.backend_port}"
     print(f"Preflight: interface {settings.interface}; hotspot address {address}\n"
           f"  Tablet URL: {tablet}\n"
-          f"  Controller (this computer only): {operator}/controller/physical.html\n"
+          f"  Controller (this computer only): {operator}/controller/app/\n"
           f"  Image uploads: {'this computer only' if operator_uploads else 'disabled (use --operator-uploads for this launch)'}\n"
           f"  Wi-Fi network: {wifi_name or 'unknown'}\n"
           f"  Data and logs: {settings.data_dir} "
@@ -371,7 +371,7 @@ def _run(settings: Settings, address: str, config_path: Path, ownership_path: Pa
                 readiness = readiness_summary(operator)
                 print(f"Ready. Tablet page, redirect, registration, WebSocket, and route restrictions passed.\n"
                       f"Tablets on {settings.interface}: {tablet}/client/\n"
-                      f"Controller on this computer only: {operator}/controller/physical.html\n"
+                      f"Controller on this computer only: {operator}/controller/app/\n"
                       f"Wi-Fi network: {wifi_name or 'unknown'}\n"
                       f"Data and logs: {data}\nSettings: {config_path}\n"
                       "HTTP trial: keep tablet screens awake manually. Press Ctrl+C to stop.", flush=True)

@@ -287,7 +287,7 @@ def test_preflight_prints_the_actual_settings(tmp_path, capsys):
     hotspot.preflight(settings, "10.42.0.1", "Wall-Lab")
     output = capsys.readouterr().out
     assert "http://10.42.0.1:18080/client/" in output
-    assert "http://127.0.0.1:18000/controller/physical.html" in output
+    assert "http://127.0.0.1:18000/controller/app/" in output
     assert "Wi-Fi network: Wall-Lab" in output
     assert str(tmp_path / "wall") in output
     assert "Image uploads: disabled (use --operator-uploads for this launch)" in output
