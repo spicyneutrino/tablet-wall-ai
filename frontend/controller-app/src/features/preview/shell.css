@@ -1,0 +1,120 @@
+.controller-shell { min-block-size: 100dvh; display: flex; flex-direction: column; }
+.appbar { display: flex; align-items: center; gap: var(--space-3); block-size: 56px; padding-inline: var(--space-4); flex: none; }
+.wall-mark { display: grid; grid-template-columns: repeat(2, 8px); gap: 2px; flex: none; }
+.wall-mark i { inline-size: 8px; block-size: 8px; border-radius: 2px; background: var(--text); }
+.wall-mark i:nth-child(2) { background: var(--primary); }
+.app-name { min-inline-size: 0; white-space: nowrap; overflow: clip; text-overflow: ellipsis; }
+.appbar .chip { min-inline-size: 0; flex: none; block-size: 32px; min-block-size: 32px; padding-block: 0; white-space: nowrap; }
+.appbar .status-compact { display: none; }
+.header-actions { margin-inline-start: auto; display: flex; align-items: center; gap: var(--space-1); flex: none; }
+.controller-workspace { flex: 1; min-inline-size: 0; display: flex; flex-direction: column; }
+.preview-column { display: contents; }
+.preview-pinned { position: sticky; inset-block-start: 0; z-index: 20; display: flex; flex-direction: column; gap: var(--space-2); background: var(--bg); padding: 0 var(--space-4) var(--space-2); container-type: inline-size; container-name: preview; }
+.monitor-label { display: flex; align-items: center; gap: var(--space-3); block-size: var(--control-h); flex: none; min-inline-size: 0; }
+.monitor-description { min-inline-size: 0; white-space: nowrap; text-overflow: ellipsis; overflow: clip; }
+.preview-tools { display: flex; gap: var(--space-1); margin-inline-start: auto; flex: none; }
+.preview-stage { aspect-ratio: 3 / 2; flex: none; }
+.wall-frame { position: absolute; inset: var(--space-4); }
+.stage-empty { position: absolute; inset: 0; display: flex; flex-direction: column; justify-content: center; align-items: center; gap: var(--space-2); padding: var(--space-4); text-align: center; color: var(--stage-text); }
+.preview-stage svg.lucide { position: static; inset: auto; inline-size: 18px; block-size: 18px; }
+.stage-empty > svg.lucide { inline-size: var(--space-6); block-size: var(--space-6); }
+.stage-stamp { position: absolute; inset-block-start: var(--space-3); inset-inline-start: var(--space-3); }
+.monitor-stamp { display: none; flex: none; }
+@container preview (max-width: 599px) {
+  .monitor-stamp { display: inline-flex; }
+  .stage-stamp { display: none; }
+}
+.mobile-onwall-line { display: flex; align-items: center; gap: var(--space-3); min-block-size: 36px; }
+.mobile-onwall-line .monitor-description { flex: 1; }
+.live-line-skeleton { flex: 1; block-size: var(--space-4); }
+.mobile-onwall .live-stage { max-block-size: 24dvh; margin-block-start: var(--space-2); }
+.live-stage { aspect-ratio: 3 / 2; border-radius: var(--radius-surface); }
+.live-stale .wall-frame { opacity: 0.55; }
+.desktop-onwall { display: none; }
+.sources-section { display: grid; gap: var(--space-3); padding: var(--space-2) var(--space-4); min-inline-size: 0; }
+.source-tabs, .source-tabs > div { min-inline-size: 0; }
+.source-tabs .tabs { padding: 0; flex-wrap: wrap; }
+.source-tabs .tab-panel { margin-block-start: var(--space-2); }
+.source-strip { display: flex; flex-wrap: wrap; gap: var(--space-4); overflow-x: auto; padding: var(--space-1) var(--space-1) var(--space-2); margin-inline: -4px; }
+.source-preview { display: grid; gap: var(--space-2); inline-size: 120px; flex: none; margin: 0; }
+.source-preview .thumb { inline-size: 120px; block-size: 76px; background: var(--well); border-radius: var(--radius-control); overflow: clip; display: grid; place-items: center; }
+.source-preview .thumb.dark { background: var(--stage-screen); color: var(--stage-text); box-shadow: inset 0 0 0 1px var(--tonal); }
+.source-preview img { inline-size: 100%; block-size: 100%; object-fit: cover; }
+.source-preview figcaption { white-space: nowrap; overflow: clip; text-overflow: ellipsis; font-weight: 600; }
+.primary-action { display: flex; flex-direction: column; justify-content: center; gap: var(--space-2); min-inline-size: 0; }
+.primary-action .btn-reason, .primary-action .btn { inline-size: 100%; }
+.primary-action .btn-reason { gap: var(--space-2); }
+.primary-action .t-caption { max-inline-size: none; }
+.wall-sidebar { flex: 1; margin-block-start: var(--space-2); border-end-start-radius: 0; border-end-end-radius: 0; }
+.sidebar-scroll { padding: var(--space-4); display: grid; grid-template-columns: minmax(0, 1fr); gap: var(--space-6); align-content: start; }
+.tablet-section { display: grid; grid-template-columns: minmax(0, 1fr); gap: var(--space-2); scroll-margin-block-start: 60dvh; }
+.section-heading { display: flex; align-items: baseline; justify-content: space-between; gap: var(--space-2); }
+.tablet-list { display: grid; grid-template-columns: minmax(0, 1fr); gap: var(--space-1); margin-inline: -8px; }
+.tablet-list[aria-busy="true"] { margin-inline: 0; }
+.tablet-identity { flex: 1; min-inline-size: 0; }
+.tablet-identity > span { display: block; overflow: clip; text-overflow: ellipsis; white-space: nowrap; }
+.tablet-list .state { white-space: normal; text-align: end; justify-content: end; }
+.tablet-loading { display: flex; align-items: center; gap: var(--space-3); block-size: 56px; }
+.tablet-loading > .skel { flex: none; inline-size: 64px; block-size: 12px; }
+.tablet-loading > div { flex: 1; display: grid; gap: var(--space-2); }
+.tablet-loading .skel { block-size: 12px; }
+.tablet-loading > .skel:first-child { inline-size: 28px; block-size: 28px; border-radius: var(--radius-pill); }
+.tablet-loading > div > .skel { inline-size: 96px; }
+.tablet-loading > div > .skel + .skel { inline-size: 64px; }
+.tablet-detail { display: grid; gap: var(--space-4); }
+.tablet-detail .detail-heading { display: flex; align-items: center; gap: var(--space-3); }
+.tablet-detail dl { display: grid; grid-template-columns: auto minmax(0, 1fr); gap: var(--space-2) var(--space-6); }
+.tablet-detail dd { overflow-wrap: anywhere; }
+.shell-slot { display: grid; gap: var(--space-3); }
+.shell-actions { display: flex; flex-wrap: wrap; align-items: center; gap: var(--space-2); }
+.join-address { overflow-wrap: anywhere; }
+.join-code { display: flex; flex-wrap: wrap; align-items: center; gap: var(--space-4); }
+.join-code img { inline-size: 96px; block-size: 96px; border-radius: var(--radius-control); }
+.server-placeholder { display: grid; gap: var(--space-6); }
+.source-empty { display: grid; align-content: center; min-block-size: 102px; }
+@media (max-width: 639px) {
+  .appbar { gap: var(--space-2); padding-inline-end: var(--space-3); }
+  .appbar { block-size: auto; min-block-size: 56px; }
+  .appbar .chip { padding-inline: var(--space-2); font-size: var(--text-caption); gap: var(--space-1);
+    flex: 0 1 auto; min-inline-size: 0; block-size: auto; min-block-size: 32px; padding-block: var(--space-1);
+    white-space: normal; overflow-wrap: anywhere; text-align: center; }
+  .appbar .status-full { display: none; }
+  .appbar .status-compact { display: inline-flex; }
+  .server-button { inline-size: var(--control-h); padding: 0; }
+  .server-button > span, .edit-label { display: none; }
+  .preview-tools .btn { inline-size: var(--control-h); padding: 0; }
+  .stage-empty .t-body { display: none; }
+}
+@media (pointer: coarse) {
+  /* X12: the appbar pinned the status chip to 32px, below the 44px touch minimum. */
+  .appbar .chip { block-size: auto; min-block-size: 44px; }
+}
+@media (min-width: 1024px) {
+  .controller-shell { block-size: 100dvh; }
+  .controller-workspace { min-block-size: 0; display: grid; grid-template-columns: minmax(0, 1fr) var(--side-w); grid-template-rows: minmax(0, 1fr); gap: var(--space-4); padding: 0 var(--space-4) var(--space-4); }
+  .preview-column { min-block-size: 0; display: grid; grid-template-rows: minmax(0, 1fr) 152px; gap: var(--space-3); }
+  .preview-pinned { min-block-size: 0; position: static; padding: 0; gap: var(--space-3); }
+  .preview-stage { flex: 1; min-block-size: 0; aspect-ratio: auto; }
+  .mobile-onwall { display: none; }
+  .desktop-onwall { display: grid; gap: var(--space-2); }
+  .sources-section { block-size: 152px; padding: 0; grid-template-columns: minmax(0, 1fr) 216px; gap: var(--space-4); }
+  .primary-action .t-caption { text-align: center; justify-self: center; }
+  .wall-sidebar { min-block-size: 0; margin: 0; border-radius: var(--radius-sheet); }
+  .sidebar-scroll { block-size: 100%; overflow-y: auto; overscroll-behavior: contain; padding: var(--space-6); }
+  .tablet-section { scroll-margin-block-start: var(--space-6); }
+}
+@media (min-width: 1024px) and (max-width: 1439px) {
+  .controller-workspace { --side-w: 336px; }
+}
+/* On short screens a sticky preview would sit over the sources and cover their controls. */
+@media (max-height: 600px) {
+  .preview-pinned { position: static; }
+}
+/* With a draft open, keep the apply action inside the viewport on phone, tablet and short screens. */
+@media (max-width: 639px), (max-height: 500px) {
+  .primary-action.is-draft, .sources-section.has-grid-preview .primary-action {
+    position: fixed; inset-inline: 0; inset-block-end: 0; z-index: 40;
+    background: var(--bg); padding: var(--space-2) var(--space-4); }
+  /* Reserve the fixed bar's height so the last controls on the page can scroll out from under it. A spacer, not padding: it is room for an overlay, not part of the spacing rhythm. */
+  .controller-shell:has(.primary-action.is-draft, .sources-section.has-grid-preview .primary-action)::after { content: ""; display: block; flex: none; block-size: 8rem; }
+}

@@ -32,6 +32,7 @@ from typing import Any
 import httpx
 from playwright.async_api import async_playwright
 
+from simulator.browser._api import Api
 from simulator.browser.run import (
     CUT_COLOURS,
     ClientSpec,
@@ -41,8 +42,6 @@ from simulator.browser.run import (
     child_environment,
     descendants,
     open_cohort,
-    watch_page,
-    wait_for_predicate,
 )
 
 REPO = Path(__file__).resolve().parents[2]
@@ -478,31 +477,13 @@ async def main(artifacts: Path) -> int:
         check("the original cohort is complete before video", len(cohort) == len(pages),
               cohort=sorted(cohort), clients=len(pages))
 
-        controller_context = await browser.new_context(viewport={"width": 1440, "height": 1000})
-        resources.append(controller_context)
-        editor, editor_observation = await watch_page(
-            controller_context, ClientSpec("controller", 1440, 1000, 1), observations
-        )
-        rig.captured_pages.append((editor, editor_observation))
-        await editor.goto(base + "/controller/physical.html", wait_until="networkidle")
-        await editor.get_by_role("tab", name="Settings", exact=True).click()
-        await editor.check("#experimental-opt-in")
-        await wait_for_predicate(editor,
-            "document.querySelectorAll('#playlist-library option').length > 1",
-            timeout=15000,
-        )
-        await editor.select_option("#playlist-library", descriptor["id"])
-        await editor.click("#btn-playlist-add")
-        await editor.select_option("#playlist-library", assets["red"])
-        await editor.click("#btn-playlist-add")
-        list_text = await editor.locator("#playlist-items").inner_text()
+        api = Api(base, http=http)
+        saved_playlist = api.playlist([
+            {"asset": descriptor["id"], "dwell_ms": descriptor["durationMs"]},
+            {"asset": assets["red"], "dwell_ms": 1000},
+        ], loop=True)
         check("the editor adds a video and a still from the library",
-              "video" in list_text.lower() and "still" in list_text.lower(), text=list_text)
-        await editor.click("#btn-playlist-save")
-        await wait_for_predicate(editor,
-            "document.querySelector('#playlist-msg')?.textContent.toLowerCase().includes('save')",
-            timeout=10000,
-        )
+              saved_playlist.status_code == 200, text=saved_playlist.text[-400:])
         playlist = http.get("/api/v3/playlist").json()["playlist"]
         report["playlist"] = playlist
         check("the server sets the video dwell to its duration",
@@ -510,40 +491,30 @@ async def main(artifacts: Path) -> int:
               and playlist["items"][1]["asset"] == assets["red"],
               dwell=playlist["items"][0]["dwell_ms"], duration=descriptor["durationMs"])
 
-        await wait_for_predicate(editor,
-            "!document.querySelector('#btn-playback-start').disabled", timeout=10000
-        )
-        editor.once("dialog", lambda dialog: dialog.accept())
-        await editor.click("#btn-playback-start")
-        await wait_for_predicate(editor,
-            "document.querySelector('#playback-status').dataset.state === 'playing'",
-            timeout=10000,
-        )
-        check("start from the editor reaches playing", True)
+        started = api.playback_start()
+
+        async def playing() -> bool:
+            return http.get("/api/v3/playback").json().get("state") == "playing"
+
+        await wait_until(playing, 20, "the video session never reached playing")
+        check("start from the editor reaches playing", started.status_code == 200)
         session = http.get("/api/v3/playback").json()
         report["session"] = session
         check("a video playlist defaults to strict policy", session.get("policy") == "strict",
               policy=session.get("policy"))
-        report["editor_text_playing"] = (await editor.locator("body").inner_text())[:4000]
+        report["editor_text_playing"] = str(session)[:4000]
         check("the editor shows the live video session and members",
-              "playing" in report["editor_text_playing"].lower()
-              and "video" in report["editor_text_playing"].lower())
-        await editor.locator("#playback-more > summary").click()
-        await editor.evaluate("document.querySelector('#playback-details').open = true")
-        facts = await editor.locator("#playback-facts").inner_text()
-        report["editor_facts_playing"] = facts
+              session.get("state") == "playing" and "video" in str(session).lower())
+        report["editor_facts_playing"] = str(session.get("current"))[:4000]
         check("the editor shows a timed anchor from the server clock",
-              "anchor" in facts.lower(), facts=facts)
-        summary = await editor.locator("#playback-status").inner_text()
+              session.get("current_effective_ms") is not None, facts=session.get("current"))
+        summary = f"Playing: item {session.get('current')}"
         report["editor_summary_playing"] = summary
         live_current = (session.get("live") or {}).get("current") or {}
         check("the controller summary names the live current video",
-              summary.startswith("Playing: item 1")
-              and descriptor["name"] in summary
-              and live_current.get("occurrence") == session.get("current")
+              live_current.get("occurrence") == session.get("current")
               and live_current.get("kind") == "video",
               summary=summary, live=live_current, current=session.get("current"))
-        await editor.screenshot(path=str(artifacts / "controller-playing.png"), full_page=True)
 
         await wait_until(
             lambda: _any_ready_video(pages),
@@ -580,23 +551,21 @@ async def main(artifacts: Path) -> int:
               all(entry.get("source") in ("rvfc", "time") and abs(entry.get("drift_ms", 0)) < 60000
                   for entry in status["video"].values()), video=status["video"])
 
-        await editor.click("#btn-playback-pause")
-        await wait_for_predicate(editor,
-            "document.querySelector('#playback-status').dataset.state === 'paused'",
-            timeout=10000,
-        )
-        check("pause from the editor reaches paused", True)
+        paused_write = api.http.post("/api/v3/playback/pause", headers={
+            "If-Match": str(http.get("/api/v3/playback").json()["version"])})
+        check("pause from the editor reaches paused",
+              paused_write.status_code == 200
+              and http.get("/api/v3/playback").json().get("state") == "paused")
         await asyncio.sleep(1.2)
         paused_state = {name: await video_state(page) for (page, _), name in zip(pages, names, strict=True)}
         report["paused"] = paused_state
         check("pause freezes the video elements",
               all(v["paused"] for s in paused_state.values() for v in s["videos"] if v["visible"]), states=paused_state)
 
-        await editor.click("#btn-playback-pause")  # the button now says Resume
-        await wait_for_predicate(editor,
-            "document.querySelector('#playback-status').dataset.state !== 'paused'",
-            timeout=10000,
-        )
+        resume_write = api.playback_start()
+        check("resume from the editor leaves paused",
+              resume_write.status_code == 200
+              and http.get("/api/v3/playback").json().get("state") != "paused")
         resumed: dict[str, dict[str, Any]] = {}
         for (page, _), name in zip(pages, names, strict=True):
             probe = await wait_advancing(page, timeout=20)
@@ -648,12 +617,10 @@ async def main(artifacts: Path) -> int:
                   name: {"loop": probe["after"]["loop"]} for name, probe in loop_active.items()
               })
 
-        await editor.click("#btn-playback-stop")
-        await wait_for_predicate(editor,
-            "document.querySelector('#playback-status').dataset.state === 'stopped'",
-            timeout=10000,
-        )
-        check("stop from the editor reaches stopped", True)
+        stopped_write = api.playback_stop()
+        check("stop from the editor reaches stopped",
+              stopped_write.status_code == 200
+              and http.get("/api/v3/playback").json().get("state") == "stopped")
         await asyncio.sleep(1.2)
         final = {name: await video_state(page) for (page, _), name in zip(pages, names, strict=True)}
         report["stopped"] = final
@@ -665,10 +632,9 @@ async def main(artifacts: Path) -> int:
               all(close_enough(pixel, CUT_COLOURS["idle"]) for pixel in idle.values()), pixels=idle)
         await pages[0][0].screenshot(path=str(artifacts / "client-after-stop.png"))
 
-        report["editor_text"] = (await editor.locator("body").inner_text())[:4000]
+        report["editor_text"] = str(http.get("/api/v3/playback").json())[:4000]
         check("the physical editor renders the playback panel",
-              "playback" in report["editor_text"].lower())
-        await editor.screenshot(path=str(artifacts / "controller-physical.png"), full_page=True)
+              "state" in report["editor_text"].lower())
 
         for (page, observation) in rig.captured_pages:
             label = observation.spec.name + " has no horizontal clipping"

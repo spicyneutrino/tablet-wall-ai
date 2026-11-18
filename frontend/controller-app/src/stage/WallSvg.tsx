@@ -1,0 +1,94 @@
+import { useContext, useEffect, useId, useRef, useState } from 'react';
+import type { Scene } from '../api/scene';
+import { bounds, fitTransform } from '../domain/layout';
+import { panels } from '../domain/stagePanels';
+import type { Layout, PanelRect } from '../domain/stagePanels';
+import type { TabletState } from '../domain/status';
+import { TabletShape } from './TabletShape';
+import { MeasurementContext } from './MeasureOverlay';
+
+export type WallLayout = Extract<Layout, { kind: 'logical' }> |
+  (Extract<Layout, { kind: 'physical' }> & { bounds: PanelRect });
+export type WallStatus = Pick<TabletState, 'status' | 'text'> & { label?: string; number?: number };
+export type WallSvgProps = {
+  layout: WallLayout;
+  content: Scene | null;
+  profileFor: Parameters<typeof panels>[1];
+  statuses: Readonly<Record<string, WallStatus>>;
+  selected?: string;
+  preview?: boolean;
+  testPattern?: 'grid' | 'black' | null;
+  interactive: boolean;
+};
+
+export function WallSvg({ layout, content, profileFor, statuses, selected, interactive, testPattern, preview }: WallSvgProps) {
+  const context = useContext(MeasurementContext);
+  const measurement = interactive ? context : null;
+  const id = useId();
+  const svg = useRef<SVGSVGElement>(null);
+  const frame = layout.kind === 'physical' ? { kind: layout.kind, bounds: layout.bounds } :
+    { kind: layout.kind, width: layout.width, height: layout.height };
+  const wall = bounds(frame);
+  const margin = wall.width / 70;
+  const viewWidth = wall.width + 2 * margin, viewHeight = wall.height + 2 * margin;
+  const [scale, setScale] = useState(700 / wall.width);
+  useEffect(() => {
+    const observer = new ResizeObserver(([entry]) => {
+      if (entry && entry.contentRect.width > 0 && entry.contentRect.height > 0) {
+        setScale(Math.min(entry.contentRect.width / viewWidth, entry.contentRect.height / viewHeight));
+      }
+    });
+    if (svg.current) observer.observe(svg.current);
+    return () => observer.disconnect();
+  }, [viewWidth, viewHeight]);
+  const image = content?.type === 'image' && content.available !== false
+    && !testPattern ? fitTransform(frame, content) : null;
+  const list = panels(layout, profileFor).sort((a, b) =>
+    (statuses[a.id]?.number ?? Infinity) - (statuses[b.id]?.number ?? Infinity) || a.id.localeCompare(b.id));
+  const labelSize = Math.max(1, Math.min(16, ...list.flatMap((panel) => panel.missing ? [] : [
+    (panel.active.height * scale - 8) / 1.6,
+    (panel.active.width * scale - 12) / (Math.max(3, String(statuses[panel.id]?.number ?? statuses[panel.id]?.label ?? panel.id).length) * 0.65),
+  ]))) / scale;
+
+  return (
+    <svg ref={svg} role="group" aria-label="Wall preview" data-interactive={interactive}
+      viewBox={`${wall.x - margin} ${wall.y - margin} ${viewWidth} ${viewHeight}`}
+      preserveAspectRatio="xMidYMid meet"
+      style={{ display: 'block', inlineSize: '100%', blockSize: '100%', minInlineSize: 0, minBlockSize: 0,
+        background: 'var(--stage)', color: 'var(--stage-text)' }}>
+      <defs>
+        <pattern id={`${id}-grid`} width={layout.kind === 'physical' ? 50 : wall.width / 16}
+          height={layout.kind === 'physical' ? 50 : wall.height / 9} patternUnits="userSpaceOnUse">
+          <path d={`M0 ${layout.kind === 'physical' ? 50 : wall.height / 9} V0 H${layout.kind === 'physical' ? 50 : wall.width / 16}`}
+            fill="none" stroke="var(--stage-line)" strokeWidth={1 / scale} />
+        </pattern>
+        {testPattern === 'grid' ? <rect id={`${id}-pattern`} {...wall}
+          data-preview-pattern="grid" fill={`url(#${id}-grid)`} /> : null}
+        <clipPath id={`${id}-wall`} clipPathUnits="userSpaceOnUse"><rect {...wall} /></clipPath>
+        <pattern id={`${id}-hatch`} width={wall.width / 80} height={wall.width / 80} patternUnits="userSpaceOnUse" patternTransform="rotate(45)">
+          <path d={`M0 0 L0 ${wall.width / 80}`} stroke="var(--stage-hatch)"
+            strokeWidth={wall.width / 160} />
+        </pattern>
+        {image && content?.type === 'image' && content.url ? (
+          <image id={`${id}-image`} href={content.url} x={image.x} y={image.y}
+            width={image.width} height={image.height} preserveAspectRatio="none" />
+        ) : null}
+      </defs>
+      <rect {...wall} fill="var(--stage)" />
+      {list.length === 0 ? (
+        <text x={wall.x + wall.width / 2} y={wall.y + wall.height / 2} textAnchor="middle"
+          fill="currentColor" fontSize={wall.width / 30}>No tablets placed</text>
+      ) : null}
+      {list.map((panel, index) => (
+        <g key={panel.id} opacity={measurement && measurement.id !== panel.id ? 0.3 : undefined}><TabletShape panel={panel} id={`${id}-panel-${index}`}
+          status={statuses[panel.id] ?? { status: 'unknown', text: 'Unconfirmed' }}
+          selected={selected === panel.id} wallClip={`${id}-wall`} hatch={`${id}-hatch`}
+          image={testPattern === 'grid' ? `${id}-pattern` : image && content?.type === 'image' && content.url ? `${id}-image` : null}
+          background={testPattern ? 'black' : content?.type === 'image' ? content.background : undefined}
+          labelSize={labelSize} markerSize={wall.width / 70} measurement={measurement?.id === panel.id ? measurement : null} scale={scale} /></g>
+      ))}
+      {preview ? <rect {...wall} fill="none" stroke="var(--stage-sel)" strokeDasharray="6 5"
+        strokeWidth="1.5" vectorEffect="non-scaling-stroke" pointerEvents="none" /> : null}
+    </svg>
+  );
+}

@@ -1,0 +1,189 @@
+<title>Guided Tasks (B)</title>
+<style>
+  .task { display: grid; grid-template-columns: 40px 1fr auto; gap: 4px 12px; align-items: center; padding: 12px; border-radius: var(--radius-panel); border: 1px solid var(--border); background: var(--surface); text-align: left; width: 100%; cursor: pointer; }
+  .task:hover { border-color: var(--control); background: var(--surface-2); }
+  .task:focus-visible { outline: 2px solid var(--primary); outline-offset: 2px; }
+  .task[aria-disabled="true"] { background: var(--disabled-bg); cursor: not-allowed; }
+  .task[aria-disabled="true"] .task-name { color: var(--muted); }
+  .task .ico { grid-row: span 2; width: 40px; height: 40px; border-radius: 8px; display: grid; place-items: center; background: var(--surface-2); }
+  .task .chev { grid-row: span 2; color: var(--muted); }
+  .choice { display: grid; grid-template-columns: 24px 1fr; gap: 4px 12px; padding: 12px; border: 1px solid var(--control); border-radius: var(--radius-panel); cursor: pointer; }
+  .choice:hover { background: var(--surface-2); }
+  .choice[aria-checked="true"] { border-color: var(--primary); background: var(--sel-bg); }
+  .choice[aria-checked="true"] .choice-name { color: var(--sel-text); }
+  .choice:focus-visible { outline: 2px solid var(--primary); outline-offset: 2px; }
+  .radio { width: 20px; height: 20px; border-radius: 999px; border: 2px solid var(--control); }
+  .choice[aria-checked="true"] .radio { border: 6px solid var(--primary); }
+</style>
+</head>
+<body class="min-h-screen">
+<a href="#tasks" class="sr-only focus:not-sr-only">Skip to tasks</a>
+<div class="flex flex-col h-[100dvh]">
+  <header class="flex items-center gap-3 px-4 h-14 border-b border-line bg-surface flex-none">
+    <i data-lucide="layout-grid" aria-hidden="true"></i>
+    <h1 class="t-heading whitespace-nowrap">Tablet wall</h1>
+    <button class="pill pill-warn ml-2 focusable" data-when="main selected measure arrange recovery" aria-label="Wall status: 3 of 4 tablets showing. Tablet 4 is offline.">
+      <i data-lucide="triangle-alert" aria-hidden="true"></i><span class="hidden sm:inline">3 of 4 showing.</span> Tablet 4 offline
+    </button>
+    <span class="pill pill-ok ml-2" data-when="firstrun">No tablets yet</span>
+    <div class="ml-auto flex items-center gap-2">
+      <button class="btn btn-ghost hidden md:inline-flex"><i data-lucide="server" aria-hidden="true"></i>Server</button>
+      <button class="btn btn-ghost btn-icon hidden md:inline-flex" aria-label="Theme: system"><i data-lucide="sun-moon" aria-hidden="true"></i></button>
+      <button class="btn btn-ghost btn-icon md:hidden" aria-label="More"><i data-lucide="menu" aria-hidden="true"></i></button>
+    </div>
+  </header>
+
+  <div class="flex-1 min-h-0 flex flex-col lg:grid lg:grid-cols-[minmax(0,1fr)_480px] overflow-auto lg:overflow-hidden">
+    <!-- The wall: same place and size in every task -->
+    <section aria-label="Wall" class="flex flex-col p-4 gap-3 lg:min-h-0 flex-none lg:flex-auto sticky top-0 z-10 bg-bg lg:static">
+      <div class="stage-well aspect-[3/2] lg:aspect-auto lg:flex-1" id="stage"></div>
+      <p class="flex items-center gap-3 t-body h-6 flex-none overflow-hidden" data-when="main selected measure recovery">
+        <span class="tally tally-live">On wall</span><span class="truncate">EXLENT Cohort 3 flyer, Fill, on 3 of 4 tablets</span>
+      </p>
+      <p class="flex items-center gap-3 t-body h-6 flex-none overflow-hidden" data-when="arrange">
+        <span class="tally tally-draft">Preview</span><span class="truncate">Staggered arrangement. The wall still shows the 2 × 2 grid.</span>
+      </p>
+      <p class="flex items-center gap-3 t-body h-6 flex-none t-muted" data-when="firstrun">Tablets appear on the wall as they join.</p>
+    </section>
+
+    <!-- Task panel: one task at a time -->
+    <main id="tasks" class="flex flex-col lg:min-h-0 bg-surface lg:border-l border-t lg:border-t-0 border-line">
+      <!-- HOME -->
+      <div class="flex-1 lg:overflow-auto p-6 grid gap-6 content-start" data-when="main">
+        <section class="callout callout-warn flex gap-3 items-start" aria-labelledby="next1">
+          <i data-lucide="triangle-alert" class="mt-1 text-warn" aria-hidden="true"></i>
+          <div class="flex-1"><h2 id="next1" class="t-label callout-title">Next: bring Tablet 4 back</h2>
+            <p class="t-body mt-1">It went offline 12 minutes ago. The other three are showing the flyer.</p>
+            <button class="btn mt-3">Bring Tablet 4 back</button></div>
+        </section>
+        <section aria-labelledby="todo">
+          <h2 id="todo" class="t-heading mb-3">What do you want to do?</h2>
+          <div class="grid gap-2">
+            <button class="task"><span class="ico"><i data-lucide="image" aria-hidden="true"></i></span><span class="task-name t-label">Show an image</span><i data-lucide="chevron-right" class="chev" aria-hidden="true"></i><span class="t-caption">Pick or upload, preview, then show it.</span></button>
+            <button class="task"><span class="ico"><i data-lucide="move" aria-hidden="true"></i></span><span class="task-name t-label">Change the arrangement</span><i data-lucide="chevron-right" class="chev" aria-hidden="true"></i><span class="t-caption">Grid, free placement or a saved arrangement.</span></button>
+            <button class="task"><span class="ico"><i data-lucide="ruler" aria-hidden="true"></i></span><span class="task-name t-label">Measure a tablet</span><i data-lucide="chevron-right" class="chev" aria-hidden="true"></i><span class="t-caption">Screen size and bezels, so the image lines up across seams.</span></button>
+            <button class="task"><span class="ico"><i data-lucide="scan-line" aria-hidden="true"></i></span><span class="task-name t-label">Test the wall</span><i data-lucide="chevron-right" class="chev" aria-hidden="true"></i><span class="t-caption">Grid pattern, black wall and per-tablet colours.</span></button>
+            <button class="task"><span class="ico"><i data-lucide="plus" aria-hidden="true"></i></span><span class="task-name t-label">Add a tablet</span><i data-lucide="chevron-right" class="chev" aria-hidden="true"></i><span class="t-caption">Join link and QR code.</span></button>
+          </div>
+        </section>
+        <section aria-labelledby="recent">
+          <h2 id="recent" class="t-heading mb-2">Saved</h2>
+          <ul class="grid gap-1">
+            <li class="row flex items-center gap-3 rounded-md px-2 py-2" tabindex="0"><i data-lucide="image" aria-hidden="true"></i><span class="row-name flex-1">Cohort flyer, Fill</span><span class="t-caption">Content</span></li>
+            <li class="row flex items-center gap-3 rounded-md px-2 py-2" tabindex="0"><i data-lucide="layout-grid" aria-hidden="true"></i><span class="row-name flex-1">2 × 2 grid</span><span class="t-caption">Arrangement</span></li>
+            <li class="row flex items-center gap-3 rounded-md px-2 py-2" tabindex="0"><i data-lucide="history" aria-hidden="true"></i><span class="row-name flex-1">Restore point, 10:42</span><span class="t-caption">Automatic</span></li>
+          </ul>
+        </section>
+      </div>
+
+      <!-- TABLET HUB -->
+      <div class="flex-1 lg:overflow-auto p-6 grid gap-6 content-start" data-when="selected">
+        <nav aria-label="Breadcrumb" class="t-caption flex items-center gap-1"><a href="#" class="focusable underline underline-offset-2">Home</a><i data-lucide="chevron-right" class="ico-sm" aria-hidden="true"></i><span aria-current="page">Tablet 2</span></nav>
+        <div class="flex items-start gap-3">
+          <span class="grid place-items-center w-10 h-10 rounded-full bg-selbg text-seltext t-heading">2</span>
+          <div><h2 class="t-title">Tablet 2</h2><p class="t-body t-muted">iPad Air 2. Showing the image. Size from model, not ruler-checked.</p></div>
+        </div>
+        <div class="grid gap-2">
+          <button class="task"><span class="ico"><i data-lucide="zap" aria-hidden="true"></i></span><span class="task-name t-label">Identify</span><i data-lucide="chevron-right" class="chev" aria-hidden="true"></i><span class="t-caption">Flash its screen for 5 seconds.</span></button>
+          <button class="task"><span class="ico"><i data-lucide="ruler" aria-hidden="true"></i></span><span class="task-name t-label">Measure</span><i data-lucide="chevron-right" class="chev" aria-hidden="true"></i><span class="t-caption">Recommended: size is a model estimate.</span></button>
+          <button class="task"><span class="ico"><i data-lucide="pencil" aria-hidden="true"></i></span><span class="task-name t-label">Rename</span><i data-lucide="chevron-right" class="chev" aria-hidden="true"></i><span class="t-caption">Currently “Tablet 2”.</span></button>
+          <button class="task"><span class="ico"><i data-lucide="move" aria-hidden="true"></i></span><span class="task-name t-label">Move or turn</span><i data-lucide="chevron-right" class="chev" aria-hidden="true"></i><span class="t-caption">Position, angle and whether it shows images.</span></button>
+        </div>
+        <details class="divider pt-2"><summary><i data-lucide="chevron-right" class="chev" aria-hidden="true"></i>Something wrong with this tablet?</summary>
+          <p class="t-caption pt-1">Retry the image, reconnect, replace or remove.</p></details>
+      </div>
+
+      <!-- MEASURE (inline stepped task) -->
+      <form class="flex-1 flex flex-col lg:min-h-0" data-when="measure" aria-labelledby="mq">
+        <div class="flex-1 lg:overflow-auto p-6 grid gap-6 content-start">
+          <nav aria-label="Breadcrumb" class="t-caption flex items-center gap-1"><a href="#" class="focusable underline underline-offset-2">Tablet 2</a><i data-lucide="chevron-right" class="ico-sm" aria-hidden="true"></i><span aria-current="page">Measure</span></nav>
+          <div>
+            <p class="t-label t-muted">Step 2 of 5</p>
+            <div class="mt-2 grid grid-cols-5 gap-1" aria-hidden="true"><span class="h-1 rounded-full bg-primary"></span><span class="h-1 rounded-full bg-primary"></span><span class="h-1 rounded-full bg-surface2"></span><span class="h-1 rounded-full bg-surface2"></span><span class="h-1 rounded-full bg-surface2"></span></div>
+          </div>
+          <h2 id="mq" class="t-title">How big is the visible screen?</h2>
+          <p class="t-body">Measure the lit area only, not the glass or case. We filled in the iPad Air 2 values; the wall shows them on Tablet 2.</p>
+          <div class="grid grid-cols-2 gap-3">
+            <div class="field"><label for="aw">Width</label><div class="unit"><input id="aw" class="input" value="197.1" inputmode="decimal"><span>mm</span></div></div>
+            <div class="field"><label for="ah">Height</label><div class="unit"><input id="ah" class="input" value="147.8" inputmode="decimal"><span>mm</span></div></div>
+          </div>
+          <p class="t-caption">Next: bezels, then an optional ruler check on the tablet itself, then review. Nothing is saved until you confirm on the last step.</p>
+        </div>
+        <div class="flex-none flex items-center gap-2 p-4 border-t border-line">
+          <button type="button" class="btn">Back</button>
+          <button type="button" class="btn btn-ghost">Cancel</button>
+          <button type="button" class="btn btn-primary btn-lg ml-auto">Next: bezels</button>
+        </div>
+      </form>
+
+      <!-- ARRANGE -->
+      <div class="flex-1 flex flex-col lg:min-h-0" data-when="arrange">
+        <div class="flex-1 lg:overflow-auto p-6 grid gap-6 content-start">
+          <nav aria-label="Breadcrumb" class="t-caption flex items-center gap-1"><a href="#" class="focusable underline underline-offset-2">Home</a><i data-lucide="chevron-right" class="ico-sm" aria-hidden="true"></i><span aria-current="page">Change the arrangement</span></nav>
+          <h2 class="t-title">How should the tablets be placed?</h2>
+          <div role="radiogroup" aria-label="Arrangement method" class="grid gap-2">
+            <div class="choice" role="radio" aria-checked="false" tabindex="-1"><span class="radio"></span><span class="choice-name t-label">Grid</span><span></span><span class="t-caption">Rows and columns in a chosen order.</span></div>
+            <div class="choice" role="radio" aria-checked="true" tabindex="0"><span class="radio"></span><span class="choice-name t-label">Free placement</span><span></span><span class="t-caption">Drag tablets on the wall. Arrow keys move 1 mm, Shift 10 mm, R turns 90°.</span></div>
+            <div class="choice" role="radio" aria-checked="false" tabindex="-1"><span class="radio"></span><span class="choice-name t-label">A saved arrangement</span><span></span><span class="t-caption">2 × 2 grid, or the 10:42 restore point.</span></div>
+          </div>
+          <div class="callout"><p class="t-label">Your changes</p><p class="t-body t-muted mt-1">Tablets 1, 3 and 4 moved. Tablet 2 turned to portrait. Tablet 4 tilted 6°.</p></div>
+        </div>
+        <div class="flex-none flex items-center gap-2 p-4 border-t border-line">
+          <button class="btn">Discard</button>
+          <button class="btn btn-primary btn-lg ml-auto">Apply to the wall</button>
+        </div>
+      </div>
+
+      <!-- RECOVERY -->
+      <div class="flex-1 lg:overflow-auto p-6 grid gap-6 content-start" data-when="recovery">
+        <section class="callout callout-err flex gap-3 items-start" role="alert">
+          <i data-lucide="circle-help" class="mt-1 text-err" aria-hidden="true"></i>
+          <div class="flex-1"><h2 class="t-label callout-title">Show on wall may have completed</h2>
+            <p class="t-body mt-1">The server stopped answering before it confirmed. Refresh before you try again.</p>
+            <button class="btn btn-primary mt-3">Refresh</button></div>
+        </section>
+        <nav aria-label="Breadcrumb" class="t-caption flex items-center gap-1"><a href="#" class="focusable underline underline-offset-2">Home</a><i data-lucide="chevron-right" class="ico-sm" aria-hidden="true"></i><span aria-current="page">Bring Tablet 4 back</span></nav>
+        <h2 class="t-title">Bring Tablet 4 back</h2>
+        <ol class="grid gap-4 t-body">
+          <li class="flex gap-3"><span class="t-label w-6">1</span><span>Wake Tablet 4 (iPad mini 2, lower right). If the wall page is still open it reconnects by itself within a few seconds.</span></li>
+          <li class="flex gap-3"><span class="t-label w-6">2</span><span>If the page closed, open the join link again. <button class="btn mt-2"><i data-lucide="qr-code" aria-hidden="true"></i>Show join QR code</button></span></li>
+          <li class="flex gap-3"><span class="t-label w-6">3</span><span>An unplaced iPad mini 2 joined 2 minutes ago. If that is Tablet 4 with a new browser, use it in Tablet 4’s place. <button class="btn mt-2"><i data-lucide="replace" aria-hidden="true"></i>Review replacement…</button></span></li>
+        </ol>
+        <details class="divider pt-2"><summary><i data-lucide="chevron-right" class="chev" aria-hidden="true"></i>Take Tablet 4 off the wall instead</summary></details>
+      </div>
+
+      <!-- FIRST RUN -->
+      <div class="flex-1 lg:overflow-auto p-6 grid gap-6 content-start" data-when="firstrun">
+        <section aria-labelledby="fr">
+          <p class="t-label t-muted">Step 1 of 3</p>
+          <h2 id="fr" class="t-title mt-1">Add your first tablet</h2>
+          <p class="t-body mt-2">On each tablet, open this link or scan the code. Each tablet appears on the wall as it joins.</p>
+          <div class="mt-4 flex gap-4 items-center">
+            <div class="w-28 h-28 rounded-md border border-control grid place-items-center bg-surface"><i data-lucide="qr-code" class="!w-20 !h-20" aria-hidden="true"></i></div>
+            <div><p class="t-heading">10.42.0.1:8080</p><button class="btn mt-2"><i data-lucide="copy" aria-hidden="true"></i>Copy link</button></div>
+          </div>
+        </section>
+        <div class="grid gap-2">
+          <div class="task" aria-disabled="true"><span class="ico"><i data-lucide="move" aria-hidden="true"></i></span><span class="task-name t-label">Arrange the tablets</span><span></span><span class="t-caption">Available once a tablet joins.</span></div>
+          <div class="task" aria-disabled="true"><span class="ico"><i data-lucide="image" aria-hidden="true"></i></span><span class="task-name t-label">Show an image</span><span></span><span class="t-caption">Available once the wall is arranged.</span></div>
+        </div>
+      </div>
+    </main>
+  </div>
+</div>
+<script>
+/*@STAGE@*/
+only(STATE);
+renderStage(document.getElementById('stage'), {
+  layout: STATE === 'arrange' ? 'stagger' : 'grid',
+  selected: STATE === 'selected' ? 't2' : STATE === 'recovery' ? 't4' : null,
+  measure: STATE === 'measure' ? 't2' : null,
+  outline: STATE === 'arrange' ? 'draft' : null,
+  dim: STATE === 'measure',
+  empty: STATE === 'firstrun'
+});
+stateLinks([['main', 'Main'], ['selected', 'Tablet selected'], ['measure', 'Measure'], ['arrange', 'Arrange (non-grid)'], ['recovery', 'Recovery'], ['firstrun', 'First run']]);
+lucide.createIcons();
+</script>
+</body>
+</html>

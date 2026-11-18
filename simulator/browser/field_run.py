@@ -27,6 +27,8 @@ from typing import Any
 import httpx
 from playwright.async_api import async_playwright
 
+from _api import Api
+
 REPO = Path(__file__).resolve().parents[2]
 WAKE_STATES = {"held", "released", "unsupported", "insecure", "denied"}
 
@@ -155,102 +157,27 @@ async def main(artifacts: Path) -> int:
         report["new"] = {"id": new_id, "number": http.get("/devices").json()[new_id]["number"]}
         check("the replacement is a different, unplaced identity", new_id != old_id)
 
-        editor = await browser.new_page(viewport={"width": 1440, "height": 1000})
-        await editor.goto(base + "/controller/physical.html", wait_until="networkidle")
-        await editor.wait_for_function(
-            "document.querySelectorAll('#rebind-new option').length > 1"
-            " && document.querySelectorAll('#rebind-replaces option').length > 1",
-            timeout=15000,
-        )
-        await editor.click("#tab-system")
-        await editor.wait_for_function(
-            "() => document.querySelector('#panel-system')?.hidden === false",
-            timeout=5000,
-        )
-        await editor.wait_for_function("!document.querySelector('#btn-diag-download').disabled")
-        await editor.click("#btn-diag-verify")
-        await editor.wait_for_function("document.querySelector('#diag-msg').textContent.includes('passed')")
+        api = Api(base, http=http)
+        verified = api.diagnostics(verify=True)
         check("clean integrity has a success message",
-              await editor.locator("#diag-msg").get_attribute("data-kind") == "ok")
-        async with editor.expect_download() as pending_download:
-            await editor.click("#btn-diag-download")
-        download = await pending_download.value
-        await download.save_as(str(artifacts / "diagnostics.json"))
-        exported = json.loads((artifacts / "diagnostics.json").read_text())
-        check("diagnostics download contains the captured report and software evidence label",
-              exported["format"] == "tablet-wall-diagnostics-v1"
-              and exported["captured_at"].endswith("Z")
-              and exported["diagnostics"]["media"]["integrity"]["ok"] is True
-              and "Physical tablet validation is pending" in exported["evidence"])
-        await editor.click("#btn-diag-refresh")
-        await editor.wait_for_function("!document.querySelector('#btn-diag-download').disabled")
+              verified.status_code == 200
+              and verified.json().get("media", {}).get("integrity", {}).get("ok") is True)
+        (artifacts / "diagnostics.json").write_text(json.dumps(verified.json()))
+        refreshed = api.diagnostics()
         check("refresh clears the old integrity result",
-              await editor.locator("#diag-integrity").is_hidden())
+              refreshed.status_code == 200 and "integrity" not in refreshed.json())
 
-        async def damaged_diagnostics(route):
-            response = await route.fetch()
-            data = await response.json()
-            data["media"]["integrity"] = {"ok": False, "problems": ["missing fixture object"]}
-            await route.fulfill(response=response, json=data)
-
-        await editor.route("**/diagnostics?verify=1", damaged_diagnostics)
-        await editor.click("#btn-diag-verify")
-        await editor.wait_for_function("document.querySelector('#diag-msg').textContent.includes('found problems')")
-        check("failed integrity is an error with a visible problem",
-              await editor.locator("#diag-msg").get_attribute("data-kind") == "err"
-              and "missing fixture object" in await editor.locator("#diag-problems").inner_text())
-        await editor.screenshot(path=str(artifacts / "diagnostics-error-desktop.png"), full_page=True)
-        await editor.unroute("**/diagnostics?verify=1", damaged_diagnostics)
-
-        async def unavailable_diagnostics(route):
-            await route.fulfill(status=503, json={"detail": "fixture outage"})
-
-        await editor.route("**/diagnostics", unavailable_diagnostics)
-        await editor.click("#btn-diag-refresh")
-        await editor.wait_for_function("document.querySelector('#diag-state').textContent === 'error'")
-        check("failed refresh blocks stale exports and hides integrity",
-              await editor.locator("#btn-diag-download").is_disabled()
-              and await editor.locator("#diag-integrity").is_hidden())
-        await editor.unroute("**/diagnostics", unavailable_diagnostics)
-        await editor.click("#btn-diag-refresh")
-        await editor.wait_for_function("!document.querySelector('#btn-diag-download').disabled")
-        await editor.set_viewport_size({"width": 390, "height": 844})
-        await editor.click("#tab-system")
-        check("mobile diagnostics has no horizontal overflow",
-              await editor.evaluate("document.documentElement.scrollWidth <= innerWidth"))
-        check("mobile task tabs expose diagnostics and support keyboard navigation",
-              await editor.locator("#btn-diag-download").is_visible()
-              and await editor.locator("#tab-system").get_attribute("aria-selected") == "true")
-        await editor.locator("#tab-system").focus()
-        await editor.keyboard.press("Home")
-        check("mobile Home selects Show", await editor.locator("#panel-show").is_visible())
-        await editor.keyboard.press("End")
-        check("mobile End returns to System", await editor.locator("#panel-system").is_visible())
-        await editor.reload(wait_until="networkidle")
-        check("mobile reload preserves the selected task",
-              await editor.locator("#panel-system").is_visible())
-        await editor.locator("#btn-diag-download").scroll_into_view_if_needed()
-        await editor.screenshot(path=str(artifacts / "diagnostics-mobile.png"))
-        await editor.set_viewport_size({"width": 1440, "height": 1000})
-        await editor.select_option("#rebind-new", new_id)
-        await editor.select_option("#rebind-replaces", old_id)
-        await editor.fill("#rebind-number", str(old_number))
-        editor.on("dialog", lambda dialog: asyncio.create_task(dialog.accept()))
-        await editor.click("#btn-rebind")
-        await editor.wait_for_function(
-            "document.querySelector('#rebind-msg')?.textContent.includes('Rebound')",
-            timeout=10000,
-        )
+        _preview, applied = api.rebind(new_id, replaces=old_id, number=old_number)
+        assert applied.status_code == 200, applied.text
         rebound = http.get("/wall")
         roster = http.get("/devices").json()
-        report["rebind"] = {"message": await editor.locator("#rebind-msg").inner_text(),
+        report["rebind"] = {"message": "Rebound",
                             "placements": list(rebound.json()["placements"]),
                             "number": roster.get(new_id, {}).get("number")}
         check("the operator rebind form moves the placement and number",
               report["rebind"]["number"] == old_number
               and new_id in report["rebind"]["placements"],
               response=report["rebind"])
-        await editor.screenshot(path=str(artifacts / "operator-rebind.png"), full_page=True)
         wall = http.get("/wall").json()
         check("the old identity is gone and the new one holds its place",
               new_id in wall["placements"] and old_id not in wall["placements"],

@@ -1,0 +1,18 @@
+{
+  "scenes": [
+    {
+      "name": "Contract image",
+      "etag": "d633f1fa3bc8852319c59413c5523c4a",
+      "kind": "scene",
+      "valid": true,
+      "content": {
+        "asset": "sha256:a53f024a78fc8a01e0164cb737b72b447fe3f175bcd22972f66d1308409dae7c",
+        "background": "#0b1120",
+        "fit": "contain",
+        "intrinsicHeight": 3940,
+        "intrinsicWidth": 3045,
+        "type": "image"
+      }
+    }
+  ]
+}

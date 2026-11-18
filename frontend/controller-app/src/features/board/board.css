@@ -1,0 +1,28 @@
+.tablet-list .tablet-row { block-size: auto; justify-content: start; font-size: var(--text-body); font-weight: var(--weight-body); white-space: normal; scroll-margin-block-start: 60dvh; }
+.tablet-report { display: grid; justify-items: end; gap: var(--space-1); max-inline-size: 46%; flex: none; }
+.tablet-report .state { max-inline-size: none; font-size: var(--text-label); }
+.tablet-age { white-space: nowrap; }
+.tablet-row:focus { outline: 2px solid var(--focus); outline-offset: 2px; }
+.tablet-row[aria-current="true"]:hover .num { background: var(--primary); }
+.wall-summary { display: flex; min-inline-size: 0; }
+.section-tools { display: flex; align-items: center; gap: var(--space-2); min-inline-size: 0; flex-wrap: wrap; justify-content: end; }
+.tablet-facts-block { display: grid; gap: var(--space-3); }
+.tablet-fleet-power { display: grid; gap: var(--space-1); padding: var(--space-2) var(--space-3); border-radius: var(--radius-control); background: var(--warn-bg); }
+.batch-check { display: inline-flex; flex: none; color: var(--text-muted); }
+.tablet-batch { display: grid; gap: var(--space-2); padding: var(--space-3); border-radius: var(--radius-surface); background: var(--sel-bg); }
+.batch-results { display: grid; gap: var(--space-1); }
+.batch-results li { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: var(--space-1) var(--space-2); align-items: baseline; }
+.batch-results li .t-caption { grid-column: 1 / -1; overflow-wrap: anywhere; }
+.tablet-commands { display: grid; gap: var(--space-4); }
+.tablet-model-field { display: grid; gap: var(--space-2); }
+@media (min-width: 1024px) {
+  .tablet-list .tablet-row { scroll-margin-block-start: var(--space-6); }
+}
+.tablet-lifecycle { display: grid; gap: var(--space-2); }
+.lifecycle-actions { display: flex; flex-wrap: wrap; align-items: start; gap: var(--space-2); }
+.lifecycle-dialog { display: grid; gap: var(--space-4); }
+.lifecycle-buttons { display: flex; flex-wrap: wrap; justify-content: end; align-items: start; gap: var(--space-2); }
+.lifecycle-switches { display: grid; gap: var(--space-3); }
+.lifecycle-switch { display: flex; align-items: flex-start; gap: var(--space-3); }
+.lifecycle-copy { display: grid; gap: var(--space-1); }
+.lifecycle-list { display: grid; gap: var(--space-2); padding-inline-start: var(--space-4); list-style: disc; }

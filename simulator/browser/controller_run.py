@@ -369,7 +369,7 @@ async def main(artifacts_arg: Path) -> int:
 
         controller = await browser.new_page(viewport={"width": 1440, "height": 1000})
         watch(controller, "controller-desktop")
-        await controller.goto(base + "/controller/physical.html", wait_until="networkidle")
+        await controller.goto(base + "/controller/app/", wait_until="networkidle")
         await controller.evaluate("document.querySelector('#playback-details').open = true")
         await controller.wait_for_function(
             "() => document.querySelectorAll('#playlist-library option').length > 1",
@@ -878,7 +878,7 @@ async def main(artifacts_arg: Path) -> int:
         phase["id"] = "S5"
         mobile = await browser.new_page(viewport={"width": 390, "height": 844})
         watch(mobile, "controller-mobile")
-        await mobile.goto(base + "/controller/physical.html", wait_until="networkidle")
+        await mobile.goto(base + "/controller/app/", wait_until="networkidle")
         await mobile.wait_for_function(
             "() => (document.querySelector('#playback-status')?.textContent || '')"
             ".startsWith('Paused on')", timeout=15000)

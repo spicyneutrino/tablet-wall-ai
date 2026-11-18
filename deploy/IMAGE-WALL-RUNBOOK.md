@@ -97,14 +97,13 @@ Logs rotate at 1,000,000 bytes with two archives each.
 1. Connect the tablet to the hotspot Wi-Fi name printed by the launcher.
 2. Open the exact printed URL, ending in `/client/`. Typing `http://` and a
    bare address is not the same thing.
-3. Open the printed `http://127.0.0.1:<backend-port>/controller/physical.html` on the
-   laptop. Select **Tablets**, then open **Add tablets**. Copy the exact tablet
-   address or scan its QR. The QR is a URL shortcut, not pairing; the tablet still
-   registers and opens its own socket. A loopback address only works on the
-   laptop and is labelled accordingly.
+3. Open the printed `http://127.0.0.1:<backend-port>/controller/app/` on the
+   laptop. Select **Server**, then the **Joining** tab. Copy the exact tablet
+   address with **Copy link** or scan its QR. The QR is a URL shortcut, not
+   pairing; the tablet still registers and opens its own socket.
 4. Leave the page open. Reloading keeps the tablet identity.
 
-The controller entry opens `physical.html`, preserving the query and fragment.
+The old console addresses redirect to the app, preserving the query and fragment.
 
 ## 4. Check readiness
 
@@ -128,61 +127,61 @@ The tablet listener refuses both routes, even with a forged operator header.
 
 ## 5. Choose an image
 
-Select **Images**. Pick an image in **Library**, check the preview, then select
-**Show image**. Browsing and uploading do not change the displayed content.
-To adjust the applied image, select **Adjust image**. Use **View applied**
-to compare the current wall with the pending preview. Return to the preview
-and select **Show image** only after review. **Discard** clears the preview.
-No selection, upload, or comparison automatically shows an image.
+Select **Images**. Pick a thumbnail or open **All images** for the **Library**,
+check the draft on the **Preview** stage, then select **Show on wall**. The
+**On wall** monitor in the side column always shows server truth; on phone,
+**View** under the On wall line expands it. Browsing and uploading do not change
+the displayed content. **Discard** clears the preview. No selection, upload,
+or comparison automatically shows an image.
 
-Fit bars use the scene background, default `#0b1120`. Adjusting an applied
-image or previewing saved content retains its custom background. Selecting
-a different library image starts with the default background. There is no
-background colour picker in the workspace.
+Fit bars use the scene background, default `#0b1120`. In **Fit and crop**, the
+**Background** colour input changes it, and the choice stays in Preview until
+you select **Show on wall**. Previewing saved content retains its custom
+background; selecting a different library image starts with the default.
 
 Choose **Fill** to crop or **Fit** to show the whole image with bars before
 showing the image. The stage previews crop, screen coverage and bezel/gap
-occlusion. If bytes are missing, the image remains unavailable; select another
-image or restore the file and select **Refresh** in **Library**.
-Open **Image details** to inspect the missing asset identity. Readiness reports
-the same missing bytes as `available: false`.
+occlusion. If bytes are missing, the image stays unavailable; select another
+image, restore the file and select **Refresh images** in the Library.
+Readiness reports the same missing bytes as `available: false`.
 
 ## 6. Arrange and verify the grid
 
-Select **Arrange**. Choose **Relative** or **Measured**, then a grid preset.
-Open **Tablets and mounting** to review membership, order, and mounted top
-edges. **1 × 4** is one horizontal row with four selected tablets; the label
-changes with membership. Editing **Rows** or **Columns** switches to a custom
-grid. Select **Allow empty trailing cells** if the grid has more cells than
-selected tablets.
+In the **Layouts** tab, select **New grid…** to open **Build grid**. Set
+**Units** to **Logical units** or **Measured millimetres**, fill **Columns** and
+**Rows**, and set **Wall sizing** to **Fit to tablets** or **Fixed bounds**.
+Review membership, order and mounted top edges under **Grid tablet order**.
+Select **Allow empty trailing cells** if the grid has more cells than selected
+tablets.
 
-Select **Preview arrangement**, review the geometry and warnings, then select
-**Apply arrangement**. **Discard arrangement** clears the local draft.
-Preview and Discard leave the active wall unchanged. Extra gap defaults to
-zero. Use **View applied** to compare without discarding the preview.
+Select **Preview grid**, review the geometry and warnings, then select **Apply
+layout**. **Keep inputs and close** leaves the draft in place. Preview and close
+leave the active wall unchanged. Extra gap defaults to zero. The Preview stage
+shows the draft and the On wall monitor shows server truth, so you can compare
+without discarding the draft.
 
-Relative positions, dimensions, and bezels use logical wall units. Measured
-slots use millimetres and pin profile and calibration revisions. Do not
-interpret logical units as millimetres or substitute latest records for pins.
-**Fit** and **2x** above the stage change the view only. Alt pauses snapping
-for mouse or pen drags. On touch, use the snap checkbox. **Match screen shape**
-is relative-only and requires a selected placed tablet with fresh online
-status and a positive viewport. Refresh stale status first. Match changes
-the draft, which still needs review and Apply.
-Use the numeric position, size, and bezel fields for precise edits. If a field
-is invalid, correct its reported error before previewing or applying.
+Logical positions, dimensions and bezels use wall units. Measured slots use
+millimetres and pin profile and calibration revisions. Do not interpret logical
+units as millimetres or substitute latest records for pins. Use **Edit layout**
+on the Preview stage for manual positions. Its canvas tools cover Move,
+**Snap to grid and edges**, Undo, Redo and rotation; Alt pauses snapping for
+mouse or pen drags. **Match screen shape** is logical-only and requires a
+selected placed tablet with fresh online status and a positive viewport.
+Refresh stale status first. Match changes the draft, which still needs **Apply
+layout**. Use the numeric position, size and bezel fields for precise edits. If
+a field is invalid, correct its reported error before applying.
 
 For measured layouts, confirm each actual tablet model or provide measured
-calibration first. Model profiles stay approximate. In **Images**, open
-**Presentation checks**. **Wall-sized grid** generates an image for the committed
-physical bounds with 50 mm intervals. Use it to record actual seam/scale
-measurements; the generated coordinates do not prove physical accuracy.
-**Logical calibration pattern** is available only for logical layouts.
+calibration first. Model profiles stay approximate. The **Tests** tab previews
+a **Calibration grid** and a **Black** pattern; neither is a wall-sized measured
+grid. Record seam and scale on the real wall instead of treating those patterns
+as physical proof.
 
-Check **N of M showing** and the tablet cards. A network connection alone does
-not count as a current image paint. To retry a failed image, select the tablet
-in **Tablets**, open **Recovery**, and select **Retry image** when available.
-Offline tablets keep physical recovery guidance instead of unavailable commands.
+Check **N of M showing** and the tablet rows in the side column. A network
+connection alone does not count as a current image paint. To retry a failed
+image, select the tablet in the **Tablets** board, open its drill-in, and select
+**Retry image** when available. Offline tablets keep physical recovery guidance
+instead of unavailable commands.
 
 Read each tablet's power readiness separately from image paint. A held wake
 lock is a browser report, not proof the OS will keep the display awake.
@@ -199,14 +198,14 @@ bytes or choosing another image.
 
 ## 7. Blank the wall
 
-Use **Presentation checks** in **Images**.
-These controls change wall content. Logical calibration needs relative
-bounds. A wall-sized grid needs committed measured bounds.
-Select **Black wall**. This shows an ordinary black image without deleting the layout.
-To return to the prior scene, open **Images**, then **Presentation checks**, and select
-**Restore previous content**. **Tablet colours** instead shows each tablet's
-assigned diagnostic colour. Check the restored asset, fit, background, and
-current paint. This restores content, not a database.
+Use the **Tests** tab. The **Calibration grid** and **Black** tiles preview on
+the stage; with a draft selected, **Show on wall** applies it without deleting
+the layout. To return to the prior content, open **Images** and show a library
+image again, or use **Saved** and **Show on wall** on a saved content record.
+The **Layouts** tab keeps a **Restore, <time>** entry for the arrangement.
+The **Test colour** swatches with **All tablets** or **This tablet** show
+diagnostic colours. Check the restored asset, fit, background and current paint.
+This restores content, not a database.
 
 ## 8. Stop
 
@@ -335,9 +334,9 @@ certificate. The HTTP trial uses no certificate and no app login.
 
 See [KIOSK.md](KIOSK.md) for the device checklist and its gates.
 
-Experimental playlist and playback controls require the explicit opt-in in
-**Settings → Experimental**. Enabling those controls does not start playback
-and does not establish physical video readiness.
+The playlist and playback controls in **Server → Playback** require the
+**Playlist and playback** experimental switch. Enabling them does not start
+playback and does not establish physical video readiness.
 
 ## 13. What is tested, and what is not
 

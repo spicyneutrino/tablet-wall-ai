@@ -54,8 +54,9 @@ class TestRootAndStaticMounts:
         ("route", "assets"),
         [
             ("/client/", ["client.css", "client.js"]),
-            ("/controller/", ["operator-workspace.css", "operator-entry.js"]),
-            ("/controller/physical.html", ["operator-workspace.css", "physical.js"]),
+            ("/controller/", ["redirect.js"]),
+            ("/controller/physical.html", ["redirect.js"]),
+            ("/controller/app/", ["/controller/app/assets/"]),
             ("/controller/experimental.html", ["controller.css", "controller.js"]),
         ],
     )

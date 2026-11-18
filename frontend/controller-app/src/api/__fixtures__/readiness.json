@@ -1,0 +1,51 @@
+{
+  "tablet_url": "http://127.0.0.1:41037/client/",
+  "join_qr_url": "/api/v3/join-qr",
+  "wifi": {
+    "name": "QA",
+    "known": true
+  },
+  "security": {
+    "transport": "http",
+    "authentication": "disabled",
+    "uploads": "loopback",
+    "trust": "Trusted local hotspot. Registration and device sockets are open to its clients; do not use it on shared or venue Wi-Fi."
+  },
+  "content": {
+    "type": "image",
+    "available": true,
+    "summary": "A still image is selected and its bytes are available."
+  },
+  "wall": {
+    "schema": 3,
+    "generation": "1ce83911",
+    "revision": 5,
+    "layout": "physical"
+  },
+  "devices": {
+    "online": 4,
+    "total": 4
+  },
+  "storage": {
+    "readable": true,
+    "database": "/tmp/tablet-wall-u01-zWYduY/wall.db",
+    "assets": "/tmp/tablet-wall-u01-zWYduY/assets",
+    "media": "/tmp/tablet-wall-u01-zWYduY/media",
+    "backup_dir": "/tmp/tablet-wall-u01-zWYduY/backups"
+  },
+  "backup": {
+    "last_manifest_at": null,
+    "recorded": false,
+    "scope": "A snapshot contains the database plus only the referenced curated assets and uploads; unused files in the asset directory and unused uploads are excluded."
+  },
+  "restore_rehearsal": {
+    "completed_utc": null,
+    "recorded": false
+  },
+  "advice": [
+    "Screen sleep, auto-lock, and remote wake are tablet-OS decisions. This server cannot wake a sleeping tablet, power one on, or force fullscreen.",
+    "The page's Full screen button needs a tap and does not survive a reload or a browser restart.",
+    "The Screen Wake Lock API is unavailable on this plain-HTTP origin; keep tablets awake with their own auto-lock and stay-awake settings."
+  ],
+  "errors": []
+}

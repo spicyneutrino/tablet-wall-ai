@@ -1,0 +1,11 @@
+/* The review block sits under the Next step card: same tone family, one level quieter. */
+.conflict-review { display: grid; gap: var(--space-3); padding: var(--space-4); border-radius: var(--radius-surface); background: var(--warn-bg); }
+.conflict-review:focus-visible { outline: 2px solid var(--focus); outline-offset: 2px; }
+.conflict-review .note-title { color: var(--warn); }
+.conflict-item { display: grid; gap: var(--space-2); }
+.conflict-diff { display: grid; grid-template-columns: auto minmax(0, 1fr); gap: var(--space-1) var(--space-4); margin: 0; }
+.conflict-diff dd { margin: 0; overflow-wrap: anywhere; }
+.conflict-actions { display: flex; flex-wrap: wrap; gap: var(--space-2); }
+
+/* Sources are paused while the server is unreachable: dim the tiles so the disabled state is visible. */
+.sources-paused[disabled] .source-strip { opacity: 0.55; overflow: hidden; }

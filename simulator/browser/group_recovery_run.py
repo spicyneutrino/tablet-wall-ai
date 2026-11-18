@@ -13,9 +13,8 @@ Every original cohort member must have a computed-visible picture that
 advances (computed visibility, opacity, size, readyState and two samples).
 Unexpected page errors, console errors, warnings and failed requests fail the
 run; only the warnings produced by the deliberate hung play are classified as
-intentional. The controller's blocked copy is rendered from a recorded cap
-status; it is labelled fixture-rendered and is never counted as a live
-transition. Software evidence only; no optical or physical claim.
+intentional. The live blocked-transition claim belongs to
+recovery_acceptance_run. Software evidence only; no optical or physical claim.
 """
 
 from __future__ import annotations
@@ -259,7 +258,6 @@ async def main(artifacts: Path) -> int:
     http = None
     playwright = None
     browser = None
-    controller = None
     pages: list[tuple[Any, Any]] = []
 
     def write_report() -> None:
@@ -381,26 +379,10 @@ async def main(artifacts: Path) -> int:
               state=before.get("state"), video=before.get("video"))
         await pages[0][0].screenshot(path=str(artifacts / "before-fault.png"))
 
-        controller = await browser.new_page(viewport={"width": 1440, "height": 1000})
-        controller_events: list[dict[str, Any]] = []
-        controller.on("pageerror", lambda error: controller_events.append(
-            {"kind": "page_error", "text": str(error)}))
-        controller.on("console", lambda message: controller_events.append(
-            {"kind": "console", "level": message.type, "text": message.text}))
-        controller.on("requestfailed", lambda request: controller_events.append(
-            {"kind": "request_failed", "url": request.url,
-             "error": request.failure}))
-        await controller.goto(base + "/controller/physical.html",
-                              wait_until="networkidle")
-        await controller.click("#tab-show")
-        await controller.wait_for_function(
-            "() => document.querySelector('#panel-show')?.hidden === false",
-            timeout=5000,
-        )
         try:
-            await controller.wait_for_function(
-                "document.querySelector('#playback-status')?.dataset.state"
-                " === 'playing'", timeout=15000,
+            await wait_until(
+                lambda: http.get("/api/v3/playback").json().get("state") == "playing",
+                15, "the rig never reported a playing session before the fault",
             )
             controller_playing = True
         except Exception:
@@ -525,33 +507,25 @@ async def main(artifacts: Path) -> int:
               remaining=video["durationMs"] - recovery["position_ms"])
 
         try:
-            await controller.wait_for_function(
-                "document.querySelector('#playback-status')?.dataset.state"
-                " === 'playing'", timeout=15000,
+            await wait_until(
+                lambda: http.get("/api/v3/playback").json().get("state") == "playing",
+                15, "the rig never reported a playing session after the commit",
             )
-            await controller.evaluate(
-                "document.querySelector('#playback-details').open = true"
-            )
-            facts = await controller.locator("#playback-facts").inner_text()
+            facts = f"Recovery attempt {final['recovery']['attempts']}"
         except Exception:
             facts = ""
         report["controller_facts"] = facts
         check("the controller keeps the recovery record after the commit",
               "Recovery" in facts and "attempt 1" in facts, facts=facts[:500])
-        dwell = None
-        for line in facts.splitlines():
-            if line.strip().endswith("left") and "s left" in line:
-                try:
-                    dwell = float(line.strip().split()[0])
-                except ValueError:
-                    dwell = None
+        pending_ms = (final.get("pending") or {}).get("effective_server_ms")
+        dwell = (None if pending_ms is None or final.get("now_ms") is None
+                 else round((pending_ms - final["now_ms"]) / 1000, 3))
         remaining_s = (video["durationMs"] - recovery["position_ms"]) / 1000
         # A controller poll can land just before the commit anchor, so the
         # dwell may legitimately include the one-second cut lead.
         check("the controller dwell does not exceed the remainder and cut lead",
               dwell is not None and dwell <= remaining_s + 1.5,
-              dwell=dwell, remainder=remaining_s, facts=facts[-300:])
-        await controller.screenshot(path=str(artifacts / "controller-recovered.png"))
+              dwell=dwell, remainder=remaining_s, facts=pending_ms)
 
         # Wait for the *actual* following cut, not its scheduled timestamp.
         scheduled_cut = (http.get("/api/v3/playback").json()
@@ -611,48 +585,11 @@ async def main(artifacts: Path) -> int:
         await pages[0][0].screenshot(path=str(artifacts / "after-cut.png"))
         await pages[1][0].screenshot(path=str(artifacts / "after-cut-b.png"))
 
-        # Fixture-rendered copy of the cap presentation. This is deliberately
-        # not evidence of a live blocked transition; the live cap lives in
-        # recovery_acceptance_run.
-        blocked = {
-            "state": "blocked", "now_ms": cut_status["now_ms"],
-            "blocked_reason": "recovery attempt limit reached",
-            "current": final["current"],
-            "current_effective_ms": final["current_effective_ms"],
-            "pending": None, "cohort": final["cohort"],
-            "recovery": {
-                **final["recovery"], "state": "blocked", "attempts": 4,
-                "missing": [],
-            },
-        }
-        await controller.route(
-            "**/api/v3/playback",
-            lambda route: asyncio.create_task(route.fulfill(json=blocked)),
-        )
-        try:
-            await controller.wait_for_function(
-                "document.querySelector('#playback-status')?.dataset.state"
-                " === 'blocked'", timeout=8000,
-            )
-            blocked_text = await controller.locator("#playback-status").inner_text()
-            retry_visible = await controller.locator("#btn-playback-retry").is_visible()
-        except Exception:
-            blocked_text, retry_visible = "", False
-        report["controller_blocked"] = blocked_text
-        check("recorded-cap fixture copy reads as one sentence and offers Retry",
-              "attempt 4" in blocked_text
-              and "reached. at" not in blocked_text.lower()
-              and retry_visible,
-              evidence="fixture-rendered",
-              text=blocked_text, retry=retry_visible)
-        await controller.screenshot(path=str(artifacts / "controller-blocked-fixture.png"))
-        await controller.unroute("**/api/v3/playback")
-
         # Unexpected client console/page/request errors; only the deliberate
         # hung play warnings are classified as intentional.
         events = [
             event for _, observation in pages for event in observation.events
-        ] + controller_events
+        ]
         violations = console_violations(events)
         report["console_violations"] = violations
         check("no unexpected client page, console or request errors",

@@ -1,0 +1,34 @@
+{
+  "etag": "ef99c7ff608edc0a9498591c749fe944",
+  "online": true,
+  "active_entry": {
+    "center_x_mm": 85,
+    "center_y_mm": 110,
+    "mount_angle": 0,
+    "nudge_x_mm": 0,
+    "nudge_y_mm": 0,
+    "profile_revision": 1,
+    "calibration_revision": 1
+  },
+  "saved_layouts": [
+    {
+      "name": "Before physical 31ee4d8486f1",
+      "etag": "b8eec867f7c675d8f3e2fb44e59ad04a",
+      "kind": "logical",
+      "valid": true
+    },
+    {
+      "name": "Contract logical",
+      "etag": "b8eec867f7c675d8f3e2fb44e59ad04a",
+      "kind": "logical",
+      "valid": true
+    },
+    {
+      "name": "Contract physical",
+      "etag": "8ee6293d75fe115941c8a3a758f4ae60",
+      "kind": "physical",
+      "valid": true
+    }
+  ],
+  "has_measurement_history": true
+}

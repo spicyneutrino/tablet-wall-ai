@@ -1,0 +1,181 @@
+{
+  "id": "sha256:a53f024a78fc8a01e0164cb737b72b447fe3f175bcd22972f66d1308409dae7c",
+  "name": "wall-pattern-a53f024a78fc8a01e0164cb737b72b447fe3f175bcd22972f66d1308409dae7c.png",
+  "mime": "image/png",
+  "intrinsicWidth": 3045,
+  "intrinsicHeight": 3940,
+  "bytes": 104361,
+  "url": "/assets/sha256:a53f024a78fc8a01e0164cb737b72b447fe3f175bcd22972f66d1308409dae7c",
+  "width": 3045,
+  "height": 3940,
+  "source": "curated",
+  "thumbnail_url": "/assets/sha256:a53f024a78fc8a01e0164cb737b72b447fe3f175bcd22972f66d1308409dae7c",
+  "metadata": {
+    "pattern": "grid",
+    "content_type": "image/png",
+    "format": "PNG",
+    "mode": "RGB",
+    "opaque": true,
+    "width": 3045,
+    "height": 3940,
+    "byte_length": 104361,
+    "sha256": "a53f024a78fc8a01e0164cb737b72b447fe3f175bcd22972f66d1308409dae7c",
+    "bounds_mm": {
+      "x": 0,
+      "y": 0,
+      "width": 340,
+      "height": 440
+    },
+    "origin_mm": [
+      0,
+      0
+    ],
+    "extent_mm": [
+      340,
+      440
+    ],
+    "negative_bounds": false,
+    "pixels_per_mm": 8.956221510397983,
+    "mm_per_pixel": 0.1116542281629615,
+    "aspect": {
+      "source": 0.7727272727272727,
+      "image": 0.7728426395939086,
+      "deviation": 0.00014929829799936734,
+      "preserved": true
+    },
+    "grid": {
+      "interval_mm": 50,
+      "major_interval_mm": 250,
+      "x_ticks_mm": [
+        0,
+        50,
+        100,
+        150,
+        200,
+        250,
+        300
+      ],
+      "y_ticks_mm": [
+        0,
+        50,
+        100,
+        150,
+        200,
+        250,
+        300,
+        350,
+        400
+      ],
+      "vertical_lines": 7,
+      "horizontal_lines": 9,
+      "total_lines": 16,
+      "x_labels_mm": [
+        0,
+        50,
+        100,
+        150,
+        200,
+        250,
+        300
+      ],
+      "y_labels_mm": [
+        0,
+        50,
+        100,
+        150,
+        200,
+        250,
+        300,
+        350,
+        400
+      ],
+      "label_interval_mm": {
+        "x": 50,
+        "y": 50
+      },
+      "label_count": 16,
+      "corner_markers": [
+        {
+          "label": "TL",
+          "box_px": [
+            15,
+            15,
+            111,
+            111
+          ],
+          "color": [
+            196,
+            32,
+            32
+          ]
+        },
+        {
+          "label": "TR",
+          "box_px": [
+            2934,
+            15,
+            3030,
+            111
+          ],
+          "color": [
+            24,
+            128,
+            64
+          ]
+        },
+        {
+          "label": "BR",
+          "box_px": [
+            2934,
+            3829,
+            3030,
+            3925
+          ],
+          "color": [
+            204,
+            120,
+            0
+          ]
+        },
+        {
+          "label": "BL",
+          "box_px": [
+            15,
+            3829,
+            111,
+            3925
+          ],
+          "color": [
+            40,
+            72,
+            180
+          ]
+        }
+      ],
+      "cross_axis": true,
+      "origin_marker_px": [
+        0,
+        0
+      ],
+      "scale_bar_mm": 100,
+      "scale_bar_px": 896,
+      "shape_target_mm": 100,
+      "shape_target_px": 896
+    },
+    "limits": {
+      "max_edge_px": 4096,
+      "max_pixels": 12000000,
+      "max_wall_mm": 10000,
+      "min_wall_mm": 50,
+      "max_axis_ticks": 256
+    },
+    "note": "Millimetre values are intended coordinates copied from the committed physical layout. The pattern does not measure the wall and does not claim real-world dimensional accuracy.",
+    "accuracy_claimed": false,
+    "provenance": {
+      "source": "committed physical bounds",
+      "generated": true,
+      "interval_mm": 50
+    }
+  },
+  "etag": "eb4e64c63713f47989b033765aad6fa6"
+}
