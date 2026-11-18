@@ -61,7 +61,7 @@ test('A5 Saved arrangements (logical and physical, invalid entries listed): prev
     expect(sent).toEqual([]);
 
     await page.getByRole('button', { name: 'Grid two', exact: true }).click();
-    await expect(page.locator('.preview-pinned > .monitor-label > .monitor-description')).toHaveText('Your layout');
+    await expect(page.locator('.preview-pinned > .monitor-label > .monitor-description')).toHaveText('Your layout: switched to a logical layout');
     expect(sent).toEqual([]);
 
     const openActions = async (name: string) => {
@@ -87,7 +87,7 @@ test('A5 Saved arrangements (logical and physical, invalid entries listed): prev
     await expect(page.getByRole('button', { name: /^Restore, \d{2}:\d{2}$/ })).toBeVisible();
 
     await page.getByRole('button', { name: 'Desk', exact: true }).click();
-    await expect(page.locator('.preview-pinned > .monitor-label > .monitor-description')).toHaveText('Your layout');
+    await expect(page.locator('.preview-pinned > .monitor-label > .monitor-description')).toHaveText('Your layout: switched to a physical layout');
     expect(sent.length).toBe(1);
 
     const physicalEtag = (await api.config()).etag;

@@ -1,4 +1,5 @@
 import { createElement, Fragment, useState } from 'react';
+import { REVIEW_CHANGE_FIRST } from '../../copy';
 import { arrangementDirty } from '../../state/drafts/arrangement';
 import { applyArrangement } from '../../state/commands/layout';
 import { useWallStore } from '../../state/hooks';
@@ -17,7 +18,7 @@ export function useArrangementAction(): PreviewAction | null {
   const [message, setMessage] = useState('');
   if (!editing && !arrangementDirty(arrangement)) return null;
   return { label: 'Apply layout', busyLabel: 'Applying…',
-    disabledReason: blocked ? 'Discard the other preview before editing the layout.' : arrangement?.conflict ? 'Review the wall change first.'
+    disabledReason: blocked ? 'Discard the other preview before editing the layout.' : arrangement?.conflict ? REVIEW_CHANGE_FIRST
       : error || gesture.error || (!arrangementDirty(arrangement) ? 'Move a tablet to change the layout.' : undefined),
     onClick: () => {
       setMessage('');

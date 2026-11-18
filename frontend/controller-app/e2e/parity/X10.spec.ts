@@ -10,7 +10,7 @@ test('X10 On an empty wall at 1280×800, the join address and Add tablets are in
   const join = page.locator('.nextstep-join .join-address');
   await expect(join).toBeVisible();
   await expect(join, 'the join address is a host and port a tablet can open').toHaveText(/^((\d{1,3}\.){3}\d{1,3}|localhost):\d+$/);
-  await expect(page.locator('.nextstep-join img[alt="QR code for the tablet address"]')).toBeVisible();
+  await expect(page.locator('.nextstep-join img')).toHaveAttribute('alt', /^QR code for ((\d{1,3}\.){3}\d{1,3}|localhost):\d+$/);
   const copy = page.getByRole('button', { name: 'Copy link', exact: true });
   await expect(copy).toBeVisible();
   await expect(page.locator('.nextstep-join')).toBeVisible();

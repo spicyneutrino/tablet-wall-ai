@@ -1,4 +1,5 @@
 import { createElement, useState } from 'react';
+import { PICK_A_SOURCE, REVIEW_CHANGE_FIRST } from '../../copy';
 import { patternOutcomeText, showTestPattern } from '../../state/commands/testPatterns';
 import { show } from '../../state/commands/scene';
 import { recallSavedScene } from '../../state/commands/savedScenes';
@@ -69,7 +70,7 @@ export function useContentAction(): PreviewAction | null {
   }
   return {
     label: 'Show on wall', busyLabel: 'Showing…', onClick: () => { void apply(); },
-    disabledReason: !content.selection ? 'Pick a source to preview it.' : content.conflict ? 'Review the change first.'
+    disabledReason: !content.selection ? PICK_A_SOURCE : content.conflict ? REVIEW_CHANGE_FIRST
       : wall && alreadyOnWall(content.selection, wall) ? 'This is already on the wall.' : undefined,
     secondary: createElement(ContentActionFeedback, { content, message, fitOpen, setFitOpen,
       discard: () => { editContent(store, { type: 'discard' }); setMessage(''); },

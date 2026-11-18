@@ -3,6 +3,7 @@ import { ChevronRight, CircleAlert, CircleCheck, Copy, Download, FileCheck } fro
 import { DiagnosticsSchema } from '../../api/diagnostics';
 import type { Diagnostics } from '../../api/diagnostics';
 import { paths } from '../../api/paths';
+import { joinQrAlt } from '../../copy';
 import { OperatorConfigSchema, ReadinessSchema } from '../../api/readiness';
 import type { OperatorConfig, Readiness } from '../../api/readiness';
 import type { Session } from '../../session/session';
@@ -14,6 +15,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from '../../ui/Tabs';
 import { useWallStore } from '../../state/hooks';
 import EmptyWall from '../sources/layouts/EmptyWall';
 import Playback from '../playback';
+import HowToRestore from './HowToRestore';
 import { useShell } from '../preview/ShellContext';
 import {
   HealthSchema, formatBytes, healthFacts, joiningMessage, manifestInstant, manifestSummary,
@@ -155,7 +157,7 @@ function JoiningTab({ config, onRetry }: { config: Load<OperatorConfig>; onRetry
       {address?.kind === 'ready' ? <>
         <p className="t-body">Open this address on each tablet.</p>
         <div className="join-code">
-          <span className="join-qr"><img src={paths.joinQr} alt="QR code for the tablet address" width={96} height={96} /></span>
+          <span className="join-qr"><img src={paths.joinQr} alt={joinQrAlt(new URL(address.url).host)} width={96} height={96} /></span>
           <div className="shell-slot">
             <p className="t-heading join-address" translate="no">{address.url}</p>
             <Button className="justify-self-start" onClick={() => void copy(address.url)}><Copy aria-hidden="true" />Copy link</Button>
@@ -189,9 +191,10 @@ function BackupTab({ readiness, diagnostics, onRetry }: { readiness: Load<Readin
       {diagnostics.kind === 'error' ? <p className="t-body">{diagnostics.message}</p> : null}
       {readiness.kind === 'error' || diagnostics.kind === 'error' ? <TryAgain onRetry={onRetry} /> : null}
       {manifest || rehearsal ? <dl className="backup-facts">
-        {manifest ? <><dt className="t-muted">Last manifest</dt><dd>{manifest}</dd></> : null}
+        {manifest ? <><dt className="t-muted">Last snapshot</dt><dd>{manifest}</dd></> : null}
         {rehearsal ? <><dt className="t-muted">Restore rehearsal</dt><dd>{rehearsal}</dd></> : null}
       </dl> : null}
+      <div className="server-actions"><HowToRestore /></div>
     </section>
     {/* U20 mounts EmptyWall here: the clear-wall confirmation. */}
     <div className="server-mount" data-mount="empty-wall"><EmptyWall /></div>

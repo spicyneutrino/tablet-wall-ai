@@ -41,7 +41,7 @@ export default function PlacementFields() {
     </div>
     <div className="flex gap-2" role="group" aria-label="Nudge step">{[1, 10].map(value => <Button key={value} variant="ghost" size="sm" aria-pressed={step === value} onClick={() => setStep(value)}>
       {value} {slot ? 'mm' : 'unit'}</Button>)}</div>
-    <p className="t-caption">Drag on Preview, or use the arrow keys. Shift moves ten steps. R turns 90°. Escape cancels a drag.</p>
+    <p className="t-caption">Drag on the preview, or use the arrow keys. Shift moves ten steps. R turns 90°. Escape cancels a drag.</p>
     <Button variant="ghost" className="justify-self-start" {...layoutButton(!enabled)} onClick={gesture.remove}>Remove placement…</Button>
   </div>;
 }

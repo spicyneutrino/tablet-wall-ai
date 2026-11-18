@@ -52,7 +52,7 @@ it('reports a 415 as a refusal without showing the server body', async () => {
   const handle = uploadFile(file('banner.heic', 'image/heic'), { createXhr: () => xhr });
   xhr.finish(415, JSON.stringify({ detail: 'only image/jpeg, image/png is accepted' }));
   await expect(handle.done).resolves.toEqual({ kind: 'refused' });
-  expect(UPLOAD_REFUSED).toBe('This file type is not accepted');
+  expect(UPLOAD_REFUSED).toBe('Not uploaded: only PNG and JPEG. Export it as PNG and try again.');
 });
 
 it('reports a 500, a network error and a timeout as a retryable failure', async () => {

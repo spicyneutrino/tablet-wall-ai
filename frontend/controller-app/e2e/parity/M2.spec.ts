@@ -38,11 +38,11 @@ test('M2 The ruler check writes nothing. Its review is invalidated when the view
   await expect.poll(async () => ConfigSchema.parse(await api.config()).runtime.devices[id]?.online).toBe(true);
   await page.getByLabel('Line A', { exact: true }).fill('50');
   await page.getByLabel('Line B', { exact: true }).fill('12.5');
-  await page.getByText('Line lengths on screen (CSS px)', { exact: true }).click();
+  await page.getByText(/^Line lengths on screen \(/).click();
   await page.getByLabel('Line B span', { exact: true }).fill('50');
-  await page.getByText('Line lengths on screen (CSS px)', { exact: true }).click();
+  await page.getByText(/^Line lengths on screen \(/).click();
   await page.getByRole('button', { name: 'Check result', exact: true }).click();
-  await expect(page.getByText('Nothing saved', { exact: true })).toBeVisible();
+  await expect(page.getByText(/^Ruler gives \d+\.\d × \d+\.\d mm$/)).toBeVisible();
   await page.getByLabel('Use the ruler values', { exact: true }).check();
   await page.screenshot({ path: `/tmp/u26-shots/3170a157/ruler-checked-${page.viewportSize()?.width}.png`, fullPage: true });
   if (page.viewportSize()?.width === 1440) {

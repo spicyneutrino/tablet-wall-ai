@@ -40,3 +40,12 @@ export function reportAge(lastSeen: string | null, now: number) {
     : minutes < 1440 ? `${Math.floor(minutes / 60)} hr` : `${Math.floor(minutes / 1440)} d`;
   return { label, description: `Last seen ${label}` };
 }
+
+export function offlineDuration(lastSeen: string | null, now: number): string | null {
+  const seen = lastSeen ? Date.parse(lastSeen) : NaN;
+  if (!Number.isFinite(seen)) return null;
+  const minutes = Math.floor(Math.max(0, now - seen) / 60_000);
+  const count = (value: number, unit: string) => `${value} ${unit}${value === 1 ? '' : 's'}`;
+  return minutes < 1 ? 'less than a minute' : minutes < 60 ? count(minutes, 'minute')
+    : minutes < 1440 ? count(Math.floor(minutes / 60), 'hour') : count(Math.floor(minutes / 1440), 'day');
+}

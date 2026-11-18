@@ -18,7 +18,7 @@ test('V1 The Joining section shows the tablet URL, QR and Copy link. Without a t
   const sheet = page.getByRole('dialog', { name: 'Server', exact: true });
   await sheet.getByRole('tab', { name: 'Joining', exact: true }).click();
   await expect(sheet.getByText(url, { exact: true })).toBeVisible();
-  const qr = sheet.getByRole('img', { name: 'QR code for the tablet address' });
+  const qr = sheet.getByRole('img', { name: /^QR code for ((\d{1,3}\.){3}\d{1,3}|localhost):\d+$/ });
   await expect(qr).toHaveAttribute('src', '/api/v3/join-qr');
   await expect.poll(() => qr.evaluate((image) => image instanceof HTMLImageElement && image.complete && image.naturalWidth > 0)).toBe(true);
   await sheet.getByRole('button', { name: 'Copy link', exact: true }).click();
@@ -32,6 +32,6 @@ test('V1 The Joining section shows the tablet URL, QR and Copy link. Without a t
   await expect(sheet.getByText(/No tablet address is configured/)).toBeVisible();
   await expect(sheet.getByText(/TABLET_WALL_TABLET_ORIGIN/)).toBeVisible();
   await expect(sheet.getByText(url)).toHaveCount(0);
-  await expect(sheet.getByRole('img', { name: 'QR code for the tablet address' })).toHaveCount(0);
+  await expect(sheet.getByRole('img', { name: /^QR code for ((\d{1,3}\.){3}\d{1,3}|localhost):\d+$/ })).toHaveCount(0);
   await expect(sheet.getByRole('button', { name: 'Copy link', exact: true })).toHaveCount(0);
 });

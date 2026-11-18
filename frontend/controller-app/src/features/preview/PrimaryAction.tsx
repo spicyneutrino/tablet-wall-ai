@@ -1,4 +1,5 @@
 import { Send } from 'lucide-react';
+import { PICK_A_SOURCE } from '../../copy';
 import { useWallStore } from '../../state/hooks';
 import { Button } from '../../ui/Button';
 import { GridApplyAction } from '../sources/layouts/GridBuilder';
@@ -26,7 +27,7 @@ export default function PrimaryAction() {
   const reason = loading ? 'Loading…' : unreachable ? 'The server can’t be reached.' : server.uncertain ? 'Refresh first.'
     : !server.supported ? 'Update the console before editing.' : firstRun ? 'Add a tablet first.'
       : measuring ? 'Finish measuring first.' : action?.disabledReason;
-  const disabledReason = reason ?? (!action ? 'Pick a source to preview it.' : undefined);
+  const disabledReason = reason ?? (!action ? PICK_A_SOURCE : undefined);
   // While measuring, the measure stepper owns the primary action; keep this one secondary.
   const variant = measuring ? 'secondary' : 'primary';
   return <div className={`primary-action${action ? ' is-draft' : ''}${arrangement ? ' max-lg:!grid max-lg:!grid-cols-[minmax(0,1fr)_auto] max-lg:items-start' : ''}`}>

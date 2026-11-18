@@ -8,6 +8,7 @@ import { Tally } from '../../ui/Tally';
 import { useShell } from './ShellContext';
 import { useShellView, contentName } from './useShellView';
 import { MobileOnWall } from '../onwall';
+import { describeLayoutChange } from '../conflict/model';
 import WallPlaceholder from './WallPlaceholder';
 import { EditOverlay } from '../../stage/EditOverlay';
 import EditToolbar, { useArrangementEditor } from './EditToolbar';
@@ -29,10 +30,13 @@ export default function Preview() {
   const [liveExpanded, setLiveExpanded] = useState(false);
   const savedLabel = savedScene && content?.type === 'image'
     ? `${savedScene.name}, ${content.fit === 'contain' ? 'Fit' : 'Fill'}` : null;
+  const change = arrangement ? describeLayoutChange(arrangement.base, arrangement.draft) : '';
+  const yourLayout = !change || change === 'Layout unchanged' ? 'Your layout' : `Your layout: ${change.charAt(0).toLowerCase()}${change.slice(1)}`;
   const measureName = tablets.find(tablet => tablet.id === measureId)?.name ?? 'tablet';
   const label = measureStep ? `Measuring ${measureName}` : loading ? 'Loading the wall…' : firstRun ? 'Waiting for tablets' : unreachable ? 'Last known wall'
-    : editing || mode === 'arrangement-preview' ? 'Your layout'
-      : testPattern ? testPatternName(testPattern) : mode === 'image-preview' ? savedLabel ?? contentName(content) : 'Same as the wall';
+    : arrangement?.conflict ? 'Your layout, kept while you review'
+    : editing || mode === 'arrangement-preview' ? yourLayout
+      : testPattern ? `${testPatternName(testPattern)}, not on the wall yet` : mode === 'image-preview' ? savedLabel ?? contentName(content) : 'Same as the wall';
   function reportStamp(className: string) {
     return <span className={`chip chip-err ${className}`}><Clock aria-hidden="true" />
       {lastReport ? <>As of <time data-report-time dateTime={lastReport.dateTime}>{lastReport.label}</time></> : 'Last known wall'}</span>;

@@ -106,7 +106,7 @@ export default function Board() {
         </li>)}
       </ul> : null}
     </div> : null}
-    {firstRun ? <p className="t-caption">No tablets yet. Open the join address on a tablet to add it here.</p> : null}
+    {firstRun ? <p className="t-caption">Joined tablets appear here and on the preview.</p> : null}
     {!loading && !firstRun && !tablets.length ? <p className="t-caption">Tablet status is unavailable. Check that the wall server is running, then refresh status.</p> : null}
     {!loading && !unreachable && !firstRun ? <Button variant="ghost" className="justify-self-start" onClick={() => store.setState(state => ({ ui: { ...state.ui, serverOpen: true } }))}>
       <Plus aria-hidden="true" />Add a tablet</Button> : null}

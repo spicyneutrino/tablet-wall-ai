@@ -19,7 +19,7 @@ test('C9 A timeout, 5xx or unreadable response on Show gives "Not confirmed". Fu
 
   const show = page.getByRole('button', { name: 'Show on wall', exact: true });
   const onWall = page.locator('.desktop-onwall, .mobile-onwall');
-  const refresh = page.getByRole('button', { name: 'Refresh status', exact: true });
+  const refresh = page.getByRole('button', { name: 'Refresh', exact: true });
   async function pick() {
     await page.getByRole('button', { name: 'two-colour.png', exact: true }).click();
     await expect(show).toBeEnabled();
