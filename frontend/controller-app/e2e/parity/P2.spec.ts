@@ -62,7 +62,7 @@ test('P2 Start (with policy and exclusions), Pause, Resume, Next, Previous, Retr
   async function save(name: string, bytes: Buffer) { const path = info.outputPath(name); await writeFile(path, bytes); return path; }
   const empty = (await (await api.request.get('/api/v3/playlist')).json()) as { etag: string };
   const seeded = await api.request.put('/api/v3/playlist', { headers: { 'If-Match': empty.etag },
-    data: { items: [{ asset: red.id, dwell_ms: 1000 }, { asset: blue.id, dwell_ms: 1000 }], loop: true } });
+    data: { items: [{ asset: red.id, dwell_ms: 3000 }, { asset: blue.id, dwell_ms: 3000 }], loop: true } });
   expect(seeded.ok(), await seeded.text()).toBe(true);
 
   const sent = writes(page);
@@ -143,7 +143,8 @@ test('P2 Start (with policy and exclusions), Pause, Resume, Next, Previous, Retr
   const transports = sent.length;
   await sheet.getByRole('button', { name: 'Pause', exact: true }).click();
   await expect(state).toHaveText('Paused');
-  const pause = post(sent[transports]!);
+  const sentSince = (name: string) => sent.slice(transports).find(request => request.url().endsWith(`/playback/${name}`));
+  const pause = post(sentSince('pause')!);
   expect(pause).toMatchObject({ method: 'POST', path: '/api/v3/playback/pause', body: null });
   expect(pause.ifMatch).toMatch(/^\d+$/);
   const frozen = await colour();
@@ -152,11 +153,15 @@ test('P2 Start (with policy and exclusions), Pause, Resume, Next, Previous, Retr
 
   await sheet.getByRole('button', { name: 'Resume', exact: true }).click();
   await expect(state).toHaveText(/Playing|Preparing|Getting ready/);
-  const resume = post(sent[transports + 1]!);
+  const resume = post(sentSince('start')!);
   expect(resume).toMatchObject({ method: 'POST', path: '/api/v3/playback/start', body: null });
   expect(resume.ifMatch).toMatch(/^\d+$/);
   await expect(state).toHaveText('Playing', { timeout: 15_000 });
 
+  // The server bumps the playback version at every cut, and the app retries a stale write once. The forced 412
+  // below uses that retry, so click Next just after a cut: the real retry then has most of a dwell before the next one.
+  const before = (await status()).version;
+  await expect.poll(async () => (await status()).version, { timeout: 15_000, message: 'a cut lands' }).not.toBe(before);
   let refuse = true;
   await page.route('**/api/v3/playback/next', async route => {
     if (refuse) { refuse = false; await route.fulfill({ status: 412, contentType: 'application/json', body: JSON.stringify({ detail: 'playback version is stale' }) }); } else await route.continue();
