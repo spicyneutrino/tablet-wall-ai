@@ -104,7 +104,7 @@ export function Upload() {
     if (result.kind === 'failed') return patch(item.id, { status: 'failed' });
     setFinished(value => value + 1);
     refresh();
-    if (item.batch === 1) selectUploaded(store, result.asset);
+    if (item.batch === 1 && result.asset.kind !== 'video') selectUploaded(store, result.asset);
     remove(item.id);
   }
   async function start() {

@@ -93,7 +93,7 @@ export default function PlaylistEditor({ media, ready }: { media: Load<Media>; r
     const asset = assets.find(candidate => candidate.id === id);
     if (!asset) return;
     edited(`Added ${asset.name} as item ${items.length + 1}.`);
-    commit([...items, { asset: asset.id as PlaylistItem['asset'], dwell_ms: DEFAULT_DWELL_MS }]);
+    commit([...items, { asset: asset.id as PlaylistItem['asset'], dwell_ms: isVideo(asset) && asset.durationMs ? asset.durationMs : DEFAULT_DWELL_MS }]);
   }
   async function save() {
     setSaving(true);
